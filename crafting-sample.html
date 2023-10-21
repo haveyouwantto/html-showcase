@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Canvas Image Transformation</title>
+    <style>
+        .slot {
+            display: inline-flex;
+            justify-content: center;
+            background-color: lightgray;
+            border: 2px solid black;
+            margin: 2px;
+            width: 64px;
+            height: 64px;
+        }
+
+        .slot img {
+            height: 100%;
+            image-rendering: pixelated;
+        }
+
+        .crafting {
+            display: flex;
+            align-items: center;
+        }
+
+        .arrow {
+            font-size: 48px;
+            font-weight: 800;
+            margin: 0 32px 0 32px;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="content">
+        <script>
+            class CraftingTable {
+                constructor() {
+                    // 创建一个新的<div>元素，并添加crafting类
+                    this.element = document.createElement('div');
+                    this.element.classList.add('crafting');
+
+                    // 创建一个<table>元素
+                    const table = document.createElement('table');
+
+                    // 创建<tbody元素
+                    const body = document.createElement('tbody');
+
+                    // 将<table>元素添加到this.element
+                    this.element.appendChild(table);
+
+                    // 定义一个slots对象，包含输入和输出槽位
+                    this.slots = {
+                        inputs: [],
+                        output: null
+                    }
+
+                    // 创建一个3x3的表格格子，包括输入槽位
+                    for (let i = 0; i < 3; i++) {
+                        const tr = document.createElement('tr');
+                        const row = [];
+                        for (let j = 0; j < 3; j++) {
+                            const td = document.createElement('td');
+                            td.classList.add('slot');
+                            tr.appendChild(td);
+                            row.push(td);
+                        }
+                        this.slots.inputs.push(row);
+                        body.appendChild(tr);
+                    }
+
+                    // 将tbody添加到<table>
+                    table.append(body);
+
+                    // 创建一个带有箭头的<div>元素
+                    const arrow = document.createElement('div');
+                    arrow.classList.add('arrow');
+                    arrow.innerText = ">";
+
+                    // 将箭头<div>元素添加到this.element
+                    this.element.appendChild(arrow);
+
+                    // 创建一个输出槽位，并添加到this.element
+                    const product = document.createElement('div');
+                    product.classList.add('slot');
+                    this.element.appendChild(product);
+
+                    // 将输出槽位与slots对象关联
+                    this.slots.output = product;
+                }
+
+                // 设置指定位置的输入槽位的图像
+                setInput(x, y, imgurl, block = false) {
+                    const img = document.createElement('img');
+                    img.src = imgurl;
+
+                    // 清空槽位，然后添加图像
+                    const element = this.slots.inputs[y][x];
+                    element.innerHTML = '';
+                    element.appendChild(img);
+                }
+
+                // 设置输出槽位的图像
+                setOutput(imgurl, block = false) {
+                    const img = document.createElement('img');
+                    img.src = imgurl;
+
+                    // 清空槽位，然后添加图像
+                    const element = this.slots.output;
+                    element.innerHTML = '';
+                    element.appendChild(img);
+                }
+            }
+
+            class BlockImageRenderer {
+                // 渲染图像的方法，返回一个Promise
+                render(imgurl, width) {
+                    return new Promise((resolve, reject) => {
+                        const image = new Image();
+                        image.src = imgurl;
+                        image.onload = function () {
+                            // 创建一个画布
+                            const canvas = document.createElement('canvas');
+                            canvas.width = width;
+                            canvas.height = canvas.width * 1.078125;
+                            const ctx = canvas.getContext('2d');
+                            ctx.imageSmoothingEnabled = false;
+
+                            // 正六边形的边长
+                            const side = 2 / Math.sqrt(3);
+
+                            // 绘制顶面
+                            ctx.translate(canvas.width / 2, 0);
+                            ctx.scale(2, 1);
+                            ctx.rotate(45 * (Math.PI / 180));
+                            ctx.drawImage(image, 0, 0, canvas.width / 4 * Math.SQRT2, canvas.width / 4 * Math.SQRT2);
+
+                            // 绘制左面
+                            ctx.setTransform(1, 0.5, 0, 1, 0, 0);
+                            ctx.translate(0, canvas.width / 4);
+                            ctx.drawImage(image, 0, 0, canvas.width / 2, canvas.width / 2 * side);
+                            ctx.fillStyle = '#00000060'
+                            ctx.fillRect(0, 0, canvas.width / 2, canvas.width / 2 * side)
+
+                            // 绘制右面
+                            ctx.setTransform(1, -0.5, 0, 1, 0, 0);
+                            ctx.translate(canvas.width / 2, canvas.width / 2 + canvas.width / 4);
+                            ctx.drawImage(image, 0, 0, canvas.width / 2, canvas.width / 2 * side);
+                            ctx.fillStyle = '#00000090'
+                            ctx.fillRect(0, 0, canvas.width / 2, canvas.width / 2 * side)
+
+                            // 将绘制结果转换为DataURL并解析Promise
+                            resolve(canvas.toDataURL());
+                        }
+                        image.onerror = reject;
+                    });
+                }
+            }
+
+            const stick = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAABGdBTUEAALGPC/xhBQAAAAFzUkdCAK7OHOkAAABPSURBVDjLY2AYCODi4gLGZGv2NBP9ryHH/Z9szZ3p6qQbQBXNGX5yozYTC8i2GaYZZvO0adMYTE1NybMZpJkkA9CdDdJIku0gjWT5mVIAAKFiSuUR6Fh+AAAAAElFTkSuQmCC";
+            const cobblestone = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAB/0lEQVR42k1T18qqQQzcB/QXO3axKyhWEMWCXcF+oVgQUVTE+gY+Wg6TQxYvwrebb9JmsqpWq1EkEqFQKESfz4dutxs1Gg3KZrN8Ph6PVK/XGWOxWMjtdlM6nabL5cJ4NRwOORjgx+NB/X6f4vE433u9HoPG4zFNJhPGhcNhOp1OXASm4DwcDlSpVLQTlZBgsVhoX7fbJYfDobtdrVbUbrf/J4Btt1vCOLlcjoEIajabNJ1O+Qyf0+mk8/lMEmO1Wkmt12uuBsCvJRIJDjSZTGS32xmz2Wx0R0iQyWRIvd9vqlarlM/n6fV6MWnP55MBkuj7/dJ+v+dA6Qhc4Z8qlUp88fv9tNvtqNVqMR9gXlqFIQhkDgYDms/njIciqlwuE5IUi0Wu+Pf3RwaDgc9Q6Hq9Mhc+n48VQKeYHXeopURCMQFD0uVyqf2z2YxSqRSTPRqNKBqNcmdK2sMY0iaIi8ViXE0SIBj/jUYj/RZV0Nzj8XC7wrrMnUwmeU5hHv+CwaAOBl8Ks8KJL8AIhBJQBIBCoUBms1knhWpYKhCpNxESYR+wXS6XixcK6wrJ7vc7V5MEOHc6HTZWAdXwMLDroi06Eh6gDsBIigSQGFLKdiqAwCoSwYkAfLEHUCMQCJDX69XbBzJlW6GEwouz2WwkCyWZofHvq0NHIBU+GQmS/wPBu3AKn6z5kAAAAABJRU5ErkJggg=="
+            const pickaxe = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAhElEQVQ4y2NgGLTA09PzPzomSfOsWbP+d3Z2/q+vrwdjEBtskJno/ww/uf9EGSIhIQHHcIPS1f9ryHH/J91LQJthLgIZSLJmkLNBNsO8Q7QhYJuRnA3zDlEGINsMEyPaAHSbkQ0g6AVsNiMbAIpinAbgshndEJJtJjm0SQYgjWRrpgQAAJp2eOpuPYnQAAAAAElFTkSuQmCC";
+
+            // 创建CraftingTable实例和BlockImageRenderer实例
+            const table = new CraftingTable();
+            const renderer = new BlockImageRenderer();
+
+            // 将CraftingTable元素添加到页面的id为'content'的元素中
+            document.getElementById('content').appendChild(table.element);
+
+            // 设置输入槽位和输出槽位的图像
+            table.setInput(1, 1, stick);
+            table.setInput(1, 2, stick);
+            table.setOutput(pickaxe);
+
+            // 渲染cobblestone图像，并将其设置到CraftingTable的不同输入槽位
+            renderer.render(cobblestone, 128).then(url => {
+                table.setInput(0, 0, url);
+                table.setInput(1, 0, url);
+                table.setInput(2, 0, url);
+            });
+
+        </script>
+</body>
+
+</html>
