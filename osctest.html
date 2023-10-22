@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>MML Music Player</title>
+</head>
+
+<body>
+    <button onclick="startPlaying()">Play</button>
+    <button onclick="stopPlaying()">Stop</button>
+
+    <script>
+        var context;
+        var oscillator;
+
+        const amp = [[
+            0,
+            0,
+            1/3,
+            0,
+            1/5,
+            0,
+            1/7,
+            0,
+            1/9,
+            0,
+            1/11
+        ]]//[[1, 0.94, 0.0071, 0.27, 0.044, 0.00088, 0.05, 0.069, 0.0024, 0.02, 0.026, 0.0031, 0.0067, 0.011, 0.0028, 0.0017]]
+
+
+        function getRandomPhase() {
+            return Math.random() * 2 * Math.PI - Math.PI;
+        }
+
+        const samples = amp.map(inst => {
+            let real = [0];
+            let imag = [0];
+            inst.forEach(f => {
+                let phase = getRandomPhase();
+                real.push(f * Math.cos(phase));
+                imag.push(f * Math.sin(phase));
+            });
+            return [real, imag];
+        });
+
+        function setString(dataView, byteOffset, string) {
+            const encoder = new TextEncoder('utf-8');
+            encoder.encode(string).forEach((e, i) => {
+                dataView.setUint8(byteOffset + i, e)
+            });
+        }
+
+        function startPlaying() {
+            context = new AudioContext();
+
+            oscillator = context.createOscillator();
+
+            // Create custom waveform
+            var real = new Float32Array(samples[0][0])
+            var imag = new Float32Array(samples[0][1])
+            var customWaveform = context.createPeriodicWave(real, imag);
+
+            oscillator.setPeriodicWave(customWaveform);
+
+            oscillator.connect(context.destination);
+            oscillator.start();
+
+            var mmlSequence = 'ccggaag';
+            var tempo = 200;
+            var noteDuration = 60 / tempo;
+            var breakDuration = 0.1;
+
+            playMMLSequence(mmlSequence, noteDuration, breakDuration);
+
+            // // context = new OfflineAudioContext(2, 44100 * 40 * 2, 44100);
+            // function renderTime(start) {
+
+            //     for (let index = 0; index < 40; index += 0.01) {
+            //         if (index - start <= 2) {
+            //             var c = context.createOscillator();
+            //             var g = context.createGain()
+
+            //             c.frequency.value = Math.random() * 1500 + 500
+            //             g.gain.value = 0.1;
+
+            //             c.connect(g);
+            //             g.connect(context.destination)
+            //             c.start(index);
+            //             c.stop(index + 0.01)
+            //         }
+
+            //     }
+            // }
+
+            // renderTime(0)
+
+            // context.suspend(2.0);
+
+            // context.onstatechange = function (event) {
+            //     console.log(event)
+            //     if (context.state === 'suspended') {
+            //         renderTime(context.currentTime)
+            //         context.resume()
+            //         // ...and schedule the next pause.
+            //         context.suspend(context.currentTime + 2.0);
+            //     }
+            // }
+
+            // const interval = setInterval(() => { console.log(context.currentTime) }, 250)
+            // context.startRendering().then((buffer => {
+            //     console.log(buffer)
+            //     let a = buffer.getChannelData(0), b = buffer.getChannelData(1);
+
+            //     const filesize = buffer.length * 4 + 44;
+
+            //     const bytes = new ArrayBuffer(filesize);
+            //     const view = new DataView(bytes);
+
+            //     setString(view, 0, 'RIFF')
+            //     view.setUint32(4, filesize, true);
+            //     setString(view, 8, 'WAVEfmt ')
+            //     view.setUint32(16, 16, true)  // meta length
+
+            //     view.setUint16(20, 1, true)   // type: pcm
+            //     view.setUint16(22, 2, true)   // channels
+            //     view.setUint32(24, buffer.sampleRate, true)   // samplerate
+            //     view.setUint32(28, buffer.sampleRate * 2 * 2, true)    // byte rate
+            //     view.setUint16(32, 4, true)   // block align
+            //     view.setUint16(34, 16, true)   // bits per sample
+
+            //     setString(view, 36, 'data')
+            //     view.setUint32(40, buffer.length * 2, true)   // length
+
+            //     for (let i = 0; i < buffer.length; i++) {
+            //         view.setInt16(44 + i * 4, parseInt(a[i] * 32768), true)
+            //         view.setInt16(46 + i * 4, parseInt(b[i] * 32768), true)
+            //     }
+            //     console.log(bytes)
+
+            //     let blob = new Blob([bytes], { type: "audio/wav" });
+            //     var new_file = URL.createObjectURL(blob);
+
+            //     var download_link = document.createElement("a");
+            //     download_link.href = new_file;
+            //     download_link.download = 'new.wav';
+            //     download_link.click()
+            // }))
+        }
+
+        function stopPlaying() {
+            if (oscillator) {
+                oscillator.stop();
+                oscillator.disconnect();
+                context.close();
+            }
+        }
+        function playMMLSequence(sequence, noteDuration, breakDuration) {
+            var noteIndex = 0;
+            var t = 0;
+
+            for (let i = 0; i < sequence.length; i++) {
+
+                var note = sequence[i];
+                var frequency = getFrequency(note);
+                oscillator.frequency.setValueAtTime(frequency, t);
+                console.log(t)
+
+                t += noteDuration;
+
+                oscillator.frequency.setValueAtTime(0, t);
+                t += breakDuration;
+            }
+        }
+
+        function getFrequency(note) {
+            var noteMap = {
+                'c': 261.63,
+                'd': 293.66,
+                'e': 329.63,
+                'f': 349.23,
+                'g': 392.00,
+                'a': 440.00,
+                'b': 493.88
+            };
+
+            return noteMap[note.toLowerCase()];
+        }
+    </script>
+</body>
+
+</html>

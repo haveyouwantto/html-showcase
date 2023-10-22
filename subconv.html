@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Convert Format to WebVTT</title>
+</head>
+<body>
+    <h1>Convert Format to WebVTT</h1>
+    <textarea id="inputText" rows="10" cols="80"></textarea>
+    <br>
+    <button onclick="convertAndDownload()">Convert and Download</button>
+    <br>
+    <h2>Result (WebVTT):</h2>
+    <pre id="outputText"></pre>
+
+    <script>
+        function convertAndDownload() {
+    const inputText = document.getElementById('inputText').value;
+    const lines = inputText.split('\n');
+    let srt = "";
+
+    for (let i = 0; i < lines.length; i++) {
+        const [timeInfo, char, dialogue] = lines[i].split('|');
+        const [startTime, endTime] = timeInfo.split('>');
+
+        const srtIndex = i + 1;
+        const formattedTimeRange = formatTime(startTime) + ' --> ' + formatTime(endTime);
+
+        srt += srtIndex + '\n';
+        srt += formattedTimeRange + '\n';
+        srt += dialogue + '\n\n';
+    }
+
+    const outputTextArea = document.getElementById('outputText');
+    outputTextArea.textContent = srt;
+
+    // Download the SRT file
+    const blob = new Blob([srt], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const downloadLink = document.createElement('a');
+    downloadLink.href = url;
+    downloadLink.download = 'converted_subtitles.srt';
+    document.body.appendChild(downloadLink);
+    downloadLink.click();
+    document.body.removeChild(downloadLink);
+}
+
+function formatTime(time) {
+    const seconds = parseFloat(time);
+    const hours = Math.floor(seconds / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    const remainingSeconds = (seconds % 60).toFixed(2).padStart(5, '0');
+    return `${hours}:${minutes}:${remainingSeconds}`;
+}
+
+    </script>
+</body>
+</html>

@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/materialize/1.0.0/css/materialize.min.css">
+  <link rel="stylesheet" href="styles.css">
+  <title>Magicnology 150 - Speakers</title>
+</head>
+
+<body>
+  <header><nav class="pink darken-1">
+      <div class="container">
+        <div class="nav-wrapper">
+          <a href="index.html" class="brand-logo">Magicnology 150</a>
+          <a href="#" data-target="mobile-nav" class="sidenav-trigger"><i class="material-icons">menu</i></a>
+          <ul class="right hide-on-med-and-down">
+            <li><a href="about.html">About</a></li>
+            <li><a href="schedule.html">Schedule</a></li>
+            <li><a href="speakers.html">Speakers</a></li>
+          </ul>
+        </div>
+      </div>
+    </nav>
+  </header>
+
+  <main>
+    <section id="speakers" class="section">
+      <div class="container">
+        <h3>Featured Speakers</h3>
+        <ul class="collection">
+          <li class="collection-item avatar">
+            <img src="images/alice.jpg" alt="Alice" class="circle">
+            <span class="title">Alice</span>
+            <p>Princess of the Kingdom</p>
+            <a href="#alice-modal" class="secondary-content modal-trigger"><i class="material-icons">info</i></a>
+          </li>
+          <li class="collection-item avatar">
+            <img src="images/sally.jpg" alt="Sally" class="circle">
+            <span class="title">Sally</span>
+            <p>Theoretical "Magictist"</p>
+            <a href="#sally-modal" class="secondary-content modal-trigger"><i class="material-icons">info</i></a>
+          </li>
+        </ul>
+      </div>
+    </section>
+  </main>
+
+  <footer class="page-footer pink darken-1"><div class="container">
+      <div class="row">
+        <div class="col s12">
+          <p class="center-align">&copy; 2023 Magicnology 150. All rights reserved.</p>
+        </div>
+      </div>
+    </div>
+  </footer>
+
+  <!-- Alice Modal -->
+<div id="alice-modal" class="modal">
+  <div class="modal-content">
+    <h4>Alice</h4>
+    <p class="speaker-description">
+      Princess Alice, the Teen Genius, is a visionary leader in the world of Magicnology. She is widely known as the Mother of Magicnology, credited with inventing groundbreaking enchantments that have brought the benefits of magic to even those without inherent magical abilities.
+    </p>
+    <p class="speaker-description">
+      Alice's most notable invention is the Magic Cloak, a remarkable creation that grants the power of flight to anyone who wears it. Through her collaboration with Sally, she pioneered the development of the first Magic Radio and Magic Computer, ushering in a new era of magical communication and computation.
+    </p>
+  </div>
+</div>
+
+<!-- Sally Modal -->
+<div id="sally-modal" class="modal">
+  <div class="modal-content">
+    <h4>Sally</h4>
+    <p class="speaker-description">
+      Sally, the Logic Enthusiast, is a renowned magictist specializing in the study of magical properties and elemental forces. Her research on the basic properties of elements and the nature of magic has been instrumental in advancing the field of Magicnology.
+    </p>
+    <p class="speaker-description">
+      Sally's collaboration with Princess Alice led to groundbreaking inventions, including the first Magic Radio and the Magic Computer. These inventions revolutionized communication and computation by harnessing the power of magic. Sally's innovative work also extended to the creation of custom magic and the development of the Magic Nexus, a system enabling seamless information and item exchange between towns.
+    </p>
+  </div>
+</div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/materialize/1.0.0/js/materialize.min.js"></script>
+  <script>
+      document.addEventListener('DOMContentLoaded', function() {
+  // Initialize the modal
+  var modalElems = document.querySelectorAll('.modal');
+  var modalInstances = M.Modal.init(modalElems);
+
+  // Initialize the sidenav
+  var sidenavElems = document.querySelectorAll('.sidenav');
+  var sidenavInstances = M.Sidenav.init(sidenavElems);
+});
+
+      
+  </script>
+</body>
+
+</html>

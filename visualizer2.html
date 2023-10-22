@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Music Visualizer</title>
+    <style>
+        canvas {
+            pointer-events: none;
+        }
+
+        body {
+            width: 100vw;
+            height: 100vh;
+            margin: 0px;
+            overflow: hidden;
+        }
+
+        audio {
+            position: absolute;
+            top: 0px;
+            right: 0px;
+            display: block;
+        }
+
+        input {
+            display: none;
+        }
+    </style>
+</head>
+
+<body>
+    <canvas></canvas>
+    <audio controls></audio>
+    <input type="file">
+    <script>
+        window.AudioContext = window.AudioContext || window.webkitAudioContext;
+        let ctx = new AudioContext({sampleRate:48000});
+
+        let audio = document.querySelector('audio');
+        let canvas = document.querySelector('canvas');
+        let canvas2 = document.createElement('canvas');
+        let tag = document.querySelector('body');
+        let input = document.querySelector('input');
+
+        let src = ctx.createMediaElementSource(audio);
+
+        /**
+         * Vector operations
+        */
+        function add(v1, v2) {
+            return [v1[0] + v2[0], v1[1] + v2[1], v1[2] + v2[2]];
+        }
+
+        function sub(v1, v2) {
+            return [v1[0] - v2[0], v1[1] - v2[1], v1[2] - v2[2]];
+        }
+
+        function mul(v1, mul) {
+            return [v1[0] * mul, v1[1] * mul, v1[2] * mul];
+        }
+
+        function colorTrans(pal, prog) {
+            if (prog < 0) return formatColor(pal[0]);
+            else if (prog >= 1) return formatColor(pal[pal.length - 1]);
+            let i = parseInt(prog * (pal.length - 1));
+            let v1 = pal[i];
+            let v2 = pal[i + 1];
+
+            try {
+                let delta = sub(v2, v1);
+                let percent = (prog / (1 / (pal.length - 1)));
+                let int = parseInt(percent);
+                percent -= int;
+                let adv = mul(delta, percent);
+                let result = add(v1, adv);
+                return formatColor(result);
+            } catch (error) {
+                // console.log(i, v1, v2);
+                // console.error(error);
+            }
+        }
+
+        function formatColor(v) {
+            return `rgb(${v[0]},${v[1]},${v[2]})`;
+        }
+
+        /**
+         * Canvas
+        */
+        let palette = [
+  [0, 0, 0],     // #000000
+  [0, 32, 32],   // #002020
+  [0, 133, 133], // #008585
+  [251, 242, 196], // #fbf2c4
+  [229, 193, 133], // #e5c185
+  [199, 82, 42],  // #c7522a
+  [111, 48, 25]   // #6f3019
+];
+
+
+        let node = ctx.createAnalyser();
+        node.smoothingTimeConstant = 0;
+        node.fftSize = 4096;
+        let buffer = new Uint8Array(node.frequencyBinCount);
+        let canvasCtx = canvas.getContext('2d');
+
+        let y = 0;
+
+        canvas.width = document.body.clientWidth;
+        canvas.height = document.body.clientHeight;
+        canvas2.width = document.body.clientWidth;
+        canvas2.height = document.body.clientHeight;
+
+        function draw() {
+            requestAnimationFrame(draw);
+            node.getByteFrequencyData(buffer);
+            canvas2.getContext('2d').drawImage(canvas, 0, 0, canvas.width, canvas.height);
+
+            canvasCtx.fillStyle = 'rgb(0, 0, 0)';
+            canvasCtx.fillRect(0, 0, canvas.width, canvas.height);
+
+            const barWidth = buffer.length / canvas.width;
+            let posX = 0;
+            for (let i = 0; i < buffer.length; i += barWidth) {
+                let index = parseInt(i);
+                let barHeight = buffer[index] / 255 * canvas.height;
+                if (barHeight < 0) barHeight = 0;
+                let posY = 0;
+
+                canvasCtx.fillStyle = colorTrans(palette, barHeight / canvas.height);
+                canvasCtx.fillRect(posX, posY, 1, 1);
+                posX++;
+            }
+            canvasCtx.drawImage(canvas2, 0, 1, canvas.width, canvas.height);
+        };
+        src.connect(node);
+        node.connect(ctx.destination);
+        draw();
+
+        /**
+         * Event listeners
+        */
+        function play(file) {
+            audio.src = URL.createObjectURL(file);
+            audio.play();
+            ctx.resume();
+        }
+
+        tag.addEventListener('drop', e => {
+            play(e.dataTransfer.files[0]);
+            e.preventDefault();
+        });
+        tag.addEventListener('dragover', e => {
+            e.preventDefault();
+        });
+        tag.addEventListener('click', e => {
+            input.click();
+        });
+        input.addEventListener('change', e => {
+            if (input.files[0]) {
+                play(input.files[0]);
+            }
+        });
+        onresize = function (e) {
+            canvas.width = document.body.clientWidth;
+            canvas.height = document.body.clientHeight;
+            canvas2.width = document.body.clientWidth;
+            canvas2.height = document.body.clientHeight;
+        }
+    </script>
+</body>
+
+</html>
