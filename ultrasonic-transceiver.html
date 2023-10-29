@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>超声波音乐收发器</title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f0f0f0;
+            text-align: center;
+            padding-top: 50px;
+        }
+
+        h1 {
+            color: #333;
+        }
+
+        p {
+            font-size: 18px;
+            margin-top: 20px;
+        }
+
+        .btn,
+        input::file-selector-button {
+            display: inline-block;
+            margin: 20px;
+            padding: 10px 20px;
+            font-size: 18px;
+            color: #fff;
+            background-color: #33b73a;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+
+        .btn.transmit {
+            background-color: #369ec7;
+        }
+
+        .btn.receive {
+            background-color: rgb(221, 84, 180);
+        }
+
+        #tx,
+        #rx {
+            display: none;
+            flex-direction: column;
+            align-items: center;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="main">
+        <h1>超声波音乐收发器</h1>
+        <p>这是一个超声波音乐收发器，可以通过发射和接收按钮来实现音乐的传输与接收。</p>
+        <button class="btn transmit" id="tx-btn">发射</button>
+        <button class="btn receive" id="rx-btn">接收</button>
+    </div>
+
+    <div id="tx">
+        <h1>发射模式</h1>
+        <input type="file" id="tx-file">
+        <audio controls id="tx-audio"></audio>
+    </div>
+    <div id="rx">
+        <h1>接收模式</h1>
+        <button class="btn" id="mute-btn">静音</button>
+    </div>
+    <script>
+        const ctx = new AudioContext();
+        const freq = 15000;
+
+        function createCosineWindow(length) {
+            return [...Array(length)].map((v, i) => {
+                return Math.cos(Math.PI * (i / length - 0.5));
+            });
+        }
+
+        function createFilter(taps, freq, bw) {
+            const buffer = ctx.createBuffer(1, taps, ctx.sampleRate);
+            const window = createCosineWindow(taps);
+
+            buffer.getChannelData(0).set(
+                [...Array(taps)].map((v, i) => {
+                    const t = (i - taps / 2) / ctx.sampleRate;
+                    const x = 2 * Math.PI * bw * t;
+                    return t == 0 ? 1 : Math.sin(x) / x * Math.sin(2 * Math.PI * freq * t) * window[i];
+                })
+            )
+            return buffer;
+        }
+
+        const main = document.getElementById('main');
+        const txBtn = document.getElementById('tx-btn');
+        const rxBtn = document.getElementById('rx-btn');
+
+        const tx = document.getElementById('tx');
+        const rx = document.getElementById('rx');
+
+
+        txBtn.addEventListener('click', e => {
+            main.style.display = 'none';
+            tx.style.display = 'flex';
+
+            const txFile = document.getElementById('tx-file');
+            const txAudio = document.getElementById('tx-audio');
+
+            const mediaNode = ctx.createMediaElementSource(txAudio);
+
+            const localOscillator = ctx.createOscillator()
+            localOscillator.frequency.value = freq;
+
+            const mixer = ctx.createGain()
+            mixer.gain.value = 0;
+
+            const filter = ctx.createConvolver();
+            filter.buffer = createFilter(1001, freq + 2000, 2000);
+
+            const gain = ctx.createGain()
+            gain.gain.value = 10;
+
+            mediaNode.connect(mixer)
+            localOscillator.connect(mixer.gain)
+            mixer.connect(filter)
+            filter.connect(gain)
+            gain.connect(ctx.destination)
+
+            localOscillator.start()
+
+            txFile.addEventListener('change', e => {
+                const file = e.target.files[0];
+                const fileReader = new FileReader();
+                fileReader.onload = function () {
+                    txAudio.src = fileReader.result;
+                    ctx.resume();
+                };
+                fileReader.readAsDataURL(file);
+            })
+        })
+
+
+        rxBtn.addEventListener('click', e => {
+            main.style.display = 'none';
+            rx.style.display = 'flex';
+
+            navigator.mediaDevices.getUserMedia({ audio: { sampleRate: ctx.sampleRate }, video: false }).then(stream => {
+                const microphone = ctx.createMediaStreamSource(stream);
+
+                const bandpass = ctx.createConvolver();
+                bandpass.buffer = createFilter(1001, freq + 2000, 2000);
+
+                const localOscillator = ctx.createOscillator()
+                localOscillator.frequency.value = freq;
+
+                const mixer = ctx.createGain()
+                mixer.gain.value = 0;
+
+                const lowpass = ctx.createConvolver();
+                lowpass.buffer = createFilter(101, 2000, 2000);
+
+                const gain = ctx.createGain()
+                gain.gain.value = 5000000;
+
+                const agc = ctx.createDynamicsCompressor()
+                agc.release.value = 1;
+                agc.knee.value = 12;
+                agc.ratio.value = 20;
+                agc.threshold.value = -36;
+
+                const muteGain = ctx.createGain()
+                muteGain.gain.value = 1;
+
+                microphone.connect(bandpass);
+                bandpass.connect(mixer);
+                localOscillator.connect(mixer.gain);
+                mixer.connect(lowpass);
+                lowpass.connect(gain)
+                gain.connect(agc)
+                agc.connect(muteGain)
+                muteGain.connect(ctx.destination)
+
+                localOscillator.start()
+
+                let mute = false;
+                const muteBtn = document.getElementById('mute-btn');
+                muteBtn.addEventListener('click', e => {
+                    mute = !mute;
+                    if (mute) {
+                        muteBtn.innerText = '取消静音'
+                        muteGain.gain.value = 0;
+                    } else {
+                        muteBtn.innerText = '静音'
+                        muteGain.gain.value = 1;
+                    }
+                })
+            });
+        })
+    </script>
+</body>
+
+</html>
