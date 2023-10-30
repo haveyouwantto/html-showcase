@@ -145,7 +145,7 @@
                 localOscillator.frequency.value = freq;
                 filter.buffer = createFilter(1001, freq + bandwidth / 2, bandwidth / 2);
             }
-            setFrequency(startFreq, bandwidth);
+            setFrequency(startFreq + bandwidth * (channelSelection.value - 1), bandwidth)
 
             mediaNode.connect(mixer)
             localOscillator.connect(mixer.gain)
@@ -201,7 +201,7 @@
                     lowpass.buffer = createFilter(101, bandwidth / 2, bandwidth / 2);
                 }
 
-                setFrequency(startFreq, bandwidth)
+                setFrequency(startFreq + bandwidth * (channelSelection.value - 1), bandwidth)
 
                 microphone.connect(bandpass);
                 bandpass.connect(mixer);
