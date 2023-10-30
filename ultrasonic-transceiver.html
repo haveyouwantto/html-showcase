@@ -49,6 +49,12 @@
             flex-direction: column;
             align-items: center;
         }
+
+        input[type="number"] {
+            background-color: transparent;
+            font-size: 18px;
+            padding: 5px 10px;
+        }
     </style>
 </head>
 
@@ -69,9 +75,15 @@
         <h1>接收模式</h1>
         <button class="btn" id="mute-btn">静音</button>
     </div>
+    <div id="channels">
+        选择频道：
+        <input type="number" min="1" id="channelNumber" value="1"><br>
+        频道范围：1 ~ <span id="maxChannelCount"></span>
+    </div>
     <script>
         const ctx = new AudioContext();
-        const freq = 15000;
+        const startFreq = 15000;
+        const bandwidth = 3000;
 
         function createCosineWindow(length) {
             return [...Array(length)].map((v, i) => {
@@ -100,6 +112,15 @@
         const tx = document.getElementById('tx');
         const rx = document.getElementById('rx');
 
+        const channelSelection = document.getElementById('channelNumber')
+        const maxChannels = Math.floor((ctx.sampleRate / 2 - startFreq) / bandwidth);
+        channelSelection.max = maxChannels;
+        document.getElementById('maxChannelCount').innerText = maxChannels;
+
+        channelSelection.addEventListener('change', e => {
+            if (channelSelection.value < 1) channelSelection.value = 1;
+            else if (channelSelection.value > maxChannels) channelSelection.value = maxChannels;
+        })
 
         txBtn.addEventListener('click', e => {
             main.style.display = 'none';
@@ -111,16 +132,20 @@
             const mediaNode = ctx.createMediaElementSource(txAudio);
 
             const localOscillator = ctx.createOscillator()
-            localOscillator.frequency.value = freq;
 
             const mixer = ctx.createGain()
             mixer.gain.value = 0;
 
             const filter = ctx.createConvolver();
-            filter.buffer = createFilter(1001, freq + 2000, 2000);
 
             const gain = ctx.createGain()
             gain.gain.value = 10;
+
+            function setFrequency(freq, bandwidth) {
+                localOscillator.frequency.value = freq;
+                filter.buffer = createFilter(1001, freq + bandwidth / 2, bandwidth / 2);
+            }
+            setFrequency(startFreq, bandwidth);
 
             mediaNode.connect(mixer)
             localOscillator.connect(mixer.gain)
@@ -134,6 +159,10 @@
                 const file = e.target.files[0];
                 txAudio.src = URL.createObjectURL(file);
             })
+
+            channelSelection.addEventListener('change', e => {
+                setFrequency(startFreq + bandwidth * (channelSelection.value - 1), bandwidth)
+            })
         })
 
 
@@ -145,16 +174,14 @@
                 const microphone = ctx.createMediaStreamSource(stream);
 
                 const bandpass = ctx.createConvolver();
-                bandpass.buffer = createFilter(1001, freq + 2000, 2000);
 
                 const localOscillator = ctx.createOscillator()
-                localOscillator.frequency.value = freq;
+                localOscillator.frequency.value = startFreq;
 
                 const mixer = ctx.createGain()
                 mixer.gain.value = 0;
 
                 const lowpass = ctx.createConvolver();
-                lowpass.buffer = createFilter(101, 2000, 2000);
 
                 const gain = ctx.createGain()
                 gain.gain.value = 5000000;
@@ -167,6 +194,14 @@
 
                 const muteGain = ctx.createGain()
                 muteGain.gain.value = 1;
+
+                function setFrequency(freq, bandwidth) {
+                    localOscillator.frequency.value = freq;
+                    bandpass.buffer = createFilter(1001, freq + bandwidth / 2, bandwidth / 2);
+                    lowpass.buffer = createFilter(101, bandwidth / 2, bandwidth / 2);
+                }
+
+                setFrequency(startFreq, bandwidth)
 
                 microphone.connect(bandpass);
                 bandpass.connect(mixer);
@@ -190,6 +225,10 @@
                         muteBtn.innerText = '静音'
                         muteGain.gain.value = 1;
                     }
+                })
+
+                channelSelection.addEventListener('change', e => {
+                    setFrequency(startFreq + bandwidth * (channelSelection.value - 1), bandwidth)
                 })
             });
         })
