@@ -144,7 +144,7 @@
 
             function setFrequency(freq, bandwidth) {
                 localOscillator.frequency.value = freq;
-                filter.buffer = createFilter(1001, freq + bandwidth / 2 - 25, bandwidth / 2 - 50);
+                filter.buffer = createFilter(1001, freq + bandwidth / 2 - 50, bandwidth / 2 - 100);
             }
             setFrequency(startFreq + bandwidth * (channelSelection.value - 1), bandwidth)
 
@@ -198,7 +198,7 @@
 
                 function setFrequency(freq, bandwidth) {
                     localOscillator.frequency.value = freq;
-                    bandpass.buffer = createFilter(1001, freq + bandwidth / 2 - 25, bandwidth / 2 - 50);
+                    bandpass.buffer = createFilter(1001, freq + bandwidth / 2 - 50, bandwidth / 2 - 100);
                     lowpass.buffer = createFilter(101, bandwidth / 2, bandwidth / 2);
                 }
 
