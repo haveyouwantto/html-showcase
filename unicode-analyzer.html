@@ -220,8 +220,10 @@
             event.preventDefault();
             const data = event.dataTransfer.getData('text/plain');
             const draggedElement = document.querySelector('.character:active');
+            const parent = draggedElement.parentNode;
             if (draggedElement) {
-                draggedElement.parentNode.insertBefore(draggedElement, event.target.nextSibling);
+                parent.removeChild(draggedElement)
+                parent.insertBefore(draggedElement, event.target);
             }
         }
 

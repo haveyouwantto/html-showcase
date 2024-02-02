@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Color Switching Canvas with FPS</title>
+  <style>
+    canvas {
+      border: 1px solid black;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="colorCanvas" width="100" height="100"></canvas>
+  <p id="fpsCounter"></p>
+
+  <script>
+    var canvas = document.getElementById('colorCanvas');
+    var ctx = canvas.getContext('2d');
+    var color = 'red';
+    var lastFrameTime = 0;
+    var fpsCounter = document.getElementById('fpsCounter');
+
+    function draw(currentTime) {
+      // Calculate time difference between frames
+      var deltaTime = currentTime - lastFrameTime;
+      lastFrameTime = currentTime;
+
+      // Clear the canvas
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      
+      // Set the fill color
+      ctx.fillStyle = color;
+      
+      // Draw a rectangle that fills the entire canvas
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      
+      // Switch color on each frame
+      if (color === 'red') {
+        color = 'blue';
+      } else {
+        color = 'red';
+      }
+
+      // Calculate FPS
+      var fps = Math.round(1000 / deltaTime);
+      fpsCounter.textContent = 'FPS: ' + fps;
+
+      // Request the next frame
+      requestAnimationFrame(draw);
+    }
+
+    // Start the animation
+    requestAnimationFrame(draw);
+  </script>
+</body>
+</html>
