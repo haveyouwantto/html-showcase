@@ -11,7 +11,7 @@
   </style>
 </head>
 <body>
-  <canvas id="colorCanvas" width="100" height="100"></canvas>
+  <canvas id="colorCanvas" width="200" height="200"></canvas>
   <p id="fpsCounter"></p>
 
   <script>
@@ -36,10 +36,10 @@
       ctx.fillRect(0, 0, canvas.width, canvas.height);
       
       // Switch color on each frame
-      if (color === 'red') {
-        color = 'blue';
+      if (color === 'black') {
+        color = 'white';
       } else {
-        color = 'red';
+        color = 'black';
       }
 
       // Calculate FPS
