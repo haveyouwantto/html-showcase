@@ -421,7 +421,7 @@
 
         function stringToColor(str) {
             const hash = strHash(str)
-            return `hsl(${Math.abs(hash) % 360}, 90%, ${Math.abs(hash) % 30+30}%)`
+            return `hsl(${Math.abs(hash) % 360}, ${Math.abs(hash) % 50 + 50}%, ${Math.abs(hash) % 30 + 30}%)`
         }
 
         // Function to get the name of the Unicode block for a given character
