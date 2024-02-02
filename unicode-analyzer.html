@@ -1,0 +1,447 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f4f4f4;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        h1 {
+            margin-top: 20px;
+        }
+
+        #unicodeInput {
+            margin-top: 20px;
+            padding: 10px;
+            font-size: 16px;
+            width: 80%;
+            max-width: 600px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+        }
+
+        #characters {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            max-width: 80%;
+            gap: 10px;
+            margin-top: 20px;
+        }
+
+        .character {
+            border: 1px solid #ccc;
+            cursor: move;
+            font-size: 26px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: space-between;
+            background-color: #fff;
+            border-radius: 5px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+
+        .char {
+            padding: 5px;
+            pointer-events: none;
+        }
+
+        .code {
+            font-size: 14px;
+            background-color: #ff7f50;
+            color: white;
+            padding: 5px;
+            border-radius: 0 0 5px 5px;
+            pointer-events: none;
+        }
+
+        button {
+            margin-top: 10px;
+            padding: 8px 16px;
+            font-size: 16px;
+            cursor: pointer;
+            border: none;
+            border-radius: 5px;
+            background-color: #4CAF50;
+            color: white;
+        }
+
+        .context-menu {
+            background-color: #fff;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            position: absolute;
+            z-index: 1000;
+        }
+
+        .context-menu div {
+            padding: 8px 16px;
+            cursor: pointer;
+        }
+
+        .context-menu div:hover {
+            background-color: #ff7f50;
+            color: #fff;
+        }
+    </style>
+    <title>Unicode Analyzer</title>
+</head>
+
+<body>
+    <h1>Unicode Analyzer</h1>
+    <textarea id="unicodeInput" cols="50" rows="5" placeholder="Enter Unicode sequence here"></textarea>
+    <button onclick="parseUnicodeInput()">Parse</button>
+    <button onclick="stringifyCharacters()">Stringify</button>
+    <div id="characters" ondrop="drop(event)" ondragover="allowDrop(event)"></div>
+    <button onclick="addNewChar()">+</button>
+
+    <script>
+        function createCharDiv(character = ' ') {
+            const characterDiv = document.createElement('div');
+            const char = document.createElement('div');
+            const code = document.createElement('div');
+
+            char.className = 'char';
+            code.className = 'code';
+
+            characterDiv.className = 'character';
+            characterDiv.setAttribute('draggable', 'true');
+            characterDiv.setAttribute('ondragstart', 'dragStart(event)');
+
+            characterDiv.appendChild(char);
+            characterDiv.appendChild(code);
+
+            characterDiv.addEventListener('contextmenu', function (event) {
+                event.preventDefault();
+                console.log(event)
+                const target = event.target;
+                if (target.classList.contains('character')) {
+                    const contextMenu = document.createElement('div');
+                    contextMenu.className = 'context-menu';
+
+                    const editOption = document.createElement('div');
+                    editOption.textContent = 'Edit';
+                    editOption.addEventListener('click', function () {
+                        editChar(characterDiv);
+                        contextMenu.remove();
+                    });
+                    contextMenu.appendChild(editOption);
+
+                    const deleteOption = document.createElement('div');
+                    deleteOption.textContent = 'Delete';
+                    deleteOption.addEventListener('click', function () {
+                        deleteChar(characterDiv);
+                        contextMenu.remove();
+                    });
+                    contextMenu.appendChild(deleteOption);
+
+                    contextMenu.style.left = `${event.clientX}px`;
+                    contextMenu.style.top = `${event.clientY}px`;
+                    document.body.appendChild(contextMenu);
+
+                    // Function to remove the context menu when clicking outside of it
+                    document.addEventListener('click', function (e) {
+                        if (!contextMenu.contains(e.target)) {
+                            contextMenu.remove();
+                        }
+                    });
+                }
+            });
+
+            setCharDiv(characterDiv, character);
+
+            return characterDiv
+        }
+
+        function setCharDiv(charDiv, character) {
+            const char = charDiv.querySelector('.char');
+            const code = charDiv.querySelector('.code');
+            const unicodeValue = character.codePointAt(0);
+            const characterName = getCharacterName(unicodeValue);
+            charDiv.setAttribute('value', unicodeValue);
+            charDiv.setAttribute('title', `${characterName}`);
+            char.textContent = `${character[0]}`;
+            code.style.backgroundColor = stringToColor(getUnicodeBlockName(unicodeValue))
+            code.textContent = `U+${unicodeValue.toString(16).toUpperCase().padStart(4, '0')}`;
+        }
+
+        function addNewChar() {
+            const charactersDiv = document.getElementById('characters');
+            const newChar = prompt('Enter the new character:');
+            if (newChar !== null) {
+                for (let index = 0; index < newChar.length; index++) {
+                    const c = newChar[index];
+                    charactersDiv.append(createCharDiv(c))
+                }
+            }
+        }
+
+        function parseUnicodeInput() {
+            const unicodeSequence = document.getElementById('unicodeInput').value;
+            const charactersDiv = document.getElementById('characters');
+            charactersDiv.innerHTML = '';
+
+            for (let i = 0; i < unicodeSequence.length; i++) {
+                const character = unicodeSequence[i];
+                const characterDiv = createCharDiv(character);
+                charactersDiv.appendChild(characterDiv);
+            }
+        }
+
+        function stringifyCharacters() {
+            const charactersDiv = document.getElementById('characters');
+            const characterDivs = charactersDiv.querySelectorAll('.character');
+            let result = '';
+            characterDivs.forEach(div => {
+                result += String.fromCharCode(parseInt(div.getAttribute('value')))
+            });
+            document.getElementById('unicodeInput').value = result;
+        }
+
+        function dragStart(event) {
+            event.dataTransfer.setData('text/plain', event.target.textContent);
+        }
+
+        function allowDrop(event) {
+            event.preventDefault();
+        }
+
+        function drop(event) {
+            event.preventDefault();
+            const data = event.dataTransfer.getData('text/plain');
+            const draggedElement = document.querySelector('.character:active');
+            if (draggedElement) {
+                draggedElement.parentNode.insertBefore(draggedElement, event.target.nextSibling);
+            }
+        }
+
+
+        // Function to handle the "Edit" context menu option
+        function editChar(charDiv) {
+            const newChar = prompt('Enter the new character:');
+            if (newChar !== null) {
+                setCharDiv(charDiv, newChar);
+                if (newChar.length > 1) {
+                    for (let index = newChar.length - 1; index >= 1; index--) {
+                        const c = newChar[index];
+                        charDiv.insertAdjacentElement('afterEnd', createCharDiv(c))
+                    }
+                }
+            }
+        }
+
+        // Function to handle the "Delete" context menu option
+        function deleteChar(charDiv) {
+            charDiv.remove();
+        }
+
+        // Define a mapping of Unicode block ranges to their names
+        const unicodeBlockMap = {
+            "Basic Latin": [0x0000, 0x007F],
+            "Latin-1 Supplement": [0x0080, 0x00FF],
+            "Latin Extended-A": [0x0100, 0x017F],
+            "Latin Extended-B": [0x0180, 0x024F],
+            "IPA Extensions": [0x0250, 0x02AF],
+            "Spacing Modifier Letters": [0x02B0, 0x02FF],
+            "Combining Diacritical Marks": [0x0300, 0x036F],
+            "Greek and Coptic": [0x0370, 0x03FF],
+            "Cyrillic": [0x0400, 0x04FF],
+            "Cyrillic Supplement": [0x0500, 0x052F],
+            "Armenian": [0x0530, 0x058F],
+            "Hebrew": [0x0590, 0x05FF],
+            "Arabic": [0x0600, 0x06FF],
+            "Syriac": [0x0700, 0x074F],
+            "Arabic Supplement": [0x0750, 0x077F],
+            "Thaana": [0x0780, 0x07BF],
+            "NKo": [0x07C0, 0x07FF],
+            "Samaritan": [0x0800, 0x083F],
+            "Mandaic": [0x0840, 0x085F],
+            "Syriac Supplement": [0x0860, 0x086F],
+            "Arabic Extended-A": [0x08A0, 0x08FF],
+            "Devanagari": [0x0900, 0x097F],
+            "Bengali": [0x0980, 0x09FF],
+            "Gurmukhi": [0x0A00, 0x0A7F],
+            "Gujarati": [0x0A80, 0x0AFF],
+            "Oriya": [0x0B00, 0x0B7F],
+            "Tamil": [0x0B80, 0x0BFF],
+            "Telugu": [0x0C00, 0x0C7F],
+            "Kannada": [0x0C80, 0x0CFF],
+            "Malayalam": [0x0D00, 0x0D7F],
+            "Sinhala": [0x0D80, 0x0DFF],
+            "Thai": [0x0E00, 0x0E7F],
+            "Lao": [0x0E80, 0x0EFF],
+            "Tibetan": [0x0F00, 0x0FFF],
+            "Myanmar": [0x1000, 0x109F],
+            "Georgian": [0x10A0, 0x10FF],
+            "Hangul Jamo": [0x1100, 0x11FF],
+            "Ethiopic": [0x1200, 0x137F],
+            "Cherokee": [0x13A0, 0x13FF],
+            "Unified Canadian Aboriginal Syllabics": [0x1400, 0x167F],
+            "Ogham": [0x1680, 0x169F],
+            "Runic": [0x16A0, 0x16FF],
+            "Tagalog": [0x1700, 0x171F],
+            "Hanunoo": [0x1720, 0x173F],
+            "Buhid": [0x1740, 0x175F],
+            "Tagbanwa": [0x1760, 0x177F],
+            "Khmer": [0x1780, 0x17FF],
+            "Mongolian": [0x1800, 0x18AF],
+            "Unified Canadian Aboriginal Syllabics Extended": [0x18B0, 0x18FF],
+            "Limbu": [0x1900, 0x194F],
+            "Tai Le": [0x1950, 0x197F],
+            "New Tai Lue": [0x1980, 0x19DF],
+            "Khmer Symbols": [0x19E0, 0x19FF],
+            "Buginese": [0x1A00, 0x1A1F],
+            "Tai Tham": [0x1A20, 0x1AAF],
+            "Balinese": [0x1B00, 0x1B7F],
+            "Sundanese": [0x1B80, 0x1BBF],
+            "Batak": [0x1BC0, 0x1BFF],
+            "Lepcha": [0x1C00, 0x1C4F],
+            "Ol Chiki": [0x1C50, 0x1C7F],
+            "Sundanese Supplement": [0x1CC0, 0x1CCF],
+            "Vedic Extensions": [0x1CD0, 0x1CFF],
+            "Phonetic Extensions": [0x1D00, 0x1D7F],
+            "Phonetic Extensions Supplement": [0x1D80, 0x1DBF],
+            "Combining Diacritical Marks Supplement": [0x1DC0, 0x1DFF],
+            "Latin Extended Additional": [0x1E00, 0x1EFF],
+            "Greek Extended": [0x1F00, 0x1FFF],
+            "General Punctuation": [0x2000, 0x206F],
+            "Superscripts and Subscripts": [0x2070, 0x209F],
+            "Currency Symbols": [0x20A0, 0x20CF],
+            "Combining Diacritical Marks for Symbols": [0x20D0, 0x20FF],
+            "Letterlike Symbols": [0x2100, 0x214F],
+            "Number Forms": [0x2150, 0x218F],
+            "Arrows": [0x2190, 0x21FF],
+            "Mathematical Operators": [0x2200, 0x22FF],
+            "Miscellaneous Technical": [0x2300, 0x23FF],
+            "Control Pictures": [0x2400, 0x243F],
+            "Optical Character Recognition": [0x2440, 0x245F],
+            "Enclosed Alphanumerics": [0x2460, 0x24FF],
+            "Box Drawing": [0x2500, 0x257F],
+            "Block Elements": [0x2580, 0x259F],
+            "Geometric Shapes": [0x25A0, 0x25FF],
+            "Miscellaneous Symbols": [0x2600, 0x26FF],
+            "Dingbats": [0x2700, 0x27BF],
+            "Miscellaneous Mathematical Symbols-A": [0x27C0, 0x27EF],
+            "Supplemental Arrows-A": [0x27F0, 0x27FF],
+            "Braille Patterns": [0x2800, 0x28FF],
+            "Supplemental Arrows-B": [0x2900, 0x297F],
+            "Miscellaneous Mathematical Symbols-B": [0x2980, 0x29FF],
+            "Supplemental Mathematical Operators": [0x2A00, 0x2AFF],
+            "Miscellaneous Symbols and Arrows": [0x2B00, 0x2BFF],
+            "Glagolitic": [0x2C00, 0x2C5F],
+            "Latin Extended-C": [0x2C60, 0x2C7F],
+            "Coptic": [0x2C80, 0x2CFF],
+            "Georgian Supplement": [0x2D00, 0x2D2F],
+            "Tifinagh": [0x2D30, 0x2D7F],
+            "Ethiopic Extended": [0x2D80, 0x2DDF],
+            "Cyrillic Extended-A": [0x2DE0, 0x2DFF],
+            "Supplemental Punctuation": [0x2E00, 0x2E7F],
+            "CJK Radicals Supplement": [0x2E80, 0x2EFF],
+            "Kangxi Radicals": [0x2F00, 0x2FDF],
+            "Ideographic Description Characters": [0x2FF0, 0x2FFF],
+            "CJK Symbols and Punctuation": [0x3000, 0x303F],
+            "Hiragana": [0x3040, 0x309F],
+            "Katakana": [0x30A0, 0x30FF],
+            "Bopomofo": [0x3100, 0x312F],
+            "Hangul Compatibility Jamo": [0x3130, 0x318F],
+            "Kanbun": [0x3190, 0x319F],
+            "Bopomofo Extended": [0x31A0, 0x31BF],
+            "CJK Strokes": [0x31C0, 0x31EF],
+            "Katakana Phonetic Extensions": [0x31F0, 0x31FF],
+            "Enclosed CJK Letters and Months": [0x3200, 0x32FF],
+            "CJK Compatibility": [0x3300, 0x33FF],
+            "CJK Unified Ideographs Extension A": [0x3400, 0x4DBF],
+            "Yijing Hexagram Symbols": [0x4DC0, 0x4DFF],
+            "CJK Unified Ideographs": [0x4E00, 0x9FFF],
+            "Yi Syllables": [0xA000, 0xA48F],
+            "Yi Radicals": [0xA490, 0xA4CF],
+            "Lisu": [0xA4D0, 0xA4FF],
+            "Vai": [0xA500, 0xA63F],
+            "Cyrillic Extended-B": [0xA640, 0xA69F],
+            "Bamum": [0xA6A0, 0xA6FF],
+            "Modifier Tone Letters": [0xA700, 0xA71F],
+            "Latin Extended-D": [0xA720, 0xA7FF],
+            "Syloti Nagri": [0xA800, 0xA82F],
+            "Common Indic Number Forms": [0xA830, 0xA83F],
+            "Phags-pa": [0xA840, 0xA87F],
+            "Saurashtra": [0xA880, 0xA8DF],
+            "Devanagari Extended": [0xA8E0, 0xA8FF],
+            "Kayah Li": [0xA900, 0xA92F],
+            "Rejang": [0xA930, 0xA95F],
+            "Hangul Jamo Extended-A": [0xA960, 0xA97F],
+            "Javanese": [0xA980, 0xA9DF],
+            "Myanmar Extended-B": [0xA9E0, 0xA9FF],
+            "Cham": [0xAA00, 0xAA5F],
+            "Myanmar Extended-A": [0xAA60, 0xAA7F],
+            "Tai Viet": [0xAA80, 0xAADF],
+            "Meetei Mayek Extensions": [0xAAE0, 0xAAFF],
+            "Ethiopic Extended-A": [0xAB00, 0xAB2F],
+            "Latin Extended-E": [0xAB30, 0xAB6F],
+            "Cherokee Supplement": [0xAB70, 0xABBF],
+            "Meetei Mayek": [0xABC0, 0xABFF],
+            "Hangul Syllables": [0xAC00, 0xD7AF],
+            "Hangul Jamo Extended-B": [0xD7B0, 0xD7FF],
+            "High Surrogates": [0xD800, 0xDB7F],
+            "High Private Use Surrogates": [0xDB80, 0xDBFF],
+            "Low Surrogates": [0xDC00, 0xDFFF],
+            "Private Use Area": [0xE000, 0xF8FF],
+            "CJK Compatibility Ideographs": [0xF900, 0xFAFF],
+            "Alphabetic Presentation Forms": [0xFB00, 0xFB4F],
+            "Arabic Presentation Forms-A": [0xFB50, 0xFDFF],
+            "Variation Selectors": [0xFE00, 0xFE0F],
+            "Vertical Forms": [0xFE10, 0xFE1F],
+            "Combining Half Marks": [0xFE20, 0xFE2F],
+            "CJK Compatibility Forms": [0xFE30, 0xFE4F],
+            "Small Form Variants": [0xFE50, 0xFE6F],
+            "Arabic Presentation Forms-B": [0xFE70, 0xFEFF],
+            "Halfwidth and Fullwidth Forms": [0xFF00, 0xFFEF],
+            "Specials": [0xFFF0, 0xFFFF]
+        };
+
+        // Function to generate a color from a string using a simple hash function
+        function strHash(str) {
+            let hash = 0;
+            if (str.length === 0) return hash;
+            for (let i = 0; i < str.length; i++) {
+                hash = str.charCodeAt(i) + ((hash << 5) - hash);
+                hash = hash & hash; // Convert to 32bit integer
+            }
+            return hash;
+        }
+
+        function stringToColor(str) {
+            const hash = strHash(str)
+            return `hsl(${Math.abs(hash) % 360}, 90%, ${Math.abs(hash) % 30+30}%)`
+        }
+
+        // Function to get the name of the Unicode block for a given character
+        function getUnicodeBlockName(codePoint) {
+            for (const blockName in unicodeBlockMap) {
+                const [start, end] = unicodeBlockMap[blockName];
+                if (codePoint >= start && codePoint <= end) {
+                    return blockName;
+                }
+            }
+            return "Unknown Block";
+        }
+
+        // Function to look up the character name based on its Unicode value
+        function getCharacterName(unicodeValue) {
+            const unicodeBlockName = getUnicodeBlockName(unicodeValue);
+            const result = `${unicodeBlockName} - ${String.fromCharCode(unicodeValue)}`;
+            return result
+        }
+    </script>
+</body>
+
+</html>
