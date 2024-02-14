@@ -183,6 +183,8 @@
 
             canvasCtx.strokeStyle = "#2196f3";
             canvasCtx.lineWidth = 2;
+
+            const lowerX = startFreq / (ctx.sampleRate / 2) * canvas.width;
             const startX = _osc.frequency.value / (ctx.sampleRate / 2) * canvas.width;
             const widthX = bandwidth / (ctx.sampleRate / 2) * canvas.width
             canvasCtx.beginPath()
@@ -192,6 +194,9 @@
 
             canvasCtx.fillStyle = "#2196f330";
             canvasCtx.fillRect(startX, 0, widthX, canvas.height)
+
+            canvasCtx.fillStyle = "#00000050";
+            canvasCtx.fillRect(0, 0, lowerX, canvas.height)
         }
 
         window.onresize = resizeCanvas;
