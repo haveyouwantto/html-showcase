@@ -59,7 +59,7 @@
         #spectrum {
             min-width: 300px;
             width: 80%;
-            height: 200px;
+            height: 250px;
             cursor: pointer;
         }
     </style>
@@ -136,6 +136,7 @@
         const tx = document.getElementById('tx');
         const rx = document.getElementById('rx');
 
+        const dpr = window.devicePixelRatio;
         const canvas = document.getElementById('spectrum')
         const canvasCtx = canvas.getContext('2d')
 
@@ -147,11 +148,10 @@
         let _osc;
 
         function resizeCanvas() {
-            const dpr = window.devicePixelRatio;
             let { width: cssWidth, height: cssHeight } = canvas.getBoundingClientRect();
             canvas.width = dpr * cssWidth;
             canvas.height = dpr * cssHeight;
-            analyser.fftSize = determinateFFTSize(canvas.width) * 2;
+            analyser.fftSize = determinateFFTSize(cssWidth);
             dataArray = new Float32Array(analyser.fftSize)
         }
 
@@ -168,7 +168,7 @@
             canvasCtx.beginPath();
 
             for (let i = 0; i < analyser.fftSize; i++) {
-                const v = Math.abs(dataArray[i]) * 2;
+                const v = Math.abs(dataArray[i]) * 1.5 * dpr;
                 const x = i / analyser.fftSize * canvas.width * 2
                 const y = v;
 
