@@ -157,7 +157,7 @@
 
 
         function draw() {
-            canvasCtx.fillStyle = "rgb(200 200 200)";
+            canvasCtx.fillStyle = "rgb(210 210 210)";
             canvasCtx.fillRect(0, 0, canvas.width, canvas.height);
             requestAnimationFrame(draw)
             analyser.getFloatFrequencyData(dataArray);
@@ -172,7 +172,6 @@
                 const x = i / analyser.fftSize * canvas.width * 2
                 const y = v;
 
-
                 if (i === 0) {
                     canvasCtx.moveTo(x, y);
                 } else {
@@ -180,7 +179,6 @@
                 }
             }
 
-            canvasCtx.lineTo(canvas.width, canvas.height);
             canvasCtx.stroke();
 
             canvasCtx.strokeStyle = "#2196f3";
