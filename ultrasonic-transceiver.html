@@ -55,6 +55,13 @@
             font-size: 18px;
             padding: 5px 10px;
         }
+
+        #spectrum {
+            min-width: 300px;
+            width: 80%;
+            height: 200px;
+            cursor: pointer;
+        }
     </style>
 </head>
 
@@ -80,6 +87,7 @@
         <input type="number" min="1" id="channelNumber" value="1"><br>
         频道范围：1 ~ <span id="maxChannelCount"></span>
     </div>
+    <canvas id="spectrum"></canvas>
     <script>
         const ctx = new AudioContext();
         const startFreq = 15000;
@@ -89,6 +97,22 @@
             return [...Array(length)].map((v, i) => {
                 return Math.cos(Math.PI * (i / length - 0.5));
             });
+        }
+
+        function roundDownToPowerOfTwo(number) {
+            if (number <= 0) {
+                return 0;
+            }
+
+            let power = Math.floor(Math.log2(number));
+            return Math.pow(2, power);
+        }
+
+        function determinateFFTSize(width) {
+            let fftsize = roundDownToPowerOfTwo(width * 8)
+            let max = roundDownToPowerOfTwo(ctx.sampleRate / 8);
+            let min = 512;
+            return Math.max(Math.min(fftsize, max), min);
         }
 
         function createFilter(taps, freq, bw) {
@@ -111,6 +135,68 @@
 
         const tx = document.getElementById('tx');
         const rx = document.getElementById('rx');
+
+        const canvas = document.getElementById('spectrum')
+        const canvasCtx = canvas.getContext('2d')
+
+
+        const analyser = ctx.createAnalyser()
+
+        let dataArray = new Float32Array(analyser.fftSize);
+
+        let _osc;
+
+        function resizeCanvas() {
+            const dpr = window.devicePixelRatio;
+            let { width: cssWidth, height: cssHeight } = canvas.getBoundingClientRect();
+            canvas.width = dpr * cssWidth;
+            canvas.height = dpr * cssHeight;
+            analyser.fftSize = determinateFFTSize(canvas.width) * 2;
+            dataArray = new Float32Array(analyser.fftSize)
+        }
+
+
+        function draw() {
+            canvasCtx.fillStyle = "rgb(200 200 200)";
+            canvasCtx.fillRect(0, 0, canvas.width, canvas.height);
+            requestAnimationFrame(draw)
+            analyser.getFloatFrequencyData(dataArray);
+
+            canvasCtx.lineWidth = 1;
+            canvasCtx.strokeStyle = "rgb(0 0 0)";
+
+            canvasCtx.beginPath();
+
+            for (let i = 0; i < analyser.fftSize; i++) {
+                const v = Math.abs(dataArray[i]) * 2;
+                const x = i / analyser.fftSize * canvas.width * 2
+                const y = v;
+
+
+                if (i === 0) {
+                    canvasCtx.moveTo(x, y);
+                } else {
+                    canvasCtx.lineTo(x, y);
+                }
+            }
+
+            canvasCtx.lineTo(canvas.width, canvas.height);
+            canvasCtx.stroke();
+
+            canvasCtx.strokeStyle = "#2196f3";
+            canvasCtx.lineWidth = 2;
+            const startX = _osc.frequency.value / (ctx.sampleRate / 2) * canvas.width;
+            const widthX = bandwidth / (ctx.sampleRate / 2) * canvas.width
+            canvasCtx.beginPath()
+            canvasCtx.moveTo(startX, 0)
+            canvasCtx.lineTo(startX, canvas.height)
+            canvasCtx.stroke()
+
+            canvasCtx.fillStyle = "#2196f330";
+            canvasCtx.fillRect(startX, 0, widthX, canvas.height)
+        }
+
+        window.onresize = resizeCanvas;
 
         const channelSelection = document.getElementById('channelNumber')
         const maxChannels = Math.floor((ctx.sampleRate / 2 - startFreq) / bandwidth);
@@ -156,6 +242,20 @@
 
             localOscillator.start()
 
+            gain.connect(analyser)
+            _osc = localOscillator;
+            resizeCanvas()
+            requestAnimationFrame(draw)
+
+            canvas.addEventListener('click', e => {
+                const clickFreq = e.offsetX / canvas.clientWidth * ctx.sampleRate / 2;
+                if (clickFreq > startFreq) {
+                    const channel = parseInt((clickFreq - startFreq) / bandwidth);
+                    setFrequency(startFreq + bandwidth * (channel), bandwidth)
+                    channelSelection.value = channel + 1;
+                }
+            })
+
             txFile.addEventListener('change', e => {
                 const file = e.target.files[0];
                 txAudio.src = URL.createObjectURL(file);
@@ -177,7 +277,7 @@
                         sampleRate: ctx.sampleRate,
                         echoCancellation: false,
                         noiseSuppression: false
-                    }, 
+                    },
                     video: false
                 }
             ).then(stream => {
@@ -224,6 +324,11 @@
 
                 localOscillator.start()
 
+                microphone.connect(analyser)
+                _osc = localOscillator;
+                resizeCanvas()
+                requestAnimationFrame(draw)
+
                 let mute = false;
                 const muteBtn = document.getElementById('mute-btn');
                 muteBtn.addEventListener('click', e => {
@@ -234,6 +339,15 @@
                     } else {
                         muteBtn.innerText = '静音'
                         muteGain.gain.value = 1;
+                    }
+                })
+
+                canvas.addEventListener('click', e => {
+                    const clickFreq = e.offsetX / canvas.clientWidth * ctx.sampleRate / 2;
+                    if (clickFreq > startFreq) {
+                        const channel = parseInt((clickFreq - startFreq) / bandwidth);
+                        setFrequency(startFreq + bandwidth * (channel), bandwidth)
+                        channelSelection.value = channel + 1;
                     }
                 })
 
