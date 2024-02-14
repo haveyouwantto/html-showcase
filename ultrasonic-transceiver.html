@@ -171,7 +171,16 @@
             main.style.display = 'none';
             rx.style.display = 'flex';
 
-            navigator.mediaDevices.getUserMedia({ audio: { sampleRate: ctx.sampleRate }, video: false }).then(stream => {
+            navigator.mediaDevices.getUserMedia(
+                {
+                    audio: {
+                        sampleRate: ctx.sampleRate,
+                        echoCancellation: false,
+                        noiseSuppression: false
+                    }, 
+                    video: false
+                }
+            ).then(stream => {
                 const microphone = ctx.createMediaStreamSource(stream);
 
                 const bandpass = ctx.createConvolver();
