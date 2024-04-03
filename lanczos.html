@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lanczos Interpolation</title>
+</head>
+
+<body>
+    <canvas id="originalCanvas" width="960" height="540"></canvas>
+
+    <script>
+        const LANCZOS_A = 2;
+
+        function sinc(x) {
+            if (x === 0.0) {
+                return 1.0;
+            } else {
+                return Math.sin(Math.PI * x) / (Math.PI * x);
+            }
+        }
+
+        function lanczosKernel(x) {
+            if (x > -LANCZOS_A && x < LANCZOS_A) {
+                return sinc(x) * sinc(x / LANCZOS_A);
+            } else {
+                return 0.0;
+            }
+        }
+
+        function lanczosInterpolation(data, x) {
+            let result = 0.0;
+            for (let i = 0; i < data.length; i++) {
+                let weight = lanczosKernel(x - i);
+                result += data[i] * weight;
+            }
+            return result;
+        }
+
+        const data = [6,8,2,5,9,3,0,3]; // Sampled data
+        const interpolatedValues = [];
+
+        // Draw original data on the first canvas
+        const canvas = document.getElementById('originalCanvas');
+        const ctx = canvas.getContext('2d');
+        ctx.fillStyle = 'blue';
+        for (let i = 0; i < data.length; i++) {
+            ctx.strokeStyle = '#F44336'
+            ctx.lineWidth = 4;
+
+            const x = i * (canvas.width / data.length);
+            const y = canvas.height - data[i] * 20;
+
+            ctx.beginPath()
+            ctx.moveTo(x, canvas.height);
+            ctx.lineTo(x, y);
+            ctx.stroke()
+        }
+
+        ctx.strokeStyle = '#3949AB'
+        ctx.lineWidth = 4;
+        ctx.beginPath()
+        for (let i = 0; i < canvas.width; i++) {
+            const x = i / canvas.width * data.length;
+            const y = lanczosInterpolation(data, x);
+            console.log(i, canvas.height - y * 20)
+            ctx.lineTo(i, canvas.height - y * 20);
+        }
+        ctx.stroke()
+    </script>
+</body>
+
+</html>
