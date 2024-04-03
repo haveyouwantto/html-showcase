@@ -5,13 +5,78 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Lanczos Interpolation</title>
+    <style>
+        :root {
+            --primary-color: #3498db;
+            --secondary-color: #e74c3c;
+        }
+
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            background-color: #f5f5f5;
+            color: #333;
+        }
+
+        h1 {
+            margin-top: 20px;
+            color: var(--primary-color);
+        }
+
+        canvas {
+            margin-top: 20px;
+            border: 1px solid #ccc;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+
+        div {
+            margin-top: 10px;
+        }
+
+        input {
+            padding: 5px;
+            margin-left: 10px;
+        }
+
+        button {
+            margin-top: 10px;
+            padding: 8px 16px;
+            background-color: var(--primary-color);
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+
+        button:hover {
+            background-color: var(--secondary-color);
+        }
+    </style>
 </head>
 
 <body>
+    <h1>Lanczos Interpolation Sample</h1>
     <canvas id="originalCanvas" width="960" height="540"></canvas>
+    <div>
+        Sample size:
+        <input type="number" min="2" max="99" id="samples" value="12">
+    </div>
+    <div>
+        Kernel size:
+        <input type="number" min="2" max="99" id="kernel" value="2">
+    </div>
+
+    <button id="regenerate">Regenerate</button>
 
     <script>
-        const LANCZOS_A = 2;
+        let LANCZOS_A = 2;
+        let sampleSize = 12;
+        let data = [...Array(sampleSize)].map(x => Math.random() * 20); // Sampled data
 
         function sinc(x) {
             if (x === 0.0) {
@@ -38,36 +103,62 @@
             return result;
         }
 
-        const data = [...Array(12)].map(x => Math.random() * 20); // Sampled data
-        const interpolatedValues = [];
+        function drawGraph() {
+            // Draw original data on the first canvas
+            const canvas = document.getElementById('originalCanvas');
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = 'white';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-        // Draw original data on the first canvas
-        const canvas = document.getElementById('originalCanvas');
-        const ctx = canvas.getContext('2d');
-        ctx.fillStyle = 'blue';
-        for (let i = 0; i < data.length; i++) {
-            ctx.strokeStyle = '#F44336'
+            for (let i = 0; i < data.length; i++) {
+                ctx.strokeStyle = '#F44336';
+                ctx.lineWidth = 4;
+
+                const x = i * (canvas.width / data.length);
+                const y = canvas.height - data[i] * 20;
+
+                ctx.beginPath();
+                ctx.moveTo(x, canvas.height);
+                ctx.lineTo(x, y);
+                ctx.stroke();
+            }
+
+            ctx.strokeStyle = '#3949AB';
             ctx.lineWidth = 4;
-
-            const x = i * (canvas.width / data.length);
-            const y = canvas.height - data[i] * 20;
-
-            ctx.beginPath()
-            ctx.moveTo(x, canvas.height);
-            ctx.lineTo(x, y);
-            ctx.stroke()
+            ctx.beginPath();
+            for (let i = 0; i < canvas.width; i++) {
+                const x = i / canvas.width * data.length;
+                const y = lanczosInterpolation(data, x);
+                console.log(i, canvas.height - y * 20)
+                ctx.lineTo(i, canvas.height - y * 20);
+            }
+            ctx.stroke();
         }
 
-        ctx.strokeStyle = '#3949AB'
-        ctx.lineWidth = 4;
-        ctx.beginPath()
-        for (let i = 0; i < canvas.width; i++) {
-            const x = i / canvas.width * data.length;
-            const y = lanczosInterpolation(data, x);
-            console.log(i, canvas.height - y * 20)
-            ctx.lineTo(i, canvas.height - y * 20);
+        function regenerateData() {
+            data = [...Array(sampleSize)].map(x => Math.random() * 20);
         }
-        ctx.stroke()
+
+        drawGraph();
+
+        let samplesInput = document.getElementById('samples');
+        samplesInput.addEventListener('change', e => {
+            sampleSize = parseInt(samplesInput.value);
+            regenerateData();
+            drawGraph();
+        });
+
+        let kernelSizeInput = document.getElementById('kernel');
+        kernelSizeInput.addEventListener('change', e => {
+            LANCZOS_A = parseInt(kernelSizeInput.value);
+            drawGraph();
+        });
+
+        let regenerateBtn = document.getElementById('regenerate');
+        regenerateBtn.addEventListener('click', e => {
+            regenerateData();
+            drawGraph();
+        })
     </script>
 </body>
 
