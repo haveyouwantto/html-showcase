@@ -189,9 +189,9 @@
                 <option value="12TET">十二平均律</option>
                 <option value="just">纯律</option>
                 <option value="pythagorean">五度相生律</option>
-                <!-- <option value="19TET">19平均律</option>
+                <option value="19TET">19平均律</option>
                 <option value="53TET">53平均律</option>
-                <option value="118TET">118平均律</option> -->
+                <option value="118TET">118平均律</option>
             </select>
         </div>
         <div>
@@ -317,17 +317,17 @@
 
             "19TET": (pitch, baseFreq) => {
                 let ratios = [0, 2, 3, 5, 6, 8, 9, 11, 13, 14, 16, 17]
-                return 2 ** (ratios[pitch % 12] / 19) * (baseFreq / (2 ** (ratios[9] / 19))) * Math.pow(2, Math.floor(pitch / 12) - 5)
+                return 2 ** ((ratios[pitch % 12] - ratios[9]) / 19) * baseFreq * Math.pow(2, Math.floor(pitch / 12) - 5)
             },
 
             "53TET": (pitch, baseFreq) => {
                 let ratios = [0, 5, 9, 14, 17, 22, 26, 31, 36, 39, 44, 48]
-                return 2 ** (ratios[pitch % 12] / 53) * (baseFreq / (2 ** (ratios[9] / 53))) * Math.pow(2, Math.floor(pitch / 12) - 5)
+                return 2 ** ((ratios[pitch % 12] - ratios[9]) / 53) * baseFreq * Math.pow(2, Math.floor(pitch / 12) - 5)
             },
 
             "118TET": (pitch, baseFreq) => {
                 let ratios = [0, 11, 20, 31, 38, 49, 58, 69, 80, 87, 98, 107]
-                return 2 ** (ratios[pitch % 12] / 118) * (baseFreq / (2 ** (ratios[9] / 118))) * Math.pow(2, Math.floor(pitch / 12) - 5)
+                return 2 ** ((ratios[pitch % 12] - ratios[9]) / 118) * baseFreq * Math.pow(2, Math.floor(pitch / 12) - 5)
             }
         };
 
