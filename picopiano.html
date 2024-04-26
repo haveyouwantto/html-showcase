@@ -449,7 +449,6 @@
         }
 
         function stopSound(pitch) {
-            pitch += transpose;
             for (const sound of soundMap.get(pitch)) {
                 if (sustain) {
                     setTimeout(() => {
