@@ -1,0 +1,664 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Piano Keyboard</title>
+    <style>
+        html {
+            background-color: #202020;
+        }
+
+        body {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+        }
+
+        .keyboard {
+            display: flex;
+            width: 90%;
+        }
+
+        .key {
+            cursor: pointer;
+        }
+
+        .key-white {
+            border: 1px solid black;
+            background-color: #f3f3f3;
+            width: 100%;
+            height: 20vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .key-white.active {
+            background-color: #a0a0a0;
+        }
+
+        .key-black {
+            width: 70%;
+            left: 10px;
+            height: 60%;
+            transform: translateX(75%);
+            background-color: black;
+            display: flex;
+            justify-content: center;
+            align-items: flex-end;
+        }
+
+        .key-black.active {
+            background-color: #808080;
+        }
+
+        .key-label {
+            user-select: none;
+            position: absolute;
+            font-size: 12px;
+            color: black;
+        }
+
+        .key-black .key-label {
+            color: white;
+        }
+
+        .footer {
+            position: fixed;
+            bottom: 0;
+            width: 100%;
+            height: 20vh;
+            overflow-y: auto;
+            border-top: 1px solid white;
+            color: white;
+            display: flex;
+            flex-direction: column;
+            flex-wrap: wrap;
+            justify-content: space-evenly;
+        }
+
+        .footer div {
+            margin: 5px;
+        }
+
+        /* Dark mode styles for input type=number */
+        input[type=number] {
+            background-color: #333;
+            color: #fff;
+            border: 1px solid #555;
+            padding: 8px;
+            border-radius: 5px;
+            outline: none;
+        }
+
+        /* Dark mode styles for select */
+        select {
+            background-color: #333;
+            color: #fff;
+            border: 1px solid #555;
+            padding: 8px;
+            border-radius: 5px;
+            outline: none;
+        }
+
+        /* Additional styles for select arrow icon */
+        select::-ms-expand {
+            display: none;
+        }
+
+        select::-ms-expand,
+        select::-ms-value {
+            display: none;
+        }
+
+        select::-webkit-inner-spin-button,
+        select::-webkit-outer-spin-button {
+            -webkit-appearance: none;
+            margin: 0;
+        }
+
+        /* Optional hover and focus styles */
+        input[type=number]:hover,
+        select:hover {
+            background-color: #444;
+        }
+
+        input[type=number]:focus,
+        select:focus {
+            border-color: #ffcc00;
+            /* Example color for focus state */
+            box-shadow: 0 0 5px #ffcc00;
+            /* Example box shadow for focus state */
+        }
+
+        /* Dark mode styles for checkbox */
+        input[type=checkbox] {
+            background-color: #333;
+            border: 1px solid #555;
+            width: 20px;
+            height: 20px;
+            accent-color: #ffcc00;
+            cursor: pointer;
+        }
+
+        input[type=checkbox]:checked {
+            background-color: #ffcc00;
+            /* Example color for checked state */
+        }
+
+        /* Dark mode styles for range (slider) */
+        input[type=range] {
+            accent-color: #ffcc00;
+            /* Example color for slider thumb */
+            cursor: pointer;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="keyboard" id="keyboard">
+    </div>
+
+    <div class="footer">
+        <div>
+            键盘映射
+            <select id="kbmap-select"></select>
+        </div>
+        <div>
+            <input type="checkbox" id="input-select">MIDI输入
+            <select id="device-select"></select>
+        </div>
+        <div>
+            <input type="checkbox" id="sustain">延音踏板
+        </div>
+        <div>
+            音量
+            <input type="range" value="100" max="100" id="volume-slider">
+        </div>
+        <div>
+            音律
+            <select id="temperament-select">
+                <option value="12TET">十二平均律</option>
+                <option value="just">纯律</option>
+                <option value="pythagorean">五度相生律</option>
+            </select>
+        </div>
+        <div>
+            标准音频率
+            <input type="number" min="1" max="20000" value="440" id="freq">
+        </div>
+        <div>
+            转调
+            <input type="number" min="-24" max="24" value="0" id="transpose">
+        </div>
+    </div>
+
+    <script>
+        const samples = 'IAA8Fzx1NhU16zEnJHEzsjgxOMIzTi7rJD4vfzQTNEsurybvIvMpES7BLngqPCruIAUq3ip2KY0mWiiGICUp0CcgADywPuQ6DzbSMKAYETHnNAU1ei2tLYgZvC2ALrEpdChKKiwY4ymAKEckjCQdIKkT/R/CI4wkESGnIzYVTiFWIiAAPGc6CTcBLvwqqBzwLe0ufSrqJYIkRhl0JKwliiABH1UgsRfeHZcdwhk7HMkd4hWmHBobXBm0GYoYsBOXFhgZGQA8LDnZNloroS1kFaArOSsyKD0g+iONDK8i5R4vH3kbVBp6CtMbfRqwFcgT4heTCJESDAA8FUDdOugsuDFDERYtcCvdKIUhcSSgGA=='
+        const envelope = [0, 1.16, 0.157, 0.252];
+
+        const buffers = [...Array(5)]
+        const releaseTime = 0.252;
+
+        const aCtx = new AudioContext({ latencyHint: "balanced" });
+        const masterGain = aCtx.createGain();
+        const soundMap = new Map();
+
+        const keyMap = {
+            "21Keys": {
+                name: "21键琴",
+                description: "这个键位映射代表了许多网络游戏中常见的简单大调音阶。",
+                map: {
+                    "KeyZ": 48,
+                    "KeyX": 50,
+                    "KeyC": 52,
+                    "KeyV": 53,
+                    "KeyB": 55,
+                    "KeyN": 57,
+                    "KeyM": 59,
+
+                    "KeyA": 60,
+                    "KeyS": 62,
+                    "KeyD": 64,
+                    "KeyF": 65,
+                    "KeyG": 67,
+                    "KeyH": 69,
+                    "KeyJ": 71,
+
+                    "KeyQ": 72,
+                    "KeyW": 74,
+                    "KeyE": 76,
+                    "KeyR": 77,
+                    "KeyT": 79,
+                    "KeyY": 81,
+                    "KeyU": 83
+                }
+            },
+            "FlashPiano": {
+                name: "Flash钢琴",
+                description: "这个键位映射是Flash钢琴中使用的映射。",
+                map: {
+                    "KeyA": 48,
+                    "KeyB": 50,
+                    "KeyC": 52,
+                    "KeyD": 53,
+                    "KeyE": 55,
+                    "KeyF": 57,
+                    "KeyG": 59,
+                    "KeyH": 60,
+                    "KeyI": 62,
+                    "KeyJ": 64,
+                    "KeyK": 65,
+                    "KeyL": 67,
+                    "KeyM": 69,
+                    "KeyN": 71,
+                    "KeyO": 72,
+                    "KeyP": 74,
+                    "KeyQ": 76,
+                    "KeyR": 77,
+                    "KeyS": 79,
+                    "KeyT": 81,
+                    "KeyU": 83,
+                    "KeyV": 84,
+                    "KeyW": 86,
+                    "KeyX": 88,
+                    "KeyY": 89,
+                    "KeyZ": 91,
+                    "BracketLeft": 51,
+                    "Backquote": 54,
+                    "Semicolon": 56,
+                    "Digit1": 58,
+                    "Digit2": 61,
+                    "Digit3": 63,
+                    "Digit4": 66,
+                    "Digit5": 68,
+                    "Digit6": 70,
+                    "Digit7": 73,
+                    "Digit8": 75,
+                    "Digit9": 78,
+                    "Digit0": 80,
+                    "Quote": 82,
+                    "Comma": 85,
+                    "Period": 87,
+                    "Slash": 90
+                }
+            }
+        };
+
+        const temperaments = {
+            "12TET": (pitch, baseFreq) => {
+                return 2 ** ((pitch - 69) / 12) * baseFreq
+            },
+
+            "just": (midiNote, baseFreq) => {
+                // Define the ratios for just intonation
+                let ratios = [1, 16 / 15, 9 / 8, 6 / 5, 5 / 4, 4 / 3, 45 / 32, 3 / 2, 8 / 5, 5 / 3, 16 / 9, 15 / 8];
+
+                // Calculate the frequency using just intonation
+                let baseFrequency = baseFreq / ratios[9];
+                return baseFrequency * ratios[midiNote % 12] * Math.pow(2, Math.floor(midiNote / 12) - 5);
+            },
+
+            pythagorean: (midiNote, baseFreq) => {
+                // Define the ratios for Pythagorean tuning
+                let ratios = [1, 256 / 243, 9 / 8, 32 / 27, 81 / 64, 4 / 3, 729 / 512, 3 / 2, 128 / 81, 27 / 16, 16 / 9, 243 / 128];
+
+                // Calculate the frequency using Pythagorean tuning
+                let baseFrequency = baseFreq / ratios[9];
+                return baseFrequency * ratios[midiNote % 12] * Math.pow(2, Math.floor(midiNote / 12) - 5);
+            }
+        };
+
+        // Object to track the state of each key
+        const keyState = {};
+        let temperament = "12TET";
+        let baseFreq = 440;
+
+        for (let i = 0; i < 128; i++) {
+            soundMap.set(i, new Set())
+        }
+
+        // Controls
+        let transpose = 0;
+        let sustain = false;
+
+        const compressor = aCtx.createDynamicsCompressor();
+        compressor.threshold.value = -12;
+
+        masterGain.connect(compressor).connect(aCtx.destination);
+        masterGain.gain.value = 0.25;
+
+
+        function parseFloat16(uint16) {
+            var sign = (uint16 & 0x8000) >> 15;
+            var exponent = (uint16 & 0x7C00) >> 10;
+            var fraction = uint16 & 0x03FF;
+
+            if (exponent === 0) {
+                return (sign ? -1 : 1) * Math.pow(2, -14) * (fraction / Math.pow(2, 10));
+            } else if (exponent === 0x1F) {
+                return fraction ? NaN : (sign ? -Infinity : Infinity);
+            }
+
+            return (sign ? -1 : 1) * Math.pow(2, exponent - 15) * (1 + fraction / Math.pow(2, 10));
+        }
+
+        function base64ToBuffer(base64String) {
+            // Decode the base64 data
+            var binaryData = atob(base64String);
+
+            // Create a buffer to hold the binary data
+            var buffer = new ArrayBuffer(binaryData.length);
+            var view = new Uint8Array(buffer);
+
+            // Copy the binary data into the buffer
+            for (var i = 0; i < binaryData.length; i++) {
+                view[i] = binaryData.charCodeAt(i);
+            }
+
+            return buffer;
+        }
+
+        // Generate a random phase value between -π and π
+        function getRandomPhase() {
+            return Math.random() * 2 * Math.PI - Math.PI;
+        }
+
+        // Create a waveform based on the instrument ID and octave (default octave is 2)
+        function createWave(inst) {
+            // DC offset
+            let real = [0];
+            let imag = [0];
+            // Generate the real and imaginary parts of the waveform
+            inst.forEach(f => {
+                let phase = getRandomPhase();
+                real.push(f * Math.cos(phase));
+                imag.push(f * Math.sin(phase));
+            });
+
+            return [new Float32Array(real), new Float32Array(imag)];
+        }
+
+        function loadSamples(ctx) {
+            var dataView = new DataView(base64ToBuffer(samples));
+            var instruments = [];
+            var offset = 0;
+
+            for (var octave = 0; octave < 5; octave++) {
+
+                var ampLen = dataView.getInt8(offset, true); // Read the length of the instrument array
+                offset += 1; // Move the offset to the start of the instrument array
+
+                var instrumentArray = [];
+                for (var j = 0; j < ampLen; j++) {
+                    var floatValue = parseFloat16(dataView.getUint16(offset, true)); // Read the floating-point number
+                    offset += 2; // Move the offset to the next floating-point number
+                    instrumentArray.push(floatValue);
+                }
+
+                const iq = createWave(instrumentArray);
+                instruments.push(ctx.createPeriodicWave(iq[0], iq[1]));
+            }
+            return instruments;
+        }
+
+
+        function getOctave(target) {
+            // Calculate the index based on the fixed sequence properties
+            if (target <= 45) {
+                return 0;
+            } else if (target >= 93) {
+                return 4;
+            } else {
+                return Math.round((target - 45) / 12);
+            }
+        }
+
+        function playSound(pitch) {
+            const source = aCtx.createOscillator();
+            const gain = aCtx.createGain();
+            const octave = getOctave(pitch);
+            const baseNote = 45 + octave * 12;
+
+            source.setPeriodicWave(sounds[octave]);
+            source.frequency.value = temperaments[temperament](pitch + transpose, baseFreq);
+
+            const attack = envelope[0], decay = envelope[1], sustain = envelope[2], release = envelope[3];
+            const attackClamped = Math.max(attack, 0.001);
+            gain.gain.setValueAtTime(0, aCtx.currentTime);
+            gain.gain.setTargetAtTime(1, aCtx.currentTime, attackClamped / 3);
+
+            const decayTime = decay * Math.pow(2, (69 - pitch) / 24);
+            gain.gain.setTargetAtTime(0, aCtx.currentTime + attackClamped, decayTime / 2);
+
+            source.connect(gain).connect(masterGain);
+            source.start();
+            soundMap.get(pitch).add({
+                source: source,
+                gain: gain
+            });
+
+            const key = document.getElementById('key-' + pitch);
+            if (key) {
+                key.classList.add('active')
+            }
+        }
+
+        function stopSound(pitch) {
+            pitch += transpose;
+            for (const sound of soundMap.get(pitch)) {
+                if (sustain) {
+                    setTimeout(() => {
+                        sound.gain.gain.setTargetAtTime(0, aCtx.currentTime, releaseTime / 3);
+                        sound.source.stop(aCtx.currentTime + releaseTime);
+                        soundMap.get(pitch).delete(sound)
+                    }, 2000);
+                } else {
+                    sound.gain.gain.setTargetAtTime(0, aCtx.currentTime, releaseTime / 3);
+                    setTimeout(() => {
+                        sound.source.stop(aCtx.currentTime);
+                        soundMap.get(pitch).delete(sound)
+                    }, releaseTime * 1000);
+                }
+            }
+
+            const key = document.getElementById('key-' + pitch);
+            if (key) {
+                key.classList.remove('active')
+            }
+        }
+
+        function stopAllSounds() {
+            soundMap.forEach(pitch => pitch.forEach(sound => {
+                sound.gain.gain.setTargetAtTime(0, aCtx.currentTime, releaseTime / 3)
+                pitch.delete(sound)
+            }))
+        }
+
+        function generatePianoKeyboard() {
+            const keyboard = document.getElementById('keyboard');
+
+            const notes = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+
+            for (let i = 21; i <= 108; i++) {
+                const key = document.createElement('div');
+                key.classList.add('key');
+                key.id = "key-" + i;
+                key.addEventListener('mousedown', e => {
+                    e.stopPropagation();
+                    playSound(i);
+                });
+                key.addEventListener('mouseup', e => {
+                    e.stopPropagation();
+                    stopSound(i);
+                });
+                key.addEventListener('mouseleave', e => {
+                    e.stopPropagation();
+                    stopSound(i);
+                });
+                if ([1, 3, 6, 8, 10].includes(i % 12)) {
+                    key.classList.add('key-black');
+                    key.innerHTML = `<div class="key-label">${notes[i % 12]}</div>`;
+                    keyboard.lastChild.appendChild(key);
+                } else {
+                    key.classList.add('key-white');
+                    key.innerHTML = `<div class="key-label">${notes[i % 12]}</div>`;
+                    keyboard.appendChild(key);
+                }
+            }
+        }
+
+        // Function to load key mapping and handle key events
+        function loadKeyMapping(keyMapping) {
+
+            // Keydown event handler
+            function keyDownHandler(event) {
+                console.log(event)
+                const key = event.code;
+                if (keyMapping.map[key] && !keyState[key]) {
+                    keyState[key] = true;
+                    playSound(keyMapping.map[key]);
+                }
+            }
+
+            // Keyup event handler
+            function keyUpHandler(event) {
+                const key = event.code;
+                if (keyMapping.map[key]) {
+                    keyState[key] = false;
+                    stopSound(keyMapping.map[key]);
+                }
+            }
+
+            // Add new key event listeners
+            document.onkeydown = keyDownHandler;
+            document.onkeyup = keyUpHandler;
+
+            // for (const e of document.querySelectorAll('.key-label')) {
+            //     e.textContent = '';
+            // }
+
+            // for (const key in keyMapping.map) {
+            //     if (Object.hasOwnProperty.call(keyMapping.map, key)) {
+            //         const keyNum = keyMapping.map[key];
+            //         document.querySelector(`#key-${keyNum} .key-label`).textContent = key.toUpperCase();
+            //     }
+            // }
+        }
+
+        const kbMapSelect = document.getElementById('kbmap-select')
+        kbMapSelect.addEventListener('change', e => {
+            loadKeyMapping(keyMap[kbMapSelect.value]);
+        })
+
+        const temperamentSelect = document.getElementById('temperament-select');
+        temperamentSelect.addEventListener('change', e => {
+            temperament = temperamentSelect.value;
+        })
+
+        for (const key in keyMap) {
+            if (Object.hasOwnProperty.call(keyMap, key)) {
+                let option = document.createElement('option')
+                option.value = key;
+                option.innerText = keyMap[key].name;
+                kbMapSelect.appendChild(option);
+            }
+        }
+
+        const sustainInput = document.getElementById('sustain')
+        sustainInput.addEventListener('change', e => {
+            sustain = sustainInput.checked;
+            if (!sustain) stopAllSounds();
+        })
+
+        const freqInput = document.getElementById('freq')
+        freqInput.addEventListener('change', e => {
+            baseFreq = freqInput.value;
+        })
+
+        const transposeInput = document.getElementById('transpose');
+        transposeInput.addEventListener('change', e => {
+            transpose = parseInt(transposeInput.value);
+        })
+
+        const volumeSlider = document.getElementById('volume-slider')
+        volumeSlider.value = Math.sqrt(masterGain.gain.value) * 100;
+        volumeSlider.addEventListener('change', e => {
+            masterGain.gain.value = Math.pow(volumeSlider.value / 100, 2);
+        })
+
+        const midiDeviceSelect = document.getElementById('device-select');
+        const inputSelect = document.getElementById('input-select')
+        let inputDevices = {}
+        let currentInputDevice = null;
+
+        inputSelect.addEventListener('click', e => {
+            if (inputSelect.checked) {
+                navigator.requestMIDIAccess().then((midiAccess) => {
+                    inputDevices = {}
+                    midiDeviceSelect.innerHTML = '';
+
+                    midiAccess.inputs.forEach((entry) => {
+                        inputDevices[entry.name] = entry;
+                        let option = document.createElement('option')
+                        option.value = entry.name;
+                        option.innerText = entry.name;
+                        midiDeviceSelect.appendChild(option);
+
+                        if (!currentInputDevice) {
+                            currentInputDevice = entry;
+                            currentInputDevice.onmidimessage = (event) => {
+                                let note;
+                                switch (event.data[0] & 0xf0) {
+                                    case 0x80:
+                                        note = event.data[1];
+                                        stopSound(note);
+                                        break;
+                                    case 0x90:
+                                        note = event.data[1]; // MIDI note number
+                                        const velocity = event.data[2]; // Velocity
+
+                                        // Handle the Key On event
+                                        velocity == 0 ? stopSound(note) : playSound(note);
+                                        break;
+                                    case 0xb0:
+                                        // 处理控制器消息
+                                        switch (event.data[1]) {
+                                            case 0x40:
+                                                sustainInput.checked = event.data[2] >= 0x3f ? true : false;
+                                                break;
+                                            case 0x7b:
+                                                stopAllSounds();
+                                                break;
+                                            default:
+                                                break;
+                                        }
+                                        break;
+                                    default:
+                                        break;
+                                }
+                            };
+                        }
+                    });
+                }, (error) => { });
+            } else {
+                currentInputDevice.onmidimessage = null;
+                currentInputDevice = null;
+            }
+        })
+
+        midiDeviceSelect.addEventListener('change', e => {
+            console.log(midiDeviceSelect.value)
+        })
+
+        const sounds = loadSamples(aCtx);
+        generatePianoKeyboard();
+        loadKeyMapping(keyMap['21Keys']);
+    </script>
+</body>
+
+</html>
