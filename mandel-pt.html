@@ -22,7 +22,7 @@
 <body>
     <div class="container">
         <canvas width="800" height="800" id="mandelbrot"></canvas>
-        <div id="info"></div>
+        <div id="info">Loading... </div>
     </div>
     <script src="https://cdn.bootcdn.net/ajax/libs/decimal.js/10.4.3/decimal.min.js"></script>
     <script>
@@ -247,11 +247,11 @@
             }
         }
 
-        let c = new DeepComplex("-1.7712570233558242919646253428768072106718031320505", "0.0661615090789351465067413926913635127798196092997");
-        Decimal.config({ precision: 45 });
-        let size = 1.46936793853e-39;
+        let c = new DeepComplex("-0.228155493499599901360344083742507531412245062160714338", "1.115142508055085621041509484003572637822356115816239944");
+        Decimal.config({ precision: 48 });
+        let size = 1e-44;
         let bailout = 16;
-        let iterations = 1000;
+        let iterations = 4096;
 
         const canvas = document.getElementById('mandelbrot');
 
