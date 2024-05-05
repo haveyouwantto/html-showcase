@@ -152,12 +152,12 @@
 
         function generateRainbowPalette(numColors) {
             const rainbowColors = [];
-            const frequency = 0.3; // Adjust the frequency to change the spread of colors
+            const frequency = 0.2; // Adjust the frequency to change the spread of colors
 
             for (let i = 0; i < numColors; i++) {
-                const red = Math.sin(frequency * i + 0) * 127 + 128;
-                const green = Math.sin(frequency * i + 2) * 127 + 128;
-                const blue = Math.sin(frequency * i + 4) * 127 + 128;
+                const red = Math.sin(frequency * i) * 127 + 128;
+                const green = Math.sin(frequency * 1.1 * i) * 127 + 128;
+                const blue = Math.sin(frequency  * 1.2 * i) * 127 + 128;
                 rainbowColors.push([red | 0, green | 0, blue | 0]);
             }
 
