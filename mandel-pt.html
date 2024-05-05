@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Complex Number Operations</title>
+    <style>
+        .container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        mandelbrot {
+            /* max-width: 75vw;
+            max-height: 100vh; */
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <canvas width="800" height="800" id="mandelbrot"></canvas>
+        <div id="info"></div>
+    </div>
+    <script src="https://cdn.bootcdn.net/ajax/libs/decimal.js/10.4.3/decimal.min.js"></script>
+    <script>
+        class Complex {
+            constructor(re, im) {
+                this.re = re;
+                this.im = im;
+            }
+
+            abs() {
+                return Math.sqrt(this.re ** 2 + this.im ** 2);
+            }
+
+            toNumberArray() {
+                return [this.re, this.im];
+            }
+
+            mul(other) {
+                if (typeof other === 'number') {
+                    return new Complex(this.re * other, this.im * other);
+                } else {
+                    return new Complex(
+                        this.re * other.re - this.im * other.im,
+                        this.re * other.im + this.im * other.re
+                    );
+                }
+            }
+
+            add(other) {
+                return new Complex(this.re + other.re, this.im + other.im);
+            }
+
+            sub(other) {
+                return new Complex(this.re - other.re, this.im - other.im);
+            }
+        }
+
+
+        class DeepComplex {
+            constructor(re, im) {
+                this.re = new Decimal(re);
+                this.im = new Decimal(im);
+            }
+
+            abs() {
+                return this.re.pow(2).plus(this.im.pow(2)).sqrt();
+            }
+
+            mul(other) {
+                if (other instanceof DeepComplex) {
+                    const realPart = this.re.times(other.re).minus(this.im.times(other.im));
+                    const imagPart = this.re.times(other.im).plus(this.im.times(other.re));
+                    return new DeepComplex(realPart, imagPart);
+                }
+                else if (other instanceof Complex) {
+                    const realPart = this.re.times(other.re).minus(this.im.times(other.im));
+                    const imagPart = this.re.times(other.im).plus(this.im.times(other.re));
+                    return new DeepComplex(realPart, imagPart);
+                } else if (typeof other === 'number') {
+                    return new DeepComplex(this.re.times(other), this.im.times(other));
+                } else {
+                    throw new Error('Invalid type for multiplication');
+                }
+            }
+
+            add(other) {
+                return new DeepComplex(this.re.plus(other.re), this.im.plus(other.im));
+            }
+
+            sub(other) {
+                return new DeepComplex(this.re.minus(other.re), this.im.minus(other.im));
+            }
+
+            downCast() {
+                return new Complex(this.re.toNumber(), this.im.toNumber())
+            }
+        }
+
+        function getReferenceOrbit(c, iterations, bailout = 2) {
+            const z = new DeepComplex(0, 0);
+            const orbit = [];
+            for (let i = 0; i < iterations; i++) {
+                iterate(z, c);
+                if (z.abs() > bailout) {
+                    console.warn(`${c} is not a valid reference point!`)
+                    // break
+                };
+                orbit.push(z.downCast());
+            }
+            return orbit;
+        }
+
+        function getSeriesCoefficients(z, c, iterations, bailout = 2) {
+            const coefficients = [
+                new Complex(1, 0),
+                new Complex(0, 0),
+                new Complex(0, 0),
+                new Complex(0, 0),
+            ];
+            for (let i = 0; i < iterations; i++) {
+                iterate(z, c);
+                if (z.abs() > bailout) console.warn(`${c} is not a valid reference point!`);
+                const [A, B, C, D] = coefficients;
+                coefficients[0] = A.mul(z.mul(2)).add(new Complex(1, 0));
+                coefficients[1] = B.mul(z.mul(2)).add(A.mul(A));
+                coefficients[2] = C.mul(z.mul(2)).add(B.mul(A.mul(2)));
+                coefficients[3] = D.mul(z.mul(2)).add(C.mul(A.mul(2))).add(B.mul(B));
+            }
+            return coefficients.flatMap((x) => x.toNumberArray());
+        }
+
+        function iterate(z, c) {
+            const x = z.mul(z).add(c);
+            z.re = x.re;
+            z.im = x.im;
+        }
+
+        function pt(delta, ref, bailout) {
+            let pert = delta;
+            for (let n = 0; n < ref.length; n++) {
+                pert = ref[n].mul(pert).mul(2).add(pert.mul(pert)).add(delta);
+                // console.log(pert)
+                if (pert.abs() > bailout) return n;
+            }
+            return null;
+        }
+
+        function generateRainbowPalette(numColors) {
+            const rainbowColors = [];
+            const frequency = 0.3; // Adjust the frequency to change the spread of colors
+
+            for (let i = 0; i < numColors; i++) {
+                const red = Math.sin(frequency * i + 0) * 127 + 128;
+                const green = Math.sin(frequency * i + 2) * 127 + 128;
+                const blue = Math.sin(frequency * i + 4) * 127 + 128;
+                rainbowColors.push([red | 0, green | 0, blue | 0]);
+            }
+
+            return rainbowColors;
+        }
+
+        const palette = generateRainbowPalette(1024);
+
+        function getColor(it) {
+            if (it == null) return [0, 0, 0];
+            return palette[it % 1024];
+        }
+
+        class Mandelbrot {
+            center;
+            iterations;
+            bailout;
+            size;
+
+            canvas;
+            context;
+
+            ref;
+            constructor(canvas, center, iterations, bailout) {
+                this.center = center;
+                this.iterations = iterations;
+                this.bailout = bailout;
+
+                this.size = 4;
+
+                this.canvas = canvas;
+                this.context = canvas.getContext('2d');
+
+                canvas.addEventListener('mousedown', e => {
+                    e.preventDefault();
+                    if (e.button === 0) {
+                        // Left click: decrease size
+                        console.log(this.getDelta(e.offsetX, e.offsetY));
+                        this.center = this.center.add(this.getDelta(e.offsetX, e.offsetY));
+                        this.size /= 4;
+                        this.update();
+                    } else if (e.button === 2) {
+                        // Right click: increase size
+                        this.size *= 4;
+                        this.update();
+                    }
+                });
+            }
+
+            zoom(size) {
+                this.size = size;
+            }
+
+            getDelta(x, y) {
+                return new Complex(
+                    (x - this.canvas.width / 2) / this.canvas.width * this.size,
+                    (this.canvas.height / 2 - y) / this.canvas.height * this.size
+                )
+            }
+
+            update() {
+                const img = this.context.getImageData(0, 0, this.canvas.width, this.canvas.height);
+                console.log(performance.now() + " computing reference")
+                const ref = getReferenceOrbit(this.center, this.iterations, this.bailout);
+                console.log(ref)
+
+                console.log(performance.now() + " perturbation")
+                for (let y = 0; y < this.canvas.height; y++) {
+                    for (let x = 0; x < this.canvas.width; x++) {
+                        const delta = this.getDelta(x, y)
+                        const newIter = pt(delta, ref, this.bailout);
+                        const index = (y * this.canvas.width + x) * 4;
+                        console.log()
+
+                        const color = getColor(newIter)
+
+                        img.data[index] = color[0]
+                        img.data[index + 1] = color[1]
+                        img.data[index + 2] = color[2]
+                        img.data[index + 3] = 255
+
+                        // console.log(color)
+                    }
+                }
+                this.context.putImageData(img, 0, 0)
+                document.getElementById('info').innerText = "Zoom: " + (4 / this.size).toExponential(3)
+            }
+        }
+
+        let c = new DeepComplex("-1.7712570233558242919646253428768072106718031320505", "0.0661615090789351465067413926913635127798196092997");
+        Decimal.config({ precision: 45 });
+        let size = 1.46936793853e-39;
+        let bailout = 16;
+        let iterations = 1000;
+
+        const canvas = document.getElementById('mandelbrot');
+
+        const mandelbrot = new Mandelbrot(canvas, c, iterations, bailout)
+        mandelbrot.zoom(size)
+        mandelbrot.update()
+
+    </script>
+</body>
+
+</html>
