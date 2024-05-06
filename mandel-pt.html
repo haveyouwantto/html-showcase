@@ -282,10 +282,10 @@
 
             update(rebase = false) {
 
-                reInput.innerText = this.center.re;
-                imInput.innerText = this.center.im;
-                zoomInput.innerText = (4 / this.size).toExponential(3)
-                itInput.innerText = this.iterations;
+                reInput.value = this.center.re;
+                imInput.value = this.center.im;
+                zoomInput.value = (4 / this.size).toExponential(3)
+                itInput.value = this.iterations;
 
                 const img = this.context.getImageData(0, 0, this.canvas.width, this.canvas.height);
                 console.log(performance.now() + " computing reference")
