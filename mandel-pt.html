@@ -12,7 +12,8 @@
             align-items: center;
         }
 
-        mandelbrot {
+        #mandelbrot {
+        background:repeating-linear-gradient(45deg, magenta, magenta 10px, black 10px, black 20px);
             /* max-width: 75vw;
             max-height: 100vh; */
         }
@@ -21,7 +22,9 @@
 
 <body>
     <div class="container">
+        
         <canvas width="800" height="800" id="mandelbrot"></canvas>
+        
         <div id="info">Loading... </div>
     </div>
     <script src="https://cdn.bootcdn.net/ajax/libs/decimal.js/10.4.3/decimal.min.js"></script>
@@ -162,7 +165,7 @@
                 const red = Math.sin(frequency * i) * 127 + 128;
                 const green = Math.sin(frequency * 1.1 * i) * 127 + 128;
                 const blue = Math.sin(frequency  * 1.2 * i) * 127 + 128;
-                rainbowColors.push([red | 0, green | 0, blue | 0]);
+                rainbowColors.push([red | 0, green | 0, blue | 0, 255]);
             }
 
             return rainbowColors;
@@ -171,7 +174,8 @@
         const palette = generateRainbowPalette(1024);
 
         function getColor(it) {
-            if (it == null || it < 0) return [0, 0, 0];
+            if (it == null) return [0, 0, 0, 255];
+            else if (it < 0) return [0,0,0,0];
             return palette[it % 1024];
         }
 
@@ -241,7 +245,7 @@
                         img.data[index] = color[0]
                         img.data[index + 1] = color[1]
                         img.data[index + 2] = color[2]
-                        img.data[index + 3] = 255
+                        img.data[index + 3] = color[3]
 
                         // console.log(color)
                     }
