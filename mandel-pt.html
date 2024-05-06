@@ -6,10 +6,20 @@
     <!-- <meta name="viewport" content="width=device-width, initial-scale=1.0"> -->
     <title>Mandelbrot Perturbation</title>
     <style>
+        :root {
+            --theme-color: #ff4081;
+            /* Define a theme color */
+        }
+
         body {
             display: flex;
             flex-direction: column;
             align-items: center;
+            background-color: #1a1a1a;
+            /* Dark background color */
+            color: #fff;
+            /* Light text color */
+            font-family: Arial, sans-serif;
         }
 
         .container {
@@ -24,16 +34,55 @@
         }
 
         #mandelbrot {
-            background: repeating-linear-gradient(45deg, magenta, magenta 8px, black 8px, black 16px);
+            background: repeating-linear-gradient(45deg, var(--theme-color), var(--theme-color) 8px, #000 8px, #000 16px);
+            /* Adjust colors for dark mode */
             cursor: crosshair;
         }
 
         button {
             margin-top: 8px;
+            background-color: #333;
+            /* Dark button background color */
+            color: #fff;
+            /* Light text color for buttons */
+            border: none;
+            padding: 8px 12px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+
+        button:hover {
+            background-color: var(--theme-color);
+            /* Change background color on hover */
+        }
+
+        button:focus {
+            outline: none;
+            /* Remove default focus outline */
+            box-shadow: 0 0 3px var(--theme-color);
+            /* Add custom focus effect */
         }
 
         textarea {
             height: 50px;
+            background-color: #333;
+            /* Dark textarea background color */
+            color: #fff;
+            /* Light text color for textarea */
+            border: 1px solid #666;
+            /* Dark border color */
+            padding: 4px;
+            resize: vertical;
+            /* Allow vertical resizing */
+            transition: background-color 0.3s;
+        }
+
+        textarea:hover,
+        textarea:focus {
+            background-color: #444;
+            border-color: var(--theme-color);
+            outline: none;
+            /* Change background color on hover/focus */
         }
     </style>
 </head>
@@ -41,7 +90,7 @@
 <body>
     <div class="container">
 
-        <canvas width="500" height="500" id="mandelbrot"></canvas>
+        <canvas width="800" height="800" id="mandelbrot"></canvas>
 
         <div class="location">
             Real:
@@ -373,33 +422,33 @@
                     }
                 }
 
-                    this.context.putImageData(img, 0, 0)
+                this.context.putImageData(img, 0, 0)
 
-                    if (glitches.length > 4) {
-                        let i = parseInt(glitches.length / 4);
-                        this._rebase(glitches[i])
+                if (glitches.length > 4) {
+                    let i = parseInt(glitches.length / 4);
+                    this._rebase(glitches[i])
 
-                        setTimeout(() => {
-                            this.update(true)
-                        }, 50)
-                    } else {
-                        console.log('done!')
-                    }
-                    statsLabel.innerText = `Reference: ${this.stats.ref}\nPerturbation: ${this.stats.pt}\nGuessed: ${this.stats.guess}`
+                    setTimeout(() => {
+                        this.update(true)
+                    }, 50)
+                } else {
+                    console.log('done!')
                 }
-
-                download() {
-                    const downloadLink = document.createElement('a');
-
-                    downloadLink.href = canvas.toDataURL('image/png');
-                    downloadLink.download = 'mandelbrot.png';
-
-                    downloadLink.click();
-                }
+                statsLabel.innerText = `Reference: ${this.stats.ref}\nPerturbation: ${this.stats.pt}\nGuessed: ${this.stats.guess}`
             }
 
+            download() {
+                const downloadLink = document.createElement('a');
+
+                downloadLink.href = canvas.toDataURL('image/png');
+                downloadLink.download = 'mandelbrot.png';
+
+                downloadLink.click();
+            }
+        }
+
         let c = new DeepComplex(
-                new Decimal(0), new Decimal(0));
+            new Decimal(0), new Decimal(0));
 
         let size = 4;
         let bailout = 2;
