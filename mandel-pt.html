@@ -8,6 +8,8 @@
     <style>
         body {
             display: flex;
+            flex-direction: column;
+            align-items: center;
         }
 
         .container {
@@ -55,6 +57,8 @@
             <button id="download">Download</button>
         </div>
     </div>
+    <div id="stats">
+    </div>
     <script src="https://cdn.bootcdn.net/ajax/libs/decimal.js/10.4.3/decimal.min.js"></script>
     <script>
         const canvas = document.getElementById('mandelbrot');
@@ -62,6 +66,7 @@
         const imInput = document.getElementById('im');
         const zoomInput = document.getElementById('zoom')
         const itInput = document.getElementById('it')
+        const statsLabel = document.getElementById('stats')
 
         class Complex {
             constructor(re, im) {
@@ -224,6 +229,8 @@
             ref;
             rebase;
 
+            stats;
+
             constructor(canvas, center, iterations, bailout) {
                 this.center = center;
                 this.iterations = iterations;
@@ -248,6 +255,12 @@
                         this.update();
                     }
                 });
+
+                this.stats = {
+                    ref: 0,
+                    pt: 0,
+                    guess: 0
+                }
             }
 
             zoom(size) {
@@ -281,7 +294,27 @@
                 this.rebase = xy;
             }
 
+            getColor(x, y, img) {
+                const index = (y * this.canvas.width + x) * 4;
+                return [img.data[index], img.data[index + 1], img.data[index + 2], img.data[index + 3]]
+            }
+
+            setColor(x, y, img, color) {
+                const index = (y * this.canvas.width + x) * 4;
+                img.data[index] = color[0]
+                img.data[index + 1] = color[1]
+                img.data[index + 2] = color[2]
+                img.data[index + 3] = color[3]
+            }
+
             update(rebase = false) {
+                if (!rebase) {
+                    this.stats = {
+                        ref: 0,
+                        pt: 0,
+                        guess: 0
+                    }
+                }
 
                 reInput.value = this.center.re;
                 imInput.value = this.center.im;
@@ -292,6 +325,7 @@
                 console.log(performance.now() + " computing reference")
                 const base = rebase ? this.center.add(this.getDelta(this.rebase[0], this.rebase[1])) : this.center;
                 const ref = getReferenceOrbit(base, this.iterations, this.bailout);
+                this.stats.ref++;
                 console.log("ref it: " + ref.length)
                 if (!rebase) this.ref = ref;
 
@@ -300,30 +334,49 @@
                 const glitches = [];
 
 
-                for (let y = 0; y < this.canvas.height; y++) {
+                for (let y = 0; y < this.canvas.height; y += 2) {
                     for (let x = 0; x < this.canvas.width; x++) {
-                        const index = (y * this.canvas.width + x) * 4;
-                        if (!rebase || (rebase && img.data[index + 3] == 0)) {
+                        if (!rebase || (rebase && this.getColor(x, y, img)[3] == 0)) {
                             const delta = rebase ? this.getDelta(x, y, this.rebase[0], this.rebase[1]) : this.getDelta(x, y);
                             const newIter = pt(delta, ref, this.bailout);
+                            this.stats.pt++;
 
                             if (newIter < 0) glitches.push([x, y])
 
                             const color = getColor(newIter)
 
-                            img.data[index] = color[0]
-                            img.data[index + 1] = color[1]
-                            img.data[index + 2] = color[2]
-                            img.data[index + 3] = color[3]
+                            this.setColor(x, y, img, color);
                         }
-
-                        // console.log(color)
                     }
                 }
+
+                for (let y = 1; y < this.canvas.height; y += 2) {
+                    for (let x = 0; x < this.canvas.width; x++) {
+                        let upColor = this.getColor(x, y - 1, img);
+                        let downColor = this.getColor(x, y + 1, img);
+                        if (upColor[0] == downColor[0] && upColor[1] == downColor[1] && upColor[2] == downColor[2] && upColor[3] == 255 && downColor[3] == 255) {
+                            this.setColor(x, y, img, upColor);
+                            this.stats.guess++;
+                        } else {
+                            if (!rebase || (rebase && this.getColor(x, y, img)[3] == 0)) {
+                                const delta = rebase ? this.getDelta(x, y, this.rebase[0], this.rebase[1]) : this.getDelta(x, y);
+                                const newIter = pt(delta, ref, this.bailout);
+                                this.stats.pt++;
+
+                                if (newIter < 0) glitches.push([x, y])
+
+                                const color = getColor(newIter)
+
+                                this.setColor(x, y, img, color);
+                            }
+                        }
+                    }
+                }
+
                 this.context.putImageData(img, 0, 0)
 
                 if (glitches.length > 4) {
-                    let i = parseInt(glitches.length / 2);
+                    let i = parseInt(glitches.length / 4);
                     this._rebase(glitches[i])
 
                     setTimeout(() => {
@@ -332,6 +385,7 @@
                 } else {
                     console.log('done!')
                 }
+                statsLabel.innerText = `Reference: ${this.stats.ref}\nPerturbation: ${this.stats.pt}\nGuessed: ${this.stats.guess}`
             }
 
             download() {
