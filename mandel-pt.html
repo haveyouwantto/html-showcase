@@ -368,6 +368,12 @@
             mandelbrot.update();
         })
 
+        document.getElementById('home').addEventListener('click', e => {
+            mandelbrot.home()
+            mandelbrot.setIterations(iterations);
+            mandelbrot.update()
+        })
+
         document.getElementById('download').addEventListener('click', e => {
             mandelbrot.download()
         })
