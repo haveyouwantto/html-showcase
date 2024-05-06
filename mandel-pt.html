@@ -142,6 +142,7 @@
             const z = new DeepComplex(0, 0);
             const orbit = [];
             for (let i = 0; i < iterations; i++) {
+                if (i % 10000 == 0) console.log(i)
                 iterate(z, c);
                 if (z.abs() > 1073741824) {
                     console.warn(`${c} is not a valid reference point!`)
@@ -321,7 +322,7 @@
                 }
                 this.context.putImageData(img, 0, 0)
 
-                if (glitches.length > 0) {
+                if (glitches.length > 4) {
                     let i = parseInt(glitches.length / 2);
                     this._rebase(glitches[i])
 
