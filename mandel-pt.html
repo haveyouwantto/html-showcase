@@ -145,7 +145,9 @@
             for (let n = 0; n < ref.length; n++) {
                 pert = ref[n].mul(pert).mul(2).add(pert.mul(pert)).add(delta);
                 // console.log(pert)
-                if (pert.abs() > bailout) return n;
+                const val = ref[n].add(pert).abs() 
+                if (val< ref[n].abs() * 1e-8) return -1;
+                else if (val > bailout) return n;
             }
             return null;
         }
@@ -167,7 +169,7 @@
         const palette = generateRainbowPalette(1024);
 
         function getColor(it) {
-            if (it == null) return [0, 0, 0];
+            if (it == null || it < 0) return [0, 0, 0];
             return palette[it % 1024];
         }
 
@@ -247,9 +249,11 @@
             }
         }
 
-        let c = new DeepComplex("-0.228155493499599901360344083742507531412245062160714338", "1.115142508055085621041509484003572637822356115816239944");
-        Decimal.config({ precision: 48 });
-        let size = 1e-44;
+        let c = new DeepComplex(
+            "-1.4286834435947776740961230095710934022433029602534787449675803182",
+             "-0.1624971409868199823574742632585782737020309638043120771315689634");
+        Decimal.config({ precision: 54 });
+        let size = 4/8.7e40;
         let bailout = 16;
         let iterations = 4096;
 
