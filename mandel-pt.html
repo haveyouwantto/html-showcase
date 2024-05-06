@@ -388,9 +388,9 @@
                         if (!rebase || (rebase && this.getColor(x, y, img)[3] == 0)) {
                             const delta = rebase ? this.getDelta(x, y, this.rebase[0], this.rebase[1]) : this.getDelta(x, y);
                             const newIter = pt(delta, ref, this.bailout);
-                            this.stats.pt++;
 
                             if (newIter < 0) glitches.push([x, y])
+                            else this.stats.pt++;
 
                             const color = getColor(newIter)
 
@@ -411,9 +411,9 @@
                             } else {
                                 const delta = rebase ? this.getDelta(x, y, this.rebase[0], this.rebase[1]) : this.getDelta(x, y);
                                 const newIter = pt(delta, ref, this.bailout);
-                                this.stats.pt++;
 
                                 if (newIter < 0) glitches.push([x, y])
+                                else this.stats.pt++;
 
                                 const color = getColor(newIter)
 
@@ -434,9 +434,9 @@
                             } else {
                                 const delta = rebase ? this.getDelta(x, y, this.rebase[0], this.rebase[1]) : this.getDelta(x, y);
                                 const newIter = pt(delta, ref, this.bailout);
-                                this.stats.pt++;
 
                                 if (newIter < 0) glitches.push([x, y])
+                                else this.stats.pt++;
 
                                 const color = getColor(newIter)
 
