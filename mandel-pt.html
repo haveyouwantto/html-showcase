@@ -66,8 +66,8 @@
 
         class DeepComplex {
             constructor(re, im) {
-                this.re = new Decimal(re);
-                this.im = new Decimal(im);
+                this.re = re instanceof Decimal? re:new Decimal(re);
+                this.im = im instanceof Decimal?im:new Decimal(im);
             }
 
             abs() {
@@ -204,6 +204,7 @@
                     if (e.button === 0) {
                         // Left click: decrease size
                         console.log(this.getDelta(e.offsetX, e.offsetY));
+                        Decimal.config({precision: parseInt(-Math.log10(this.size))+10})
                         this.center = this.center.add(this.getDelta(e.offsetX, e.offsetY));
                         this.size /= 4;
                         this.update();
@@ -256,13 +257,11 @@
         }
 
         let c = new DeepComplex(
-            "-1.99997114021606596635971707824694441506089577013011394589198052835" ,
-            "-0.00000000000001890771326419691185519540585043816923669877866186615"    
-        );
-        Decimal.config({ precision: 54 });
-        let size = 4/2e34;
+            new Decimal(0),new Decimal(0)  );
+        
+        let size = 4;
         let bailout = 2;
-        let iterations = 4096;
+        let iterations = 1024;
 
         const canvas = document.getElementById('mandelbrot');
 
