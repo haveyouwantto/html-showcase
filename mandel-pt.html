@@ -233,13 +233,25 @@
         }
 
         function pt(delta, ref, bailout) {
-            let pert = delta;
+            let pertR=delta.re;
+            let pertI=delta.im;
+            let tmp;
+            //let pert = delta;
             for (let n = 0; n < ref.length; n++) {
-
-                const val = ref[n].add(pert).abs();
-                if (val < ref[n].abs() * 1e-4) return -1;
+                const Z=ref[n]
+                const valR=Z.re+pertR;
+                const valI=Z.im+pertI;
+                const val=Math.sqrt(valR*valR+valI*valI);
+                //const val = ref[n].add(pert).abs();
+               // if (val < ref[n].abs() * 1e-4) return -1;
+               if (val<Z.abs()*1e-4) return -1;
                 else if (val > bailout) return n;
-                pert = ref[n].mul(pert).mul(2).add(pert.mul(pert)).add(delta);
+
+                tmp=2*(Z.re*pertR-Z.im*pertI)+(pertR*pertR-pertI*pertI)+delta.re
+                pertI=2*(Z.re*pertI+Z.im*pertR)+2*pertR*pertI+delta.im
+                pertR=tmp
+
+               // pert = ref[n].mul(pert).mul(2).add(pert.mul(pert)).add(delta);
             }
             return null;
         }
