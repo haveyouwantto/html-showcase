@@ -64,7 +64,6 @@
         }
 
         textarea {
-            height: 50px;
             background-color: #333;
             /* Dark textarea background color */
             color: #fff;
@@ -84,6 +83,10 @@
             outline: none;
             /* Change background color on hover/focus */
         }
+
+        textarea.large{
+            height: 100px;
+        }
     </style>
 </head>
 
@@ -94,9 +97,9 @@
 
         <div class="location">
             Real:
-            <textarea id="re"></textarea><br>
+            <textarea id="re" class="large"></textarea><br>
             Imag:
-            <textarea id="im"></textarea><br>
+            <textarea id="im" class="large"></textarea><br>
             Zoom:
             <textarea id="zoom"></textarea><br>
             Iterations:
