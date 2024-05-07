@@ -63,6 +63,17 @@
             /* Add custom focus effect */
         }
 
+        button.icon {
+            font-size: 30px;
+            font-family: emoji;
+            font-weight: bold;
+            width: 35px;
+            height: 35px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+        }
+
         textarea {
             background-color: #333;
             /* Dark textarea background color */
@@ -115,6 +126,11 @@
             background-color: #444;
             /* Change background color on hover/focus */
         }
+
+        .shortcut {
+            display: flex;
+            justify-content: space-between;
+        }
     </style>
 </head>
 
@@ -132,6 +148,12 @@
             <textarea id="zoom"></textarea><br>
             Iterations:
             <textarea id="it"></textarea>
+            <div class="shortcut">
+                <button class="icon" id="zoom-in">&#10133;</button>
+                <button class="icon" id="zoom-out">&#10134;</button>
+                <button class="icon" id="increase-iter">&#128314;</button>
+                <button class="icon" id="decrease-iter">&#128315;</button>
+            </div>
             <button id="goto">Go</button>
             <button id="home">Home</button>
             <button id="download">Download</button>
@@ -612,6 +634,27 @@
             mandelbrot.setIterations(loc.it);
             mandelbrot.update()
         })
+
+
+        document.getElementById('zoom-in').addEventListener('click', function () {
+            mandelbrot.zoom(mandelbrot.size / 4);
+            mandelbrot.update()
+        });
+
+        document.getElementById('zoom-out').addEventListener('click', function () {
+            mandelbrot.zoom(mandelbrot.size * 4);
+            mandelbrot.update()
+        });
+
+        document.getElementById('increase-iter').addEventListener('click', function () {
+            mandelbrot.setIterations(mandelbrot.iterations * 2);
+            mandelbrot.update()
+        });
+
+        document.getElementById('decrease-iter').addEventListener('click', function () {
+            mandelbrot.setIterations(mandelbrot.iterations / 2);
+            mandelbrot.update()
+        });
     </script>
 </body>
 
