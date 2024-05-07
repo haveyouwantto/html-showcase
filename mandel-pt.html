@@ -121,13 +121,15 @@
         const statsLabel = document.getElementById('stats')
 
         class Complex {
+            absValue;
             constructor(re, im) {
                 this.re = re;
                 this.im = im;
             }
 
             abs() {
-                return Math.sqrt(this.re ** 2 + this.im ** 2);
+                if(!this.absValue) this.absValue =Math.sqrt(this.re ** 2 + this.im ** 2);
+                return this.absValue
             }
 
             toNumberArray() {
@@ -382,7 +384,7 @@
 
                 reInput.value = this.center.re;
                 imInput.value = this.center.im;
-                zoomInput.value = (4 / this.size).toExponential(3)
+                zoomInput.value = (4 / this.size).toExponential(6)
                 itInput.value = this.iterations;
 
                 const img = this.context.getImageData(0, 0, this.canvas.width, this.canvas.height);
