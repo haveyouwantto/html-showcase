@@ -325,7 +325,8 @@
                 this.stats = {
                     ref: 0,
                     pt: 0,
-                    guess: 0
+                    guess: 0,
+                    time: performance.now()
                 }
             }
 
@@ -378,7 +379,8 @@
                     this.stats = {
                         ref: 0,
                         pt: 0,
-                        guess: 0
+                        guess: 0,
+                        time: performance.now()
                     }
                 }
 
@@ -475,7 +477,7 @@
                 } else {
                     console.log('done!')
                 }
-                statsLabel.innerText = `Reference: ${this.stats.ref}\nPerturbation: ${this.stats.pt}\nGuessed: ${this.stats.guess}`
+                statsLabel.innerText = `Reference: ${this.stats.ref}\nPerturbation: ${this.stats.pt}\nGuessed: ${this.stats.guess}\nTime: ${((performance.now()-this.stats.time)/1000).toFixed(3)}s`
             }
 
             download() {
