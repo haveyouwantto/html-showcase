@@ -251,7 +251,7 @@
                 zoom: 2.338403e+48,
                 it: 8192
             },
-            snowflake:{
+            snowflake: {
                 re: "-0.10109629004872408548585126380133943559",
                 im: "0.9562865745329222746947099385459096648",
                 zoom: 3.169126e+29,
@@ -281,7 +281,6 @@
             const z = new DeepComplex(0, 0);
             const orbit = [];
             for (let i = 0; i < iterations; i++) {
-                if (i % 10000 == 0) console.log(i)
                 iterate(z, c);
                 if (z.abs() > 1073741824) {
                     console.warn(`${c} is not a valid reference point!`)
@@ -373,6 +372,8 @@
 
             stats;
 
+            img;
+
             constructor(canvas, center, iterations, bailout) {
                 this.center = center;
                 this.iterations = iterations;
@@ -382,22 +383,23 @@
 
                 this.canvas = canvas;
                 this.context = canvas.getContext('2d');
+                this.img = this.context.getImageData(0, 0, this.canvas.width, this.canvas.height);
 
                 canvas.addEventListener('mousedown', e => {
-                    e.preventDefault();
-                    e.stopPropagation()
                     if (e.button === 0) {
                         // Left click: decrease size
                         console.log(this.getDelta(e.offsetX, e.offsetY));
                         this.goto(this.center.add(this.getDelta(e.offsetX, e.offsetY)));
                         this.zoom(this.size / 4)
                         this.update();
-                    } else if (e.button === 2) {
-                        // Right click: increase size
-                        this.zoom(this.size * 4);
-                        this.update();
                     }
                 });
+
+                canvas.addEventListener('contextmenu', e => {
+                    e.preventDefault();
+                    this.zoom(this.size * 4);
+                    this.update();
+                })
 
                 this.stats = {
                     ref: 0,
@@ -408,7 +410,7 @@
             }
 
             zoom(size) {
-                console.log(Decimal.config({ precision: parseInt(-Math.log10(size)) + 10 }))
+                Decimal.config({ precision: parseInt(-Math.log10(size)) + 10 })
                 this.size = size;
             }
 
@@ -438,17 +440,17 @@
                 this.rebase = xy;
             }
 
-            getColor(x, y, img) {
+            getColor(x, y) {
                 const index = (y * this.canvas.width + x) * 4;
-                return [img.data[index], img.data[index + 1], img.data[index + 2], img.data[index + 3]]
+                return [this.img.data[index], this.img.data[index + 1], this.img.data[index + 2], this.img.data[index + 3]]
             }
 
-            setColor(x, y, img, color) {
+            setColor(x, y, color) {
                 const index = (y * this.canvas.width + x) * 4;
-                img.data[index] = color[0]
-                img.data[index + 1] = color[1]
-                img.data[index + 2] = color[2]
-                img.data[index + 3] = color[3]
+                this.img.data[index] = color[0]
+                this.img.data[index + 1] = color[1]
+                this.img.data[index + 2] = color[2]
+                this.img.data[index + 3] = color[3]
             }
 
             update(rebase = false) {
@@ -466,12 +468,11 @@
                 zoomInput.value = (4 / this.size).toExponential(6)
                 itInput.value = this.iterations;
 
-                const img = this.context.getImageData(0, 0, this.canvas.width, this.canvas.height);
                 console.log(performance.now() + " computing reference")
                 const base = rebase ? this.center.add(this.getDelta(this.rebase[0], this.rebase[1])) : this.center;
                 const ref = getReferenceOrbit(base, this.iterations, this.bailout);
                 this.stats.ref++;
-                console.log("ref it: " + ref.length)
+                console.log("ref iter: " + ref.length)
                 if (!rebase) this.ref = ref;
 
                 console.log(performance.now() + " perturbation")
@@ -481,7 +482,7 @@
 
                 for (let y = 0; y < this.canvas.height; y += 2) {
                     for (let x = 0; x < this.canvas.width; x += 2) {
-                        if (!rebase || (rebase && this.getColor(x, y, img)[3] == 0)) {
+                        if (!rebase || (rebase && this.getColor(x, y)[3] == 0)) {
                             const delta = rebase ? this.getDelta(x, y, this.rebase[0], this.rebase[1]) : this.getDelta(x, y);
                             const newIter = getPT(delta, ref, this.bailout);
 
@@ -490,7 +491,7 @@
 
                             const color = getColor(newIter)
 
-                            this.setColor(x, y, img, color);
+                            this.setColor(x, y, color);
                         }
                     }
                 }
@@ -498,11 +499,11 @@
 
                 for (let y = 0; y < this.canvas.height; y += 2) {
                     for (let x = 1; x < this.canvas.width; x += 2) {
-                        if (!rebase || (rebase && this.getColor(x, y, img)[3] == 0)) {
-                            let leftColor = this.getColor(x - 1, y, img);
-                            let rightColor = this.getColor(x + 1, y, img);
+                        if (!rebase || (rebase && this.getColor(x, y)[3] == 0)) {
+                            let leftColor = this.getColor(x - 1, y);
+                            let rightColor = this.getColor(x + 1, y);
                             if (leftColor[0] == rightColor[0] && leftColor[1] == rightColor[1] && leftColor[2] == rightColor[2] && leftColor[3] == 255 && rightColor[3] == 255) {
-                                this.setColor(x, y, img, leftColor);
+                                this.setColor(x, y, leftColor);
                                 this.stats.guess++;
                             } else {
                                 const delta = rebase ? this.getDelta(x, y, this.rebase[0], this.rebase[1]) : this.getDelta(x, y);
@@ -513,7 +514,7 @@
 
                                 const color = getColor(newIter)
 
-                                this.setColor(x, y, img, color);
+                                this.setColor(x, y, color);
                             }
                         }
                     }
@@ -521,11 +522,11 @@
 
                 for (let y = 1; y < this.canvas.height; y += 2) {
                     for (let x = 0; x < this.canvas.width; x++) {
-                        if (!rebase || (rebase && this.getColor(x, y, img)[3] == 0)) {
-                            let upColor = this.getColor(x, y - 1, img);
-                            let downColor = this.getColor(x, y + 1, img);
+                        if (!rebase || (rebase && this.getColor(x, y)[3] == 0)) {
+                            let upColor = this.getColor(x, y - 1);
+                            let downColor = this.getColor(x, y + 1);
                             if (upColor[0] == downColor[0] && upColor[1] == downColor[1] && upColor[2] == downColor[2] && upColor[3] == 255 && downColor[3] == 255) {
-                                this.setColor(x, y, img, upColor);
+                                this.setColor(x, y, upColor);
                                 this.stats.guess++;
                             } else {
                                 const delta = rebase ? this.getDelta(x, y, this.rebase[0], this.rebase[1]) : this.getDelta(x, y);
@@ -536,21 +537,21 @@
 
                                 const color = getColor(newIter)
 
-                                this.setColor(x, y, img, color);
+                                this.setColor(x, y, color);
                             }
                         }
                     }
                 }
 
-                this.context.putImageData(img, 0, 0)
+                this.context.putImageData(this.img, 0, 0)
 
                 if (glitches.length > 4) {
                     let i = parseInt(glitches.length / 8);
                     this._rebase(glitches[i])
 
-                    setTimeout(() => {
+                    requestAnimationFrame(() => {
                         this.update(true)
-                    }, 50)
+                    })
                 } else {
                     console.log('done!')
                 }
