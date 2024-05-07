@@ -84,8 +84,36 @@
             /* Change background color on hover/focus */
         }
 
-        textarea.large{
+        textarea.large {
             height: 100px;
+        }
+
+        hr {
+            width: 100%;
+            border: 1px solid #444;
+            /* Dark color for the horizontal rule */
+            margin: 20px 0;
+            /* Adjust margin as needed */
+        }
+
+        select {
+            background-color: #333;
+            /* Dark background color for select dropdown */
+            color: #fff;
+            /* Light text color for select options */
+            padding: 8px;
+            border: 1px solid #666;
+            /* Dark border color */
+            border-radius: 4px;
+            appearance: none;
+            /* Remove default appearance */
+            transition: background-color 0.3s;
+        }
+
+        select:hover,
+        select:focus {
+            background-color: #444;
+            /* Change background color on hover/focus */
         }
     </style>
 </head>
@@ -98,7 +126,7 @@
         <div class="location">
             Real:
             <textarea id="re" class="large"></textarea><br>
-            Imag:
+            Imaginary:
             <textarea id="im" class="large"></textarea><br>
             Zoom:
             <textarea id="zoom"></textarea><br>
@@ -107,6 +135,17 @@
             <button id="goto">Go</button>
             <button id="home">Home</button>
             <button id="download">Download</button>
+            <hr>
+            Samples
+            <select id="samples">
+                <option value="seahorse">Seahorse Valley</option>
+                <option value="julia">Julia's Dance</option>
+                <option value="snowflake">Snowflake</option>
+                <option value="vortex">Vortex</option>
+                <option value="flora">Flora Fantasy</option>
+                <option value="e200">E200</option>
+            </select>
+            <button id="load-sample">Load</button>
         </div>
     </div>
     <div id="stats">
@@ -119,6 +158,8 @@
         const zoomInput = document.getElementById('zoom')
         const itInput = document.getElementById('it')
         const statsLabel = document.getElementById('stats')
+        const sampleSelect = document.getElementById('samples')
+        const sampleLoadBtn = document.getElementById('load-sample')
 
         class Complex {
             absValue;
@@ -128,7 +169,7 @@
             }
 
             abs() {
-                if(!this.absValue) this.absValue =Math.sqrt(this.re ** 2 + this.im ** 2);
+                if (!this.absValue) this.absValue = Math.sqrt(this.re ** 2 + this.im ** 2);
                 return this.absValue
             }
 
@@ -197,6 +238,45 @@
             }
         }
 
+        const samples = {
+            seahorse: {
+                re: "-0.74543",
+                im: "0.11301",
+                zoom: 2e5,
+                it: 2048
+            },
+            julia: {
+                re: "-1.8584343800176784682217288203669595446250882516610855163",
+                im: 0,
+                zoom: 2.338403e+48,
+                it: 8192
+            },
+            snowflake:{
+                re: "-0.10109629004872408548585126380133943559",
+                im: "0.9562865745329222746947099385459096648",
+                zoom: 3.169126e+29,
+                it: 2048
+            },
+            vortex: {
+                re: "-1.76853586473203693",
+                im: "-0.000527425128025575688",
+                zoom: 2.814750e+9,
+                it: 10240
+            },
+            flora: {
+                re: "-1.99909599626591118385320862404514647238736998791060410728750271382258617296138194612160227",
+                im: "2.7580719798153099801178971305087708486297199751987655897677764832896127755911711978e-7",
+                zoom: 1.554135e+85,
+                it: 12000
+            },
+            e200: {
+                re: "-1.966802851116594708819298912851462114119985811705618926682822172678211294505900454587066386326486696211109981444987492635874831274786202351721769325471466717092496114767216598301545236111458996508055081585396",
+                im: "0.0010977722859744975944199816905137002369183368289711851029920379829671969621655021360812521504061553173015969230096789768757462998082308739346850130554776214016764573717626859656016612926260380492615038665711972",
+                zoom: 3.061802e+200,
+                it: 2560
+            }
+        }
+
         function getReferenceOrbit(c, iterations, bailout = 2) {
             const z = new DeepComplex(0, 0);
             const orbit = [];
@@ -238,25 +318,25 @@
         }
 
         function pt(delta, ref, bailout) {
-            let pertR=delta.re;
-            let pertI=delta.im;
+            let pertR = delta.re;
+            let pertI = delta.im;
             let tmp;
             //let pert = delta;
             for (let n = 0; n < ref.length; n++) {
-                const Z=ref[n]
-                const valR=Z.re+pertR;
-                const valI=Z.im+pertI;
-                const val=Math.sqrt(valR*valR+valI*valI);
+                const Z = ref[n]
+                const valR = Z.re + pertR;
+                const valI = Z.im + pertI;
+                const val = Math.sqrt(valR * valR + valI * valI);
                 //const val = ref[n].add(pert).abs();
-               // if (val < ref[n].abs() * 1e-4) return -1;
-               if (val<Z.abs()*1e-4) return -1;
+                // if (val < ref[n].abs() * 1e-4) return -1;
+                if (val < Z.abs() * 1e-4) return -1;
                 else if (val > bailout) return n;
 
-                tmp=2*(Z.re*pertR-Z.im*pertI)+(pertR*pertR-pertI*pertI)+delta.re
-                pertI=2*(Z.re*pertI+Z.im*pertR)+2*pertR*pertI+delta.im
-                pertR=tmp
+                tmp = 2 * (Z.re * pertR - Z.im * pertI) + (pertR * pertR - pertI * pertI) + delta.re
+                pertI = 2 * (Z.re * pertI + Z.im * pertR) + 2 * pertR * pertI + delta.im
+                pertR = tmp
 
-               // pert = ref[n].mul(pert).mul(2).add(pert.mul(pert)).add(delta);
+                // pert = ref[n].mul(pert).mul(2).add(pert.mul(pert)).add(delta);
             }
             return null;
         }
@@ -309,6 +389,7 @@
 
                 canvas.addEventListener('mousedown', e => {
                     e.preventDefault();
+                    e.stopPropagation()
                     if (e.button === 0) {
                         // Left click: decrease size
                         console.log(this.getDelta(e.offsetX, e.offsetY));
@@ -477,7 +558,7 @@
                 } else {
                     console.log('done!')
                 }
-                statsLabel.innerText = `Reference: ${this.stats.ref}\nPerturbation: ${this.stats.pt}\nGuessed: ${this.stats.guess}\nTime: ${((performance.now()-this.stats.time)/1000).toFixed(3)}s`
+                statsLabel.innerText = `Reference: ${this.stats.ref}\nPerturbation: ${this.stats.pt}\nGuessed: ${this.stats.guess}\nTime: ${((performance.now() - this.stats.time) / 1000).toFixed(3)}s`
             }
 
             download() {
@@ -523,6 +604,16 @@
 
         document.getElementById('download').addEventListener('click', e => {
             mandelbrot.download()
+        })
+
+        sampleLoadBtn.addEventListener('click', e => {
+            const loc = samples[sampleSelect.value]
+            mandelbrot.goto(new DeepComplex(
+                new Decimal(loc.re), new Decimal(loc.im)
+            ))
+            mandelbrot.zoom(4 / loc.zoom);
+            mandelbrot.setIterations(loc.it);
+            mandelbrot.update()
         })
     </script>
 </body>
