@@ -443,6 +443,18 @@
                     }
                 });
 
+                canvas.addEventListener('wheel', (e) => {
+                    e.preventDefault();
+                    if (e.deltaY < 0) {
+                        this.goto(this.center.add(this.getDelta(e.offsetX, e.offsetY)));
+                        this.zoom(this.size / 4)
+                        this.update();
+                    } else if (e.deltaY > 0) {
+                        this.zoom(this.size * 4);
+                        this.update();
+                    }
+                });
+
                 canvas.addEventListener('contextmenu', e => {
                     e.preventDefault();
                     this.zoom(this.size * 4);
