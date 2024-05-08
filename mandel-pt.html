@@ -342,7 +342,6 @@
             let pertR = delta.re;
             let pertI = delta.im;
             let tmp;
-            //let pert = delta;
             for (let n = 0; n < ref.length; n++) {
                 const Z = ref[n]
                 const valR = Z.re + pertR;
@@ -441,7 +440,7 @@
             }
 
             setIterations(it) {
-                this.iterations = it;
+                this.iterations = parseInt(it);
             }
 
             home() {
@@ -482,7 +481,7 @@
                         pt: 0,
                         guess: 0,
                         time: performance.now()
-                    }
+                    };
                 }
 
                 reInput.value = this.center.re;
@@ -577,7 +576,8 @@
                 } else {
                     console.log('done!')
                 }
-                statsLabel.innerText = `Reference: ${this.stats.ref}\nPerturbation: ${this.stats.pt}\nGuessed: ${this.stats.guess}\nTime: ${((performance.now() - this.stats.time) / 1000).toFixed(3)}s`
+
+                statsLabel.innerText = `Reference: ${this.stats.ref}\nPerturbation: ${this.stats.pt}\nGuessed: ${this.stats.guess}\nTime: ${((performance.now() - this.stats.time) / 1000).toFixed(3)}s`;
             }
 
             download() {
@@ -587,6 +587,20 @@
                 downloadLink.download = 'mandelbrot.png';
 
                 downloadLink.click();
+            }
+
+            increaseIteration(mul) {
+                this.setIterations(this.iterations * mul);
+
+                for (let y = 0; y < this.canvas.height; y++) {
+                    for (let x = 0; x < this.canvas.width; x++) {
+                        const color = this.getColor(x, y);
+                        if (color[0] == 0 && color[1] == 0 && color[2] == 0) {
+                            this.setColor(x, y, [0, 0, 0, 0])
+                        }
+                    }
+                }
+                this.update(true)
             }
         }
 
@@ -647,8 +661,7 @@
         });
 
         document.getElementById('increase-iter').addEventListener('click', function () {
-            mandelbrot.setIterations(mandelbrot.iterations * 2);
-            mandelbrot.update()
+            mandelbrot.increaseIteration(2);
         });
 
         document.getElementById('decrease-iter').addEventListener('click', function () {
