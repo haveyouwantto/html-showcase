@@ -358,20 +358,13 @@
 
                     let a = C.mul(c3);
                     let b = D.mul(c4);
-                    // console.log(i, a, b)
-                    // let z = iterZ[i];
 
-                    // let approx = A.mul(c).add(B.mul(c2)).add(C.mul(c3)).add(D.mul(c4))
                     let error = b.abs() / a.abs();
-                    // console.log( error)
 
                     if (error > 1e-3) return {
                         it: n,
                         coeff: coefficients
                     };
-
-                    // z = Z.mul(z).mul(2).add(z.mul(z)).add(c)
-                    // iterZ[i] = z;
                 }
             }
 
@@ -653,6 +646,7 @@
 
                 this.context.putImageData(this.img, 0, 0)
 
+                let done = false;
                 if (glitches.length > 4) {
                     let i = parseInt(glitches.length / 8);
                     this._rebase(glitches[i])
@@ -662,9 +656,12 @@
                     }, 10);
                 } else {
                     console.log('done!')
+                    done = true;
                 }
 
-                statsLabel.innerText = `Reference: ${this.stats.ref}\nApproximation: ${this.stats.approx} it\nPerturbation: ${this.stats.pt}\nGuessed: ${this.stats.guess}\nTime: ${((performance.now() - this.stats.time) / 1000).toFixed(3)}s`;
+                let statusText =  `Reference: ${this.stats.ref}\nApproximation: ${this.stats.approx} it\nPerturbation: ${this.stats.pt}\nGuessed: ${this.stats.guess}\nTime: ${((performance.now() - this.stats.time) / 1000).toFixed(3)}s`;
+                if(done) statusText += "\nDone!";
+                statsLabel.innerText = statusText;
             }
 
             download() {
