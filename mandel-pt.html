@@ -283,10 +283,10 @@
                 it: 2048
             },
             luxury: {
-            	re: "-0.79580869118304321175952779938151856806452507855882",
-            	im: "0.18469182276676613095841056743436302824144029079562",
-            	zoom: 1.3e42,
-            	it: 4096
+                re: "-0.79580869118304321175952779938151856806452507855882",
+                im: "0.18469182276676613095841056743436302824144029079562",
+                zoom: 1.3e42,
+                it: 4096
             },
             horizon: {
                 re: "-1.8584343800176784682217288203669595446250882516610855163",
@@ -334,23 +334,55 @@
             return orbit;
         }
 
-        function getSeriesCoefficients(z, c, iterations, bailout = 2) {
+        function getSeriesCoefficients(ref, validate, iterations, bailout = 2) {
             const coefficients = [
                 new Complex(1, 0),
                 new Complex(0, 0),
                 new Complex(0, 0),
                 new Complex(0, 0),
             ];
-            for (let i = 0; i < iterations; i++) {
-                iterate(z, c);
-                if (z.abs() > bailout) console.warn(`${c} is not a valid reference point!`);
+            const iterZ = [...validate];
+            for (let n = 0; n < ref.length; n++) {
+                const Z = ref[n]
                 const [A, B, C, D] = coefficients;
-                coefficients[0] = A.mul(z.mul(2)).add(new Complex(1, 0));
-                coefficients[1] = B.mul(z.mul(2)).add(A.mul(A));
-                coefficients[2] = C.mul(z.mul(2)).add(B.mul(A.mul(2)));
-                coefficients[3] = D.mul(z.mul(2)).add(C.mul(A.mul(2))).add(B.mul(B));
+                coefficients[0] = A.mul(Z.mul(2)).add(new Complex(1, 0));
+                coefficients[1] = B.mul(Z.mul(2)).add(A.mul(A));
+                coefficients[2] = C.mul(Z.mul(2)).add(B.mul(A.mul(2)));
+                coefficients[3] = D.mul(Z.mul(2)).add(C.mul(A.mul(2))).add(B.mul(B));
+
+                for (let i = 0; i < iterZ.length; i++) {
+                    let c = validate[i];
+                    let c2 = c.mul(c);
+                    let c3 = c2.mul(c);
+                    let c4 = c3.mul(c);
+                    let z = iterZ[i];
+
+                    let approx = A.mul(c).add(B.mul(c2)).add(C.mul(c3)).add(D.mul(c4))
+                    let error = z.sub(approx).abs();
+                    // console.log(z, approx, error)
+
+                    if (error > 1e-25) return {
+                        it: n,
+                        coeff: coefficients
+                    };
+
+                    z = Z.mul(z).mul(2).add(z.mul(z)).add(c)
+                    iterZ[i] = z;
+                }
             }
-            return coefficients.flatMap((x) => x.toNumberArray());
+
+            return {
+                it: 0,
+                coeff: coefficients
+            };
+        }
+
+        function approximate(c, coeff) {
+            const [A, B, C, D] = coeff;
+            let c2 = c.mul(c);
+            let c3 = c2.mul(c);
+            let c4 = c3.mul(c);
+            return A.mul(c).add(B.mul(c2)).add(C.mul(c3)).add(D.mul(c4));
         }
 
         function iterate(z, c) {
@@ -359,11 +391,11 @@
             z.re = x;
         }
 
-        function getPT(delta, ref, bailout) {
+        function getPT(delta, origin, ref, bailout, start = 0) {
             let pertR = delta.re;
             let pertI = delta.im;
             let tmp;
-            for (let n = 0; n < ref.length; n++) {
+            for (let n = start; n < ref.length; n++) {
                 const Z = ref[n]
                 const valR = Z.re + pertR;
                 const valI = Z.im + pertI;
@@ -371,8 +403,8 @@
                 if (val < Z.abs() * 1e-4) return -1;
                 else if (val > bailout) return n;
 
-                tmp = 2 * (Z.re * pertR - Z.im * pertI) + (pertR * pertR - pertI * pertI) + delta.re;
-                pertI = 2 * (Z.re * pertI + Z.im * pertR + pertR * pertI) + delta.im;
+                tmp = 2 * (Z.re * pertR - Z.im * pertI) + (pertR * pertR - pertI * pertI) + origin.re;
+                pertI = 2 * (Z.re * pertI + Z.im * pertR + pertR * pertI) + origin.im;
                 pertR = tmp;
             }
             return null;
@@ -542,23 +574,41 @@
                 console.log("ref iter: " + ref.length)
                 if (!rebase) this.ref = ref;
 
+                console.log(performance.now() + " series approximation")
+                let coeff = getSeriesCoefficients(ref, [
+                    this.getDelta(0, 0),
+                    this.getDelta(0, this.canvas.height - 1),
+                    this.getDelta(this.canvas.width - 1, 0),
+                    this.getDelta(this.canvas.width - 1, this.canvas.height - 1)
+                ], this.iterations, this.bailout)
+                console.log(coeff)
+
                 console.log(performance.now() + " perturbation")
 
                 const glitches = [];
 
+                let paint = (x, y) => {
+                    let delta = rebase ? this.getDelta(x, y, this.rebase[0], this.rebase[1]) : this.getDelta(x, y);
+                    let newIter;
+                    if (coeff.it > 2) {
+                        let approx = approximate(delta, coeff.coeff)
+                        newIter = getPT(approx, delta, ref, this.bailout, coeff.it + 1);
+                    } else {
+                        newIter = getPT(delta, delta, ref, this.bailout);
+                    }
+
+                    if (newIter < 0) glitches.push([x, y])
+                    else this.stats.pt++;
+
+                    const color = getColor(newIter)
+
+                    this.setColor(x, y, color);
+                }
 
                 for (let y = 0; y < this.canvas.height; y += 2) {
                     for (let x = 0; x < this.canvas.width; x += 2) {
                         if (!rebase || (rebase && this.getColor(x, y)[3] == 0)) {
-                            const delta = rebase ? this.getDelta(x, y, this.rebase[0], this.rebase[1]) : this.getDelta(x, y);
-                            const newIter = getPT(delta, ref, this.bailout);
-
-                            if (newIter < 0) glitches.push([x, y])
-                            else this.stats.pt++;
-
-                            const color = getColor(newIter)
-
-                            this.setColor(x, y, color);
+                            paint(x, y);
                         }
                     }
                 }
@@ -573,15 +623,7 @@
                                 this.setColor(x, y, leftColor);
                                 this.stats.guess++;
                             } else {
-                                const delta = rebase ? this.getDelta(x, y, this.rebase[0], this.rebase[1]) : this.getDelta(x, y);
-                                const newIter = getPT(delta, ref, this.bailout);
-
-                                if (newIter < 0) glitches.push([x, y])
-                                else this.stats.pt++;
-
-                                const color = getColor(newIter)
-
-                                this.setColor(x, y, color);
+                                paint(x, y);
                             }
                         }
                     }
@@ -596,15 +638,7 @@
                                 this.setColor(x, y, upColor);
                                 this.stats.guess++;
                             } else {
-                                const delta = rebase ? this.getDelta(x, y, this.rebase[0], this.rebase[1]) : this.getDelta(x, y);
-                                const newIter = getPT(delta, ref, this.bailout);
-
-                                if (newIter < 0) glitches.push([x, y])
-                                else this.stats.pt++;
-
-                                const color = getColor(newIter)
-
-                                this.setColor(x, y, color);
+                                paint(x, y);
                             }
                         }
                     }
@@ -662,7 +696,6 @@
         const mandelbrot = new Mandelbrot(canvas, c, iterations, bailout)
         mandelbrot.zoom(size)
         mandelbrot.update()
-
 
         document.getElementById('goto').addEventListener('click', e => {
             mandelbrot.goto(new DeepComplex(
