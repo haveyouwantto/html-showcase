@@ -583,7 +583,7 @@
                 console.log(coeff)
                 this.stats.approx = coeff.it;
 
-                    console.log(performance.now() + " perturbation")
+                console.log(performance.now() + " perturbation")
 
                 const glitches = [];
 
@@ -659,8 +659,9 @@
                     done = true;
                 }
 
-                let statusText =  `Reference: ${this.stats.ref}\nApproximation: ${this.stats.approx} it\nPerturbation: ${this.stats.pt}\nGuessed: ${this.stats.guess}\nTime: ${((performance.now() - this.stats.time) / 1000).toFixed(3)}s`;
-                if(done) statusText += "\nDone!";
+                let totalPixels = this.canvas.width * this.canvas.height;
+                let statusText = `Reference: ${this.stats.ref}\nApproximation: ${this.stats.approx}it (${(this.stats.approx / this.iterations * 100).toFixed(2)}%)\nPerturbation: ${this.stats.pt} (${(this.stats.pt / totalPixels * 100).toFixed(2)}%)\nGuessed: ${this.stats.guess} (${(this.stats.guess / totalPixels * 100).toFixed(2)}%)\nTime: ${((performance.now() - this.stats.time) / 1000).toFixed(3)}s`;
+                if (done) statusText += "\nDone!";
                 statsLabel.innerText = statusText;
             }
 
