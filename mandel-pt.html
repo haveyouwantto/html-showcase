@@ -356,12 +356,12 @@
                     let c3 = c2.mul(c);
                     let c4 = c3.mul(c);
 
-                    let a = C.mul(c3);
-                    let b = D.mul(c4);
+                    let a = B.mul(c2);
+                    let b = C.mul(c3);
 
                     let error = b.abs() / a.abs();
 
-                    if (error > 1e-3) return {
+                    if (error > 1e-5) return {
                         it: n,
                         coeff: coefficients
                     };
