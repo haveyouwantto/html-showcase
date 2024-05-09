@@ -355,25 +355,29 @@
                     let c2 = c.mul(c);
                     let c3 = c2.mul(c);
                     let c4 = c3.mul(c);
-                    let z = iterZ[i];
 
-                    let approx = A.mul(c).add(B.mul(c2)).add(C.mul(c3)).add(D.mul(c4))
-                    let error = z.sub(approx).abs();
-                    // console.log(z, approx, error)
+                    let a = C.mul(c3);
+                    let b = D.mul(c4);
+                    // console.log(i, a, b)
+                    // let z = iterZ[i];
 
-                    if (error > 1e-25) return {
+                    // let approx = A.mul(c).add(B.mul(c2)).add(C.mul(c3)).add(D.mul(c4))
+                    let error = b.abs() / a.abs();
+                    // console.log( error)
+
+                    if (error > 1e-3) return {
                         it: n,
                         coeff: coefficients
                     };
 
-                    z = Z.mul(z).mul(2).add(z.mul(z)).add(c)
-                    iterZ[i] = z;
+                    // z = Z.mul(z).mul(2).add(z.mul(z)).add(c)
+                    // iterZ[i] = z;
                 }
             }
 
             return {
                 it: 0,
-                coeff: coefficients
+                coeff: []
             };
         }
 
@@ -504,6 +508,7 @@
                     ref: 0,
                     pt: 0,
                     guess: 0,
+                    approx: 0,
                     time: performance.now()
                 }
             }
@@ -558,6 +563,7 @@
                         ref: 0,
                         pt: 0,
                         guess: 0,
+                        approx: 0,
                         time: performance.now()
                     };
                 }
@@ -582,8 +588,9 @@
                     this.getDelta(this.canvas.width - 1, this.canvas.height - 1)
                 ], this.iterations, this.bailout)
                 console.log(coeff)
+                this.stats.approx = coeff.it;
 
-                console.log(performance.now() + " perturbation")
+                    console.log(performance.now() + " perturbation")
 
                 const glitches = [];
 
@@ -657,7 +664,7 @@
                     console.log('done!')
                 }
 
-                statsLabel.innerText = `Reference: ${this.stats.ref}\nPerturbation: ${this.stats.pt}\nGuessed: ${this.stats.guess}\nTime: ${((performance.now() - this.stats.time) / 1000).toFixed(3)}s`;
+                statsLabel.innerText = `Reference: ${this.stats.ref}\nApproximation: ${this.stats.approx} it\nPerturbation: ${this.stats.pt}\nGuessed: ${this.stats.guess}\nTime: ${((performance.now() - this.stats.time) / 1000).toFixed(3)}s`;
             }
 
             download() {
