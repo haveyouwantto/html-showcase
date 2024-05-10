@@ -320,6 +320,13 @@
             }
         }
 
+        /**
+ * Calculates the reference orbit for a given complex number 'c' using the Mandelbrot iteration.
+ * @param {DeepComplex} c - The complex number for which the reference orbit is calculated.
+ * @param {number} iterations - The number of iterations to perform.
+ * @param {number} [bailout=2] - The bailout value used for iteration termination.
+ * @returns {Complex[]} - An array containing the reference orbit.
+ */
         function getReferenceOrbit(c, iterations, bailout = 2) {
             const z = new DeepComplex(0, 0);
             const orbit = [];
@@ -334,6 +341,14 @@
             return orbit;
         }
 
+        /**
+ * Calculates the series coefficients for a given reference orbit and validation set.
+ * @param {Complex[]} ref - The reference orbit.
+ * @param {Complex[]} validate - The validation set.
+ * @param {number} iterations - The number of iterations to perform.
+ * @param {number} [bailout=2] - The bailout value used for iteration termination.
+ * @returns {{ it: number, coeff: Complex[] }} - An object containing the number of iterations and series coefficients.
+ */
         function getSeriesCoefficients(ref, validate, iterations, bailout = 2) {
             const coefficients = [
                 new Complex(1, 0),
@@ -374,6 +389,12 @@
             };
         }
 
+        /**
+ * Approximates a complex number 'c' using the given series coefficients.
+ * @param {Complex} c - The complex number to approximate.
+ * @param {Complex[]} coeff - The series coefficients.
+ * @returns {Complex} - The approximate value of 'c'.
+ */
         function approximate(c, coeff) {
             const [A, B, C, D] = coeff;
             let c2 = c.mul(c);
@@ -382,12 +403,26 @@
             return A.mul(c).add(B.mul(c2)).add(C.mul(c3)).add(D.mul(c4));
         }
 
+        /**
+ * Performs one iteration of the Mandelbrot iteration on a complex number 'z' using 'c'.
+ * @param {Complex} z - The complex number being iterated.
+ * @param {Complex} c - The constant complex number.
+ */
         function iterate(z, c) {
             const x = z.re.times(z.re).minus(z.im.times(z.im)).add(c.re);
             z.im = z.re.times(z.im).times(2).add(c.im);
             z.re = x;
         }
 
+        /**
+ * Calculates the escape time for a point in the Mandelbrot set using perturbation theory.
+ * @param {Complex} delta - The perturbation applied to the point.
+ * @param {Complex} origin - The origin of the perturbation.
+ * @param {Complex[]} ref - The reference orbit.
+ * @param {number} bailout - The bailout value used for iteration termination.
+ * @param {number} [start=0] - The index from which to start iterating the reference orbit.
+ * @returns {number|null} - The escape time for the point or null if it doesn't escape.
+ */
         function getPT(delta, origin, ref, bailout, start = 0) {
             let pertR = delta.re;
             let pertI = delta.im;
@@ -407,6 +442,11 @@
             return null;
         }
 
+        /**
+ * Generates a rainbow palette of colors.
+ * @param {number} numColors - The number of colors to generate.
+ * @returns {number[][]} - An array containing RGBA values for each color in the palette.
+ */
         function generateRainbowPalette(numColors) {
             const rainbowColors = [];
             const frequency = 0.2; // Adjust the frequency to change the spread of colors
@@ -424,7 +464,12 @@
         const palette = [[1, 1, 1], [205, 92, 92], [240, 128, 128], [255, 0, 0], [178, 34, 34], [139, 0, 0], [188, 143, 143], [165, 42, 42], [128, 0, 0], [250, 128, 114], [255, 99, 71], [233, 150, 122], [255, 127, 80], [255, 69, 0], [255, 160, 122], [160, 82, 45], [210, 105, 30], [139, 69, 19], [244, 164, 96], [255, 218, 185], [205, 133, 63], [255, 228, 196], [255, 140, 0], [222, 184, 135], [210, 180, 140], [255, 222, 173], [255, 228, 181], [255, 165, 0], [245, 222, 179], [184, 134, 11], [218, 165, 32], [255, 215, 0], [240, 230, 140], [238, 232, 170], [189, 183, 107], [255, 255, 0], [128, 128, 0], [107, 142, 35], [154, 205, 50], [85, 107, 47], [173, 255, 47], [127, 255, 0], [124, 252, 0], [0, 255, 0], [50, 205, 50], [152, 251, 152], [144, 238, 144], [34, 139, 34], [0, 128, 0], [0, 100, 0], [143, 188, 143], [46, 139, 87], [60, 179, 113], [0, 255, 127], [0, 250, 154], [102, 205, 170], [127, 255, 212], [64, 224, 208], [32, 178, 170], [72, 209, 204], [0, 139, 139], [0, 128, 128], [0, 255, 255], [175, 238, 238], [0, 206, 209], [95, 158, 160], [176, 224, 230], [173, 216, 230], [0, 191, 255], [135, 206, 235], [135, 206, 250], [70, 130, 180], [30, 144, 255], [176, 196, 222], [100, 149, 237], [65, 105, 225], [0, 0, 255], [0, 0, 205], [0, 0, 139], [0, 0, 128], [25, 25, 112], [106, 90, 205], [72, 61, 139], [123, 104, 238], [147, 112, 219], [138, 43, 226], [75, 0, 130], [153, 50, 204], [148, 0, 211], [186, 85, 211], [216, 191, 216], [221, 160, 221], [238, 130, 238], [255, 0, 255], [139, 0, 139], [128, 0, 128], [218, 112, 214], [199, 21, 133], [255, 20, 147], [255, 105, 180], [219, 112, 147], [220, 20, 60], [255, 192, 203], [255, 182, 193],
         [220, 220, 220], [211, 211, 211], [192, 192, 192], [169, 169, 169], [128, 128, 128], [105, 105, 105], [119, 136, 153], [112, 128, 144], [47, 79, 79]]
 
-
+       /**
+ * Calculates the color transition between two colors in a palette based on a percentage.
+ * @param {number[][]} pal - The palette containing RGB values for colors.
+ * @param {number} it - The percentage of transition between two colors (0 to 1).
+ * @returns {number[]} - An array containing RGB values for the interpolated color.
+ */
         function colorTrans(pal, it) {
             var percent = it - Math.floor(it);
             var c1 = Math.floor(it) % pal.length;
@@ -435,6 +480,11 @@
             return [r, g, b]
         }
 
+        /**
+ * Gets the color associated with the escape time 'it'.
+ * @param {number|null} it - The escape time for a point or null if it doesn't escape.
+ * @returns {number[]} - An array containing RGBA values for the color associated with the escape time.
+ */
         function getColor(it) {
             if (it == null) return [0, 0, 0, 255];
             else if (it < 0) return [0, 0, 0, 0];
@@ -442,6 +492,9 @@
             return [color[0], color[1], color[2], 255];
         }
 
+        /**
+ * Represents a Mandelbrot set visualization.
+ */
         class Mandelbrot {
             center;
             iterations;
@@ -458,6 +511,12 @@
 
             img;
 
+            /**
+     * @param {HTMLCanvasElement} canvas - The canvas element to draw the Mandelbrot set.
+     * @param {Complex} center - The center point of the Mandelbrot set.
+     * @param {number} iterations - The number of iterations to perform for each point.
+     * @param {number} bailout - The bailout value used for iteration termination.
+     */
             constructor(canvas, center, iterations, bailout) {
                 this.center = center;
                 this.iterations = iterations;
@@ -506,24 +565,47 @@
                 }
             }
 
+            /**
+     * Zooms the Mandelbrot set visualization.
+     * @param {number} size - The new size of the visualization.
+     */
             zoom(size) {
                 Decimal.config({ precision: parseInt(-Math.log10(size)) + 10 })
                 this.size = size;
             }
 
+            /**
+     * Moves the center of the Mandelbrot set visualization.
+     * @param {DeepComplex} c - The new center point.
+     */
             goto(c) {
                 this.center = c;
             }
 
+            /**
+     * Sets the number of iterations for the Mandelbrot set visualization.
+     * @param {number} it - The number of iterations.
+     */
             setIterations(it) {
                 this.iterations = parseInt(it);
             }
 
+            /**
+     * Resets the Mandelbrot set visualization to its initial state.
+     */
             home() {
                 this.goto(new DeepComplex(new Decimal(0), new Decimal(0)))
                 this.size = 4;
             }
 
+            /**
+     * Calculates the delta between a point and the base point on the canvas.
+     * @param {number} x - The x-coordinate of the point.
+     * @param {number} y - The y-coordinate of the point.
+     * @param {number} [baseX] - The x-coordinate of the base point (optional).
+     * @param {number} [baseY] - The y-coordinate of the base point (optional).
+     * @returns {Complex} - The delta as a complex number.
+     */
             getDelta(x, y, baseX, baseY) {
                 if (!baseX) baseX = this.canvas.width / 2;
                 if (!baseY) baseY = this.canvas.height / 2;
@@ -533,15 +615,32 @@
                 )
             }
 
+            /**
+     * Sets the rebase point for the Mandelbrot set visualization.
+     * @param {number[]} xy - The coordinates of the rebase point.
+     * @private
+     */
             _rebase(xy) {
                 this.rebase = xy;
             }
 
+            /**
+     * Retrieves the color of a pixel in the Mandelbrot set visualization.
+     * @param {number} x - The x-coordinate of the pixel.
+     * @param {number} y - The y-coordinate of the pixel.
+     * @returns {number[]} - An array containing RGBA values for the color.
+     */
             getColor(x, y) {
                 const index = (y * this.canvas.width + x) * 4;
                 return [this.img.data[index], this.img.data[index + 1], this.img.data[index + 2], this.img.data[index + 3]]
             }
 
+            /**
+     * Sets the color of a pixel in the Mandelbrot set visualization.
+     * @param {number} x - The x-coordinate of the pixel.
+     * @param {number} y - The y-coordinate of the pixel.
+     * @param {number[]} color - An array containing RGBA values for the color.
+     */
             setColor(x, y, color) {
                 const index = (y * this.canvas.width + x) * 4;
                 this.img.data[index] = color[0]
@@ -550,6 +649,10 @@
                 this.img.data[index + 3] = color[3]
             }
 
+            /**
+ * Updates the Mandelbrot set visualization.
+ * @param {boolean} [rebase=false] - Indicates whether to rebase the visualization (optional).
+ */
             update(rebase = false) {
                 if (!rebase) {
                     this.stats = {
@@ -665,6 +768,9 @@
                 statsLabel.innerText = statusText;
             }
 
+            /**
+ * Initiates the download of the Mandelbrot set visualization as a PNG image.
+ */
             download() {
                 const downloadLink = document.createElement('a');
 
@@ -674,6 +780,10 @@
                 downloadLink.click();
             }
 
+            /**
+ * Increases the number of iterations for the Mandelbrot set visualization.
+ * @param {number} mul - The multiplier for increasing the iterations.
+ */
             increaseIteration(mul) {
                 this.setIterations(this.iterations * mul);
 
