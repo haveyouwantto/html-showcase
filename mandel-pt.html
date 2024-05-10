@@ -360,11 +360,6 @@
             for (let n = 0; n < ref.length; n++) {
                 const Z = ref[n]
                 const [A, B, C, D] = coefficients;
-                coefficients[0] = A.mul(Z.mul(2)).add(new Complex(1, 0));
-                coefficients[1] = B.mul(Z.mul(2)).add(A.mul(A));
-                coefficients[2] = C.mul(Z.mul(2)).add(B.mul(A.mul(2)));
-                coefficients[3] = D.mul(Z.mul(2)).add(C.mul(A.mul(2))).add(B.mul(B));
-
                 for (let i = 0; i < iterZ.length; i++) {
                     let c = validate[i];
                     let c2 = c.mul(c);
@@ -376,11 +371,16 @@
 
                     let error = b.abs() / a.abs();
 
-                    if (error > 1e-5) return {
+                    if (error > 1e-5 || c.abs() > bailout) return {
                         it: n,
                         coeff: coefficients
                     };
                 }
+                
+                coefficients[0] = A.mul(Z.mul(2)).add(new Complex(1, 0));
+                coefficients[1] = B.mul(Z.mul(2)).add(A.mul(A));
+                coefficients[2] = C.mul(Z.mul(2)).add(B.mul(A.mul(2)));
+                coefficients[3] = D.mul(Z.mul(2)).add(C.mul(A.mul(2))).add(B.mul(B));
             }
 
             return {
@@ -693,9 +693,9 @@
                 let paint = (x, y) => {
                     let delta = rebase ? this.getDelta(x, y, this.rebase[0], this.rebase[1]) : this.getDelta(x, y);
                     let newIter;
-                    if (coeff.it > 2) {
+                    if (coeff.it > 0) {
                         let approx = approximate(delta, coeff.coeff)
-                        newIter = getPT(approx, delta, ref, this.bailout, coeff.it + 1);
+                        newIter = getPT(approx, delta, ref, this.bailout, coeff.it);
                     } else {
                         newIter = getPT(delta, delta, ref, this.bailout);
                     }
