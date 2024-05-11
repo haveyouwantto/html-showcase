@@ -670,6 +670,7 @@
  * @param {boolean} [rebase=false] - Indicates whether to rebase the visualization (optional).
  */
             update(rebase = false) {
+                this.rendering = true;
                 if (!rebase) {
                     this.stats = {
                         ref: 0,
@@ -678,7 +679,6 @@
                         approx: 0,
                         time: performance.now()
                     };
-                    this.rendering = true;
                 }
 
                 reInput.value = this.center.re;
@@ -793,19 +793,19 @@
 
                 this.context.clearRect(0, 0, this.canvas.width, this.canvas.height);
                 p1().then(() => p2()).then(() => p3()).then(() => {
-                    if (glitches.length > 4) {
+                    if (glitches.length > 4 && this.stats.ref < 70) {
                         let i = parseInt(glitches.length / 10);
                         this._rebase(glitches[i])
 
                         setTimeout(() => {
                             this.update(true)
                         }, 1);
-                        
+
                     } else {
                         console.log('done!')
                         this.rendering = false;
                     }
-                        
+
                     showInfo();
                 })
             }
