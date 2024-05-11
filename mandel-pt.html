@@ -521,6 +521,8 @@
 
             img;
 
+            rendering;
+
             /**
      * @param {HTMLCanvasElement} canvas - The canvas element to draw the Mandelbrot set.
      * @param {Complex} center - The center point of the Mandelbrot set.
@@ -537,9 +539,10 @@
                 this.canvas = canvas;
                 this.context = canvas.getContext('2d');
                 this.img = this.context.getImageData(0, 0, this.canvas.width, this.canvas.height);
+                this.rendering = false;
 
                 canvas.addEventListener('mousedown', e => {
-                    if (e.button === 0) {
+                    if (e.button === 0 && !this.rendering) {
                         // Left click: decrease size
                         console.log(this.getDelta(e.offsetX, e.offsetY));
                         this.goto(this.center.add(this.getDelta(e.offsetX, e.offsetY)));
@@ -550,20 +553,23 @@
 
                 canvas.addEventListener('wheel', (e) => {
                     e.preventDefault();
-                    if (e.deltaY < 0) {
-                        this.goto(this.center.add(this.getDelta(e.offsetX, e.offsetY)));
-                        this.zoom(this.size / 4)
-                        this.update();
-                    } else if (e.deltaY > 0) {
-                        this.zoom(this.size * 4);
-                        this.update();
-                    }
+                    if (!this.rendering)
+                        if (e.deltaY < 0) {
+                            this.goto(this.center.add(this.getDelta(e.offsetX, e.offsetY)));
+                            this.zoom(this.size / 4)
+                            this.update();
+                        } else if (e.deltaY > 0) {
+                            this.zoom(this.size * 4);
+                            this.update();
+                        }
                 });
 
                 canvas.addEventListener('contextmenu', e => {
                     e.preventDefault();
-                    this.zoom(this.size * 4);
-                    this.update();
+                    if (!this.rendering) {
+                        this.zoom(this.size * 4);
+                        this.update();
+                    }
                 })
 
                 this.stats = {
@@ -672,6 +678,7 @@
                         approx: 0,
                         time: performance.now()
                     };
+                    this.rendering = true;
                 }
 
                 reInput.value = this.center.re;
@@ -718,6 +725,13 @@
                     this.setColor(x, y, color);
                 }
 
+                let showInfo = () => {
+                    let totalPixels = this.canvas.width * this.canvas.height;
+                    let statusText = `Reference: ${this.stats.ref}\nApproximation: ${this.stats.approx}it (${(this.stats.approx / this.iterations * 100).toFixed(2)}%)\nPerturbation: ${this.stats.pt} (${(this.stats.pt / totalPixels * 100).toFixed(2)}%)\nGuessed: ${this.stats.guess} (${(this.stats.guess / totalPixels * 100).toFixed(2)}%)\nTime: ${((performance.now() - this.stats.time) / 1000).toFixed(3)}s`;
+                    if (!this.rendering) statusText += "\nDone!";
+                    statsLabel.innerText = statusText;
+                }
+
                 let p1 = () => {
                     return new Promise((r, j) => {
                         for (let y = 0; y < this.canvas.height; y += 2) {
@@ -728,6 +742,7 @@
                             }
                         }
                         this.context.putImageData(this.img, 0, 0)
+                        showInfo();
                         setTimeout(r, 1);
                     })
                 }
@@ -749,6 +764,7 @@
                             }
                         }
                         this.context.putImageData(this.img, 0, 0)
+                        showInfo();
                         setTimeout(r, 1);
                     })
                 }
@@ -770,28 +786,27 @@
                             }
                         }
                         this.context.putImageData(this.img, 0, 0)
+                        showInfo();
                         setTimeout(r, 1);
                     })
                 }
 
+                this.context.clearRect(0, 0, this.canvas.width, this.canvas.height);
                 p1().then(() => p2()).then(() => p3()).then(() => {
-                    let done = false;
                     if (glitches.length > 4) {
                         let i = parseInt(glitches.length / 10);
                         this._rebase(glitches[i])
 
                         setTimeout(() => {
                             this.update(true)
-                        }, 10);
+                        }, 1);
+                        
                     } else {
                         console.log('done!')
-                        done = true;
+                        this.rendering = false;
                     }
-
-                    let totalPixels = this.canvas.width * this.canvas.height;
-                    let statusText = `Reference: ${this.stats.ref}\nApproximation: ${this.stats.approx}it (${(this.stats.approx / this.iterations * 100).toFixed(2)}%)\nPerturbation: ${this.stats.pt} (${(this.stats.pt / totalPixels * 100).toFixed(2)}%)\nGuessed: ${this.stats.guess} (${(this.stats.guess / totalPixels * 100).toFixed(2)}%)\nTime: ${((performance.now() - this.stats.time) / 1000).toFixed(3)}s`;
-                    if (done) statusText += "\nDone!";
-                    statsLabel.innerText = statusText;
+                        
+                    showInfo();
                 })
             }
 
