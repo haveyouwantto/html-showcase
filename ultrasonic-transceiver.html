@@ -76,6 +76,8 @@
     <div id="tx">
         <h1>发射模式</h1>
         <input type="file" id="tx-file" accept="audio/*, video/*">
+        或
+        <button class="btn" id="microphone">麦克风</button>
         <audio controls id="tx-audio"></audio>
     </div>
     <div id="rx">
@@ -132,6 +134,8 @@
         const main = document.getElementById('main');
         const txBtn = document.getElementById('tx-btn');
         const rxBtn = document.getElementById('rx-btn');
+        
+        const microphoneBtn = document.getElementById('microphone');
 
         const tx = document.getElementById('tx');
         const rx = document.getElementById('rx');
@@ -266,6 +270,20 @@
 
             channelSelection.addEventListener('change', e => {
                 setFrequency(startFreq + bandwidth * (channelSelection.value - 1), bandwidth)
+            })
+            
+            microphoneBtn.addEventListener('click', e=>{
+            	navigator.mediaDevices.getUserMedia(
+                {
+                    audio: {
+                        sampleRate: 8000,
+                    },
+                    video: false
+                }
+            ).then(stream => {
+            	const microphone = ctx.createMediaStreamSource(stream);
+            	microphone.connect(mixer);
+            })
             })
         })
 
