@@ -377,7 +377,7 @@
 
                     let error = d4.abs() / d3.abs();
 
-                    if (error > 1e-5 || E.re > 1e292 || E.im > 1e292) return {
+                    if (error > 1e-4 || E.re > 1e292 || E.im > 1e292) return {
                         it: n - 1,
                         coeff: [a, b, c, d, e]
                     };
@@ -718,64 +718,81 @@
                     this.setColor(x, y, color);
                 }
 
-                for (let y = 0; y < this.canvas.height; y += 2) {
-                    for (let x = 0; x < this.canvas.width; x += 2) {
-                        if (!rebase || (rebase && this.getColor(x, y)[3] == 0)) {
-                            paint(x, y);
-                        }
-                    }
-                }
-
-
-                for (let y = 0; y < this.canvas.height; y += 2) {
-                    for (let x = 1; x < this.canvas.width; x += 2) {
-                        if (!rebase || (rebase && this.getColor(x, y)[3] == 0)) {
-                            let leftColor = this.getColor(x - 1, y);
-                            let rightColor = this.getColor(x + 1, y);
-                            if (leftColor[0] == rightColor[0] && leftColor[1] == rightColor[1] && leftColor[2] == rightColor[2] && leftColor[3] == 255 && rightColor[3] == 255) {
-                                this.setColor(x, y, leftColor);
-                                this.stats.guess++;
-                            } else {
-                                paint(x, y);
+                let p1 = () => {
+                    return new Promise((r, j) => {
+                        for (let y = 0; y < this.canvas.height; y += 2) {
+                            for (let x = 0; x < this.canvas.width; x += 2) {
+                                if (!rebase || (rebase && this.getColor(x, y)[3] == 0)) {
+                                    paint(x, y);
+                                }
                             }
                         }
-                    }
+                        this.context.putImageData(this.img, 0, 0)
+                        setTimeout(r, 1);
+                    })
                 }
 
-                for (let y = 1; y < this.canvas.height; y += 2) {
-                    for (let x = 0; x < this.canvas.width; x++) {
-                        if (!rebase || (rebase && this.getColor(x, y)[3] == 0)) {
-                            let upColor = this.getColor(x, y - 1);
-                            let downColor = this.getColor(x, y + 1);
-                            if (upColor[0] == downColor[0] && upColor[1] == downColor[1] && upColor[2] == downColor[2] && upColor[3] == 255 && downColor[3] == 255) {
-                                this.setColor(x, y, upColor);
-                                this.stats.guess++;
-                            } else {
-                                paint(x, y);
+                let p2 = () => {
+                    return new Promise((r, j) => {
+                        for (let y = 0; y < this.canvas.height; y += 2) {
+                            for (let x = 1; x < this.canvas.width; x += 2) {
+                                if (!rebase || (rebase && this.getColor(x, y)[3] == 0)) {
+                                    let leftColor = this.getColor(x - 1, y);
+                                    let rightColor = this.getColor(x + 1, y);
+                                    if (leftColor[0] == rightColor[0] && leftColor[1] == rightColor[1] && leftColor[2] == rightColor[2] && leftColor[3] == 255 && rightColor[3] == 255) {
+                                        this.setColor(x, y, leftColor);
+                                        this.stats.guess++;
+                                    } else {
+                                        paint(x, y);
+                                    }
+                                }
                             }
                         }
+                        this.context.putImageData(this.img, 0, 0)
+                        setTimeout(r, 1);
+                    })
+                }
+
+                let p3 = () => {
+                    return new Promise((r, j) => {
+                        for (let y = 1; y < this.canvas.height; y += 2) {
+                            for (let x = 0; x < this.canvas.width; x++) {
+                                if (!rebase || (rebase && this.getColor(x, y)[3] == 0)) {
+                                    let upColor = this.getColor(x, y - 1);
+                                    let downColor = this.getColor(x, y + 1);
+                                    if (upColor[0] == downColor[0] && upColor[1] == downColor[1] && upColor[2] == downColor[2] && upColor[3] == 255 && downColor[3] == 255) {
+                                        this.setColor(x, y, upColor);
+                                        this.stats.guess++;
+                                    } else {
+                                        paint(x, y);
+                                    }
+                                }
+                            }
+                        }
+                        this.context.putImageData(this.img, 0, 0)
+                        setTimeout(r, 1);
+                    })
+                }
+
+                p1().then(() => p2()).then(() => p3()).then(() => {
+                    let done = false;
+                    if (glitches.length > 4) {
+                        let i = parseInt(glitches.length / 10);
+                        this._rebase(glitches[i])
+
+                        setTimeout(() => {
+                            this.update(true)
+                        }, 10);
+                    } else {
+                        console.log('done!')
+                        done = true;
                     }
-                }
 
-                this.context.putImageData(this.img, 0, 0)
-
-                let done = false;
-                if (glitches.length > 4) {
-                    let i = parseInt(glitches.length / 10);
-                    this._rebase(glitches[i])
-
-                    setTimeout(() => {
-                        this.update(true)
-                    }, 10);
-                } else {
-                    console.log('done!')
-                    done = true;
-                }
-
-                let totalPixels = this.canvas.width * this.canvas.height;
-                let statusText = `Reference: ${this.stats.ref}\nApproximation: ${this.stats.approx}it (${(this.stats.approx / this.iterations * 100).toFixed(2)}%)\nPerturbation: ${this.stats.pt} (${(this.stats.pt / totalPixels * 100).toFixed(2)}%)\nGuessed: ${this.stats.guess} (${(this.stats.guess / totalPixels * 100).toFixed(2)}%)\nTime: ${((performance.now() - this.stats.time) / 1000).toFixed(3)}s`;
-                if (done) statusText += "\nDone!";
-                statsLabel.innerText = statusText;
+                    let totalPixels = this.canvas.width * this.canvas.height;
+                    let statusText = `Reference: ${this.stats.ref}\nApproximation: ${this.stats.approx}it (${(this.stats.approx / this.iterations * 100).toFixed(2)}%)\nPerturbation: ${this.stats.pt} (${(this.stats.pt / totalPixels * 100).toFixed(2)}%)\nGuessed: ${this.stats.guess} (${(this.stats.guess / totalPixels * 100).toFixed(2)}%)\nTime: ${((performance.now() - this.stats.time) / 1000).toFixed(3)}s`;
+                    if (done) statusText += "\nDone!";
+                    statsLabel.innerText = statusText;
+                })
             }
 
             /**
