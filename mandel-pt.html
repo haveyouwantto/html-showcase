@@ -342,30 +342,36 @@
                 new Complex(0, 0),
             ];
             const iterZ = [...validate];
+            let A, B, C, D, a, b, c, d;
             for (let n = 0; n < ref.length; n++) {
                 const Z = ref[n]
-                const [A, B, C, D] = coefficients;
+
+                a = A, b = B, c = C, d = D;
+                A = coefficients[0], B = coefficients[1], C = coefficients[2], D = coefficients[3];
+
+                for (let i = 0; i < iterZ.length; i++) {
+                    let z = iterZ[i];
+                    let z2 = z.mul(z);
+                    let z3 = z2.mul(z);
+                    let z4 = z3.mul(z);
+
+                    let d3 = C.mul(z3);
+                    let d4 = D.mul(z4);
+
+                    let error = d4.abs() / d3.abs();
+
+                    if (error > 1e-5 || !isFinite(D.re) || !isFinite(D.im)) return {
+                        it: n - 2,
+                        coeff: [a, b, c, d]
+                    };
+
+                    iterZ[i] = iterZ[i].mul(iterZ[i]).add(validate[i])
+                }
+
                 coefficients[0] = A.mul(Z.mul(2)).add(new Complex(1, 0));
                 coefficients[1] = B.mul(Z.mul(2)).add(A.mul(A));
                 coefficients[2] = C.mul(Z.mul(2)).add(B.mul(A.mul(2)));
                 coefficients[3] = D.mul(Z.mul(2)).add(C.mul(A.mul(2))).add(B.mul(B));
-
-                for (let i = 0; i < iterZ.length; i++) {
-                    let c = validate[i];
-                    let c2 = c.mul(c);
-                    let c3 = c2.mul(c);
-                    let c4 = c3.mul(c);
-
-                    let a = C.mul(c3);
-                    let b = D.mul(c4);
-
-                    let error = b.abs() / a.abs();
-
-                    if (error > 1e-5) return {
-                        it: n,
-                        coeff: coefficients
-                    };
-                }
             }
 
             return {
