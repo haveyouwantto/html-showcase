@@ -355,29 +355,31 @@
                 new Complex(0, 0),
                 new Complex(0, 0),
                 new Complex(0, 0),
+                new Complex(0, 0)
             ];
             const iterZ = [...validate];
-            let A, B, C, D, a, b, c, d;
+            let A, B, C, D, E, a, b, c, d, e;
             for (let n = 0; n < ref.length; n++) {
                 const Z = ref[n]
 
-                a = A, b = B, c = C, d = D;
-                A = coefficients[0], B = coefficients[1], C = coefficients[2], D = coefficients[3];
+                a = A, b = B, c = C, d = D, e = E;
+                A = coefficients[0], B = coefficients[1], C = coefficients[2], D = coefficients[3], E = coefficients[4];
 
                 for (let i = 0; i < iterZ.length; i++) {
                     let z = iterZ[i];
                     let z2 = z.mul(z);
                     let z3 = z2.mul(z);
                     let z4 = z3.mul(z);
+                    let z5 = z4.mul(z);
 
-                    let d3 = C.mul(z3);
-                    let d4 = D.mul(z4);
+                    let d3 = D.mul(z4);
+                    let d4 = E.mul(z5);
 
                     let error = d4.abs() / d3.abs();
 
-                    if (error > 1e-5 || !isFinite(D.re) || !isFinite(D.im)) return {
+                    if (error > 1e-5 || !isFinite(E.re) || !isFinite(E.im)) return {
                         it: n - 1,
-                        coeff: [a, b, c, d]
+                        coeff: [a, b, c, d, e]
                     };
 
                     iterZ[i] = iterZ[i].mul(iterZ[i]).add(validate[i])
@@ -387,6 +389,7 @@
                 coefficients[1] = B.mul(Z.mul(2)).add(A.mul(A));
                 coefficients[2] = C.mul(Z.mul(2)).add(B.mul(A.mul(2)));
                 coefficients[3] = D.mul(Z.mul(2)).add(C.mul(A.mul(2))).add(B.mul(B));
+                coefficients[4] = E.mul(Z.mul(2)).add(D.mul(A.mul(2))).add(B.mul(C.mul(2)))
             }
 
             return {
@@ -402,11 +405,12 @@
  * @returns {Complex} - The approximate value of 'c'.
  */
         function approximate(c, coeff) {
-            const [A, B, C, D] = coeff;
+            const [A, B, C, D, E] = coeff;
             let c2 = c.mul(c);
             let c3 = c2.mul(c);
             let c4 = c3.mul(c);
-            return A.mul(c).add(B.mul(c2)).add(C.mul(c3)).add(D.mul(c4));
+            let c5 = c4.mul(c);
+            return A.mul(c).add(B.mul(c2)).add(C.mul(c3)).add(D.mul(c4)).add(E.mul(c5));
         }
 
         /**
