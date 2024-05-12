@@ -379,7 +379,7 @@
                     let error = d4.abs() / d3.abs();
 
                     let v = coefficients[valid]
-                    if (v.re > 1e308 || v.im > 1e308 || isNaN(v.re) || isNaN(v.im)) valid--;
+                    if (Math.abs(v.re) > 1e308 || Math.abs(v.im) > 1e308 || isNaN(v.re) || isNaN(v.im)) valid--;
 
                     if (error > 1e-4 || valid <= 2) return {
                         it: n - 1,
