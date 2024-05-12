@@ -358,7 +358,6 @@
                 new Complex(0, 0)
             ];
             const iterZ = [...validate];
-            let valid = 4;
             let A, B, C, D, E, a, b, c, d, e;
             for (let n = 0; n < ref.length; n++) {
                 const Z = ref[n]
@@ -378,12 +377,9 @@
 
                     let error = d4.abs() / d3.abs();
 
-                    let v = coefficients[valid]
-                    if (Math.abs(v.re) > 1e292 || Math.abs(v.im) > 1e292 || isNaN(v.re) || isNaN(v.im)) valid--;
-
-                    if (error > 1e-4 || valid <= 2) return {
+                    if (error > 1e-4 || E.re > 1e292 || E.im > 1e292) return {
                         it: n - 1,
-                        coeff: [a, b, c, d, e].filter(v => v.re < 1e292 && v.im < 1e292 && !isNaN(v.re) && !isNaN(v.im))
+                        coeff: [a, b, c, d, e].filter(v => v.re < 1e308 && v.im < 1e308 && !isNaN(v.re) && !isNaN(v.im))
                     };
 
                     iterZ[i] = iterZ[i].mul(iterZ[i]).add(validate[i])
@@ -409,13 +405,12 @@
  * @returns {Complex} - The approximate value of 'c'.
  */
         function approximate(c, coeff) {
-            let z = new Complex(0, 0)
-            let cz = c;
-            for (const term of coeff) {
-                z = z.add(term.mul(cz));
-                cz = cz.mul(c)
-            }
-            return z
+            const [A, B, C, D, E] = coeff;
+            let c2 = c.mul(c);
+            let c3 = c2.mul(c);
+            let c4 = c3.mul(c);
+            let c5 = c4.mul(c);
+            return A.mul(c).add(B.mul(c2)).add(C.mul(c3)).add(D.mul(c4)).add(E.mul(c5));
         }
 
         /**
@@ -732,7 +727,7 @@
 
                 let showInfo = () => {
                     let totalPixels = this.canvas.width * this.canvas.height;
-                    let statusText = `Reference: ${this.stats.ref}\nApproximation: ${coeff.coeff.length} terms / ${this.stats.approx} it (${(this.stats.approx / this.iterations * 100).toFixed(2)}%)\nPerturbation: ${this.stats.pt} (${(this.stats.pt / totalPixels * 100).toFixed(2)}%)\nGuessed: ${this.stats.guess} (${(this.stats.guess / totalPixels * 100).toFixed(2)}%)\nTime: ${((performance.now() - this.stats.time) / 1000).toFixed(3)}s`;
+                    let statusText = `Reference: ${this.stats.ref}\nApproximation: ${this.stats.approx}it (${(this.stats.approx / this.iterations * 100).toFixed(2)}%)\nPerturbation: ${this.stats.pt} (${(this.stats.pt / totalPixels * 100).toFixed(2)}%)\nGuessed: ${this.stats.guess} (${(this.stats.guess / totalPixels * 100).toFixed(2)}%)\nTime: ${((performance.now() - this.stats.time) / 1000).toFixed(3)}s`;
                     if (!this.rendering) statusText += "\nDone!";
                     statsLabel.innerText = statusText;
                 }
