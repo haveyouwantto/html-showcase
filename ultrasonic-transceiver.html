@@ -219,6 +219,7 @@
         })
 
         txBtn.addEventListener('click', e => {
+            acquireWakelock();
             main.style.display = 'none';
             tx.style.display = 'flex';
 
@@ -297,6 +298,7 @@
 
 
         rxBtn.addEventListener('click', e => {
+            acquireWakelock();
             main.style.display = 'none';
             rx.style.display = 'flex';
 
@@ -411,6 +413,7 @@
                 acquireWakelock();
             }
         });
+
     </script>
 </body>
 
