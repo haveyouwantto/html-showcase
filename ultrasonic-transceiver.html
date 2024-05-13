@@ -327,9 +327,8 @@
 
                 const agc = ctx.createDynamicsCompressor()
                 agc.release.value = 1;
-                agc.knee.value = 12;
-                agc.ratio.value = 20;
-                agc.threshold.value = -36;
+                agc.ratio.value = 5;
+                agc.threshold.value = -60;
 
                 const muteGain = ctx.createGain()
                 muteGain.gain.value = 1;
