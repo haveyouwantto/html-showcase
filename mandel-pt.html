@@ -375,7 +375,7 @@
 
                     let error = d4.abs() / d3.abs();
 
-                    if (error > 1e-5 || !isFinite(D.re) || !isFinite(D.im)) return {
+                    if (error > 1e-5) return {
                         it: n - 1,
                         coeff: [a, b, c, d]
                     };
