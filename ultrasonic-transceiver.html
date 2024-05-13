@@ -94,6 +94,8 @@
         const ctx = new AudioContext();
         const startFreq = 15000;
         const bandwidth = 3000;
+        const reverseFreq = 16000;
+        let reverse = false;
 
         function createCosineWindow(length) {
             return [...Array(length)].map((v, i) => {
@@ -134,7 +136,7 @@
         const main = document.getElementById('main');
         const txBtn = document.getElementById('tx-btn');
         const rxBtn = document.getElementById('rx-btn');
-        
+
         const microphoneBtn = document.getElementById('microphone');
 
         const tx = document.getElementById('tx');
@@ -197,7 +199,7 @@
             canvasCtx.stroke()
 
             canvasCtx.fillStyle = "#2196f330";
-            canvasCtx.fillRect(startX, 0, widthX, canvas.height)
+            canvasCtx.fillRect(startX - (reverse ? widthX : 0), 0, widthX, canvas.height)
 
             canvasCtx.fillStyle = "#00000050";
             canvasCtx.fillRect(0, 0, lowerX, canvas.height)
@@ -236,8 +238,14 @@
             gain.gain.value = 10;
 
             function setFrequency(freq, bandwidth) {
-                localOscillator.frequency.value = freq;
-                filter.buffer = createFilter(1001, freq + bandwidth / 2 - 50, bandwidth / 2 - 100);
+                reverse = freq < reverseFreq;
+                if (!reverse) {
+                    localOscillator.frequency.value = freq;
+                    filter.buffer = createFilter(1001, freq + bandwidth / 2 - 50, bandwidth / 2 - 100);
+                } else {
+                    localOscillator.frequency.value = freq + bandwidth;
+                    filter.buffer = createFilter(1001, freq + bandwidth / 2 + 50, bandwidth / 2 - 100);
+                }
             }
             setFrequency(startFreq + bandwidth * (channelSelection.value - 1), bandwidth)
 
@@ -271,19 +279,19 @@
             channelSelection.addEventListener('change', e => {
                 setFrequency(startFreq + bandwidth * (channelSelection.value - 1), bandwidth)
             })
-            
-            microphoneBtn.addEventListener('click', e=>{
-            	navigator.mediaDevices.getUserMedia(
-                {
-                    audio: {
-                        sampleRate: 8000,
-                    },
-                    video: false
-                }
-            ).then(stream => {
-            	const microphone = ctx.createMediaStreamSource(stream);
-            	microphone.connect(mixer);
-            })
+
+            microphoneBtn.addEventListener('click', e => {
+                navigator.mediaDevices.getUserMedia(
+                    {
+                        audio: {
+                            sampleRate: 8000,
+                        },
+                        video: false
+                    }
+                ).then(stream => {
+                    const microphone = ctx.createMediaStreamSource(stream);
+                    microphone.connect(mixer);
+                })
             })
         })
 
@@ -327,8 +335,14 @@
                 muteGain.gain.value = 1;
 
                 function setFrequency(freq, bandwidth) {
-                    localOscillator.frequency.value = freq;
+                    reverse = freq < reverseFreq;
+                    if (!reverse) {
+                        localOscillator.frequency.value = freq;
                     bandpass.buffer = createFilter(1001, freq + bandwidth / 2 - 50, bandwidth / 2 - 100);
+                    } else {
+                        localOscillator.frequency.value = freq + bandwidth;
+                    bandpass.buffer = createFilter(1001, freq + bandwidth / 2 + 50, bandwidth / 2 - 100);
+                    }
                     lowpass.buffer = createFilter(101, bandwidth / 2, bandwidth / 2);
                 }
 
