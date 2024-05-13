@@ -337,10 +337,10 @@
                     reverse = freq < reverseFreq;
                     if (!reverse) {
                         localOscillator.frequency.value = freq;
-                    bandpass.buffer = createFilter(1001, freq + bandwidth / 2 - 50, bandwidth / 2 - 100);
+                        bandpass.buffer = createFilter(1001, freq + bandwidth / 2 - 50, bandwidth / 2 - 100);
                     } else {
                         localOscillator.frequency.value = freq + bandwidth;
-                    bandpass.buffer = createFilter(1001, freq + bandwidth / 2 + 50, bandwidth / 2 - 100);
+                        bandpass.buffer = createFilter(1001, freq + bandwidth / 2 + 50, bandwidth / 2 - 100);
                     }
                     lowpass.buffer = createFilter(101, bandwidth / 2, bandwidth / 2);
                 }
@@ -390,6 +390,27 @@
                 })
             });
         })
+
+
+        function acquireWakelock() {
+            if ('wakeLock' in navigator) {
+                try {
+                    navigator.wakeLock.request('screen').then(lock => {
+                        lock.addEventListener('release', e => {
+                            console.log("wakelock released");
+                        })
+                    });
+                } catch (error) {
+                    console.error(error);
+                }
+            }
+        }
+
+        document.addEventListener("visibilitychange", function () {
+            if (document.visibilityState === 'visible') {
+                acquireWakelock();
+            }
+        });
     </script>
 </body>
 
