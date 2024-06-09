@@ -31,10 +31,10 @@
 <body>
     <canvas></canvas>
     <audio controls></audio>
-    <input type="file">
+    <input type="file" accept="audio/*,video/*">
     <script>
         window.AudioContext = window.AudioContext || window.webkitAudioContext;
-        let ctx = new AudioContext({sampleRate:48000});
+        let ctx = new AudioContext({ sampleRate: 48000 });
 
         let audio = document.querySelector('audio');
         let canvas = document.querySelector('canvas');
@@ -88,13 +88,13 @@
          * Canvas
         */
         let palette = [
-  [0, 0, 0],     // #000000
-  [0, 133, 133], // #008585
-  [251, 242, 196], // #fbf2c4
-  [229, 193, 133], // #e5c185
-  [199, 82, 42],  // #c7522a
-  [111, 48, 25]   // #6f3019
-];
+            [0, 0, 0],     // #000000
+            [0, 133, 133], // #008585
+            [251, 242, 196], // #fbf2c4
+            [229, 193, 133], // #e5c185
+            [199, 82, 42],  // #c7522a
+            [111, 48, 25]   // #6f3019
+        ];
 
 
         let node = ctx.createAnalyser();
