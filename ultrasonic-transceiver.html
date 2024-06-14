@@ -218,6 +218,8 @@
             else channelSelection.value = Math.floor(channelSelection.value)
         })
 
+        const multiplier = ctx.sampleRate / 48000;
+
         txBtn.addEventListener('click', e => {
             acquireWakelock();
             main.style.display = 'none';
@@ -242,10 +244,10 @@
                 reverse = freq < reverseFreq;
                 if (!reverse) {
                     localOscillator.frequency.value = freq;
-                    filter.buffer = createFilter(1001, freq + bandwidth / 2 - 50, bandwidth / 2 - 100);
+                    filter.buffer = createFilter(parseInt(1001 * multiplier) | 1, freq + bandwidth / 2 - 50, bandwidth / 2 - 100);
                 } else {
                     localOscillator.frequency.value = freq + bandwidth;
-                    filter.buffer = createFilter(1001, freq + bandwidth / 2 + 50, bandwidth / 2 - 100);
+                    filter.buffer = createFilter(parseInt(1001 * multiplier) | 1, freq + bandwidth / 2 + 50, bandwidth / 2 - 100);
                 }
             }
             setFrequency(startFreq + bandwidth * (channelSelection.value - 1), bandwidth)
@@ -339,10 +341,10 @@
                     reverse = freq < reverseFreq;
                     if (!reverse) {
                         localOscillator.frequency.value = freq;
-                        bandpass.buffer = createFilter(1001, freq + bandwidth / 2 - 50, bandwidth / 2 - 100);
+                        bandpass.buffer = createFilter(parseInt(1001 * multiplier) | 1, freq + bandwidth / 2 - 50, bandwidth / 2 - 100);
                     } else {
                         localOscillator.frequency.value = freq + bandwidth;
-                        bandpass.buffer = createFilter(1001, freq + bandwidth / 2 + 50, bandwidth / 2 - 100);
+                        bandpass.buffer = createFilter(parseInt(1001 * multiplier) | 1, freq + bandwidth / 2 + 50, bandwidth / 2 - 100);
                     }
                     lowpass.buffer = createFilter(101, bandwidth / 2, bandwidth / 2);
                 }
