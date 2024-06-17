@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sinc 波形播放器</title>
+    <style>
+    body {
+        font-family: Arial, sans-serif;
+        background-color: #1e1e1e;
+        color: #ffffff;
+        padding: 20px;
+    }
+    
+    h1 {
+        color: #f0f0f0;
+    }
+    
+    label {
+        display: block;
+        margin-top: 5px;
+        margin-bottom: 5px;
+    }
+    
+    input[type="number"] {
+        padding: 8px;
+        border-radius: 5px;
+        border: 1px solid #333;
+        background-color: #333;
+        color: #fff;
+        margin-bottom: 10px;
+    }
+    
+    button {
+        padding: 10px 20px;
+        border: none;
+        border-radius: 5px;
+        background-color: #4CAF50; /* Green */
+        color: white;
+        text-align: center;
+        text-decoration: none;
+        display: inline-block;
+        font-size: 16px;
+        margin: 4px 2px;
+        cursor: pointer;
+    }
+    
+    button:hover {
+        background-color: #45a049; /* Darker green */
+    }
+
+    .center{
+        margin: auto;
+        width: fit-content;
+    }
+    
+    </style>
+</head>
+
+<body>
+    <div class="center">
+        <h1>Sinc 波形播放器</h1>
+        <label for="frequencyInput">频率 (Hz): </label>
+        <input type="number" id="bandwidthInput" min="1" value="8000"><br>
+        <label for="intervalFrequencyInput">间隔频率 (Hz): </label>
+        <input type="number" id="intervalFrequencyInput" min="1" max="100" value="2"><br>
+        <label for="upconverterInput">上变频频率 (Hz): </label>
+        <input type="number" id="upconverterInput" min="0" max="20000" value="0"><br>
+        <button id="playSincWaveButton">播放 Sinc 波形</button>
+    </div>
+
+    <script>
+        // 创建音频上下文对象
+        const ctx = new (window.AudioContext || window.webkitAudioContext)();
+        let source;
+
+        // 创建窗函数以平滑过渡信号
+        function createWindow(length) {
+            const window = new Float64Array(length);
+            const a0 = 0.35875;
+            const a1 = 0.48829;
+            const a2 = 0.14128;
+            const a3 = 0.01168;
+
+            for (let i = 0; i < length; i++) {
+                window[i] = a0 - a1 * Math.cos((2 * Math.PI * i) / (length - 1)) + a2 * Math.cos((4 * Math.PI * i) / (length - 1)) - a3 * Math.cos((6 * Math.PI * i) / (length - 1));
+            }
+
+            return window;
+        }
+
+        // 播放 Sinc 波形
+        function playSincWave() {
+            // 获取输入的频率、持续时间和上变频值
+            const frequency = parseFloat(document.getElementById('bandwidthInput').value);
+            const duration = 1 / parseFloat(document.getElementById('intervalFrequencyInput').value); // 音频持续时间（秒）
+            const upconversion = parseFloat(document.getElementById('upconverterInput').value);
+
+            // 创建一个数组来存储 Sinc 波形样本
+            const bufferLength = Math.floor(ctx.sampleRate * duration);
+            const buffer = new Float32Array(bufferLength);
+
+            // 创建窗函数以平滑过渡信号
+            const filterWindow = createWindow(bufferLength);
+
+            // 生成 Sinc 波形样本
+            for (let i = 0; i < bufferLength; i++) {
+                const t = (i - bufferLength / 2) / ctx.sampleRate;
+                const x = 2 * Math.PI * frequency * t;
+                buffer[i] = ((t == 0 ? 1 : Math.sin(x) / x)) * filterWindow[i] *
+                    (upconversion != 0 ? Math.sin(2 * Math.PI * upconversion * t) : 1);
+            }
+
+            // 创建一个 AudioBufferSourceNode
+            source = ctx.createBufferSource();
+            const audioBuffer = ctx.createBuffer(1, bufferLength, ctx.sampleRate);
+            audioBuffer.copyToChannel(buffer, 0);
+            source.buffer = audioBuffer;
+            
+			// 设置循环播放
+			source.loop = true;
+
+			// 连接源到输出
+			source.connect(ctx.destination);
+
+			// 开始播放声音
+			source.start();
+		}
+
+		let isPlaying = false;
+		let playButton = document.getElementById('playSincWaveButton');
+
+		playButton.addEventListener("click", () => {
+			if (isPlaying) {
+				source?.stop();
+				playButton.textContent = "播放 Sinc 波形";
+			} else {
+				playSincWave();
+				playButton.textContent = "停止 Sinc 波形";
+			}
+			isPlaying = !isPlaying;
+		});
+	</script>
+</body>
+
+</html>
