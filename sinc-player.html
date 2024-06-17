@@ -73,7 +73,7 @@
     <script>
         // 创建音频上下文对象
         const ctx = new (window.AudioContext || window.webkitAudioContext)();
-        let source;
+        let bufferSource;
 
         // 创建窗函数以平滑过渡信号
         function createWindow(length) {
@@ -113,19 +113,19 @@
             }
 
             // 创建一个 AudioBufferSourceNode
-            source = ctx.createBufferSource();
+            bufferSource = ctx.createBufferSource();
             const audioBuffer = ctx.createBuffer(1, bufferLength, ctx.sampleRate);
             audioBuffer.copyToChannel(buffer, 0);
-            source.buffer = audioBuffer;
+            bufferSource.buffer = audioBuffer;
             
 			// 设置循环播放
-			source.loop = true;
+			bufferSource.loop = true;
 
 			// 连接源到输出
-			source.connect(ctx.destination);
+			bufferSource.connect(ctx.destination);
 
 			// 开始播放声音
-			source.start();
+			bufferSource.start();
 		}
 
 		let isPlaying = false;
@@ -133,7 +133,7 @@
 
 		playButton.addEventListener("click", () => {
 			if (isPlaying) {
-				source?.stop();
+				bufferSource?.stop();
 				playButton.textContent = "播放 Sinc 波形";
 			} else {
 				playSincWave();
