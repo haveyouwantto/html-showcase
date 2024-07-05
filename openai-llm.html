@@ -1,0 +1,381 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>OpenAI LLM Preset Editor</title>
+    <style>
+        body {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            background-color: #222;
+            /* Dark background color */
+            color: #eee;
+            /* Light text color */
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+        }
+
+        #editor {
+            width: 50%;
+            display: flex;
+            flex-direction: column;
+            background-color: #333;
+            /* Darker background for editor */
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.3);
+            /* Shadow for depth */
+        }
+
+        .dialogue {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 4px;
+            border: 2px solid #444;
+            /* Slightly lighter border */
+            background-color: #444;
+            /* Medium dark background */
+
+            transition: background-color 0.2s;
+        }
+
+        .dialogue-user {
+            background-color: #4caf5020;
+        }
+
+        .dialogue-assistant {
+            background-color: #cd403220;
+        }
+
+        .dialogue-content {
+            width: 100%;
+            min-height: 100px;
+            padding: 10px;
+            background-color: #555;
+            /* Darker background for content */
+            border-radius: 4px;
+        }
+
+        .dialogue-edit {
+            display: flex;
+            flex-direction: column;
+            align-items: stretch;
+        }
+
+        .dialogue select {
+            padding: 8px;
+            margin: 5px;
+            background-color: #666;
+            /* Darker select background */
+            color: #eee;
+            /* Light text color */
+            border: none;
+            border-radius: 4px;
+        }
+
+        .dialogue textarea {
+            color: white;
+            background: none;
+        }
+
+        .dialogue button {
+            padding: 8px;
+            margin: 5px;
+            width: 2rem;
+            height: 2rem;
+            font-size: 16px;
+            display: inline-flex;
+            justify-content: center;
+            align-items: center;
+            background-color: #777;
+            /* Medium dark button background */
+            color: #eee;
+            /* Light text color */
+            border: none;
+            border-radius: 50%;
+            cursor: pointer;
+        }
+
+        .dialogue button:hover {
+            background-color: #888;
+            /* Slightly lighter button background on hover */
+        }
+
+        .dialogue-buttons {
+            display: flex;
+            justify-content: flex-end;
+        }
+
+        .button {
+            display: inline-block;
+            padding: 10px 20px;
+            margin: 5px;
+            font-size: 16px;
+            font-weight: bold;
+            text-align: center;
+            text-decoration: none;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: background-color 0.3s ease, color 0.3s ease;
+        }
+
+        /* Media query for responsiveness */
+        @media (max-width: 768px) {
+            #editor {
+                width: 80%;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <h1>OpenAI LLM Preset Editor</h1>
+    <menu id="menu">
+        <button class="button" id="new-preset">New</button>
+        <button class="button" id="upload-preset">Upload</button>
+        <button class="button" id="download-preset">Download</button>
+        <button class="button" id="copy-preset">Copy</button>
+        <button class="button" id="paste-preset">Paste</button>
+    </menu>
+    <div id="editor">
+
+    </div>
+    <button class="button" id="add-line">Add Line</button>
+    <script>
+        const sampleFormat = [{
+            'role': 'system',
+            'content': 'You are a helpful assistant.'
+        }];
+
+        const roles = ['system', 'user', 'assistant']
+
+        class Editor {
+            constructor() {
+                this.div = document.getElementById('editor');
+                this.dialogues = [];
+            }
+
+            fromPreset(preset) {
+                this.clear();
+
+                for (let line of preset) {
+                    const dialogue = new Dialogue(this, line.role, line.content);
+                    this.dialogues.push(dialogue);
+                    this.div.appendChild(dialogue.div)
+                }
+            }
+
+            clear() {
+                this.div.innerHTML = '';
+                this.dialogues = []
+            }
+
+            toPreset() {
+                const preset = [];
+                for (let dialogue of this.dialogues) {
+                    preset.push({ 'role': dialogue.role, 'content': dialogue.textarea.value })
+                }
+                return preset;
+            }
+
+            addNewDialogue() {
+                const dialogue = new Dialogue(this, 'user', '')  //创建一个新的dialogue，role为user，content为空
+                this.div.appendChild(dialogue.div)//将dialogue添加到编辑器中
+                this.dialogues.push(dialogue);    //将dialogue添加到dialogues中
+            }
+
+            removeDialogue(dialogue) {
+                this.div.removeChild(dialogue.div);    //删除dialogue
+                this.dialogues = this.dialogues.filter((d) => d !== dialogue)
+            }
+
+            removeDialogueAt(index) {
+                this.dialogues[index].div.remove();
+                this.dialogues.splice(index, 1);
+            }
+
+
+            ascend(dialogue) {
+                const index = this.dialogues.indexOf(dialogue);
+                if (index > 0) {
+                    const prevDialogue = this.dialogues[index - 1];
+                    // Swap dialogues in the array
+                    this.dialogues[index - 1] = dialogue;
+                    this.dialogues[index] = prevDialogue;
+                    // Swap their positions in the DOM
+                    this.div.insertBefore(dialogue.div, prevDialogue.div);
+                }
+            }
+
+            descend(dialogue) {
+                const index = this.dialogues.indexOf(dialogue);
+                if (index < this.dialogues.length - 1) {
+                    const nextDialogue = this.dialogues[index + 1];
+                    // Swap dialogues in the array
+                    this.dialogues[index + 1] = dialogue;
+                    this.dialogues[index] = nextDialogue;
+                    // Swap their positions in the DOM
+                    this.div.insertBefore(nextDialogue.div, dialogue.div);
+                }
+            }
+
+            indexOf(dialogue) {
+                return this.dialogues.indexOf(dialogue);
+            }
+        }
+
+        class Dialogue {
+            constructor(parent, role, content) {
+                this.parent = parent;
+
+                this.div = document.createElement('div');
+                this.div.classList.add('dialogue');
+                this.div.classList.add(`dialogue-${role}`);
+                this.textarea = document.createElement('textarea');
+                this.textarea.classList.add('dialogue-content');
+                this.textarea.value = content;
+                this.div.appendChild(this.textarea);
+
+                this.editDiv = document.createElement('div');
+                this.editDiv.classList.add('dialogue-edit');
+                this.roleCombo = document.createElement('select');
+                for (let role of roles) {
+                    const option = document.createElement('option');
+                    option.value = role;
+                    option.textContent = role;
+                    this.roleCombo.appendChild(option);
+                }
+                this.roleCombo.value = role;
+
+                this.roleCombo.onchange = () => {
+                    for (let role of roles) {
+                        this.div.classList.remove(`dialogue-${role}`)
+                    }
+                    this.div.classList.add(`dialogue-${this.roleCombo.value}`)
+                }
+
+                this.editDiv.appendChild(this.roleCombo)
+
+                this.buttons = document.createElement('div')
+                this.buttons.classList.add('dialogue-buttons');
+
+                this.ascendBtn = document.createElement('button')
+                this.descendBtn = document.createElement('button');
+
+                this.ascendBtn.classList.add(`dialogue-ascend`);
+                this.descendBtn.classList.add(`dialogue-descend`)
+
+                this.ascendBtn.textContent = '^';
+                this.descendBtn.textContent = 'v';
+
+                this.ascendBtn.onclick = () => {
+                    parent.ascend(this);
+                }
+                this.descendBtn.onclick = () => {
+                    parent.descend(this);
+                }
+
+                this.buttons.appendChild(this.ascendBtn);
+                this.buttons.appendChild(this.descendBtn)
+
+                this.deleteBtn = document.createElement('button')
+                this.deleteBtn.classList.add('dialogue-delete')
+                this.deleteBtn.textContent = 'x'
+                this.buttons.appendChild(this.deleteBtn)
+
+                this.editDiv.appendChild(this.buttons)
+
+                this.div.appendChild(this.editDiv)
+
+                this.deleteBtn.onclick = () => {
+                    this.parent.removeDialogue(this)
+                }
+            }
+
+            get role() {
+                return this.roleCombo.value;
+            }
+
+            set role(role) {
+                this.roleCombo.value = role;  //将roleCombo中的值设置为role
+            }
+
+            get content() {
+                return this.textarea.value;
+            }
+
+            set content(content) {
+                this.textarea.value = content;  //将textarea中的值设置为content
+            }
+
+        }
+
+        const editor = new Editor();
+
+        document.getElementById('add-line').onclick = () => {
+            editor.addNewDialogue();   //添加一个新的dialogue
+
+        }
+
+        document.getElementById('new-preset').onclick = () => {
+            editor.fromPreset(sampleFormat)//初始化一个空的preset
+        }
+
+        document.getElementById('download-preset').onclick = () => {
+            const preset = editor.toPreset(); //将editor中的preset转换为一个json对象
+            const jsonString = JSON.stringify(preset);//将json对象转换为字符串
+            const blob = new Blob([jsonString], { type: 'application/json' });//将字符串转换为blob对象
+            const url = window.URL.createObjectURL(blob)  //将blob对象转换为url
+
+            let a = document.createElement('a');   //创建一个a标签
+            a.href = url;    //设置a标签的href属性为url
+            a.download = `preset-${Date.now()}.json`;//设置a标签的下载文件名为当前时间戳
+
+            // document.body.appendChild(a);   //将a标签添加到body中
+            a.click();    //点击a标签，下载文件
+        }
+
+        document.getElementById('upload-preset').onclick = () => {
+            const input = document.createElement('input');    //创建一个input标签
+            input.type = 'file';   //设置input标签的类型为file
+
+            input.onchange = () => {
+                const fileReader = new FileReader();//创建一个FileReader对象
+
+                //读取文件
+                fileReader.readAsText(input.files[0]);    //读取文件
+
+                fileReader.onloadend = () => {
+                    const preset = JSON.parse(fileReader.result);//将文件读取结果转换为json对象
+                    editor.fromPreset(preset)     //将preset转换为editor中的preset
+                }
+            }
+
+            input.click();     //点击input标签，打开选择文件对话框
+        }
+
+        document.getElementById('copy-preset').onclick = () => {
+            const preset = editor.toPreset();//将editor中的preset转换为一个json对象
+            navigator.clipboard.writeText(JSON.stringify(preset)); //将preset复制到剪贴板中
+        }
+
+        document.getElementById('paste-preset').onclick = () => {
+            navigator.clipboard.readText().then(text => {
+                const preset = JSON.parse(text);//从剪贴板中读取preset
+                editor.fromPreset(preset)    //将preset转换为editor中的preset
+            })
+        }
+
+        editor.fromPreset(sampleFormat);  //初始化一个空的preset
+    </script>
+</body>
+
+</html>
