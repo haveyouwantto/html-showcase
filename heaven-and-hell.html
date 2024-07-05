@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="utf8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Heaven and Hell</title>
+    <style>
+        html {
+            background: linear-gradient(to bottom, white 10%, black 90%);
+            height: 100vh;
+        }
+
+        #menu {
+            /* center */
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background-color: white;
+
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+
+        }
+
+        button {
+            padding: 10px;
+            font-size: 20px;
+        }
+
+        #menu-title {
+            font-size: 26px;
+        }
+
+        #game {
+            display: none;
+            height: 100%;
+        }
+
+        #top {
+            position: absolute;
+            top: 0;
+            left: 50%;
+            transform: translate(-50%, 0);
+
+            min-width: max-content;
+            font-size: 5vw;
+        }
+
+        #bottom {
+            position: absolute;
+            bottom: 0;
+            left: 50%;
+            transform: translate(-50%, 0);
+            color: white;
+
+            min-width: max-content;
+            font-size: 5vw;
+        }
+
+        #selection {
+            /* center */
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+        }
+
+        #idiomList {
+            display: flex;
+            flex-wrap: wrap;
+        }
+
+        .idioms {
+            padding: 5px;
+            margin: 5px;
+            border: 2px solid black;
+            background-color: white;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="menu">
+        <div id="menu-title">成语游戏</div>
+        <div id="menu-content">游戏玩法：判断屏幕上出现的成语的褒贬性</div>
+        <button id="start-game">开始游戏</button>
+    </div>
+    <div id="game">
+        <div id="top"></div>
+        <div id="bottom"></div>
+        <div id="selection">
+            <button id="positive-button">褒义</button>
+            <button id="negative-button">贬义</button>
+        </div>
+    </div>
+    <div id="killScreen">
+        <div id="result"></div>
+        <div id="idiomList"></div>
+    </div>
+    <script>
+        const positiveIdioms = [
+            "德高望重",
+            "心灵手巧",
+            "巧夺天工",
+            "出类拔萃",
+            "沉鱼落雁",
+            "急中生智",
+            "玉树临风",
+            "力挽狂澜",
+            "超凡脱俗",
+            "龙飞凤舞",
+            "大智若愚",
+            "神通广大",
+            "光明磊落",
+            "海阔天空",
+            "文武双全",
+            "口若悬河",
+            "喜气洋洋",
+            "神采飞扬",
+            "雨后春笋",
+            "相得益彰"
+        ];
+
+        const negativeIdioms = [
+            "同流合污",
+            "一丘之貉",
+            "别有用心",
+            "粉墨登场",
+            "三长两短",
+            "危在旦夕",
+            "过河拆桥",
+            "拔苗助长",
+            "守株待兔",
+            "阴魂不散",
+            "落井下石",
+            "鼠目寸光",
+            "画蛇添足",
+            "自甘堕落",
+            "东施效颦",
+            "暗无天日",
+            "天昏地暗",
+            "阳奉阴违",
+            "鬼迷心窍",
+            "鬼鬼祟祟"
+        ];
+
+        const startGameBtn = document.getElementById("start-game");
+        const topSide = document.getElementById("top");
+        const bottomSide = document.getElementById("bottom");
+
+        class IdiomGame {
+            constructor() {
+                this.currentIndex = 0;    // Initialize the current index to 0
+            }
+
+            init() {
+                let idiomList = positiveIdioms.map((idiom, index) => ({ positive: true, text: idiom }));
+                idiomList = idiomList.concat(negativeIdioms.map((idiom, index) => ({ positive: false, text: idiom })))
+
+                // shuffle the list randomly
+                for (let i = idiomList.length - 1; i > 0; --i) {
+                    const j = Math.floor(Math.random() * (i + 1));
+
+                    [idiomList[j], idiomList[i]] = [idiomList[i], idiomList[j]];
+                }
+
+                for (let i = 0; i < idiomList.length; ++i) {
+                    let idiom = idiomList[i];  // Get the current idiom object
+                    let side = Math.random() < 0.5 ? "top" : "bottom"; // Generate a random side
+
+                    idiom.side = side;    // Set the current idiom's side to either "top" or "bottom"
+                }
+
+                this.idiomList = idiomList;   // Set the current list of idioms to this new one
+            }
+
+            determineIdiom(positive) {
+                let idiom = this.idiomList[this.currentIndex]; //  Get the current idiom object
+                idiom.correct = positive === idiom.positive;   // Determine if the current idiom is correct or not
+                this.currentIndex++;    // Increment the index of idioms to check for next one
+            }
+
+            ended() {
+                return this.currentIndex >= this.idiomList.length;    // Return true if there are still idioms to check for
+            }
+
+            getCurrentIdiom() {
+                return this.idiomList[this.currentIndex];    // Return the current idiom object
+            }
+        }
+
+
+        startGameBtn.addEventListener("click", () => {
+            document.getElementById("game").style.display = "block";    // Show the game screen
+            document.getElementById("menu").style.display = "none";    // Hide the menu screen
+
+
+            let idiomGame = new IdiomGame();
+            idiomGame.init();
+
+
+            document.getElementById("positive-button").onclick = () => {
+
+                idiomGame.determineIdiom(true);   // Determine if this current idiom is positive or not and then check for next one
+
+                nextIdiom();     // Call the next idiom function
+            };
+
+            document.getElementById("negative-button").onclick = () => {
+
+                idiomGame.determineIdiom(false);   // Determine if this current idiom is negative or not and then check for next one
+
+                nextIdiom();    // Call the next idiom function
+            };
+
+            function nextIdiom() {
+                if (idiomGame.ended()) {    // If all idioms have been checked, then game is over
+                    gameOver();      // Display game over screen
+                    return;      // Return from the function
+                }
+
+                let idiom = idiomGame.getCurrentIdiom();
+
+                topSide.innerText = '';    // Set the top side text to empty string
+                bottomSide.innerText = '';   // Set the bottom side text to empty string
+
+                switch (idiom.side) {
+                    case "top": topSide.innerText = idiom.text; break;   // Set the text of top side to current idioms's text
+                    case "bottom": bottomSide.innerText = idiom.text; break;     // Set the text of bottom side to current idioms's text
+                }
+            }
+
+            function gameOver() {
+                document.getElementById("game").style.display = "none";    // Hide the game screen
+
+                const killScreen = document.getElementById('killScreen')
+                const idiomListDisplay = document.getElementById('idiomList');
+
+                let score = 0;
+                let positivityIsSideError = 0;
+                let positivityIsNotSideError = 0;
+
+                for (let idiom of idiomGame.idiomList) {
+                    let div = document.createElement('div');
+                    idiomListDisplay.appendChild(div);
+                    div.classList.add('idioms');
+                    let idiomText = document.createTextNode(idiom.text);
+
+                    if (idiom.correct) {      // If this idiom is correct, then set the text color to green
+                        div.style.color = "green";
+                        score++;
+                    } else {       // Otherwise, set it to red
+                        div.style.color = 'red';
+                        if (idiom.positive == (idiom.side === "top")) positivityIsSideError++;
+                        if (idiom.positive != (idiom.side === "top")) positivityIsNotSideError++;
+                    }
+
+                    div.appendChild(idiomText);
+
+                    let playerSelection = document.createElement('div');
+                    playerSelection.innerText = "你选择了：" + (!(idiom.positive ^ idiom.correct) ? "褒义" : "贬义");
+                    div.appendChild(playerSelection);
+                }
+
+                document.getElementById('result').innerText = `分数：${score}/${idiomGame.idiomList.length}\n正确率：${score / idiomGame.idiomList.length * 100}%\n褒贬和位置匹不匹配的错误率：${positivityIsSideError/idiomGame.idiomList.length * 100}%/${positivityIsNotSideError/idiomGame.idiomList.length  * 100}%`;
+            }
+
+            nextIdiom();      // Call the next idiom function
+
+        });
+
+
+    </script>
+</body>
+
+</html>
