@@ -364,7 +364,7 @@
 
         document.getElementById('copy-preset').onclick = () => {
             const preset = editor.toPreset();//将editor中的preset转换为一个json对象
-            navigator.clipboard.writeText(JSON.stringify(preset)); //将preset复制到剪贴板中
+            navigator.clipboard.writeText(JSON.stringify(preset)).then(()=>alert('preset copied to clipboard')); //将preset复制到剪贴板中
         }
 
         document.getElementById('paste-preset').onclick = () => {
