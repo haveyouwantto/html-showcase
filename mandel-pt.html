@@ -186,6 +186,83 @@
         const sampleSelect = document.getElementById('samples')
         const sampleLoadBtn = document.getElementById('load-sample')
 
+        class FloatExp {
+            constructor(base, exp = 0) {
+                if (isNaN(base) || isNaN(exp)) {
+                    console.log(base, exp)
+                    throw new Error("Invalid FloatExp");
+                }
+                this.base = base;
+                this.exp = exp;
+            }
+
+            norm() {
+                if (this.base != 0) {
+                    while (Math.abs(this.base) >= 10) {
+                        this.exp++;
+                        this.base /= 10;
+                    }
+                    while (Math.abs(this.base) < 1) {
+                        this.exp--;
+                        this.base *= 10;
+                    }
+                }
+                return this;
+            }
+
+            doubleValue() {
+                return this.base * (Math.pow(10, this.exp));
+            }
+
+            toString() {
+                this.norm();
+                return `${this.base}e${this.exp}`
+            }
+
+            add(other) {
+                if (other.base == 0) return this
+                if (this.exp == other.exp)
+                    return new FloatExp(this.base + other.base, this.exp)
+                else {
+                    return new FloatExp(this.base + other.base * Math.pow(10, other.exp - this.exp), this.exp).norm()
+                }
+            }
+
+            sub(other) {
+                if (other.base == 0) return this
+                if (this.exp == other.exp)
+                    return new FloatExp(this.base - other.base, this.exp)
+                else {
+                    return new FloatExp(this.base - other.base * Math.pow(10, other.exp - this.exp), this.exp).norm()
+                }
+            }
+
+            mul(other) {
+                return new FloatExp(this.base * other.base, this.exp + other.exp).norm()
+            }
+
+            div(other) {
+                return new FloatExp(this.base / other.base, this.exp - other.exp).norm()
+            }
+
+            abs() {
+                return new FloatExp(Math.abs(this.base), this.exp);
+            }
+
+            sqrt() {
+                if (this.base < 0) throw new Error("Cannot take square root of negative number");
+                return new FloatExp(Math.sqrt(this.base), this.exp / 2).norm();
+            }
+        }
+
+        function parseFloatExp(string) {
+            var [b, e] = string.split("e");
+            e = parseInt(e)
+            var fp = new FloatExp(parseFloat(b), (isNaN(e) ? 0 : e));
+            fp.norm();
+            return fp;
+        }
+
         class Complex {
             absValue;
             constructor(re, im) {
@@ -222,7 +299,6 @@
             }
         }
 
-
         class DeepComplex {
             constructor(re, im) {
                 this.re = re instanceof Decimal ? re : new Decimal(re);
@@ -243,6 +319,11 @@
                     const realPart = this.re.times(other.re).minus(this.im.times(other.im));
                     const imagPart = this.re.times(other.im).plus(this.im.times(other.re));
                     return new DeepComplex(realPart, imagPart);
+                } else if (other instanceof FloatExpComplex) {
+                    other = other.toDeepComplex();
+                    const realPart = this.re.times(re).minus(this.im.times(im));
+                    const imagPart = this.re.times(im).plus(this.im.times(re));
+                    return new DeepComplex(realPart, imagPart);
                 } else if (typeof other === 'number') {
                     return new DeepComplex(this.re.times(other), this.im.times(other));
                 } else {
@@ -251,15 +332,84 @@
             }
 
             add(other) {
+                if (other instanceof FloatExpComplex) {
+                    other = other.toDeepComplex();
+                }
                 return new DeepComplex(this.re.plus(other.re), this.im.plus(other.im));
             }
 
             sub(other) {
+                if (other instanceof FloatExpComplex) {
+                    other = other.toDeepComplex();
+                }
                 return new DeepComplex(this.re.minus(other.re), this.im.minus(other.im));
             }
 
             downCast() {
                 return new Complex(this.re.toNumber(), this.im.toNumber())
+            }
+
+            toFloatExp() {
+                return new FloatExpComplex(
+                    parseFloatExp(this.re.toString()),
+                    parseFloatExp(this.im.toString())
+                )
+            }
+        }
+
+        class FloatExpComplex {
+            constructor(re, im) {
+                this.re = re instanceof FloatExp ? re : parseFloatExp(re.toString());
+                this.im = im instanceof FloatExp ? im : parseFloatExp(im.toString());
+            }
+
+            abs() {
+                return this.re.mul(this.re).add(this.im.mul(this.im)).sqrt();
+            }
+
+            mul(other) {
+                if (typeof other === 'number') {
+                    return new FloatExpComplex(this.re.mul(new FloatExp(other, 0)), this.im.mul(new FloatExp(other, 0)));
+                } else
+                    return new FloatExpComplex(
+                        this.re.mul(other.re).sub(this.im.mul(other.im)),
+                        this.re.mul(other.im).add(this.im.mul(other.re))
+                    )
+            }
+
+            div(other) {
+                if (typeof other === 'number') {
+                    return new FloatExpComplex(this.re.div(new FloatExp(other, 0)), this.im.div(new FloatExp(other, 0)));
+                } else
+                    return new FloatExpComplex(
+                        this.re.div(other.re).sub(this.im.div(other.im)),
+                        this.re.div(other.im).add(this.im.div(other.re))
+                    )
+            }
+
+            add(other) {
+                return new FloatExpComplex(
+                    this.re.add(other.re),
+                    this.im.add(other.im)
+                )
+            }
+
+            sub(other) {
+                return new FloatExpComplex(
+                    this.re.sub(other.re),
+                    this.im.sub(other.im)
+                )
+            }
+
+            toComplex() {
+                return new Complex(this.re.doubleValue(), this.im.doubleValue());
+            }
+
+            toDeepComplex() {
+                return new DeepComplex(
+                    new Decimal(this.re.toString()),
+                    new Decimal(this.im.toString())
+                )
             }
         }
 
@@ -344,49 +494,54 @@
         /**
  * Calculates the series coefficients for a given reference orbit and validation set.
  * @param {Complex[]} ref - The reference orbit.
- * @param {Complex[]} validate - The validation set.
+ * @param {FloatExpComplex[]} validate - The validation set.
  * @param {number} iterations - The number of iterations to perform.
  * @param {number} [bailout=2] - The bailout value used for iteration termination.
- * @returns {{ it: number, coeff: Complex[] }} - An object containing the number of iterations and series coefficients.
+ * @returns {{ it: number, coeff: FloatExpComplex[] }} - An object containing the number of iterations and series coefficients.
  */
         function getSeriesCoefficients(ref, validate, iterations, bailout = 2) {
             const coefficients = [
-                new Complex(1, 0),
-                new Complex(0, 0),
-                new Complex(0, 0),
-                new Complex(0, 0),
+                new FloatExpComplex(1, 0),
+                new FloatExpComplex(0, 0),
+                new FloatExpComplex(0, 0),
+                new FloatExpComplex(0, 0),
+                new FloatExpComplex(0, 0),
+                // new FloatExpComplex(0, 0),
             ];
+            let lastCoeff;
+
             const iterZ = [...validate];
-            let A, B, C, D, a, b, c, d;
+            ref = ref.map(e => new FloatExpComplex(e.re, e.im))
+
+            let A, B, C, D, E, F
             for (let n = 0; n < ref.length; n++) {
                 const Z = ref[n]
 
-                a = A, b = B, c = C, d = D;
-                A = coefficients[0], B = coefficients[1], C = coefficients[2], D = coefficients[3];
+                A = coefficients[0], B = coefficients[1], C = coefficients[2], D = coefficients[3], E = coefficients[4]//, F = coefficients[5];
+
 
                 for (let i = 0; i < iterZ.length; i++) {
-                    let z = iterZ[i];
-                    let z2 = z.mul(z);
-                    let z3 = z2.mul(z);
-                    let z4 = z3.mul(z);
+                    let z = validate[i];
+                    let approx = approximate(z, coefficients)
 
-                    let d3 = C.mul(z3);
-                    let d4 = D.mul(z4);
+                    let error = Math.abs((approx.re.div(iterZ[i].re).abs().add(approx.im.div(iterZ[i].im).abs())).sub(new FloatExp(2, 0)).doubleValue());
+                    // console.log(n, approx, iterZ[i], error)
 
-                    let error = d4.abs() / d3.abs();
-
-                    if (error > 1e-5) return {
+                    if (error > 1e-4) return {
                         it: n - 1,
-                        coeff: [a, b, c, d]
+                        coeff: lastCoeff
                     };
-
-                    iterZ[i] = iterZ[i].mul(iterZ[i]).add(validate[i])
+                    iterZ[i] = iterZ[i].mul(ref[n]).mul(2).add(iterZ[i].mul(iterZ[i])).add(validate[i]) // 2Zz+z^2+c
                 }
 
-                coefficients[0] = A.mul(Z.mul(2)).add(new Complex(1, 0));
-                coefficients[1] = B.mul(Z.mul(2)).add(A.mul(A));
-                coefficients[2] = C.mul(Z.mul(2)).add(B.mul(A.mul(2)));
-                coefficients[3] = D.mul(Z.mul(2)).add(C.mul(A.mul(2))).add(B.mul(B));
+                const Z2 = Z.mul(2)
+                lastCoeff = [...coefficients];
+                coefficients[0] = A.mul(Z2).add(new FloatExpComplex(1, 0));
+                coefficients[1] = B.mul(Z2).add(A.mul(A));
+                coefficients[2] = C.mul(Z2).add(B.mul(A.mul(2)));
+                coefficients[3] = D.mul(Z2).add(C.mul(A.mul(2))).add(B.mul(B));
+                coefficients[4] = E.mul(Z2).add(D.mul(A.mul(2))).add(C.mul(B.mul(2)));
+                // coefficients[5] = F.mul(Z2).add(E.mul(A.mul(2))).add(D.mul(B.mul(2))).add(C.mul(C));
             }
 
             return {
@@ -397,22 +552,24 @@
 
         /**
  * Approximates a complex number 'c' using the given series coefficients.
- * @param {Complex} c - The complex number to approximate.
- * @param {Complex[]} coeff - The series coefficients.
- * @returns {Complex} - The approximate value of 'c'.
+ * @param {} c - The complex number to approximate.
+ * @param {FloatExpComplex[]} coeff - The series coefficients.
+ * @returns {FloatExpComplex} - The approximate value of 'c'.
  */
         function approximate(c, coeff) {
-            const [A, B, C, D] = coeff;
-            let c2 = c.mul(c);
-            let c3 = c2.mul(c);
-            let c4 = c3.mul(c);
-            return A.mul(c).add(B.mul(c2)).add(C.mul(c3)).add(D.mul(c4));
+            let result = new FloatExpComplex(0, 0);
+            let cn = c;
+            for (let i = 0; i < coeff.length; i++) {
+                result = result.add(coeff[i].mul(cn))
+                cn = cn.mul(c)
+            }
+            return result 
         }
 
         /**
  * Performs one iteration of the Mandelbrot iteration on a complex number 'z' using 'c'.
- * @param {Complex} z - The complex number being iterated.
- * @param {Complex} c - The constant complex number.
+ * @param {DeepComplex} z - The complex number being iterated.
+ * @param {DeepComplex} c - The constant complex number.
  */
         function iterate(z, c) {
             const x = z.re.times(z.re).minus(z.im.times(z.im)).add(c.re);
@@ -521,7 +678,7 @@
 
             /**
      * @param {HTMLCanvasElement} canvas - The canvas element to draw the Mandelbrot set.
-     * @param {Complex} center - The center point of the Mandelbrot set.
+     * @param {DeepComplex} center - The center point of the Mandelbrot set.
      * @param {number} iterations - The number of iterations to perform for each point.
      * @param {number} bailout - The bailout value used for iteration termination.
      */
@@ -616,15 +773,20 @@
      * @param {number} y - The y-coordinate of the point.
      * @param {number} [baseX] - The x-coordinate of the base point (optional).
      * @param {number} [baseY] - The y-coordinate of the base point (optional).
-     * @returns {Complex} - The delta as a complex number.
+     * @returns {FloatExpComplex} - The delta as a complex number.
      */
             getDelta(x, y, baseX, baseY) {
                 if (!baseX) baseX = this.canvas.width / 2;
                 if (!baseY) baseY = this.canvas.height / 2;
-                return new Complex(
-                    (x - baseX) / this.canvas.width * this.size,
-                    (baseY - y) / this.canvas.height * this.size
+                return new FloatExpComplex(
+                    new FloatExp((x - baseX) / this.canvas.width).mul(new FloatExp(this.size)),
+
+                    new FloatExp((baseY - y) / this.canvas.height).mul(new FloatExp(this.size))
                 )
+                // return new Complex(
+                //     (x - baseX) / this.canvas.width * this.size,
+                //     (baseY - y) / this.canvas.height * this.size
+                // )
             }
 
             /**
@@ -705,11 +867,14 @@
 
                 let paint = (x, y) => {
                     let delta = rebase ? this.getDelta(x, y, this.rebase[0], this.rebase[1]) : this.getDelta(x, y);
+                    // if (this.size > 1e-10) delta = delta.toComplex()
                     let newIter;
-                    if (coeff.it > 0) {
-                        let approx = approximate(delta, coeff.coeff)
+                    if (this.size < 1e-10 && coeff.it > 1) {
+                        let approx = approximate(delta, coeff.coeff).toComplex()
+                        delta = delta.toComplex();
                         newIter = getPT(approx, delta, ref, this.bailout, coeff.it);
                     } else {
+                        delta = delta.toComplex();
                         newIter = getPT(delta, delta, ref, this.bailout);
                     }
 
