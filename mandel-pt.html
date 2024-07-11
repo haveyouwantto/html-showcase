@@ -860,10 +860,12 @@
                 itInput.value = this.iterations;
 
                 let base, ref, glitches, coeff;
+                let refLen = 0;
                 if (this.size <= 1e-11) {
                     console.log(performance.now() + " computing reference")
                     base = rebase ? this.center.add(this.getDelta(this.rebase[0], this.rebase[1])) : this.center;
                     ref = getReferenceOrbit(base, this.iterations, this.bailout);
+                    refLen = ref.length;
                     this.stats.ref++;
                     console.log("ref iter: " + ref.length)
                     if (!rebase) this.ref = ref;
@@ -913,7 +915,8 @@
 
                 let showInfo = () => {
                     let totalPixels = this.canvas.width * this.canvas.height;
-                    let statusText = `Reference: ${this.stats.ref}\nApproximation: ${this.stats.approx}it (${(this.stats.approx / this.iterations * 100).toFixed(2)}%)\nCalculation: ${this.stats.calc} (${(this.stats.calc / totalPixels * 100).toFixed(2)}%)\nGuessed: ${this.stats.guess} (${(this.stats.guess / totalPixels * 100).toFixed(2)}%)\nTime: ${((performance.now() - this.stats.time) / 1000).toFixed(3)}s`;
+                    console.log(refLen)
+                    let statusText = `Reference: ${this.stats.ref} (${refLen}it)\nApproximation: ${this.stats.approx}it (${(this.stats.approx / refLen * 100).toFixed(2)}%)\nCalculation: ${this.stats.calc} (${(this.stats.calc / totalPixels * 100).toFixed(2)}%)\nGuessed: ${this.stats.guess} (${(this.stats.guess / totalPixels * 100).toFixed(2)}%)\nTime: ${((performance.now() - this.stats.time) / 1000).toFixed(3)}s`;
                     if (!this.rendering) statusText += "\nDone!";
                     statsLabel.innerText = statusText;
                 }
