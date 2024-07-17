@@ -262,6 +262,14 @@
             fp.norm();
             return fp;
         }
+        
+        function doubleToFloatExp(num) {
+        	// Get the exponent
+  	  	let exponent = Math.floor(Math.log10(Math.abs(num)));
+   		 // Calculate the significand
+		    let significand = num / Math.pow(10, exponent);
+		    return new FloatExp(significand, exponent);
+		}
 
         class Complex {
             absValue;
