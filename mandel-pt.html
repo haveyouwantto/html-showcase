@@ -262,14 +262,34 @@
             fp.norm();
             return fp;
         }
-        
+
         function doubleToFloatExp(num) {
-        	// Get the exponent
-  	  	let exponent = Math.floor(Math.log10(Math.abs(num)));
-   		 // Calculate the significand
-		    let significand = num / Math.pow(10, exponent);
-		    return new FloatExp(significand, exponent);
-		}
+            if (num === 0) return new FloatExp(0, 0);
+            // Get the exponent
+            let exponent = Math.floor(Math.log10(Math.abs(num)));
+            // Calculate the significand
+            let significand = num / Math.pow(10, exponent);
+            return new FloatExp(significand, exponent);
+        }
+
+        function decimalToFloatExp(num) {
+            let base = num.d[0];
+            for (let i = 1; i < 3; i++) {
+                if (num.d[i]) base = base * 1e8 + num.d[i];
+            }
+            let off = Math.floor(Math.log10(base));
+            let exp = num.e - off;
+            return new FloatExp(base, exp).norm();
+        }
+
+        function getFloatExp(obj) {
+            if (obj instanceof FloatExp) return obj;
+            else if (typeof obj === "number") {
+                return doubleToFloatExp(obj);
+            } else if (obj instanceof Decimal) {
+                return decimalToFloatExp(obj);
+            } else return parseFloatExp(obj.toString())
+        }
 
         class Complex {
             absValue;
@@ -359,16 +379,16 @@
 
             toFloatExp() {
                 return new FloatExpComplex(
-                    parseFloatExp(this.re.toString()),
-                    parseFloatExp(this.im.toString())
+                    getFloatExp(this.re),
+                    getFloatExp(this.im)
                 )
             }
         }
 
         class FloatExpComplex {
             constructor(re, im) {
-                this.re = re instanceof FloatExp ? re : parseFloatExp(re.toString());
-                this.im = im instanceof FloatExp ? im : parseFloatExp(im.toString());
+                this.re = getFloatExp(re);
+                this.im = getFloatExp(im);
             }
 
             abs() {
