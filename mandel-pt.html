@@ -507,15 +507,16 @@
  */
         function getReferenceOrbit(c, iterations, bailout = 2) {
             const z = new DeepComplex(0, 0);
-            const orbit = [];
+            const orbit = [z.downCast()];
             for (let i = 0; i < iterations; i++) {
                 iterate(z, c);
-                if (z.abs() > 1073741824) {
+                if (z.abs() > bailout) {
                     console.warn(`${c} is not a valid reference point!`)
                     break
                 };
                 orbit.push(z.downCast());
             }
+            console.log(orbit)
             return orbit;
         }
 
@@ -629,23 +630,34 @@
  * @param {number} [start=0] - The index from which to start iterating the reference orbit.
  * @returns {number|null} - The escape time for the point or null if it doesn't escape.
  */
-        function getPT(delta, origin, ref, bailout, start = 0) {
-            let pertR = delta.re;
-            let pertI = delta.im;
+        function getPT(delta, origin, ref, maxIter, bailout, start = 0) {
+            let pertR = 0;
+            let pertI = 0;
             let tmp;
-            for (let n = start; n < ref.length; n++) {
-                const Z = ref[n]
-                const valR = Z.re + pertR;
-                const valI = Z.im + pertI;
-                const val = Math.sqrt(valR * valR + valI * valI);
-                if (val < Z.abs() * 1e-4) return -1;
-                else if (val > bailout) return n;
+
+            let iter = 0;
+            let refIter = 0;
+            while (iter < maxIter) {
+                const Z = ref[refIter]
 
                 tmp = 2 * (Z.re * pertR - Z.im * pertI) + (pertR * pertR - pertI * pertI) + origin.re;
                 pertI = 2 * (Z.re * pertI + Z.im * pertR + pertR * pertI) + origin.im;
                 pertR = tmp;
+                refIter++;
+
+                const Z2 = ref[refIter]
+                const valR = Z2.re + pertR;
+                const valI = Z2.im + pertI;
+                const val = Math.sqrt(valR * valR + valI * valI);
+                if (val > bailout) return iter;
+                if (val < Math.sqrt(pertR * pertR + pertI * pertI) || refIter == ref.length - 1) {
+                    pertR = valR;
+                    pertI = valI;
+                    refIter = 0;
+                }
+                iter++;
             }
-            return null;
+            return iter;
         }
 
         /**
@@ -923,13 +935,13 @@
                     }
                     else {
                         let delta = rebase ? this.getDelta(x, y, this.rebase[0], this.rebase[1]) : this.getDelta(x, y);
-                        if (coeff.it > 200) {
+                        if (/*coeff.it > 200*/ false) {
                             let approx = approximate(delta, coeff.coeff).toComplex()
                             delta = delta.toComplex();
-                            newIter = getPT(approx, delta, ref, this.bailout, coeff.it);
+                            newIter = getPT(approx, delta, ref, this.iterations, this.bailout, coeff.it);
                         } else {
                             delta = delta.toComplex();
-                            newIter = getPT(delta, delta, ref, this.bailout);
+                            newIter = getPT(delta, delta, ref, this.iterations, this.bailout);
                         }
                     }
 
@@ -1012,7 +1024,7 @@
                 p1().then(() => p2()).then(() => p3()).then(() => {
                     if (glitches.length > 4 && this.stats.ref < 70) {
                         let i = parseInt(glitches.length / 10);
-                        this._rebase(glitches[i])
+                        //this._rebase(glitches[i])
 
                         setTimeout(() => {
                             this.update(true)
