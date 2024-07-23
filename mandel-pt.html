@@ -631,12 +631,12 @@
  * @returns {number|null} - The escape time for the point or null if it doesn't escape.
  */
         function getPT(delta, origin, ref, maxIter, bailout, start = 0) {
-            let pertR = 0;
-            let pertI = 0;
+            let pertR = delta.re;
+            let pertI = delta.im;
             let tmp;
 
-            let iter = 0;
-            let refIter = 0;
+            let iter = start;
+            let refIter = start;
             while (iter < maxIter) {
                 const Z = ref[refIter]
 
@@ -935,7 +935,7 @@
                     }
                     else {
                         let delta = rebase ? this.getDelta(x, y, this.rebase[0], this.rebase[1]) : this.getDelta(x, y);
-                        if (/*coeff.it > 200*/ false) {
+                        if (coeff.it > 200) {
                             let approx = approximate(delta, coeff.coeff).toComplex()
                             delta = delta.toComplex();
                             newIter = getPT(approx, delta, ref, this.iterations, this.bailout, coeff.it);
