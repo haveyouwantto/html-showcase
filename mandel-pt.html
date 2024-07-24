@@ -188,12 +188,13 @@
 
         class FloatExp {
             constructor(base, exp = 0) {
-                if (isNaN(base) || isNaN(exp)) {
+                if (isNaN(base) || isNaN(exp) || !isFinite(base) || !isFinite(exp)) {
                     console.log(base, exp)
                     throw new Error("Invalid FloatExp");
                 }
                 this.base = base;
                 this.exp = exp;
+                this.norm();
             }
 
             norm() {
@@ -221,28 +222,32 @@
 
             add(other) {
                 if (other.base == 0) return this
-                if (this.exp == other.exp)
+                const expDiff = other.exp - this.exp;
+                if (expDiff == 0)
                     return new FloatExp(this.base + other.base, this.exp)
+                else if (expDiff > 16) return other;
                 else {
-                    return new FloatExp(this.base + other.base * Math.pow(10, other.exp - this.exp), this.exp).norm()
+                    return new FloatExp(this.base + other.base * Math.pow(10, other.exp - this.exp), this.exp)
                 }
             }
 
             sub(other) {
                 if (other.base == 0) return this
-                if (this.exp == other.exp)
+                const expDiff = other.exp - this.exp;
+                if (expDiff == 0)
                     return new FloatExp(this.base - other.base, this.exp)
+                else if (expDiff > 16) return other.rev();
                 else {
-                    return new FloatExp(this.base - other.base * Math.pow(10, other.exp - this.exp), this.exp).norm()
+                    return new FloatExp(this.base - other.base * Math.pow(10, other.exp - this.exp), this.exp)
                 }
             }
 
             mul(other) {
-                return new FloatExp(this.base * other.base, this.exp + other.exp).norm()
+                return new FloatExp(this.base * other.base, this.exp + other.exp)
             }
 
             div(other) {
-                return new FloatExp(this.base / other.base, this.exp - other.exp).norm()
+                return new FloatExp(this.base / other.base, this.exp - other.exp)
             }
 
             abs() {
@@ -251,7 +256,11 @@
 
             sqrt() {
                 if (this.base < 0) throw new Error("Cannot take square root of negative number");
-                return new FloatExp(Math.sqrt(this.base), this.exp / 2).norm();
+                return new FloatExp(Math.sqrt(this.base), this.exp / 2);
+            }
+
+            rev() {
+                return new FloatExp(-this.base, this.exp);
             }
         }
 
@@ -259,7 +268,7 @@
             var [b, e] = string.split("e");
             e = parseInt(e)
             var fp = new FloatExp(parseFloat(b), (isNaN(e) ? 0 : e));
-            fp.norm();
+            // fp.norm();
             return fp;
         }
 
@@ -279,7 +288,7 @@
             }
             let off = Math.floor(Math.log10(base));
             let exp = num.e - off;
-            return new FloatExp(base, exp).norm();
+            return new FloatExp(base, exp);
         }
 
         function getFloatExp(obj) {
