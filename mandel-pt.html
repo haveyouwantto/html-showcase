@@ -221,7 +221,9 @@
             }
 
             add(other) {
-                if (other.base == 0) return this
+                if (typeof other == 'number') return this.add(new FloatExp(other));
+                if (other.base == 0) return this;
+                else if (this.base == 0) return other;
                 const expDiff = other.exp - this.exp;
                 if (expDiff == 0)
                     return new FloatExp(this.base + other.base, this.exp)
@@ -232,7 +234,9 @@
             }
 
             sub(other) {
-                if (other.base == 0) return this
+                if (typeof other == 'number') return this.sub(new FloatExp(other));
+                if (other.base == 0) return this;
+                else if (this.base == 0) return other.rev();
                 const expDiff = other.exp - this.exp;
                 if (expDiff == 0)
                     return new FloatExp(this.base - other.base, this.exp)
@@ -243,11 +247,17 @@
             }
 
             mul(other) {
-                return new FloatExp(this.base * other.base, this.exp + other.exp)
+                if (other instanceof FloatExp)
+                    return new FloatExp(this.base * other.base, this.exp + other.exp)
+                else if (typeof other == 'number')
+                    return new FloatExp(this.base * other, this.exp);
             }
 
             div(other) {
-                return new FloatExp(this.base / other.base, this.exp - other.exp)
+                if (other instanceof FloatExp)
+                    return new FloatExp(this.base / other.base, this.exp - other.exp)
+                else if (typeof other == 'number')
+                    return new FloatExp(this.base / other, this.exp);
             }
 
             abs() {
@@ -286,6 +296,7 @@
             for (let i = 1; i < 3; i++) {
                 if (num.d[i]) base = base * 1e8 + num.d[i];
             }
+            if (num.e == 0) return new FloatExp(base, 0);
             let off = Math.floor(Math.log10(base));
             let exp = num.e - off;
             return new FloatExp(base, exp);
@@ -388,8 +399,8 @@
 
             toFloatExp() {
                 return new FloatExpComplex(
-                    getFloatExp(this.re),
-                    getFloatExp(this.im)
+                    getFloatExp(this.re.toString()),
+                    getFloatExp(this.im.toString())
                 )
             }
         }
@@ -512,18 +523,18 @@
  * @param {DeepComplex} c - The complex number for which the reference orbit is calculated.
  * @param {number} iterations - The number of iterations to perform.
  * @param {number} [bailout=2] - The bailout value used for iteration termination.
- * @returns {Complex[]} - An array containing the reference orbit.
+ * @returns {FloatExpComplex[]} - An array containing the reference orbit.
  */
         function getReferenceOrbit(c, iterations, bailout = 2) {
             const z = new DeepComplex(0, 0);
-            const orbit = [z.downCast()];
+            const orbit = [];
             for (let i = 0; i < iterations; i++) {
-                iterate(z, c);
-                orbit.push(z.downCast());
                 if (z.abs() > 10000) {
                     console.warn(`${c} is not a valid reference point!`)
                     break
                 };
+                orbit.push(z.toFloatExp());
+                iterate(z, c);
             }
             return orbit;
         }
@@ -537,54 +548,67 @@
  * @returns {{ it: number, coeff: FloatExpComplex[] }} - An object containing the number of iterations and series coefficients.
  */
         function getSeriesCoefficients(ref, validate, iterations, bailout = 2) {
-            const coefficients = [
-                new FloatExpComplex(1, 0),
-                new FloatExpComplex(0, 0),
-                new FloatExpComplex(0, 0),
-                new FloatExpComplex(0, 0),
-                new FloatExpComplex(0, 0),
-                new FloatExpComplex(0, 0),
-            ];
+            let coefficients = [...Array(6)].map(e => new FloatExpComplex(0, 0));
             let lastCoeff;
 
             const iterZ = [...validate];
-            ref = ref.map(e => new FloatExpComplex(e.re, e.im))
 
-            let A, B, C, D, E, F
             for (let n = 0; n < ref.length; n++) {
                 const Z = ref[n]
 
-                A = coefficients[0], B = coefficients[1], C = coefficients[2], D = coefficients[3], E = coefficients[4], F = coefficients[5];
-
+                lastCoeff = coefficients;
+                coefficients = iterateCoeff(Z, coefficients)
 
                 for (let i = 0; i < iterZ.length; i++) {
                     let z = validate[i];
+                    let v = iterZ[i];
+                    let v2 = v.mul(Z).mul(2).add(v.mul(v)).add(validate[i]); // 2Zz+z^2+c
+
                     let approx = approximate(z, coefficients)
 
-                    let error = Math.abs((approx.re.div(iterZ[i].re).abs().add(approx.im.div(iterZ[i].im).abs())).sub(new FloatExp(2, 0)).doubleValue());
-                    // console.log(n, approx, iterZ[i], error)
+                    let error = Math.abs((approx.re.div(v2.re).abs().add(approx.im.div(v2.im).abs())).sub(new FloatExp(2, 0)).doubleValue());
+                    // console.log(n, approx, v2, error)
 
-                    if (error > 1e-4) return {
-                        it: n - 1,
+                    if (error > 1e-4 || Z.add(v2).abs().doubleValue() > 2) return {
+                        it: n,
                         coeff: lastCoeff
                     };
-                    iterZ[i] = iterZ[i].mul(ref[n]).mul(2).add(iterZ[i].mul(iterZ[i])).add(validate[i]) // 2Zz+z^2+c
+                    iterZ[i] = v2;
                 }
 
-                const Z2 = Z.mul(2)
-                lastCoeff = [...coefficients];
-                coefficients[0] = A.mul(Z2).add(new FloatExpComplex(1, 0));
-                coefficients[1] = B.mul(Z2).add(A.mul(A));
-                coefficients[2] = C.mul(Z2).add(B.mul(A.mul(2)));
-                coefficients[3] = D.mul(Z2).add(C.mul(A.mul(2))).add(B.mul(B));
-                coefficients[4] = E.mul(Z2).add(D.mul(A.mul(2))).add(C.mul(B.mul(2)));
-                coefficients[5] = F.mul(Z2).add(E.mul(A.mul(2))).add(D.mul(B.mul(2))).add(C.mul(C));
             }
 
             return {
                 it: 0,
                 coeff: []
             };
+        }
+
+        function iterateCoeff(ref, coefficients) {
+            let terms = coefficients.length;
+            let newCoeff = [];
+            for (let i = 0; i < terms; i++) {
+                let c = coefficients[i];
+                c = c.mul(ref).mul(2);
+                if (i == 0) {
+                    c = c.add(new FloatExpComplex(1, 0));
+                } else {
+                    let n = 0;
+                    while (n < i - 1 - n) {
+                        let termA = coefficients[n];
+                        let termB = coefficients[i - 1 - n];
+                        c = c.add(termA.mul(termB).mul(2));
+                        n++;
+                    }
+
+                    if (i % 2 == 1) {
+                        let sq = coefficients[parseInt(i / 2)];
+                        c = c.add(sq.mul(sq));
+                    }
+                }
+                newCoeff[i] = c;
+            }
+            return newCoeff;
         }
 
         /**
@@ -678,6 +702,34 @@
             return iter;
         }
 
+        function getPTIterFloatExp(delta, origin, ref, maxIter, bailout, start = 0) {
+            let tmp;
+
+            let iter = start;
+            let refIter = start;
+            while (iter < maxIter) {
+                let Z = ref[refIter];
+
+                // 计算delta的影响
+                tmp = Z.mul(delta).mul(2).add(delta.mul(delta)).add(origin);
+                delta = tmp;
+                refIter++;
+
+                let Z2 = ref[refIter];
+                let val = Z2.add(delta);// 合并参考与delta
+
+                if (val.abs().doubleValue() > 4) {
+                    return iter;
+                }  // 逃逸检测
+                if (val.abs().sub(delta.abs()).doubleValue() < 0 || refIter == ref.length - 1) { // 检测是否需要变基
+                    delta = val;
+                    refIter = 0;
+                }
+                iter++;
+            }
+            return iter;
+        }
+
         /**
          * Generates a rainbow palette of colors.
          * @param {number} numColors - The number of colors to generate.
@@ -760,7 +812,7 @@
                 this.iterations = iterations;
                 this.bailout = bailout;
 
-                this.size = 4;
+                this.size = new FloatExp(4);
 
                 this.canvas = canvas;
                 this.context = canvas.getContext('2d');
@@ -772,7 +824,7 @@
                         // Left click: decrease size
                         console.log(this.getDelta(e.offsetX, e.offsetY));
                         this.goto(this.center.add(this.getDelta(e.offsetX, e.offsetY)));
-                        this.zoom(this.size / 4)
+                        this.zoom(this.size.div(4))
                         this.update();
                     }
                 });
@@ -782,10 +834,10 @@
                     if (!this.rendering)
                         if (e.deltaY < 0) {
                             this.goto(this.center.add(this.getDelta(e.offsetX, e.offsetY)));
-                            this.zoom(this.size / 4)
+                            this.zoom(this.size.div(4))
                             this.update();
                         } else if (e.deltaY > 0) {
-                            this.zoom(this.size * 4);
+                            this.zoom(this.size.mul(4));
                             this.update();
                         }
                 });
@@ -793,7 +845,7 @@
                 canvas.addEventListener('contextmenu', e => {
                     e.preventDefault();
                     if (!this.rendering) {
-                        this.zoom(this.size * 4);
+                        this.zoom(this.size.div(4));
                         this.update();
                     }
                 })
@@ -809,10 +861,10 @@
 
             /**
      * Zooms the Mandelbrot set visualization.
-     * @param {number} size - The new size of the visualization.
+     * @param {FloatExp} size - The new size of the visualization.
      */
             zoom(size) {
-                Decimal.config({ precision: parseInt(-Math.log10(size)) + 10 })
+                Decimal.config({ precision: -size.exp + 10 })
                 this.size = size;
             }
 
@@ -837,7 +889,7 @@
      */
             home() {
                 this.goto(new DeepComplex(new Decimal(0), new Decimal(0)))
-                this.size = 4;
+                this.size = new FloatExp(4);
             }
 
             /**
@@ -852,9 +904,8 @@
                 if (!baseX) baseX = this.canvas.width / 2;
                 if (!baseY) baseY = this.canvas.height / 2;
                 return new FloatExpComplex(
-                    new FloatExp((x - baseX) / this.canvas.width).mul(new FloatExp(this.size)),
-
-                    new FloatExp((baseY - y) / this.canvas.height).mul(new FloatExp(this.size))
+                    this.size.mul((x - baseX) / this.canvas.width),
+                    this.size.mul((baseY - y) / this.canvas.height)
                 )
                 // return new Complex(
                 //     (x - baseX) / this.canvas.width * this.size,
@@ -914,15 +965,16 @@
 
                 reInput.value = this.center.re;
                 imInput.value = this.center.im;
-                zoomInput.value = (4 / this.size).toExponential(6)
+                zoomInput.value = new FloatExp(4).div(this.size).toString()
                 itInput.value = this.iterations;
 
-                let base, ref, glitches, coeff;
+                let base, ref, refComplex, glitches, coeff;
                 let refLen = 0;
-                if (this.size <= 1e-11) {
+                if (this.size.doubleValue() <= 1e-11) {
                     console.log(performance.now() + " computing reference")
                     base = rebase ? this.center.add(this.getDelta(this.rebase[0], this.rebase[1])) : this.center;
                     ref = getReferenceOrbit(base, this.iterations, this.bailout);
+                    refComplex = ref.map(e => e.toComplex());
                     refLen = ref.length;
                     this.stats.ref++;
                     console.log("ref iter: " + ref.length)
@@ -946,7 +998,7 @@
                 let paint = (x, y) => {
                     // if (this.size > 1e-10) delta = delta.toComplex()
                     let newIter;
-                    if (this.size > 1e-11) {
+                    if (this.size.doubleValue() > 1e-11) {
                         let delta = this.getDelta(x, y);
                         let z = this.center.downCast().add(delta.toComplex())
                         newIter = getDirect(z.re, z.im, this.bailout, this.iterations)
@@ -954,12 +1006,18 @@
                     else {
                         let delta = rebase ? this.getDelta(x, y, this.rebase[0], this.rebase[1]) : this.getDelta(x, y);
                         if (coeff.it > 200) {
-                            let approx = approximate(delta, coeff.coeff).toComplex()
-                            delta = delta.toComplex();
-                            newIter = getPT(approx, delta, ref, this.iterations, this.bailout, coeff.it);
+                            let approx = approximate(delta, coeff.coeff)
+                            if (approx.re.exp < -160 || approx.im.exp < -160)
+                                newIter = getPTIterFloatExp(approx, delta, ref, this.iterations, this.bailout, coeff.it);
+                            else
+                                newIter = getPT(approx.toComplex(), delta.toComplex(), refComplex, this.iterations, this.bailout, coeff.it);
                         } else {
-                            delta = delta.toComplex();
-                            newIter = getPT(delta, delta, ref, this.iterations, this.bailout);
+                            if (delta.scale < -320) {
+                                newIter = getPTIterFloatExp(delta, delta, ref, this.iterations, this.bailout);
+                            } else {
+                                delta = delta.toComplex();
+                                newIter = getPT(delta, delta, refComplex, this.iterations, this.bailout);
+                            }
                         }
                     }
 
@@ -973,7 +1031,6 @@
 
                 let showInfo = () => {
                     let totalPixels = this.canvas.width * this.canvas.height;
-                    console.log(refLen)
                     let statusText = `Reference: ${this.stats.ref} (${refLen}it)\nApproximation: ${this.stats.approx}it (${(this.stats.approx / refLen * 100).toFixed(2)}%)\nCalculation: ${this.stats.calc} (${(this.stats.calc / totalPixels * 100).toFixed(2)}%)\nGuessed: ${this.stats.guess} (${(this.stats.guess / totalPixels * 100).toFixed(2)}%)\nTime: ${((performance.now() - this.stats.time) / 1000).toFixed(3)}s`;
                     if (!this.rendering) statusText += "\nDone!";
                     statsLabel.innerText = statusText;
@@ -1092,7 +1149,7 @@
         let c = new DeepComplex(
             new Decimal(0), new Decimal(0));
 
-        let size = 4;
+        let size = new FloatExp(4);
         let bailout = 2;
         let iterations = 256;
 
@@ -1107,7 +1164,7 @@
                 new Decimal(imInput.value)
             ))
 
-            mandelbrot.zoom(4 / parseFloat(zoomInput.value));
+            mandelbrot.zoom(new FloatExp(4).div(parseFloatExp(zoomInput.value)));
             mandelbrot.setIterations(parseInt(itInput.value));
 
             mandelbrot.update();
@@ -1128,19 +1185,19 @@
             mandelbrot.goto(new DeepComplex(
                 new Decimal(loc.re), new Decimal(loc.im)
             ))
-            mandelbrot.zoom(4 / loc.zoom);
+            mandelbrot.zoom(new FloatExp(4).div(loc.zoom));
             mandelbrot.setIterations(loc.it);
             mandelbrot.update()
         })
 
 
         document.getElementById('zoom-in').addEventListener('click', function () {
-            mandelbrot.zoom(mandelbrot.size / 4);
+            mandelbrot.zoom(mandelbrot.size.div(4));
             mandelbrot.update()
         });
 
         document.getElementById('zoom-out').addEventListener('click', function () {
-            mandelbrot.zoom(mandelbrot.size * 4);
+            mandelbrot.zoom(mandelbrot.size.mul(4));
             mandelbrot.update()
         });
 
