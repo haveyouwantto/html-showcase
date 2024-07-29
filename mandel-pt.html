@@ -37,6 +37,8 @@
             background: repeating-linear-gradient(45deg, var(--theme-color), var(--theme-color) 8px, #000 8px, #000 16px);
             /* Adjust colors for dark mode */
             cursor: crosshair;
+            width: 800px;
+            height: 800px;
         }
 
         button {
@@ -354,7 +356,7 @@
             }
 
             abs() {
-                return this.re.pow(2).plus(this.im.pow(2)).sqrt();
+                return this.re.pow(2).plus(this.im.pow(2));
             }
 
             mul(other) {
@@ -412,7 +414,7 @@
             }
 
             abs() {
-                return this.re.mul(this.re).add(this.im.mul(this.im)).sqrt();
+                return this.re.mul(this.re).add(this.im.mul(this.im));
             }
 
             mul(other) {
@@ -522,10 +524,9 @@
  * Calculates the reference orbit for a given complex number 'c' using the Mandelbrot iteration.
  * @param {DeepComplex} c - The complex number for which the reference orbit is calculated.
  * @param {number} iterations - The number of iterations to perform.
- * @param {number} [bailout=2] - The bailout value used for iteration termination.
  * @returns {FloatExpComplex[]} - An array containing the reference orbit.
  */
-        function getReferenceOrbit(c, iterations, bailout = 2) {
+        function getReferenceOrbit(c, iterations) {
             const z = new DeepComplex(0, 0);
             const orbit = [];
             for (let i = 0; i < iterations; i++) {
@@ -547,7 +548,7 @@
  * @param {number} [bailout=2] - The bailout value used for iteration termination.
  * @returns {{ it: number, coeff: FloatExpComplex[] }} - An object containing the number of iterations and series coefficients.
  */
-        function getSeriesCoefficients(ref, validate, iterations, bailout = 2) {
+        function getSeriesCoefficients(ref, validate, iterations, bailout = 4) {
             let coefficients = [...Array(6)].map(e => new FloatExpComplex(0, 0));
             let lastCoeff;
 
@@ -569,7 +570,7 @@
                     let error = Math.abs((approx.re.div(v2.re).abs().add(approx.im.div(v2.im).abs())).sub(new FloatExp(2, 0)).doubleValue());
                     // console.log(n, approx, v2, error)
 
-                    if (error > 1e-4 || Z.add(v2).abs().doubleValue() > 2) return {
+                    if (error > 1e-4 || Z.add(v2).abs().doubleValue() > bailout) return {
                         it: n,
                         coeff: lastCoeff
                     };
@@ -652,7 +653,7 @@
             let re1 = re;
             let im1 = im;
 
-            while (re * re + im * im < bailout * bailout && it <= maxiter) {
+            while (re * re + im * im < bailout && it <= maxiter) {
                 // console.log(re, im);
                 let temp = re * re - im * im + re1;
                 im = 2 * re * im + im1;
@@ -690,9 +691,9 @@
                 const Z2 = ref[refIter]
                 const valR = Z2.re + pertR;
                 const valI = Z2.im + pertI;
-                const val = Math.sqrt(valR * valR + valI * valI);
+                const val = valR * valR + valI * valI;
                 if (val > bailout) return iter;
-                if (val < Math.sqrt(pertR * pertR + pertI * pertI) || refIter == ref.length - 1) {
+                if (val < pertR * pertR + pertI * pertI || refIter == ref.length - 1) {
                     pertR = valR;
                     pertI = valI;
                     refIter = 0;
@@ -718,8 +719,11 @@
                 let Z2 = ref[refIter];
                 let val = Z2.add(delta);// 合并参考与delta
 
+                if (delta.re.exp > -160 && delta.im.exp > -160) {
+                    return [iter, delta];
+                }
                 if (val.abs().doubleValue() > 4) {
-                    return iter;
+                    return [iter, null];
                 }  // 逃逸检测
                 if (val.abs().sub(delta.abs()).doubleValue() < 0 || refIter == ref.length - 1) { // 检测是否需要变基
                     delta = val;
@@ -727,7 +731,7 @@
                 }
                 iter++;
             }
-            return iter;
+            return [iter, null];
         }
 
         /**
@@ -810,7 +814,7 @@
             constructor(canvas, center, iterations, bailout) {
                 this.center = center;
                 this.iterations = iterations;
-                this.bailout = bailout;
+                this.bailout = bailout * bailout;
 
                 this.size = new FloatExp(4);
 
@@ -822,8 +826,8 @@
                 canvas.addEventListener('mousedown', e => {
                     if (e.button === 0 && !this.rendering) {
                         // Left click: decrease size
-                        console.log(this.getDelta(e.offsetX, e.offsetY));
-                        this.goto(this.center.add(this.getDelta(e.offsetX, e.offsetY)));
+                        console.log(this.getDelta(e.offsetX * dpr, e.offsetY * dpr));
+                        this.goto(this.center.add(this.getDelta(e.offsetX * dpr, e.offsetY * dpr)));
                         this.zoom(this.size.div(4))
                         this.update();
                     }
@@ -833,7 +837,7 @@
                     e.preventDefault();
                     if (!this.rendering)
                         if (e.deltaY < 0) {
-                            this.goto(this.center.add(this.getDelta(e.offsetX, e.offsetY)));
+                            this.goto(this.center.add(this.getDelta(e.offsetX * dpr, e.offsetY * dpr)));
                             this.zoom(this.size.div(4))
                             this.update();
                         } else if (e.deltaY > 0) {
@@ -1007,9 +1011,10 @@
                         let delta = rebase ? this.getDelta(x, y, this.rebase[0], this.rebase[1]) : this.getDelta(x, y);
                         if (coeff.it > 200) {
                             let approx = approximate(delta, coeff.coeff)
-                            if (approx.re.exp < -160 || approx.im.exp < -160)
-                                newIter = getPTIterFloatExp(approx, delta, ref, this.iterations, this.bailout, coeff.it);
-                            else
+                            if (approx.re.exp < -160 || approx.im.exp < -160) {
+                                let result = getPTIterFloatExp(approx, delta, ref, this.iterations, this.bailout, coeff.it);
+                                newIter = result[1] == null ? result[0] : getPT(result[1].toComplex(), delta.toComplex(), refComplex, this.iterations, this.bailout, result[0]);
+                            } else
                                 newIter = getPT(approx.toComplex(), delta.toComplex(), refComplex, this.iterations, this.bailout, coeff.it);
                         } else {
                             if (delta.scale < -320) {
@@ -1152,6 +1157,10 @@
         let size = new FloatExp(4);
         let bailout = 2;
         let iterations = 256;
+
+        const dpr = window.devicePixelRatio;
+        canvas.width = dpr * 800;
+        canvas.height = dpr * 800;
 
 
         const mandelbrot = new Mandelbrot(canvas, c, iterations, bailout)
