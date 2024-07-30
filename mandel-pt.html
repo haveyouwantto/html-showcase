@@ -158,6 +158,7 @@
             </div>
             <button id="goto">Go</button>
             <button id="home">Home</button>
+            <button id="copy">Copy URL</button>
             <button id="download">Download</button>
             <hr>
             Samples
@@ -1319,6 +1320,15 @@
             mandelbrot.setIterations(mandelbrot.iterations / 2);
             mandelbrot.update()
         });
+        
+        document.getElementById("copy").addEventListener('click', e => {
+        	const url = location.protocol + "//" + location.host + location.pathname +
+        	"?re=" + mandelbrot.center.re +
+        	"&im=" + mandelbrot.center.im +
+        	"&zoom=" + new FloatExp(4).div(mandelbrot.size) +
+        	"&iter=" + mandelbrot.iterations;
+        	navigator.clipboard.writeText(url).then(()=>alert("Success"))
+        })
     </script>
 </body>
 
