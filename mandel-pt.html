@@ -1242,6 +1242,27 @@
         let size = new FloatExp(4);
         let bailout = 2;
         let iterations = 256;
+        
+        location.search.slice(1).split("&").forEach(e=>{
+        	let kv=e.split("=", 2);
+        	switch(kv[0]){
+        		case "re":
+        		c.re=new Decimal(kv[1]);
+        		break;
+        		case "im":
+        		c.im=new Decimal(kv[1]);
+        		break;
+        		case "zoom":
+        		size=getFloatExp(kv[1]);
+        		break;
+        		case "iter":
+        		iterations=parseInt(kv[1]);
+        		break;
+        		case "bailout":
+        		bailout=parseFloat(kv[1]);
+        		break;
+        	}
+        	});
 
         const mandelbrot = new Mandelbrot(canvas, c, iterations, bailout)
         mandelbrot.zoom(size)
