@@ -235,6 +235,27 @@
                 }
             }
 
+            addMut(other) {
+                if (other.base == 0) return this;
+                else if (this.base == 0) {
+                    this.base = other.base;
+                    this.exp = other.exp;
+                    return this;
+                }
+                const expDiff = other.exp - this.exp;
+                if (expDiff == 0) {
+                    this.base += other.base;
+                    return this.norm();
+                } else if (expDiff > 16) {
+                    this.base = other.base;
+                    this.exp = other.exp;
+                    return this;
+                } else {
+                    this.base += other.base * Math.pow(10, expDiff);
+                    return this.norm();
+                }
+            }
+
             sub(other) {
                 if (typeof other == 'number') return this.sub(new FloatExp(other));
                 if (other.base == 0) return this;
@@ -248,6 +269,28 @@
                 }
             }
 
+            subMut(other) {
+                if (other.base == 0) return this;
+                else if (this.base == 0) {
+                    this.base = -other.base;
+                    this.exp = other.exp;
+                    return this;
+                }
+                const expDiff = other.exp - this.exp;
+                if (expDiff == 0) {
+                    this.base -= other.base;
+                    return this.norm();
+                } else if (expDiff > 16) {
+                    this.base = -other.base;
+                    this.exp = other.exp;
+                    return this;
+                } else {
+                    this.base -= other.base * Math.pow(10, expDiff);
+                    return this.norm();
+                }
+            }
+
+
             mul(other) {
                 if (other instanceof FloatExp)
                     return new FloatExp(this.base * other.base, this.exp + other.exp)
@@ -255,11 +298,23 @@
                     return new FloatExp(this.base * other, this.exp);
             }
 
+            mulMut(other) {
+                this.base *= other.base;
+                this.exp += other.exp;
+                return this.norm();
+            }
+
             div(other) {
                 if (other instanceof FloatExp)
                     return new FloatExp(this.base / other.base, this.exp - other.exp)
                 else if (typeof other == 'number')
                     return new FloatExp(this.base / other, this.exp);
+            }
+
+            divMut(other) {
+                this.base /= other.base;
+                this.exp -= other.exp;
+                return this.norm();
             }
 
             abs() {
@@ -273,6 +328,10 @@
 
             rev() {
                 return new FloatExp(-this.base, this.exp);
+            }
+
+            copy() {
+                return new FloatExp(this.base, this.exp);
             }
         }
 
@@ -451,6 +510,30 @@
                 )
             }
 
+            addMut(other) {
+                this.re.addMut(other.re);
+                this.im.addMut(other.im);
+                return this;
+            }
+
+            subMut(other) {
+                this.re.subMut(other.re);
+                this.im.subMut(other.im);
+                return this;
+            }
+
+            mulMut(other) {
+                const x = this.re;
+                const y = this.im;
+                this.re = x.mul(other.re).subMut(y.mul(other.im));
+                this.im = x.mulMut(other.im).addMut(y.mulMut(other.re));
+                return this;
+            }
+
+            copy() {
+                return new FloatExpComplex(this.re.copy(), this.im.copy());
+            }
+
             toComplex() {
                 return new Complex(this.re.doubleValue(), this.im.doubleValue());
             }
@@ -521,21 +604,30 @@
         }
 
         /**
- * Calculates the reference orbit for a given complex number 'c' using the Mandelbrot iteration.
- * @param {DeepComplex} c - The complex number for which the reference orbit is calculated.
- * @param {number} iterations - The number of iterations to perform.
- * @returns {FloatExpComplex[]} - An array containing the reference orbit.
- */
+        * Calculates the reference orbit for a given complex number 'c' using the Mandelbrot iteration.
+        * @param {DeepComplex} c - The complex number for which the reference orbit is calculated.
+        * @param {number} iterations - The number of iterations to perform.
+        * @returns {FloatExpComplex[]} - An array containing the reference orbit.
+        */
         function getReferenceOrbit(c, iterations) {
             const z = new DeepComplex(0, 0);
             const orbit = [];
             for (let i = 0; i < iterations; i++) {
-                if (z.abs() > 10000) {
+                const x = z.re;
+                const y = z.im;
+                const x2 = x.times(x);
+                const y2 = y.times(y);
+
+                if (x2.add(y2) > 10000) {
                     console.warn(`${c} is not a valid reference point!`)
                     break
                 };
+
                 orbit.push(z.toFloatExp());
-                iterate(z, c);
+
+                z.re = x2.minus(y2).add(c.re)
+                z.im = x.mul(y).mul(2).add(c.im)
+
             }
             return orbit;
         }
@@ -620,23 +712,12 @@
          */
         function approximate(c, coeff) {
             let result = new FloatExpComplex(0, 0);
-            let cn = c;
+            let cn = c.copy();
             for (let i = 0; i < coeff.length; i++) {
-                result = result.add(coeff[i].mul(cn))
-                cn = cn.mul(c)
+                result.addMut(coeff[i].mul(cn))
+                cn.mulMut(c)
             }
             return result
-        }
-
-        /**
-         * Performs one iteration of the Mandelbrot iteration on a complex number 'z' using 'c'.
-         * @param {DeepComplex} z - The complex number being iterated.
-         * @param {DeepComplex} c - The constant complex number.
-         */
-        function iterate(z, c) {
-            const x = z.re.times(z.re).minus(z.im.times(z.im)).add(c.re);
-            z.im = z.re.times(z.im).times(2).add(c.im);
-            z.re = x;
         }
 
         /**
@@ -683,7 +764,7 @@
             while (iter < maxIter) {
                 const Z = ref[refIter]
 
-                tmp = 2 * (Z.re * pertR - Z.im * pertI) + (pertR * pertR - pertI * pertI) + origin.re;
+                tmp = (2 * Z.re + pertR) * pertR - (2 * Z.im + pertI) * pertI + origin.re;
                 pertI = 2 * (Z.re * pertI + Z.im * pertR + pertR * pertI) + origin.im;
                 pertR = tmp;
                 refIter++;
@@ -704,16 +785,13 @@
         }
 
         function getPTIterFloatExp(delta, origin, ref, maxIter, bailout, start = 0) {
-            let tmp;
-
             let iter = start;
             let refIter = start;
             while (iter < maxIter) {
                 let Z = ref[refIter];
 
                 // 计算delta的影响
-                tmp = Z.mul(delta).mul(2).add(delta.mul(delta)).add(origin);
-                delta = tmp;
+                delta.mulMut(Z.mul(2).addMut(delta)).addMut(origin);
                 refIter++;
 
                 let Z2 = ref[refIter];
@@ -826,8 +904,8 @@
                 canvas.addEventListener('mousedown', e => {
                     if (e.button === 0 && !this.rendering) {
                         // Left click: decrease size
-                        console.log(this.getDelta(e.offsetX * dpr, e.offsetY * dpr));
-                        this.goto(this.center.add(this.getDelta(e.offsetX * dpr, e.offsetY * dpr)));
+                        console.log(this.getDelta(e.offsetX, e.offsetY));
+                        this.goto(this.center.add(this.getDelta(e.offsetX, e.offsetY)));
                         this.zoom(this.size.div(4))
                         this.update();
                     }
@@ -837,7 +915,7 @@
                     e.preventDefault();
                     if (!this.rendering)
                         if (e.deltaY < 0) {
-                            this.goto(this.center.add(this.getDelta(e.offsetX * dpr, e.offsetY * dpr)));
+                            this.goto(this.center.add(this.getDelta(e.offsetX, e.offsetY)));
                             this.zoom(this.size.div(4))
                             this.update();
                         } else if (e.deltaY > 0) {
@@ -1157,11 +1235,6 @@
         let size = new FloatExp(4);
         let bailout = 2;
         let iterations = 256;
-
-        const dpr = window.devicePixelRatio;
-        canvas.width = dpr * 800;
-        canvas.height = dpr * 800;
-
 
         const mandelbrot = new Mandelbrot(canvas, c, iterations, bailout)
         mandelbrot.zoom(size)
