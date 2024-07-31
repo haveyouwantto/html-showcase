@@ -663,11 +663,11 @@
                 for (let i = 0; i < iterZ.length; i++) {
                     let z = validate[i];
                     let v = iterZ[i];
-                    let v2 = v.mul(Z).mul(2).add(v.mul(v)).add(validate[i]); // 2Zz+z^2+c
+                    let v2 = v.mul(Z).mul(2).addMut(v.mul(v)).addMut(validate[i]); // 2Zz+z^2+c
 
                     let approx = approximate(z, coefficients)
 
-                    let error = Math.abs((approx.re.div(v2.re).abs().add(approx.im.div(v2.im).abs())).sub(new FloatExp(2, 0)).doubleValue());
+                    let error = Math.abs((approx.re.div(v2.re).abs().addMut(approx.im.div(v2.im).abs())).subMut(new FloatExp(2, 0)).doubleValue());
                     // console.log(n, approx, v2, error)
 
                     if (error > 1e-4 || Z.add(v2).abs().doubleValue() > bailout) return {
@@ -742,9 +742,12 @@
             let re1 = re;
             let im1 = im;
 
-            while (re * re + im * im < bailout && it <= maxiter) {
+            while (it <= maxiter) {
                 // console.log(re, im);
-                let temp = re * re - im * im + re1;
+                let re2 = re * re;
+                let im2 = im * im;
+                if (re2 + im2 > bailout) return it;
+                let temp = re2 - im2 + re1;
                 im = 2 * re * im + im1;
                 re = temp;
                 it++;
@@ -1243,27 +1246,27 @@
         let size = new FloatExp(4);
         let bailout = 2;
         let iterations = 256;
-        
-        location.search.slice(1).split("&").forEach(e=>{
-        	let kv=e.split("=", 2);
-        	switch(kv[0]){
-        		case "re":
-        		c.re=new Decimal(kv[1]);
-        		break;
-        		case "im":
-        		c.im=new Decimal(kv[1]);
-        		break;
-        		case "zoom":
-        		size=new FloatExp(4).div(getFloatExp(kv[1]));
-        		break;
-        		case "iter":
-        		iterations=parseInt(kv[1]);
-        		break;
-        		case "bailout":
-        		bailout=parseFloat(kv[1]);
-        		break;
-        	}
-        	});
+
+        location.search.slice(1).split("&").forEach(e => {
+            let kv = e.split("=", 2);
+            switch (kv[0]) {
+                case "re":
+                    c.re = new Decimal(kv[1]);
+                    break;
+                case "im":
+                    c.im = new Decimal(kv[1]);
+                    break;
+                case "zoom":
+                    size = new FloatExp(4).div(getFloatExp(kv[1]));
+                    break;
+                case "iter":
+                    iterations = parseInt(kv[1]);
+                    break;
+                case "bailout":
+                    bailout = parseFloat(kv[1]);
+                    break;
+            }
+        });
 
         const mandelbrot = new Mandelbrot(canvas, c, iterations, bailout)
         mandelbrot.zoom(size)
@@ -1320,14 +1323,14 @@
             mandelbrot.setIterations(mandelbrot.iterations / 2);
             mandelbrot.update()
         });
-        
+
         document.getElementById("copy").addEventListener('click', e => {
-        	const url = location.protocol + "//" + location.host + location.pathname +
-        	"?re=" + mandelbrot.center.re +
-        	"&im=" + mandelbrot.center.im +
-        	"&zoom=" + new FloatExp(4).div(mandelbrot.size) +
-        	"&iter=" + mandelbrot.iterations;
-        	navigator.clipboard.writeText(url).then(()=>alert("Success"))
+            const url = location.protocol + "//" + location.host + location.pathname +
+                "?re=" + mandelbrot.center.re +
+                "&im=" + mandelbrot.center.im +
+                "&zoom=" + new FloatExp(4).div(mandelbrot.size) +
+                "&iter=" + mandelbrot.iterations;
+            navigator.clipboard.writeText(url).then(() => alert("Success"))
         })
     </script>
 </body>
