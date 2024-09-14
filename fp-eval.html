@@ -24,17 +24,17 @@ h1 {
 }
 
 #output {
-    display: flex;
-    flex-wrap: wrap;
+   # display: flex;
+  #  flex-wrap: wrap;
     margin-top: 20px;
-    max-width: 400px; /* Adjust as needed */
+    #max-width: 400px; /* Adjust as needed */
 }
 
 .bit {
     width: 32px; /* Width of each bit div */
     height: 32px; /* Height of each bit div */
     border: 1px solid #444; /* Darker border */
-    display: flex;
+    display: inline-flex;
     align-items: center;
     justify-content: center;
     margin: 2px;
@@ -90,6 +90,36 @@ h1 {
     <script>
         let binaryString = '';
         
+        function initializeBits(){
+        	// Clear previous output
+            const outputDiv = document.getElementById('output');
+            
+            // Create divs for each bit with appropriate IDs and classes
+            for (let i = 0; i < 64; i++) {
+                const bitDiv = document.createElement('div');
+                bitDiv.className = 'bit';
+
+                // Assign classes based on the position of the bit
+                if (i === 0) {
+                    bitDiv.classList.add('sign'); // Sign bit
+                } else if (i > 0 && i <= 11) {
+                    bitDiv.classList.add('exponent'); // Exponent bits
+                } else {
+                    bitDiv.classList.add('mantissa'); // Mantissa bits
+                }
+
+                // Set ID and text content
+                bitDiv.id = `bit${i}`;
+                bitDiv.innerText = '0';
+
+                // Add click event to flip the bit
+                bitDiv.onclick = () => flipBit(i);
+                
+                outputDiv.appendChild(bitDiv);
+                if (i%8==7) outputDiv.appendChild(document.createElement('br'));
+            }
+        }
+        
         function evaluateFloat() {
             const input = document.getElementById('floatInput').value;
             const floatNumber = parseFloat(input);
@@ -110,34 +140,6 @@ h1 {
             for (let i = 0; i < 8; i++) {
                 const byte = view.getUint8(i);
                 binaryString += byte.toString(2).padStart(8, '0'); // Convert to binary
-            }
-
-            // Clear previous output
-            const outputDiv = document.getElementById('output');
-            outputDiv.innerHTML = '';
-            
-            // Create divs for each bit with appropriate IDs and classes
-            for (let i = 0; i < binaryString.length; i++) {
-                const bitDiv = document.createElement('div');
-                bitDiv.className = 'bit';
-
-                // Assign classes based on the position of the bit
-                if (i === 0) {
-                    bitDiv.classList.add('sign'); // Sign bit
-                } else if (i > 0 && i <= 11) {
-                    bitDiv.classList.add('exponent'); // Exponent bits
-                } else {
-                    bitDiv.classList.add('mantissa'); // Mantissa bits
-                }
-
-                // Set ID and text content
-                bitDiv.id = `bit${i}`;
-                bitDiv.innerText = binaryString[i];
-
-                // Add click event to flip the bit
-                bitDiv.onclick = () => flipBit(i);
-                
-                outputDiv.appendChild(bitDiv);
             }
 
             updateDetail(floatNumber);
@@ -176,27 +178,11 @@ h1 {
 
          function updateOutput() {
              const outputDiv = document.getElementById('output');
-             outputDiv.innerHTML = '';
 
              for (let i = 0; i < binaryString.length; i++) {
-                 const bitDiv = document.createElement('div');
-                 bitDiv.className = 'bit';
-
-                 if (i === 0) {
-                     bitDiv.classList.add('sign');
-                 } else if (i > 0 && i <= 11) {
-                     bitDiv.classList.add('exponent');
-                 } else {
-                     bitDiv.classList.add('mantissa');
-                 }
-
-                 bitDiv.id = `bit${i}`;
+                 const bitDiv = document.getElementById('bit'+i);
+                 
                  bitDiv.innerText = binaryString[i];
-
-                 // Add click event to flip the bit
-                 bitDiv.onclick = () => flipBit(i);
-
-                 outputDiv.appendChild(bitDiv);
              }
          }
 
@@ -216,6 +202,8 @@ h1 {
              
              document.getElementById('detail').innerHTML = detailText;
          }
+         
+         initializeBits();
     </script>
 </body>
 </html>
