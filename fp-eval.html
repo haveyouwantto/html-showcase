@@ -249,10 +249,11 @@
 
             let exponentValue = exponentBits - 1023;
 
-            let mantissaBitsMost = (data.mostInt & 0xfffff);
-            let mantissaBitsLeast = data.leastInt;
+            let mantissaBitsMost = (data.mostInt & 0xfffff) | 0x100000;
+            let mantissaBitsLeast = data.leastInt >>> 0;
 
-            let mantissaValue = mantissaBitsMost / (2 ** 20) + mantissaBitsLeast / (2 ** 48);
+            let mantissaValue = mantissaBitsMost / (2 ** 20) + mantissaBitsLeast / (2 ** 52);
+            console.log(mantissaBitsLeast)
             let mantissaValueString = mantissaValue.toString().slice(2);
             if (mantissaValueString === "") mantissaValueString = '0';
 
