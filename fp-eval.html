@@ -249,18 +249,17 @@
 
             let exponentValue = exponentBits - 1023;
 
-            let mantissaBitsMost = (data.mostInt & 0xfffff) | 0x100000;
+            let mantissaBitsMost = (data.mostInt & 0xfffff);
             let mantissaBitsLeast = data.leastInt;
 
-            console.log(mantissaBitsMost)
             let mantissaValue = mantissaBitsMost / (2 ** 20) + mantissaBitsLeast / (2 ** 48);
 
             const detailText = `
                 <div class="detail-bytes">0x${bytes}</div>
                  <div>${float} =</div>
                  <div><span class="detail-sign">${signBit}</span> *
-                 2^(<span class="detail-exponent">${exponentValue}</span>) *
-                 (<span class="detail-mantissa">${mantissaValue}</span>)</div>`;
+                 2^<span class="detail-exponent">${exponentValue}</span> *
+                 1.<span class="detail-mantissa">${mantissaValue.toString().slice(2)}</span></div>`;
 
             document.getElementById('detail').innerHTML = detailText;
         }
