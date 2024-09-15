@@ -1,99 +1,140 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, content=width=device-width, initial-scale=1.0">
     <title>Float Bit Evaluator</title>
     <style>
         body {
-    font-family: Arial, sans-serif;
-    margin: 20px;
-    background-color: #121212; /* Dark background */
-    color: #e0e0e0; /* Light text color */
-}
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background-color: #121212;
+            /* Dark background */
+            color: #e0e0e0;
+            /* Light text color */
+        }
 
-h1 {
-    color: #ffffff; /* White color for the heading */
-}
+        h1 {
+            color: #ffffff;
+            /* White color for the heading */
+        }
 
-#floatInput {
-	color: white;
-	background-color: transparent;
-	padding: 5px;
-	margin: 6px;
-}
+        button {
+            display: inline-block;
+            margin: 20px;
+            padding: 10px 20px;
+            font-size: 18px;
+            color: #fff;
+            background-color: #33b73a;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
 
-#output {
-   # display: flex;
-  #  flex-wrap: wrap;
-    margin-top: 20px;
-    #max-width: 400px; /* Adjust as needed */
-}
+        #floatInput {
+            color: white;
+            background-color: transparent;
+            padding: 8px;
+            font-size: 16px;
+            margin: 6px;
+            border: 2px solid white;
+            border-radius: 8px;
+        }
 
-.bit {
-    width: 32px; /* Width of each bit div */
-    height: 32px; /* Height of each bit div */
-    border: 1px solid #444; /* Darker border */
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    margin: 2px;
-    font-size: 24px;
-    font-weight: bold;
-    cursor: pointer; /* Indicate that bits are clickable */
-    transition: background-color 0.3s; /* Smooth transition */
-}
+        .container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
 
-.sign {
-    background-color: #F44336; /* Color for sign bit */
-}
+        .bit {
+            width: 32px;
+            /* Width of each bit div */
+            height: 32px;
+            /* Height of each bit div */
+            /* Darker border */
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            /* border-radius: 4px; */
+            margin: 2px;
+            font-size: 24px;
+            font-weight: bold;
+            cursor: pointer;
+            /* Indicate that bits are clickable */
+            transition: background-color 0.3s;
+            /* Smooth transition */
+        }
 
-.exponent {
-    background-color: #2196F3; /* Color for exponent bits */
-}
+        .sign {
+            background-color: #E53935;
+            /* Color for sign bit */
+        }
 
-.mantissa {
-    background-color: #4CAF50; /* Color for mantissa bits */
-}
+        .exponent {
+            background-color: #1E88E5;
+            /* Color for exponent bits */
+        }
 
-.bit:hover {
-    background-color: rgba(255, 255, 255, 0.1); /* Lighten on hover */
-}
+        .mantissa {
+            background-color: #43A047;
+            /* Color for mantissa bits */
+        }
 
-#detail {
-    margin-top: 20px;
-    font-size: 18px;
-}
+        .bit:hover {
+            background-color: rgba(255, 255, 255, 0.1);
+            /* Lighten on hover */
+        }
 
-.detail-sign {
-    color: #ff5252; /* Color for sign part in detail */
-}
+        #detail {
+            margin-top: 20px;
+            font-size: 18px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
 
-.detail-exponent {
-    color: #448aff; /* Color for exponent part in detail */
-}
+        .detail-bytes {
+            margin: 5px;
+            margin-bottom: 16px;
+            font-size: 24px;
+        }
 
-.detail-mantissa {
-    color: #66bb6a; /* Color for mantissa part in detail */
-}
+        .detail-sign {
+            color: #F44336;
+            /* Color for sign part in detail */
+        }
 
+        .detail-exponent {
+            color: #2196F3;
+            /* Color for exponent part in detail */
+        }
+
+        .detail-mantissa {
+            color: #4CAF50;
+            /* Color for mantissa part in detail */
+        }
     </style>
 </head>
-<body>
-    <h1>Float Bit Evaluator</h1>
-    <input type="number" step="any" id="floatInput" placeholder="Enter a double precision number">
-    <button onclick="evaluateFloat()">Evaluate</button>
 
-    <div id="output"></div>
-    <div id="detail"></div>
+<body>
+    <div class="container">
+        <h1>Float Bit Evaluator</h1>
+        <input step="any" id="floatInput" placeholder="Enter a double precision number">
+        <button onclick="evaluateFloat()">Evaluate</button>
+
+        <div id="output"></div>
+        <div id="detail"></div>
+    </div>
 
     <script>
-        let binaryString = '';
-        
-        function initializeBits(){
-        	// Clear previous output
+        let bits = [...Array(64)].map(i => false);
+
+        function initializeBits() {
+            // Clear previous output
             const outputDiv = document.getElementById('output');
-            
+
             // Create divs for each bit with appropriate IDs and classes
             for (let i = 0; i < 64; i++) {
                 const bitDiv = document.createElement('div');
@@ -114,19 +155,27 @@ h1 {
 
                 // Add click event to flip the bit
                 bitDiv.onclick = () => flipBit(i);
-                
+
                 outputDiv.appendChild(bitDiv);
-                if (i%8==7) outputDiv.appendChild(document.createElement('br'));
+                if (i % 8 == 7) outputDiv.appendChild(document.createElement('br'));
             }
         }
-        
+
+        function updateBits() {
+            for (let i = 0; i < 64; i++) {
+                const bit = bits[i];
+                const bitDiv = document.getElementById('bit' + i);
+                if (bit) bitDiv.innerText = '1';
+                else bitDiv.innerText = '0';
+            }
+        }
+
         function evaluateFloat() {
             const input = document.getElementById('floatInput').value;
             const floatNumber = parseFloat(input);
-            
+
             if (isNaN(floatNumber)) {
-                document.getElementById('output').innerText = 'Please enter a valid floating point number.';
-                document.getElementById('detail').innerText = '';
+                document.getElementById('detail').innerText = 'Please enter a valid floating point number.';
                 return;
             }
 
@@ -135,75 +184,80 @@ h1 {
             const view = new DataView(buffer);
             view.setFloat64(0, floatNumber);
 
-            // Get the binary representation
-            binaryString = '';
-            for (let i = 0; i < 8; i++) {
-                const byte = view.getUint8(i);
-                binaryString += byte.toString(2).padStart(8, '0'); // Convert to binary
+            for (let i = 0; i < 64; i++) {
+                const pos = parseInt(i / 8);
+                const bitPos = 7 - (i % 8);
+                const byte = view.getUint8(pos, true);
+
+                bits[i] = byte & (1 << bitPos);
             }
 
-            updateDetail(floatNumber);
+            updateBits();
+            updateDetail();
         }
 
         function flipBit(index) {
-            // Flip the specific bit in the binary string
-            binaryString = binaryString.split('');
-            binaryString[index] = binaryString[index] === '0' ? '1' : '0';
-            
-            // Join back into a string
-            binaryString = binaryString.join('');
+            bits[index] = !bits[index];
+            updateBits();
+            updateDetail();
+        }
 
-            // Recalculate the float number from the modified binary string
-            const buffer = new ArrayBuffer(8); 
+        function booleanArrayToInts(boolArray) {
+            if (boolArray.length !== 64) {
+                throw new Error("The array must have exactly 64 elements.");
+            }
+
+            // Helper function to convert a boolean array of 32 elements to an integer
+            function boolArrayToInt(arr) {
+                return arr.reduce((acc, val, idx) => acc | (val ? 1 : 0) << (31 - idx), 0);
+            }
+
+            // Split the array into two halves: first 32 for mostInt, last 32 for leastInt
+            const mostInt = boolArrayToInt(boolArray.slice(0, 32));
+            const leastInt = boolArrayToInt(boolArray.slice(32));
+
+            return { leastInt, mostInt };
+        }
+
+        function updateDetail() {
+            const buffer = new ArrayBuffer(8); // Float64 uses 8 bytes
             const view = new DataView(buffer);
 
-            // Convert back to float64
-            let signBit = binaryString[0] === '1' ? -1 : 1;
+            const data = booleanArrayToInts(bits);
+            view.setInt32(0, data.leastInt, true);
+            view.setInt32(4, data.mostInt, true);
 
-            let exponentBits = binaryString.slice(1, 12); 
-            let exponentValue = parseInt(exponentBits, 2) - 1023; 
+            let bytes = "";
+            for (let i = 7; i >= 0; i--) {
+                const element = view.getUint8(i, true);
+                bytes += element.toString(16).padStart(2, "0").toUpperCase() + " ";
+            }
 
-            let mantissaBits = binaryString.slice(12); 
-            
-             // Calculate mantissa value as a fraction
-             let mantissaValue = mantissaBits.split('').reduce((accum, curr, idx) => accum + (parseInt(curr) * Math.pow(2, -1 * (idx + 1))), 1); 
-             
-             const floatNumber = signBit * mantissaValue * Math.pow(2, exponentValue); 
+            const float = view.getFloat64(0, true);
 
-             view.setFloat64(0, floatNumber);
+            const signBit = data.mostInt & 0x80000000 ? -1 : 1;
+            const exponentBits = (data.mostInt & 0x7ff00000) >> 20;
 
-             updateOutput();
-             updateDetail(floatNumber);
-         }
+            let exponentValue = exponentBits - 1023;
 
-         function updateOutput() {
-             const outputDiv = document.getElementById('output');
+            let mantissaBitsMost = (data.mostInt & 0xfffff) | 0x100000;
+            let mantissaBitsLeast = data.leastInt;
 
-             for (let i = 0; i < binaryString.length; i++) {
-                 const bitDiv = document.getElementById('bit'+i);
-                 
-                 bitDiv.innerText = binaryString[i];
-             }
-         }
+            console.log(mantissaBitsMost)
+            let mantissaValue = mantissaBitsMost / (2 ** 20) + mantissaBitsLeast / (2 ** 48);
 
-         function updateDetail(floatNumber) {
-             const signBit = binaryString[0] === '1' ? -1 : 1;
+            const detailText = `
+                <div class="detail-bytes">0x${bytes}</div>
+                 <div>${float} =</div>
+                 <div><span class="detail-sign">${signBit}</span> *
+                 2^(<span class="detail-exponent">${exponentValue}</span>) *
+                 (<span class="detail-mantissa">${mantissaValue}</span>)</div>`;
 
-             let exponentBits = binaryString.slice(1, 12); 
-             let exponentValue = parseInt(exponentBits, 2) - 1023;
+            document.getElementById('detail').innerHTML = detailText;
+        }
 
-             let mantissaBits = binaryString.slice(12); 
-             let mantissaValue = '1.' + mantissaBits.replace(/(\d)/g, (match) => match === '1' ? '1' : '0');
-
-             const detailText = `${floatNumber} =
-                 <span class="detail-sign">${signBit}</span> *
-                 <span class="detail-exponent">2^(${exponentValue})</span> *
-                 <span class="detail-mantissa">(${mantissaValue})</span>`;
-             
-             document.getElementById('detail').innerHTML = detailText;
-         }
-         
-         initializeBits();
+        initializeBits();
     </script>
 </body>
+
 </html>
