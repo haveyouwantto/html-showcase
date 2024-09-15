@@ -32,6 +32,11 @@
             cursor: pointer;
         }
 
+        button:active {
+            background-color: white;
+            color: black;
+        }
+
         #floatInput {
             color: white;
             background-color: transparent;
@@ -63,8 +68,16 @@
             font-weight: bold;
             cursor: pointer;
             /* Indicate that bits are clickable */
-            transition: background-color 0.3s;
-            /* Smooth transition */
+        }
+
+        .bit:hover {
+            background-color: rgba(255, 255, 255, 0.1);
+            /* Lighten on hover */
+        }
+
+        .bit:active{
+            color: black;
+            background-color: white;
         }
 
         .sign {
@@ -82,10 +95,6 @@
             /* Color for mantissa bits */
         }
 
-        .bit:hover {
-            background-color: rgba(255, 255, 255, 0.1);
-            /* Lighten on hover */
-        }
 
         #detail {
             margin-top: 20px;
