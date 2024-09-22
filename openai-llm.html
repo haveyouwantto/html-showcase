@@ -304,14 +304,14 @@
                 this.copyBtn.textContent = "📋"
                 this.copyBtn.title = 'Copy text'
                 this.copyBtn.onclick = () => {
-                    navigator.clipboard.writeText(this.textarea.value)
+                    navigator.clipboard.writeText(this.textarea.value).then(()=>alert("suceess"))
                 }
 
                 this.clearBtn = document.createElement('button')
                 this.clearBtn.textContent = '🧹';
                 this.clearBtn.title = 'Clear text';
                 this.clearBtn.onclick = () => {
-                    this.textarea.value = '';
+                    if (prompt("clear?")) this.textarea.value = '';
                 }
 
                 this.ascendBtn.onclick = () => {
