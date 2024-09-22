@@ -110,7 +110,8 @@
 
         .dialogue-buttons {
             display: flex;
-            justify-content: flex-end;
+            justify-content: center;
+            flex-wrap: wrap;
         }
 
         .button {
@@ -290,13 +291,28 @@
                 this.buttons.classList.add('dialogue-buttons');
 
                 this.ascendBtn = document.createElement('button')
-                this.descendBtn = document.createElement('button');
-
                 this.ascendBtn.classList.add(`dialogue-ascend`);
-                this.descendBtn.classList.add(`dialogue-descend`)
+                this.ascendBtn.title = "Ascend"
+                this.ascendBtn.textContent = '⬆️';
 
-                this.ascendBtn.textContent = '^';
-                this.descendBtn.textContent = 'v';
+                this.descendBtn = document.createElement('button');
+                this.descendBtn.classList.add(`dialogue-descend`)
+                this.descendBtn.title = "Descend";
+                this.descendBtn.textContent = '⬇️';
+
+                this.copyBtn = document.createElement('button')
+                this.copyBtn.textContent = "📋"
+                this.copyBtn.title = 'Copy text'
+                this.copyBtn.onclick = () => {
+                    navigator.clipboard.writeText(this.textarea.value)
+                }
+
+                this.clearBtn = document.createElement('button')
+                this.clearBtn.textContent = '🧹';
+                this.clearBtn.title = 'Clear text';
+                this.clearBtn.onclick = () => {
+                    this.textarea.value = '';
+                }
 
                 this.ascendBtn.onclick = () => {
                     parent.ascend(this);
@@ -307,10 +323,13 @@
 
                 this.buttons.appendChild(this.ascendBtn);
                 this.buttons.appendChild(this.descendBtn)
+                this.buttons.appendChild(this.copyBtn);
+                this.buttons.appendChild(this.clearBtn)
 
                 this.deleteBtn = document.createElement('button')
                 this.deleteBtn.classList.add('dialogue-delete')
-                this.deleteBtn.textContent = 'x'
+                this.deleteBtn.textContent = '❌'
+                this.deleteBtn.title = 'Delete'
                 this.buttons.appendChild(this.deleteBtn)
 
                 this.editDiv.appendChild(this.buttons)
