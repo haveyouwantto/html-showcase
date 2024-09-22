@@ -127,6 +127,22 @@
             transition: background-color 0.3s ease, color 0.3s ease;
         }
 
+        .generate-panel {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .input {
+            margin: 4px;
+            padding: 4px;
+            border: 1px solid white;
+            border-radius: 4px;
+            font-size: 20px;
+            color: white;
+            background-color: transparent;
+        }
+
         /* Media query for responsiveness */
         @media (max-width: 768px) {
             #editor {
@@ -149,6 +165,12 @@
 
     </div>
     <button class="button" id="add-line">Add Line</button>
+    <menu class="generate-panel">
+        <div>Endpoint<input class="input" id="endpoint" value="http://127.0.0.1:11434"></div>
+        <div>Key<input class="input" type="password" id="api-key"></div>
+        <div>Model<input class="input" id="model" value="llama3"></div>
+        <button class="button" id="generate">Generate</button>
+    </menu>
     <script>
         const sampleFormat = [{
             'role': 'system',
@@ -186,8 +208,8 @@
                 return preset;
             }
 
-            addNewDialogue() {
-                const dialogue = new Dialogue(this, 'user', '')  //创建一个新的dialogue，role为user，content为空
+            addNewDialogue(role = 'user', content = '') {
+                const dialogue = new Dialogue(this, role, content)  //创建一个新的dialogue，role为user，content为空
                 this.div.appendChild(dialogue.div)//将dialogue添加到编辑器中
                 this.dialogues.push(dialogue);    //将dialogue添加到dialogues中
             }
@@ -364,7 +386,7 @@
 
         document.getElementById('copy-preset').onclick = () => {
             const preset = editor.toPreset();//将editor中的preset转换为一个json对象
-            navigator.clipboard.writeText(JSON.stringify(preset)).then(()=>alert('preset copied to clipboard')); //将preset复制到剪贴板中
+            navigator.clipboard.writeText(JSON.stringify(preset)).then(() => alert('preset copied to clipboard')); //将preset复制到剪贴板中
         }
 
         document.getElementById('paste-preset').onclick = () => {
@@ -375,6 +397,44 @@
         }
 
         editor.fromPreset(sampleFormat);  //初始化一个空的preset
+
+        const generateBtn = document.getElementById('generate');
+
+        generateBtn.onclick = () => {
+            const api = document.getElementById('endpoint').value;
+            const key = document.getElementById('api-key').value;
+            const data = {
+                "model": document.getElementById('model').value,
+                "temperature": 0.5,
+                "top_p": 0.9,
+                "presence_penalty": 0.2,
+                "frequency_penalty": 0.2,
+                "messages": editor.toPreset() //将editor中的preset转换为一个json对象
+            }
+
+
+            generateBtn.disabled = true;
+            fetch(api + "/v1/chat/completions", {
+                method: 'POST',
+                body: JSON.stringify(data),
+                headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer' + key }
+            })
+                .then((response) => {
+                    if (response.ok) return response.json()
+                    else {
+                        throw new Error(response.statusText)
+                    }
+                })
+                .then((data) => {
+                    const message = data.choices[0].message;//获取第一个choice的message
+                    editor.addNewDialogue(message.role, message.content)
+                    console.log(data);
+                }).catch((error) => {
+                    alert(error);
+                }).finally(() => {
+                    generateBtn.disabled = false;   //将generateBtn的disabled属性设置为false
+                });
+        }
     </script>
 </body>
 
