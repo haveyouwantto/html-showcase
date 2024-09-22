@@ -311,7 +311,7 @@
                 this.clearBtn.textContent = '🧹';
                 this.clearBtn.title = 'Clear text';
                 this.clearBtn.onclick = () => {
-                    if (prompt("clear?")) this.textarea.value = '';
+                    if (confirm("clear?")) this.textarea.value = '';
                 }
 
                 this.ascendBtn.onclick = () => {
@@ -337,7 +337,7 @@
                 this.div.appendChild(this.editDiv)
 
                 this.deleteBtn.onclick = () => {
-                    this.parent.removeDialogue(this)
+                    if (confirm("delete?")) this.parent.removeDialogue(this)
                 }
             }
 
