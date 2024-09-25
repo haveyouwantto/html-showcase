@@ -97,19 +97,10 @@
         const reverseFreq = 16000;
         let reverse = false;
 
-        // Blackman-Harris window
-        function createWindow(length) {
-            const window = new Float64Array(length);
-            const a0 = 0.35875;
-            const a1 = 0.48829;
-            const a2 = 0.14128;
-            const a3 = 0.01168;
-
-            for (let i = 0; i < length; i++) {
-                window[i] = a0 - a1 * Math.cos((2 * Math.PI * i) / (length - 1)) + a2 * Math.cos((4 * Math.PI * i) / (length - 1)) - a3 * Math.cos((6 * Math.PI * i) / (length - 1));
-            }
-
-            return window;
+        function createCosineWindow(length) {
+            return [...Array(length)].map((v, i) => {
+                return Math.cos(Math.PI * (i / length - 0.5));
+            });
         }
 
         function roundDownToPowerOfTwo(number) {
@@ -130,7 +121,7 @@
 
         function createFilter(taps, freq, bw) {
             const buffer = ctx.createBuffer(1, taps, ctx.sampleRate);
-            const window = createWindow(taps);
+            const window = createCosineWindow(taps);
 
             buffer.getChannelData(0).set(
                 [...Array(taps)].map((v, i) => {
@@ -253,10 +244,10 @@
                 reverse = freq < reverseFreq;
                 if (!reverse) {
                     localOscillator.frequency.value = freq;
-                    filter.buffer = createFilter(parseInt(1001 * multiplier) | 1, freq + bandwidth / 2 , bandwidth / 2 - 100);
+                    filter.buffer = createFilter(parseInt(1001 * multiplier) | 1, freq + bandwidth / 2 - 50, bandwidth / 2 - 100);
                 } else {
                     localOscillator.frequency.value = freq + bandwidth;
-                    filter.buffer = createFilter(parseInt(1001 * multiplier) | 1, freq + bandwidth / 2, bandwidth / 2 - 100);
+                    filter.buffer = createFilter(parseInt(1001 * multiplier) | 1, freq + bandwidth / 2 + 50, bandwidth / 2 - 100);
                 }
             }
             setFrequency(startFreq + bandwidth * (channelSelection.value - 1), bandwidth)
@@ -350,10 +341,10 @@
                     reverse = freq < reverseFreq;
                     if (!reverse) {
                         localOscillator.frequency.value = freq;
-                        bandpass.buffer = createFilter(parseInt(1001 * multiplier) | 1, freq + bandwidth / 2 , bandwidth / 2 - 100);
+                        bandpass.buffer = createFilter(parseInt(1001 * multiplier) | 1, freq + bandwidth / 2 - 50, bandwidth / 2 - 100);
                     } else {
                         localOscillator.frequency.value = freq + bandwidth;
-                        bandpass.buffer = createFilter(parseInt(1001 * multiplier) | 1, freq + bandwidth / 2, bandwidth / 2 - 100);
+                        bandpass.buffer = createFilter(parseInt(1001 * multiplier) | 1, freq + bandwidth / 2 + 50, bandwidth / 2 - 100);
                     }
                     lowpass.buffer = createFilter(101, bandwidth / 2, bandwidth / 2);
                 }
