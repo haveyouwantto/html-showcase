@@ -91,7 +91,7 @@
     </div>
     <canvas id="spectrum"></canvas>
     <script>
-        const ctx = new AudioContext();
+        const ctx = new AudioContext({latencyHint: "balanced"});
         const startFreq = 15000;
         const bandwidth = 3000;
         const reverseFreq = 16000;
