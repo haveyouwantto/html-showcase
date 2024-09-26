@@ -191,6 +191,33 @@
         const sampleLoadBtn = document.getElementById('load-sample')
 
         class FloatExp {
+            static expTable = [];
+            static {
+                this.expTable = [];
+                for (let i = 0; i < 324 + 308; i++) {
+                    this.expTable[i] = Math.pow(10, i - 324);
+                }
+            }
+
+            static getExp(exp) {
+                if (exp < -324) return 0;
+                else if (exp > 308) return Double.POSITIVE_INFINITY;
+                return this.expTable[exp + 324];
+            }
+
+            static getExpOfDouble(d) {
+                let exp = 324;
+                if (d < 0) d = -d;
+                let greater = d > this.expTable[exp];
+                let current = greater;
+                while (current == greater && exp > 0 && exp < this.expTable.length) {
+                    if (current) exp++;
+                    else exp--;
+                    current = d > this.expTable[exp];
+                }
+                return exp - 325;
+            }
+
             constructor(base, exp = 0) {
                 if (isNaN(base) || isNaN(exp) || !isFinite(base) || !isFinite(exp)) {
                     console.log(base, exp)
@@ -202,21 +229,16 @@
             }
 
             norm() {
-                if (this.base != 0) {
-                    while (Math.abs(this.base) >= 10) {
-                        this.exp++;
-                        this.base /= 10;
-                    }
-                    while (Math.abs(this.base) < 1) {
-                        this.exp--;
-                        this.base *= 10;
-                    }
+                if (this.base != 0 && (this.base > 10 || this.base < 1)) {
+                    let exp = FloatExp.getExpOfDouble(this.base);
+                    this.exp += exp;
+                    this.base /= FloatExp.getExp(exp);
                 }
                 return this;
             }
 
             doubleValue() {
-                return this.base * (Math.pow(10, this.exp));
+                return this.base * FloatExp.getExp(this.exp);
             }
 
             toString() {
@@ -233,7 +255,7 @@
                     return new FloatExp(this.base + other.base, this.exp)
                 else if (expDiff > 16) return other;
                 else {
-                    return new FloatExp(this.base + other.base * Math.pow(10, other.exp - this.exp), this.exp)
+                    return new FloatExp(this.base + other.base * FloatExp.getExp(other.exp - this.exp), this.exp)
                 }
             }
 
@@ -253,7 +275,7 @@
                     this.exp = other.exp;
                     return this;
                 } else {
-                    this.base += other.base * Math.pow(10, expDiff);
+                    this.base += other.base * FloatExp.getExp(expDiff);
                     return this.norm();
                 }
             }
@@ -267,7 +289,7 @@
                     return new FloatExp(this.base - other.base, this.exp)
                 else if (expDiff > 16) return other.rev();
                 else {
-                    return new FloatExp(this.base - other.base * Math.pow(10, other.exp - this.exp), this.exp)
+                    return new FloatExp(this.base - other.base * FloatExp.getExp(other.exp - this.exp), this.exp)
                 }
             }
 
@@ -287,7 +309,7 @@
                     this.exp = other.exp;
                     return this;
                 } else {
-                    this.base -= other.base * Math.pow(10, expDiff);
+                    this.base -= other.base * FloatExp.getExp(expDiff);
                     return this.norm();
                 }
             }
@@ -350,7 +372,7 @@
             // Get the exponent
             let exponent = Math.floor(Math.log10(Math.abs(num)));
             // Calculate the significand
-            let significand = num / Math.pow(10, exponent);
+            let significand = num / FloatExp.getExp(exponent);
             return new FloatExp(significand, exponent);
         }
 
