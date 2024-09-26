@@ -201,7 +201,7 @@
 
             static getExp(exp) {
                 if (exp < -324) return 0;
-                else if (exp > 308) return Double.POSITIVE_INFINITY;
+                else if (exp > 308) return Infinity;
                 return this.expTable[exp + 324];
             }
 
