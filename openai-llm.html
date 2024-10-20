@@ -415,7 +415,6 @@
             })
         }
 
-        editor.fromPreset(sampleFormat);  //初始化一个空的preset
 
         const generateBtn = document.getElementById('generate');
 
@@ -454,6 +453,18 @@
                     generateBtn.disabled = false;   //将generateBtn的disabled属性设置为false
                 });
         }
+
+        window.onbeforeunload = e =>{
+            localStorage.setItem("endpoint",document.getElementById("endpoint").value);
+            localStorage.setItem("api-key",document.getElementById("api-key").value);
+            localStorage.setItem("model",document.getElementById("model").value);
+            localStorage.setItem("preset", JSON.stringify(editor.toPreset()))
+        }
+
+        document.getElementById("endpoint").value = localStorage.getItem("endpoint") ?? "";
+        document.getElementById("api-key").value = localStorage.getItem("api-key") ?? "";
+        document.getElementById("model").value = localStorage.getItem("model") ?? "";
+        editor.fromPreset(JSON.parse(localStorage.getItem("preset")) ?? sampleFormat); 
     </script>
 </body>
 
