@@ -59,13 +59,15 @@
             while (sampleRate.length > 125) {
                 sampleRate.shift(); // 保持数组大小
             }
+        });
 
+        setInterval(() => {
             const avgSampleRate = sampleRate.length > 0
                 ? (1 / ((sampleRate[sampleRate.length - 1] - sampleRate[0]) / sampleRate.length / 1000)).toFixed(0)
                 : 0;
 
             document.getElementById('output').innerText = `${avgSampleRate} Hz`;
-        });
+        }, 100);
     </script>
 </body>
 
