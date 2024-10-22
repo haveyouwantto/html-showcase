@@ -56,7 +56,7 @@
                 sampleRate.push(performance.now());
             }
 
-            while (sampleRate.length > 125) {
+            while (sampleRate.length > 250) {
                 sampleRate.shift(); // 保持数组大小
             }
         });
