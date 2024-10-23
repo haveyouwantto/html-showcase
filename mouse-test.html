@@ -52,11 +52,17 @@
 
         window.addEventListener('pointermove', (event) => {
             var events = 'getCoalescedEvents' in event ? event.getCoalescedEvents() : [event];
+
+            let now = performance.now();
+            if (sampleRate.length > 0 && now - sampleRate[sampleRate.length - 1] > 200) {
+                sampleRate = []
+            }
+
             for (const event of events) {
                 sampleRate.push(performance.now());
             }
 
-            while (sampleRate.length > 250) {
+            while (sampleRate.length > 1000) {
                 sampleRate.shift(); // 保持数组大小
             }
         });
@@ -66,7 +72,7 @@
                 ? (1 / ((sampleRate[sampleRate.length - 1] - sampleRate[0]) / sampleRate.length / 1000)).toFixed(0)
                 : 0;
 
-            document.getElementById('output').innerText = `${avgSampleRate} Hz`;
+            document.getElementById('output').innerText = `${isFinite(avgSampleRate) ? avgSampleRate : "-"} Hz`;
         }, 100);
     </script>
 </body>
