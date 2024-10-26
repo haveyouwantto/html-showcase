@@ -95,6 +95,7 @@
         const startFreq = 15000;
         const bandwidth = 3000;
         const reverseFreq = 16000;
+        const guardBw = 0;
         let reverse = false;
 
         function createCosineWindow(length) {
@@ -244,10 +245,10 @@
                 reverse = freq < reverseFreq;
                 if (!reverse) {
                     localOscillator.frequency.value = freq;
-                    filter.buffer = createFilter(parseInt(1001 * multiplier) | 1, freq + bandwidth / 2 - 50, bandwidth / 2 - 100);
+                    filter.buffer = createFilter(parseInt(1001 * multiplier) | 1, freq + (bandwidth - guardBw) / 2, bandwidth / 2 - guardBw);
                 } else {
                     localOscillator.frequency.value = freq + bandwidth;
-                    filter.buffer = createFilter(parseInt(1001 * multiplier) | 1, freq + bandwidth / 2 + 50, bandwidth / 2 - 100);
+                    filter.buffer = createFilter(parseInt(1001 * multiplier) | 1, freq + (bandwidth + guardBw) / 2, bandwidth / 2 - guardBw);
                 }
             }
             setFrequency(startFreq + bandwidth * (channelSelection.value - 1), bandwidth)
@@ -341,10 +342,10 @@
                     reverse = freq < reverseFreq;
                     if (!reverse) {
                         localOscillator.frequency.value = freq;
-                        bandpass.buffer = createFilter(parseInt(1001 * multiplier) | 1, freq + bandwidth / 2 - 50, bandwidth / 2 - 100);
+                        bandpass.buffer = createFilter(parseInt(1001 * multiplier) | 1, freq + (bandwidth - guardBw) / 2, bandwidth / 2 - guardBw);
                     } else {
                         localOscillator.frequency.value = freq + bandwidth;
-                        bandpass.buffer = createFilter(parseInt(1001 * multiplier) | 1, freq + bandwidth / 2 + 50, bandwidth / 2 - 100);
+                        bandpass.buffer = createFilter(parseInt(1001 * multiplier) | 1, freq + (bandwidth + guardBw) / 2, bandwidth / 2 - guardBw);
                     }
                     lowpass.buffer = createFilter(101, bandwidth / 2, bandwidth / 2);
                 }

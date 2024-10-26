@@ -6,6 +6,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Piano Keyboard</title>
     <style>
+        :root {
+            --theme-color: #ffcc00
+        }
+
         html {
             background-color: #202020;
         }
@@ -38,7 +42,7 @@
         }
 
         .key-white.active {
-            background-color: #a0a0a0;
+            background-color: var(--theme-color);
         }
 
         .key-black {
@@ -53,7 +57,7 @@
         }
 
         .key-black.active {
-            background-color: #808080;
+            background-color: var(--theme-color);
         }
 
         .key-label {
@@ -105,6 +109,10 @@
             outline: none;
         }
 
+        select:hover {
+            background-color: red;
+        }
+
         /* Additional styles for select arrow icon */
         select::-ms-expand {
             display: none;
@@ -129,9 +137,9 @@
 
         input[type=number]:focus,
         select:focus {
-            border-color: #ffcc00;
+            border-color: var(--theme-color);
             /* Example color for focus state */
-            box-shadow: 0 0 5px #ffcc00;
+            box-shadow: 0 0 5px var(--theme-color);
             /* Example box shadow for focus state */
         }
 
@@ -141,18 +149,18 @@
             border: 1px solid #555;
             width: 20px;
             height: 20px;
-            accent-color: #ffcc00;
+            accent-color: var(--theme-color);
             cursor: pointer;
         }
 
         input[type=checkbox]:checked {
-            background-color: #ffcc00;
+            background-color: var(--theme-color);
             /* Example color for checked state */
         }
 
         /* Dark mode styles for range (slider) */
         input[type=range] {
-            accent-color: #ffcc00;
+            accent-color: var(--theme-color);
             /* Example color for slider thumb */
             cursor: pointer;
         }
@@ -292,48 +300,93 @@
             }
         };
 
+        class Temperament {
+            getFreq(note) { };
+        }
+
+        class Note {
+            #note;
+
+            constructor(pitch) {
+                this.#note = pitch;
+            }
+
+            toString() {
+                const noteValues = [
+                    "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"
+                ];
+                const octave = Math.floor((this.#note - 12) / 12);
+                const noteIndex = this.#note % 12;
+                return noteValues[noteIndex] + octave;
+            }
+
+            add(num) {
+                return new Note(this.note + num)
+            }
+
+            sharp() {
+                return this.add(1);
+            }
+
+            flat() {
+                return this.add(-1);
+            }
+        }
+
         const temperaments = {
-            "12TET": (pitch, baseFreq) => {
-                return 2 ** ((pitch - 69) / 12) * baseFreq
+            "12TET": class extends Temperament {
+                getFreq(pitch, baseFreq) {
+                    return 2 ** ((pitch - 69) / 12) * baseFreq
+                }
             },
 
-            "just": (midiNote, baseFreq) => {
-                // Define the ratios for just intonation
-                let ratios = [1, 16 / 15, 9 / 8, 6 / 5, 5 / 4, 4 / 3, 45 / 32, 3 / 2, 8 / 5, 5 / 3, 16 / 9, 15 / 8];
+            "just": class extends Temperament {
+                getFreq(midiNote, baseFreq) {
+                    // Define the ratios for just intonation
+                    let ratios = [1, 16 / 15, 9 / 8, 6 / 5, 5 / 4, 4 / 3, 45 / 32, 3 / 2, 8 / 5, 5 / 3, 16 / 9, 15 / 8];
 
-                // Calculate the frequency using just intonation
-                let baseFrequency = baseFreq / ratios[9];
-                return baseFrequency * ratios[midiNote % 12] * Math.pow(2, Math.floor(midiNote / 12) - 5);
+                    // Calculate the frequency using just intonation
+                    let baseFrequency = baseFreq / ratios[9];
+                    return baseFrequency * ratios[midiNote % 12] * Math.pow(2, Math.floor(midiNote / 12) - 5);
+                }
             },
 
-            pythagorean: (midiNote, baseFreq) => {
-                // Define the ratios for Pythagorean tuning
-                let ratios = [1, 256 / 243, 9 / 8, 32 / 27, 81 / 64, 4 / 3, 729 / 512, 3 / 2, 128 / 81, 27 / 16, 16 / 9, 243 / 128];
+            pythagorean: class extends Temperament {
+                getFreq(midiNote, baseFreq) {
+                    // Define the ratios for Pythagorean tuning
+                    let ratios = [1, 256 / 243, 9 / 8, 32 / 27, 81 / 64, 4 / 3, 729 / 512, 3 / 2, 128 / 81, 27 / 16, 16 / 9, 243 / 128];
 
-                // Calculate the frequency using Pythagorean tuning
-                let baseFrequency = baseFreq / ratios[9];
-                return baseFrequency * ratios[midiNote % 12] * Math.pow(2, Math.floor(midiNote / 12) - 5);
+                    // Calculate the frequency using Pythagorean tuning
+                    let baseFrequency = baseFreq / ratios[9];
+                    return baseFrequency * ratios[midiNote % 12] * Math.pow(2, Math.floor(midiNote / 12) - 5);
+                }
             },
 
-            "19TET": (pitch, baseFreq) => {
-                let ratios = [0, 2, 3, 5, 6, 8, 9, 11, 13, 14, 16, 17]
-                return 2 ** ((ratios[pitch % 12] - ratios[9]) / 19) * baseFreq * Math.pow(2, Math.floor(pitch / 12) - 5)
+            "19TET": class extends Temperament {
+                getFreq(pitch, baseFreq) {
+                    let ratios = [0, 2, 3, 5, 6, 8, 9, 11, 13, 14, 16, 17]
+                    return 2 ** ((ratios[pitch % 12] - ratios[9]) / 19) * baseFreq * Math.pow(2, Math.floor(pitch / 12) - 5)
+                }
             },
 
-            "53TET": (pitch, baseFreq) => {
-                let ratios = [0, 5, 9, 14, 17, 22, 26, 31, 36, 39, 44, 48]
-                return 2 ** ((ratios[pitch % 12] - ratios[9]) / 53) * baseFreq * Math.pow(2, Math.floor(pitch / 12) - 5)
+            "53TET": class extends Temperament {
+                getFreq(pitch, baseFreq) {
+                    let ratios = [0, 5, 9, 14, 17, 22, 26, 31, 36, 39, 44, 48]
+                    return 2 ** ((ratios[pitch % 12] - ratios[9]) / 53) * baseFreq * Math.pow(2, Math.floor(pitch / 12) - 5)
+                }
             },
 
-            "118TET": (pitch, baseFreq) => {
-                let ratios = [0, 11, 20, 31, 38, 49, 58, 69, 80, 87, 98, 107]
-                return 2 ** ((ratios[pitch % 12] - ratios[9]) / 118) * baseFreq * Math.pow(2, Math.floor(pitch / 12) - 5)
+            "118TET": class extends Temperament {
+                getFreq(pitch, baseFreq) {
+                    let ratios = [0, 11, 20, 31, 38, 49, 58, 69, 80, 87, 98, 107]
+                    return 2 ** ((ratios[pitch % 12] - ratios[9]) / 118) * baseFreq * Math.pow(2, Math.floor(pitch / 12) - 5)
+                }
             }
         };
 
         // Object to track the state of each key
         const keyState = {};
-        let temperament = "12TET";
+        let temperament = new temperaments["12TET"];
         let baseFreq = 440;
 
         for (let i = 0; i < 128; i++) {
@@ -349,7 +402,6 @@
 
         masterGain.connect(compressor).connect(aCtx.destination);
         masterGain.gain.value = 0.25;
-
 
         function parseFloat16(uint16) {
             var sign = (uint16 & 0x8000) >> 15;
@@ -460,7 +512,7 @@
             const baseNote = 45 + octave * 12;
 
             source.setPeriodicWave(sounds[octave]);
-            source.frequency.value = temperaments[temperament](pitch + transpose, baseFreq);
+            source.frequency.value = temperament.getFreq(pitch + transpose, baseFreq);
 
             const attack = envelope[0], decay = envelope[1], sustain = envelope[2], release = envelope[3];
             const attackClamped = Math.max(attack, 0.001);
@@ -591,7 +643,7 @@
 
         const temperamentSelect = document.getElementById('temperament-select');
         temperamentSelect.addEventListener('change', e => {
-            temperament = temperamentSelect.value;
+            temperament = new temperaments[temperamentSelect.value];
         })
 
         for (const key in keyMap) {

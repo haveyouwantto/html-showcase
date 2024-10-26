@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Audio Visualizer</title>
+    <style>
+        body {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        canvas {
+            border: 1px solid black;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>Audio Visualizer with HSV Bars</h1>
+    <input type="file" id="audioFile" accept="audio/*">
+    <audio id="audioPlayer" controls></audio>
+    <canvas id="visualizer" width="800" height="200"></canvas>
+
+    <script>
+        const audioFileInput = document.getElementById('audioFile');
+        const audioPlayer = document.getElementById('audioPlayer');
+        const canvas = document.getElementById('visualizer');
+        const ctx = canvas.getContext('2d');
+        const LED_COUNT = 60;  // Simulating LED count with canvas bars
+        const CRITICAL_FREQ = 440;  // Frequency for the logarithmic scale division
+
+        let audioContext, analyser, bufferLength, dataArray, freqArray, sourceNode;
+        let offset = 0;
+
+        // Initialize AudioContext globally and set up AnalyserNode
+        function initializeAudioContext() {
+            if (!audioContext) {
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                analyser = audioContext.createAnalyser();
+                analyser.fftSize = 2048;  // FFT size
+                bufferLength = analyser.frequencyBinCount;
+                freqArray = new Float32Array(analyser.frequencyBinCount);
+                freqArray = freqArray.map((v, i) => i * (audioContext.sampleRate / analyser.frequencyBinCount / 2));
+                dataArray = new Uint8Array(bufferLength);
+
+                for (let i = 0; i < freqArray.length; i++) {
+                    const f = freqArray[i];
+                    if (f > CRITICAL_FREQ) {
+                        offset = i;
+                        break;
+                    }
+                }
+
+                // Connect audio player to the audio context and analyser
+                const audioSource = audioContext.createMediaElementSource(audioPlayer);
+                audioSource.connect(analyser);
+                analyser.connect(audioContext.destination);
+            }
+        }
+
+        // Handle file input and set audioPlayer src
+        audioFileInput.addEventListener('change', handleFileUpload);
+
+        function handleFileUpload(event) {
+            const file = event.target.files[0];
+            if (file) {
+                const url = URL.createObjectURL(file);
+                audioPlayer.src = url;
+                initializeAudioContext(); // Ensure context is initialized once audio is set
+                audioPlayer.play();
+            }
+        }
+
+        function draw() {
+            requestAnimationFrame(draw);
+
+            analyser.getByteFrequencyData(dataArray);
+
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            const barWidth = canvas.width / LED_COUNT;
+            let x = 0;
+
+            for (let i = 0; i < LED_COUNT; i++) {
+                const freq = freqArray[i];
+
+                if (freq < CRITICAL_FREQ) {
+                    amp = dataArray[i];
+                } else {
+                    let note = (i - offset + 1) + 69;
+                    let frequency = 440.0 * 2 ** ((note - 69) / 12);
+                    amp = dataArray[Math.floor(frequency / (audioContext.sampleRate / 2) * dataArray.length)];
+                }
+
+                let normalizedAmp = (amp) / 255;
+                normalizedAmp *= normalizedAmp;
+
+                // HSV to RGB conversion
+                const h = Math.max((0.75 - normalizedAmp), 0);
+                const s = 1;
+                const v = 1;
+                const [r, g, b] = hsvToRgb(h, s, v);
+
+                // Draw the bar
+                ctx.fillStyle = `rgb(${r}, ${g}, ${b})`;
+                ctx.fillRect(x, canvas.height - (normalizedAmp * canvas.height), barWidth, normalizedAmp * canvas.height);
+
+                x += barWidth;
+            }
+        }
+        draw(); // Start the visualization
+
+        function hsvToRgb(h, s, v) {
+            let r, g, b;
+            let i = Math.floor(h * 6);
+            let f = h * 6 - i;
+            let p = v * (1 - s);
+            let q = v * (1 - f * s);
+            let t = v * (1 - (1 - f) * s);
+            switch (i % 6) {
+                case 0: r = v, g = t, b = p; break;
+                case 1: r = q, g = v, b = p; break;
+                case 2: r = p, g = v, b = t; break;
+                case 3: r = p, g = q, b = v; break;
+                case 4: r = t, g = p, b = v; break;
+                case 5: r = v, g = p, b = q; break;
+            }
+            return [Math.round(r * 255), Math.round(g * 255), Math.round(b * 255)];
+        }
+    </script>
+</body>
+
+</html>

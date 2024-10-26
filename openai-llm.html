@@ -132,16 +132,18 @@
             display: flex;
             flex-direction: column;
             align-items: center;
+            max-width:100%;
         }
 
         .input {
-            margin: 4px;
+            /*margin: 4px;*/
             padding: 4px;
             border: 1px solid white;
             border-radius: 4px;
             font-size: 20px;
             color: white;
             background-color: transparent;
+            max-width: 80%;
         }
 
         /* Media query for responsiveness */
@@ -167,9 +169,9 @@
     </div>
     <button class="button" id="add-line">Add Line</button>
     <menu class="generate-panel">
-        <div>Endpoint<input class="input" id="endpoint" value="http://127.0.0.1:11434"></div>
-        <div>Key<input class="input" type="password" id="api-key"></div>
-        <div>Model<input class="input" id="model" value="llama3"></div>
+        Endpoint<input class="input" id="endpoint" value="http://127.0.0.1:11434">
+        Key<input class="input" type="password" id="api-key">
+        Model<input class="input" id="model" value="llama3">
         <button class="button" id="generate">Generate</button>
     </menu>
     <script>
@@ -415,7 +417,6 @@
             })
         }
 
-        editor.fromPreset(sampleFormat);  //初始化一个空的preset
 
         const generateBtn = document.getElementById('generate');
 
@@ -454,6 +455,18 @@
                     generateBtn.disabled = false;   //将generateBtn的disabled属性设置为false
                 });
         }
+
+        window.onbeforeunload = e =>{
+            localStorage.setItem("endpoint",document.getElementById("endpoint").value);
+            localStorage.setItem("api-key",document.getElementById("api-key").value);
+            localStorage.setItem("model",document.getElementById("model").value);
+            localStorage.setItem("preset", JSON.stringify(editor.toPreset()))
+        }
+
+        document.getElementById("endpoint").value = localStorage.getItem("endpoint") ?? "";
+        document.getElementById("api-key").value = localStorage.getItem("api-key") ?? "";
+        document.getElementById("model").value = localStorage.getItem("model") ?? "";
+        editor.fromPreset(JSON.parse(localStorage.getItem("preset")) ?? sampleFormat); 
     </script>
 </body>
 
