@@ -77,35 +77,32 @@
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pako/1.0.11/pako.min.js"></script>
     <script>
-        const ctx = new AudioContext();
 
         const visualizerCanvas = document.getElementById('visualizer');
         visualizerCanvas.width = visualizerCanvas.clientWidth;
         visualizerCanvas.height = visualizerCanvas.clientHeight;
         const visualizerCtx = visualizerCanvas.getContext('2d');
 
-        const analyser = ctx.createAnalyser();
-        analyser.fftSize = 2048; // Size of the FFT
-
-        const bufferLength = analyser.frequencyBinCount;
-        const dataArray = new Uint8Array(bufferLength);
+        let dataArray, analyser;
 
         function drawFFT() {
             visualizerCtx.clearRect(0, 0, visualizerCanvas.width, visualizerCanvas.height); // Clear canvas
 
-            analyser.getByteFrequencyData(dataArray); // Get frequency data
+            if (analyser && dataArray) {
+                analyser.getByteFrequencyData(dataArray); // Get frequency data
+                const bufferLength = analyser.frequencyBinCount;
 
-            const barWidth = (visualizerCanvas.width / bufferLength); // Width of each bar
-            let barHeight;
+                const barWidth = (visualizerCanvas.width / bufferLength); // Width of each bar
+                let barHeight;
 
-            for (let i = 0; i < bufferLength; i++) {
-                barHeight = dataArray[i] / 255 * visualizerCanvas.height; // Get amplitude value
-                const offset = (visualizerCanvas.height - barHeight) / 2; // Center the bar
+                for (let i = 0; i < bufferLength; i++) {
+                    barHeight = dataArray[i] / 255 * visualizerCanvas.height; // Get amplitude value
+                    const offset = (visualizerCanvas.height - barHeight) / 2; // Center the bar
 
-                visualizerCtx.fillStyle = `hsl(${(i / bufferLength) * 360}, 100%, 50%)`; // Color gradient
-                visualizerCtx.fillRect(i * barWidth, offset, barWidth, barHeight);
+                    visualizerCtx.fillStyle = `hsl(${(i / bufferLength) * 360}, 100%, 50%)`; // Color gradient
+                    visualizerCtx.fillRect(i * barWidth, offset, barWidth, barHeight);
+                }
             }
-
             requestAnimationFrame(drawFFT); // Loop the draw function
         }
         requestAnimationFrame(drawFFT)
@@ -291,47 +288,59 @@
             reader.readAsArrayBuffer(file);
 
             reader.onload = function (event) {
-                const arrayBuffer = event.target.result; // Get the result from the reader
+                try {
+                    const arrayBuffer = event.target.result; // Get the result from the reader
 
-                let qfp = new QFPDecoder(arrayBuffer); // Create a new QFPDecoder
+                    let qfp = new QFPDecoder(arrayBuffer); // Create a new QFPDecoder
 
-                // Create ScriptProcessorNode
-                if (scriptProcessor) {
-                    scriptProcessor.disconnect();
-                }
+                    const ctx = new AudioContext({ sampleRate: qfp.sampleRate, latencyHint: "playback" });
 
-                const bufferSize = qfp.winSize; // Set buffer size
-                scriptProcessor = ctx.createScriptProcessor(bufferSize, 2, 2); // 2 input channels, 2 output channels
+                    analyser = ctx.createAnalyser();
+                    analyser.fftSize = 2048; // Size of the FFT
 
-                // On audio process event
-                scriptProcessor.onaudioprocess = function (audioProcessingEvent) {
-                    if (!paused) {
-                        const outputData = audioProcessingEvent.outputBuffer; // Get output buffer
+                    const bufferLength = analyser.frequencyBinCount;
+                    dataArray = new Uint8Array(bufferLength);
 
-                        // Read frame data for both left and right channels
-                        const [l, r] = qfp.readFrame();
-
-                        // Copy left and right channel data into the output buffer
-                        const leftChannel = outputData.getChannelData(0); // Left channel
-                        const rightChannel = outputData.getChannelData(1); // Right channel
-
-                        for (let i = 0; i < bufferSize; i++) {
-                            leftChannel[i] = i < l.length ? l[i] : 0; // Fill left channel
-                            rightChannel[i] = i < r.length ? r[i] : 0; // Fill right channel
-                        }
+                    // Create ScriptProcessorNode
+                    if (scriptProcessor) {
+                        scriptProcessor.disconnect();
                     }
-                };
 
-                // Connect the script processor to the audio context's destination
-                scriptProcessor.connect(analyser);
-                analyser.connect(ctx.destination);
+                    const bufferSize = qfp.winSize; // Set buffer size
+                    scriptProcessor = ctx.createScriptProcessor(bufferSize, 2, 2); // 2 input channels, 2 output channels
 
-                // Start the audio processing
-                if (paused) pauseBtn.click();// Resume audio if paused
+                    // On audio process event
+                    scriptProcessor.onaudioprocess = function (audioProcessingEvent) {
+                        if (!paused) {
+                            const outputData = audioProcessingEvent.outputBuffer; // Get output buffer
 
-                ctx.resume().then(() => {
-                    console.log('Audio context resumed, processing frames...');
-                });
+                            // Read frame data for both left and right channels
+                            const [l, r] = qfp.readFrame();
+
+                            // Copy left and right channel data into the output buffer
+                            const leftChannel = outputData.getChannelData(0); // Left channel
+                            const rightChannel = outputData.getChannelData(1); // Right channel
+
+                            for (let i = 0; i < bufferSize; i++) {
+                                leftChannel[i] = i < l.length ? l[i] : 0; // Fill left channel
+                                rightChannel[i] = i < r.length ? r[i] : 0; // Fill right channel
+                            }
+                        }
+                    };
+
+                    // Connect the script processor to the audio context's destination
+                    scriptProcessor.connect(analyser);
+                    analyser.connect(ctx.destination);
+
+                    // Start the audio processing
+                    if (paused) pauseBtn.click();// Resume audio if paused
+
+                    ctx.resume().then(() => {
+                        console.log('Audio context resumed, processing frames...');
+                    });
+                } catch (error) {
+                    alert("Error decoding QFP:", error);
+                }
             };
 
             reader.onerror = function (event) {
