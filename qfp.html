@@ -115,7 +115,7 @@
                 analyser.getByteFrequencyData(dataArray); // Get frequency data
                 const bufferLength = analyser.frequencyBinCount;
 
-                const barWidth = (visualizerCanvas.width / bufferLength) + 1; // Width of each bar
+                const barWidth = (visualizerCanvas.width / bufferLength); // Width of each bar
                 let barHeight;
 
                 for (let i = 0; i < bufferLength; i++) {
@@ -123,7 +123,7 @@
                     const offset = (visualizerCanvas.height - barHeight) / 2; // Center the bar
 
                     visualizerCtx.fillStyle = `hsl(${(i / bufferLength) * 360}, 100%, 50%)`; // Color gradient
-                    visualizerCtx.fillRect(i * barWidth, offset, barWidth, barHeight);
+                    visualizerCtx.fillRect(i * barWidth, offset, barWidth+1, barHeight);
                 }
             }
             requestAnimationFrame(drawFFT); // Loop the draw function
