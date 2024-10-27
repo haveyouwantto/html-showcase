@@ -306,10 +306,13 @@
                 this.qfp = qfp;
                 this.t = 0;
                 this.started = false;
+                this.nodeList = [];
+                this.stopped = false;
             }
 
             start() {
                 if (this.started) throw new Error("QFPPlayer can only be started once.");
+                this.startTime = ctx.currentTime;
                 let preloadFrames = Math.floor(5 / (this.qfp.winSize / this.qfp.sampleRate)); // Preload 5 sec
                 for (let i = 0; i < preloadFrames; i++) {
                     this.playFrame();
@@ -325,28 +328,42 @@
             }
 
             playFrame() {
-                const frame = this.qfp.readFrame();
+                if (!this.stopped) {
+                    const frame = this.qfp.readFrame();
 
-                const buffer = ctx.createBuffer(2, this.qfp.winSize, this.qfp.sampleRate)
-                const l = buffer.getChannelData(0)
-                const r = buffer.getChannelData(1)
-                l.set(frame[0])
-                r.set(frame[1])
+                    const buffer = ctx.createBuffer(2, this.qfp.winSize, this.qfp.sampleRate)
+                    const l = buffer.getChannelData(0)
+                    const r = buffer.getChannelData(1)
+                    l.set(frame[0])
+                    r.set(frame[1])
 
-                const node = ctx.createBufferSource();
-                node.buffer = buffer;
-                node.onended = () => {
+                    const node = ctx.createBufferSource();
+                    node.buffer = buffer;
+                    node.onended = () => {
+                        node.disconnect();
+                        this.nodeList.shift();
+                        this.playFrame();
+                    };
+                    node.connect(analyser).connect(ctx.destination)
+                    console.log(this.t)
+                    node.start(this.startTime + this.t);
+                    this.nodeList.push(node);
+                    this.t += (1 / this.qfp.sampleRate * this.qfp.winSize)
+                }
+            }
+
+            stop() {
+                if (this.stopped) throw new Error("QFPPlayer already stopped.");
+                for (const node of this.nodeList) {
+                    console.log(node)
                     node.disconnect();
-                    this.playFrame();
-                };
-                node.connect(analyser).connect(ctx.destination)
-                console.log(this.t)
-                node.start(this.t);
-                this.t += (1 / this.qfp.sampleRate * this.qfp.winSize)
+                }
+                this.stopped = true;
             }
         }
 
         let paused = false;
+        let player;
 
         document.getElementById('fileInput').addEventListener('change', e => {
             const fileInput = document.getElementById('fileInput');
@@ -367,7 +384,8 @@
                     const arrayBuffer = event.target.result; // Get the result from the reader
 
                     let qfp = new QFPDecoder(arrayBuffer); // Create a new QFPDecoder
-                    let player = new QFPPlayer(qfp);
+                    if (player) player.stop();
+                    player = new QFPPlayer(qfp);
                     player.start();
 
                     // Start the audio processing
