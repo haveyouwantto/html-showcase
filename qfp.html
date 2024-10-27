@@ -110,6 +110,7 @@
         <input type="file" id="fileInput" accept=".qfp" />
         <div class="btn">
             <button id="pause">播放</button>
+            <button id="replay">重播</button>
         </div>
         <div class="status">
             <div id="progress">
@@ -371,6 +372,12 @@
                 this.read++;
                 return [l, r]; // Return left and right channels
             }
+
+            reset() {
+                this.ptr = 0;
+                this.read = 0;
+                this.readHeader();
+            }
         }
 
         class QFPPlayer {
@@ -443,6 +450,15 @@
                 }
                 this.stopped = true;
             }
+
+            replay() {
+                this.stop();
+                this.t = 0;
+                this.stopped = false;
+                this.started = false;
+                this.qfp.reset();
+                this.start();
+            }
         }
 
         let paused = true;
@@ -497,6 +513,10 @@
                 pauseBtn.innerHTML = '暂停';    // Set pause button text to Pause
             }
         });
+
+        document.getElementById('replay').addEventListener('click', e => {
+            player.replay();
+        })
     </script>
 </body>
 
