@@ -22,6 +22,31 @@
             align-items: center;
         }
 
+        .status {
+            display: flex;
+            align-items: center;
+            margin-top: 16px;
+            width: 100%;
+            justify-content: center;
+        }
+
+        #progress {
+            height: 10px;
+            width: 100%;
+            background-color: #333;
+            margin-right: 16px;
+        }
+
+        #progress-inner {
+            background-color: #8e4bec;
+            width: 0;
+            height: 100%;
+        }
+
+        #time {
+            min-width: fit-content;
+        }
+
         h1 {
             margin-bottom: 20px;
         }
@@ -40,7 +65,7 @@
         }
 
         button {
-            background-color: #6200ea;
+            background-color: #8e4bec;
             /* Purple button */
             color: white;
             border: none;
@@ -52,7 +77,7 @@
         }
 
         button:hover {
-            background-color: #3700b3;
+            background-color: #6400ea;
             /* Darker purple on hover */
         }
 
@@ -84,7 +109,13 @@
         <h1>QFP 音频压缩实验</h1>
         <input type="file" id="fileInput" accept=".qfp" />
         <div class="btn">
-            <button id="pause">暂停</button>
+            <button id="pause">播放</button>
+        </div>
+        <div class="status">
+            <div id="progress">
+                <div id="progress-inner"></div>
+            </div>
+            <div id="time">00:00 / 00:00</div>
         </div>
         <canvas id="visualizer"></canvas>
 
@@ -119,6 +150,34 @@
         const bufferLength = analyser.frequencyBinCount;
         const dataArray = new Uint8Array(bufferLength);
 
+        const timeDisplay = document.getElementById("time")
+        const progressDisplay = document.getElementById("progress-inner")
+
+        function padding(num) {
+            if (isNaN(num) || !isFinite(num)) {
+                return '**';
+            }
+            if (num < 10) {
+                return '0' + num;
+            }
+            else {
+                return num;
+            }
+        }
+
+        function formatTime(seconds) {
+            if (isNaN(seconds) || !isFinite(seconds)) return "**:**";
+
+            let sec = parseInt(seconds % 60);
+            let minutes = seconds / 60;
+            let min = parseInt(minutes % 60);
+            if (minutes < 60) {
+                return padding(min) + ':' + padding(sec);
+            } else {
+                let hours = minutes / 60;
+                return padding(parseInt(hours)) + ':' + padding(min) + ':' + padding(sec);
+            }
+        }
 
         function drawFFT() {
             visualizerCtx.clearRect(0, 0, visualizerCanvas.width, visualizerCanvas.height); // Clear canvas
@@ -252,6 +311,7 @@
                 this.buffer = decompressedData.buffer; // Use the decompressed data
                 this.view = new DataView(this.buffer);
                 this.ptr = 0;
+                this.read = 0;
                 this.readHeader();
             }
 
@@ -268,13 +328,20 @@
                 this.ptr += 4;
                 this.winSize = this.view.getUint32(this.ptr, true);
                 this.ptr += 4;
+                this.numWindows = this.view.getUint32(this.ptr, true);
+                this.ptr += 4;
 
                 console.log("version: " + this.version);
                 console.log("sample rate: " + this.sampleRate);
                 console.log("win size:" + this.winSize);
+                console.log("num win:" + this.numWindows);
+
+                this.duration = this.numWindows * (this.winSize / this.sampleRate)
             }
 
             readFrame() {
+                if (this.read >= this.numWindows) throw new Error("No more frames to read");
+
                 const lr = []; // Array to hold left and right channel data
                 for (let ch = 0; ch < 2; ch++) {
                     const length = this.view.getInt16(this.ptr, true); // Read length of the frame
@@ -301,6 +368,7 @@
                     r[i] = (lr[0][i] - lr[1][i]) / 2; // Right channel
                 }
 
+                this.read++;
                 return [l, r]; // Return left and right channels
             }
         }
@@ -317,6 +385,8 @@
             start() {
                 if (this.started) throw new Error("QFPPlayer can only be started once.");
                 this.startTime = ctx.currentTime;
+                this.updateProgress();
+
                 let preloadFrames = Math.floor(5 / (this.qfp.winSize / this.qfp.sampleRate)); // Preload 5 sec
                 for (let i = 0; i < preloadFrames; i++) {
                     this.playFrame();
@@ -329,6 +399,13 @@
                 } else {
                     ctx.resume();
                 }
+            }
+
+            updateProgress() {
+                let currentTime = Math.min(ctx.currentTime - this.startTime, this.qfp.duration)
+                let prog = currentTime / this.qfp.duration;
+                timeDisplay.textContent = `${formatTime(currentTime)} / ${formatTime(this.qfp.duration)}`
+                progressDisplay.style.width = (prog * 100) + "%"
             }
 
             playFrame() {
@@ -346,10 +423,13 @@
                     node.onended = () => {
                         node.disconnect();
                         this.nodeList.shift();
-                        this.playFrame();
+
+                        if (!this.stopped) {
+                            this.updateProgress();
+                            this.playFrame();
+                        }
                     };
                     node.connect(analyser).connect(ctx.destination)
-                    console.log(this.t)
                     node.start(this.startTime + this.t);
                     this.nodeList.push(node);
                     this.t += (1 / this.qfp.sampleRate * this.qfp.winSize)
@@ -359,14 +439,13 @@
             stop() {
                 if (this.stopped) throw new Error("QFPPlayer already stopped.");
                 for (const node of this.nodeList) {
-                    console.log(node)
                     node.disconnect();
                 }
                 this.stopped = true;
             }
         }
 
-        let paused = false;
+        let paused = true;
         let player;
 
         document.getElementById('fileInput').addEventListener('change', e => {
