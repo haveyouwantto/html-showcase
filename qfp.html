@@ -344,7 +344,7 @@
 
                 const lr = []; // Array to hold left and right channel data
                 for (let ch = 0; ch < 2; ch++) {
-                    const length = this.view.getInt16(this.ptr, true); // Read length of the frame
+                    const length = this.view.getUint16(this.ptr, true); // Read length of the frame
                     this.ptr += 2; // Move pointer
 
                     let ampQ = new Int8Array(this.buffer.slice(this.ptr, this.ptr + length)); // Read amplitude data
