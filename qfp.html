@@ -69,6 +69,7 @@
             body {
                 width: 100%;
             }
+
             .gray {
                 width: 100%;
             }
@@ -106,7 +107,14 @@
         visualizerCanvas.height = visualizerCanvas.clientHeight;
         const visualizerCtx = visualizerCanvas.getContext('2d');
 
-        let dataArray, analyser;
+        const ctx = new AudioContext({ latencyHint: "playback" });
+
+        const analyser = ctx.createAnalyser();
+        analyser.fftSize = 2048; // Size of the FFT
+
+        const bufferLength = analyser.frequencyBinCount;
+        const dataArray = new Uint8Array(bufferLength);
+
 
         function drawFFT() {
             visualizerCtx.clearRect(0, 0, visualizerCanvas.width, visualizerCanvas.height); // Clear canvas
@@ -123,7 +131,7 @@
                     const offset = (visualizerCanvas.height - barHeight) / 2; // Center the bar
 
                     visualizerCtx.fillStyle = `hsl(${(i / bufferLength) * 360}, 100%, 50%)`; // Color gradient
-                    visualizerCtx.fillRect(i * barWidth, offset, barWidth+1, barHeight);
+                    visualizerCtx.fillRect(i * barWidth, offset, barWidth + 1, barHeight);
                 }
             }
             requestAnimationFrame(drawFFT); // Loop the draw function
@@ -293,7 +301,51 @@
             }
         }
 
-        let scriptProcessor;
+        class QFPPlayer {
+            constructor(qfp) {
+                this.qfp = qfp;
+                this.t = 0;
+                this.started = false;
+            }
+
+            start() {
+                if (this.started) throw new Error("QFPPlayer can only be started once.");
+                let preloadFrames = Math.floor(5 / (this.qfp.winSize / this.qfp.sampleRate)); // Preload 5 sec
+                for (let i = 0; i < preloadFrames; i++) {
+                    this.playFrame();
+                }
+            }
+
+            setPaused(b) {
+                if (b) {
+                    ctx.suspend();
+                } else {
+                    ctx.resume();
+                }
+            }
+
+            playFrame() {
+                const frame = this.qfp.readFrame();
+
+                const buffer = ctx.createBuffer(2, this.qfp.winSize, this.qfp.sampleRate)
+                const l = buffer.getChannelData(0)
+                const r = buffer.getChannelData(1)
+                l.set(frame[0])
+                r.set(frame[1])
+
+                const node = ctx.createBufferSource();
+                node.buffer = buffer;
+                node.onended = () => {
+                    node.disconnect();
+                    this.playFrame();
+                };
+                node.connect(analyser).connect(ctx.destination)
+                console.log(this.t)
+                node.start(this.t);
+                this.t += (1 / this.qfp.sampleRate * this.qfp.winSize)
+            }
+        }
+
         let paused = false;
 
         document.getElementById('fileInput').addEventListener('change', e => {
@@ -315,54 +367,14 @@
                     const arrayBuffer = event.target.result; // Get the result from the reader
 
                     let qfp = new QFPDecoder(arrayBuffer); // Create a new QFPDecoder
-
-                    const ctx = new AudioContext({ sampleRate: qfp.sampleRate, latencyHint: "playback" });
-
-                    analyser = ctx.createAnalyser();
-                    analyser.fftSize = 2048; // Size of the FFT
-
-                    const bufferLength = analyser.frequencyBinCount;
-                    dataArray = new Uint8Array(bufferLength);
-
-                    // Create ScriptProcessorNode
-                    if (scriptProcessor) {
-                        scriptProcessor.disconnect();
-                    }
-
-                    const bufferSize = qfp.winSize; // Set buffer size
-                    scriptProcessor = ctx.createScriptProcessor(bufferSize, 2, 2); // 2 input channels, 2 output channels
-
-                    // On audio process event
-                    scriptProcessor.onaudioprocess = function (audioProcessingEvent) {
-                        if (!paused) {
-                            const outputData = audioProcessingEvent.outputBuffer; // Get output buffer
-
-                            // Read frame data for both left and right channels
-                            const [l, r] = qfp.readFrame();
-
-                            // Copy left and right channel data into the output buffer
-                            const leftChannel = outputData.getChannelData(0); // Left channel
-                            const rightChannel = outputData.getChannelData(1); // Right channel
-
-                            for (let i = 0; i < bufferSize; i++) {
-                                leftChannel[i] = i < l.length ? l[i] : 0; // Fill left channel
-                                rightChannel[i] = i < r.length ? r[i] : 0; // Fill right channel
-                            }
-                        }
-                    };
-
-                    // Connect the script processor to the audio context's destination
-                    scriptProcessor.connect(analyser);
-                    analyser.connect(ctx.destination);
+                    let player = new QFPPlayer(qfp);
+                    player.start();
 
                     // Start the audio processing
                     if (paused) pauseBtn.click();// Resume audio if paused
-
-                    ctx.resume().then(() => {
-                        console.log('Audio context resumed, processing frames...');
-                    });
                 } catch (error) {
                     alert("Error decoding QFP:", error);
+                    throw error;
                 }
             };
 
@@ -377,8 +389,10 @@
             paused = !paused;  // Toggle pause state
 
             if (paused) {
+                ctx.suspend();
                 pauseBtn.innerHTML = '播放';  // Set pause button text to Play
             } else {
+                ctx.resume();
                 pauseBtn.innerHTML = '暂停';    // Set pause button text to Pause
             }
         });
