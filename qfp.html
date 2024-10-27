@@ -143,7 +143,7 @@
         visualizerCanvas.height = visualizerCanvas.clientHeight;
         const visualizerCtx = visualizerCanvas.getContext('2d');
 
-        const ctx = new AudioContext({ latencyHint: "playback" });
+        const ctx = new AudioContext({ latencyHint: "balanced" });
 
         const analyser = ctx.createAnalyser();
         analyser.fftSize = 2048; // Size of the FFT
@@ -394,7 +394,7 @@
                 this.startTime = ctx.currentTime;
                 this.updateProgress();
 
-                let preloadFrames = Math.floor(5 / (this.qfp.winSize / this.qfp.sampleRate)); // Preload 5 sec
+                let preloadFrames = Math.max(Math.floor(5 / (this.qfp.winSize / this.qfp.sampleRate)), 2); // Preload 5 sec
                 for (let i = 0; i < preloadFrames; i++) {
                     this.playFrame();
                 }
