@@ -134,9 +134,10 @@
 
         <h2>编码器</h2>
         <input type="file" id="audioInput" accept="audio/*" />
-        QP: <input type="number" id="qp" min="0" max="63" value="32">
-        <button id="encode">编码</button>
-
+        <div>
+            QP: <input type="number" id="qp" min="0" max="63" value="32">
+            <button id="encode">编码</button>
+        </div>
         <hr>
         <div class="gray">
             <p>最近我突发奇想想做一个音频压缩算法。起初，我尝试将采样精度压缩到8位，但发现这样直接降低采样精度会带来明显的量化噪声。于是，我考虑保存音频的频域数据，做法是将音频转换为FFT频域表示，并将相位和幅值分别量化到8位，幅值还经过了对数处理。这样处理后，效果确实比直接在时域中压缩到8位好很多，文件大小也从原来的wav文件的38MB减半到19MB，符合预期结果。
