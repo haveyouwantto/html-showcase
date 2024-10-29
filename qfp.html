@@ -88,9 +88,21 @@
         .gray {
             color: gray;
             font-size: smaller;
-            width: 50%;
+            width: 75%;
         }
 
+        hr {
+            width: 100%;
+            margin: 10px;
+            border: 2px solid #444;
+        }
+
+        input[type="number"] {
+            background-color: transparent;
+            padding: 4px;
+            border: 1px solid gray;
+            color: white;
+        }
 
         @media only screen and (max-width:600px) {
             body {
@@ -120,6 +132,12 @@
         </div>
         <canvas id="visualizer"></canvas>
 
+        <h2>编码器</h2>
+        <input type="file" id="audioInput" accept="audio/*" />
+        QP: <input type="number" id="qp" min="0" max="63" value="32">
+        <button id="encode">编码</button>
+
+        <hr>
         <div class="gray">
             <p>最近我突发奇想想做一个音频压缩算法。起初，我尝试将采样精度压缩到8位，但发现这样直接降低采样精度会带来明显的量化噪声。于是，我考虑保存音频的频域数据，做法是将音频转换为FFT频域表示，并将相位和幅值分别量化到8位，幅值还经过了对数处理。这样处理后，效果确实比直接在时域中压缩到8位好很多，文件大小也从原来的wav文件的38MB减半到19MB，符合预期结果。
             </p>
@@ -154,6 +172,16 @@
         const timeDisplay = document.getElementById("time")
         const progressDisplay = document.getElementById("progress-inner")
 
+        const SUB_BANDS = [
+            [0, 1000, 46],
+            [1000, 4000, 49],
+            [4000, 8000, 52],
+            [8000, 12000, 55],
+            [12000, 15000, 57],
+            [15000, 20000, 63],
+            [20000, 192000, 999],
+        ]
+
         function padding(num) {
             if (isNaN(num) || !isFinite(num)) {
                 return '**';
@@ -177,6 +205,23 @@
             } else {
                 let hours = minutes / 60;
                 return padding(parseInt(hours)) + ':' + padding(min) + ':' + padding(sec);
+            }
+        }
+
+        function replaceFileExtension(fileName, newExtension) {
+            // Ensure the new extension starts with a dot
+            if (newExtension.charAt(0) !== '.') {
+                newExtension = '.' + newExtension;
+            }
+
+            // Find the last dot in the file name
+            const lastDotIndex = fileName.lastIndexOf('.');
+
+            // If there is a dot, replace the extension; otherwise, just append the new extension
+            if (lastDotIndex !== -1) {
+                return fileName.slice(0, lastDotIndex) + newExtension;
+            } else {
+                return fileName + newExtension;
             }
         }
 
@@ -225,6 +270,24 @@
                     }
         }
 
+        function miniDCT(s) {
+            var N = s.length,
+                K = -Math.PI / (2 * N),
+                re = new Float64Array(N),
+                im = new Float64Array(N);
+            for (var i = 0, j = N; j > i; i++) {
+                re[i] = s[i * 2]
+                re[--j] = s[i * 2 + 1]
+            }
+            miniFFT(re, im)
+
+            const mul = Math.sqrt(1 / N);
+
+            for (var i = 0; i < N; i++) {
+                s[i] = (re[i] * Math.cos(K * i) - im[i] * Math.sin(K * i)) * mul;
+            }
+        }
+
         // Function to perform the inverse discrete cosine transform (IDCT)
         function miniIDCT(s) {
             var N = s.length,
@@ -243,6 +306,54 @@
                 s[2 * i] = re[i] * mul;
                 s[2 * i + 1] = re[N - i - 1] * mul;
             }
+        }
+
+        function rleCompress(data) {
+            const compressed = [];
+            let count = 0;
+
+            data.forEach(byte => {
+                if (byte === 0) {
+                    count += 1;
+                } else {
+                    if (count > 0) {
+                        if (count >= 3) {
+                            compressed.push(...this.encodeZeroRun(count)); // Encode if more than 3 zeros
+                        } else {
+                            compressed.push(...Array(count).fill(0)); // Write zeros as is if count <= 3
+                        }
+                        count = 0;
+                    }
+                    compressed.push(byte);
+                }
+            });
+
+            // Handle trailing zeros
+            if (count > 0) {
+                if (count >= 3) {
+                    compressed.push(...this.encodeZeroRun(count)); // Encode if more than 3 zeros
+                } else {
+                    compressed.push(...Array(count).fill(0)); // Write zeros as is if count <= 3
+                }
+            }
+
+            return Int8Array.from(compressed);
+        }
+
+        function encodeZeroRun(count) {
+            const encoded = [-128];
+            count -= 2;
+
+            while (count > 0) {
+                if (count > 0xFF) {
+                    encoded.push(0xFF);
+                    count -= 0xFF;
+                } else {
+                    encoded.push(count - 1);
+                    count = 0;
+                }
+            }
+            return encoded;
         }
 
         // Function to decompress run-length encoded data
@@ -279,6 +390,15 @@
             return new Int8Array(decompressed); // Return as Int8Array
         }
 
+        function trimZeros(array) {
+            // Removes trailing zeros
+            let i = array.length - 1;
+            while (i >= 0 && array[i] === 0) {
+                i--;
+            }
+            return array.slice(0, i + 1);
+        }
+
         // Function to pad an array to a target length
         function padArray(arr, targetLength) {
             const paddedArray = new Int8Array(targetLength); // Create a new Int8Array
@@ -288,6 +408,17 @@
             paddedArray.set(arr.subarray(0, lengthToCopy));
 
             return paddedArray; // Return padded array
+        }
+
+        function quantizeAmp(amp) {
+            // Quantize amplitude using log10 scaling to int8 equivalent in JavaScript
+            return amp.map(value => {
+                if (value === 0) {
+                    return 0;
+                }
+                const ampQ = Math.min(127, Math.max(0, 127 + 20 * Math.log10(Math.abs(value))));
+                return value < 0 ? -Math.round(ampQ) : Math.round(ampQ);
+            });
         }
 
         // Function to dequantize amplitudes
@@ -301,6 +432,112 @@
             }
 
             return amp; // Return dequantized amplitudes
+        }
+
+        function roundDownToPowerOfTwo(number) {
+            if (number <= 0) {
+                return 0;
+            }
+            const power = Math.floor(Math.log2(number)) - 1;
+            return Math.min(2 ** power, 65536);
+        }
+
+        class QFPEncoder {
+            constructor(audioBuffer, qp) {
+                this.buffer = audioBuffer;
+                this.i = 0;
+                this.l = audioBuffer.getChannelData(0);
+                this.r = audioBuffer.getChannelData(1);
+                this.qp = qp;
+            }
+
+            encodeHeader() {
+                const buffer = new ArrayBuffer(17);
+                this.sampleRate = this.buffer.sampleRate;
+                this.winSize = roundDownToPowerOfTwo(this.sampleRate / 16);
+                this.numWins = parseInt(this.buffer.length / this.winSize);
+
+                const diff = 63 - this.qp;
+
+                this.subBands = [[], []];
+                for (const b of SUB_BANDS) {
+                    this.subBands[0].push([
+                        Math.min(Math.max(b[0] / this.sampleRate * 2, 0), 1),
+                        Math.min(Math.max(b[1] / this.sampleRate * 2, 0), 1),
+                        Math.min(Math.max(b[2] - diff - Math.log10(this.winSize / 1024) * 10, 0), 127),
+                    ]);
+                    this.subBands[1].push([
+                        Math.min(Math.max(b[0] / this.sampleRate * 2, 0), 1),
+                        Math.min(Math.max(b[1] / this.sampleRate * 2, 0), 1),
+                        Math.min(Math.max(b[2] - diff + 10 - Math.log10(this.winSize / 1024) * 10, 0), 127),
+                    ]);
+                }
+
+                console.log(this.subBands);
+
+                const view = new DataView(buffer);
+                view.setUint32(0, 1095779921, true); //magic
+                view.setUint8(4, 1) //version
+                view.setUint32(5, this.sampleRate, true);
+                view.setUint32(9, this.winSize, true);
+                view.setUint32(13, this.numWins, true);
+                return buffer;
+            }
+
+            encodeFrame() {
+                // Process both L+R and L-R channels
+                const L = this.l.slice(this.i * this.winSize, (this.i + 1) * this.winSize);
+                const R = this.r.slice(this.i * this.winSize, (this.i + 1) * this.winSize);
+
+                const winDataLPlusR = L.map((val, idx) => val + R[idx]);
+                const winDataLMinusR = L.map((val, idx) => val - R[idx]);
+
+                const encodedFrames = []
+
+                for (let ch = 0; ch < 2; ch++) {
+                    const winData = ch === 0 ? winDataLPlusR : winDataLMinusR;
+
+                    miniDCT(winData);  // Define applyDCT with orthogonal normalization
+
+                    // Normalize and quantize the amplitude
+                    let amp = winData.map(value => value / this.winSize);
+                    let ampQ = quantizeAmp(amp);  // Define quantizeAmp function based on _quantize_amp()
+
+                    // Process sub-bands
+                    for (const subBand of this.subBands[ch]) {
+                        const bandStart = Math.floor(this.winSize * subBand[0]);
+                        const bandEnd = Math.floor(this.winSize * subBand[1]);
+                        // console.log(bandStart,bandEnd)
+                        const band = ampQ.slice(bandStart, bandEnd).map(value => Math.abs(value) < subBand[2] ? 0 : value);
+
+                        ampQ = ampQ.map((e, i) => i >= bandStart && i <= bandEnd ? band[i - bandStart] : e);
+                    }
+
+                    // Trim trailing zeros
+                    ampQ = trimZeros(ampQ);
+
+                    // Limit length to 65535
+                    if (ampQ.length > 65535) {
+                        ampQ = ampQ.slice(0, 65535);
+                    }
+
+                    // RLE compression
+                    const compressedData = rleCompress(ampQ);  // Define rleCompress function
+
+                    // Pack length and compressed data
+                    const lenArray = new ArrayBuffer(2);
+                    new DataView(lenArray).setUint16(0, compressedData.byteLength, true);
+
+                    encodedFrames.push(new Uint8Array(lenArray))
+                    encodedFrames.push(compressedData);
+                }
+                this.i++;
+                return encodedFrames;
+            }
+
+            available() {
+                return this.i < this.numWins;
+            }
         }
 
         // Class to decode QFP files
@@ -516,6 +753,74 @@
 
         document.getElementById('replay').addEventListener('click', e => {
             player.replay();
+        })
+
+        document.getElementById('encode').addEventListener('click', e => {
+            const fileInput = document.getElementById('audioInput');
+            const file = fileInput.files[0];
+
+            if (!file) {
+                alert('Please select a file.'); // Alert if no file is selected
+                return;
+            }
+
+            const reader = new FileReader(); // Create a FileReader
+
+            // Read the file as an ArrayBuffer
+            reader.readAsArrayBuffer(file);
+
+            reader.onload = function (event) {
+                try {
+                    const arrayBuffer = event.target.result; // Get the result from the reader
+                    ctx.decodeAudioData(arrayBuffer).then(data => {
+                        const encoder = new QFPEncoder(data, parseInt(document.getElementById('qp').value));
+                        const chunks = [];
+
+                        // Write header
+                        chunks.push(encoder.encodeHeader());
+
+                        // Write frames
+                        while (encoder.available()) {
+                            for (const frame of encoder.encodeFrame()) {
+                                chunks.push(frame.buffer);
+                                // chunks.push(frame[1])
+                            }
+                        }
+
+                        // Concatenate chunks into a single Uint8Array
+                        const combinedChunks = new Uint8Array(chunks.reduce((acc, chunk) => acc + chunk.byteLength, 0));
+                        let offset = 0;
+                        for (const chunk of chunks) {
+                            combinedChunks.set(new Uint8Array(chunk), offset);
+                            offset += chunk.byteLength;
+                        }
+
+                        // Compress the combined data using pako
+                        const compressedData = pako.gzip(combinedChunks);
+
+                        // Create a Blob from the compressed data and download it as a file
+                        const blob = new Blob([compressedData], { type: "application/octet-stream" });
+                        const url = URL.createObjectURL(blob);
+                        const a = document.createElement("a");
+                        a.href = url;
+                        a.download = replaceFileExtension(file.name, "qfp"); // Name of the file to download
+                        document.body.appendChild(a);
+                        a.click();
+                        document.body.removeChild(a);
+                        URL.revokeObjectURL(url); // Clean up the URL
+                    });
+
+
+                } catch (error) {
+                    alert("Error loading audio:", error);
+                    throw error;
+                }
+            };
+
+            reader.onerror = function (event) {
+                console.error('Error reading file:', event); // Log error
+                alert('Error reading file.'); // Alert on error
+            };
         })
     </script>
 </body>
