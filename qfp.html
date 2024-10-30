@@ -529,8 +529,8 @@
                     const lenArray = new ArrayBuffer(2);
                     new DataView(lenArray).setUint16(0, compressedData.byteLength, true);
 
-                    encodedFrames.push(new Uint8Array(lenArray))
-                    encodedFrames.push(compressedData);
+                    encodedFrames.push(lenArray)
+                    encodedFrames.push(compressedData.buffer);
                 }
                 this.i++;
                 return encodedFrames;
@@ -783,7 +783,7 @@
                         // Write frames
                         while (encoder.available()) {
                             for (const frame of encoder.encodeFrame()) {
-                                chunks.push(frame.buffer);
+                                chunks.push(frame);
                                 // chunks.push(frame[1])
                             }
                         }
