@@ -282,11 +282,12 @@
             }
             miniFFT(re, im)
 
-            const mul = Math.sqrt(1 / N);
+            const mul = Math.sqrt(2 / N);
 
             for (var i = 0; i < N; i++) {
                 s[i] = (re[i] * Math.cos(K * i) - im[i] * Math.sin(K * i)) * mul;
             }
+            s[0] *= Math.SQRT1_2;
         }
 
         // Function to perform the inverse discrete cosine transform (IDCT)
@@ -294,20 +295,29 @@
             var N = s.length,
                 K = Math.PI / (2 * N),
                 im = new Float64Array(N),
-                re = new Float64Array(N);
-            re[0] = s[0] / N / 2;
+                re = new Float64Array(N),
+                scale = Math.sqrt(2 / N);
+
+            // Scale first coefficient differently for orthogonal normalization
+            re[0] = s[0] / Math.sqrt(N);
+
             for (var i = 1; i < N; i++) {
-                var im2 = Math.sin(i * K), re2 = Math.cos(i * K);
-                re[i] = (s[N - i] * im2 + s[i] * re2) / N / 2;
-                im[i] = (im2 * s[i] - s[N - i] * re2) / N / 2;
+                var im2 = Math.sin(i * K),
+                    re2 = Math.cos(i * K);
+
+                // Apply scaling and normalization for orthogonal IDCT
+                re[i] = (s[N - i] * im2 + s[i] * re2) * scale / 2;
+                im[i] = (im2 * s[i] - s[N - i] * re2) * scale / 2;
             }
-            miniFFT(im, re)
-            const mul = N * Math.sqrt(2 / N);
+
+            miniFFT(im, re);
+
             for (var i = 0; i < N / 2; i++) {
-                s[2 * i] = re[i] * mul;
-                s[2 * i + 1] = re[N - i - 1] * mul;
+                s[2 * i] = re[i];
+                s[2 * i + 1] = re[N - i - 1];
             }
         }
+
 
         function rleCompress(data) {
             const compressed = [];
