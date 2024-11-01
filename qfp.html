@@ -295,9 +295,11 @@
                 const barWidth = (visualizerCanvas.width / bufferLength); // Width of each bar
                 let barHeight;
 
-                for (let i = 0; i < bufferLength; i++) {
-                    visualizerCtx.fillStyle = colorTrans(palette, dataArray[i] / 255)
-                    visualizerCtx.fillRect(i * barWidth, 0, 1, 1);
+                for (let i = 0; i < visualizerCanvas.width; i++) {
+                    let index = Math.floor(i / visualizerCanvas.width * dataArray.length)
+
+                    visualizerCtx.fillStyle = colorTrans(palette, dataArray[index] / 255)
+                    visualizerCtx.fillRect(i, 0, 1, 1);
                 }
                 visualizerCtx.drawImage(canvasBuffer, 0, 1, visualizerCanvas.width, visualizerCanvas.height);
             }
