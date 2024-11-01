@@ -64,7 +64,8 @@
             margin-top: 16px;
         }
 
-        button, input::file-selector-button {
+        button,
+        input::file-selector-button {
             background-color: #8e4bec;
             /* Purple button */
             color: white;
@@ -76,7 +77,8 @@
             margin-left: 8px;
         }
 
-        button:hover, input::file-selector-button:hover {
+        button:hover,
+        input::file-selector-button:hover {
             background-color: #6400ea;
             /* Darker purple on hover */
         }
@@ -157,14 +159,20 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pako/1.0.11/pako.min.js"></script>
     <script>
 
+        const dpr = window.devicePixelRatio;
         const visualizerCanvas = document.getElementById('visualizer');
-        visualizerCanvas.width = visualizerCanvas.clientWidth;
-        visualizerCanvas.height = visualizerCanvas.clientHeight;
+        visualizerCanvas.width = visualizerCanvas.clientWidth * dpr;
+        visualizerCanvas.height = visualizerCanvas.clientHeight * dpr;
         const visualizerCtx = visualizerCanvas.getContext('2d');
+        const canvasBuffer = document.createElement('canvas');
+        canvasBuffer.width = visualizerCanvas.clientWidth * dpr;
+        canvasBuffer.height = visualizerCanvas.clientHeight * dpr;
+        const bufferCtx = canvasBuffer.getContext('2d');
 
         const ctx = new AudioContext({ latencyHint: "balanced" });
 
         const analyser = ctx.createAnalyser();
+        analyser.smoothingTimeConstant = 0;
         analyser.fftSize = 2048; // Size of the FFT
 
         const bufferLength = analyser.frequencyBinCount;
@@ -226,10 +234,61 @@
             }
         }
 
+
+
+        function add(v1, v2) {
+            return [v1[0] + v2[0], v1[1] + v2[1], v1[2] + v2[2]];
+        }
+
+        function sub(v1, v2) {
+            return [v1[0] - v2[0], v1[1] - v2[1], v1[2] - v2[2]];
+        }
+
+        function mul(v1, mul) {
+            return [v1[0] * mul, v1[1] * mul, v1[2] * mul];
+        }
+
+        function colorTrans(pal, prog) {
+            if (prog < 0) return formatColor(pal[0]);
+            else if (prog >= 1) return formatColor(pal[pal.length - 1]);
+            let i = parseInt(prog * (pal.length - 1));
+            let v1 = pal[i];
+            let v2 = pal[i + 1];
+
+            try {
+                let delta = sub(v2, v1);
+                let percent = (prog / (1 / (pal.length - 1)));
+                let int = parseInt(percent);
+                percent -= int;
+                let adv = mul(delta, percent);
+                let result = add(v1, adv);
+                return formatColor(result);
+            } catch (error) {
+                // console.log(i, v1, v2);
+                // console.error(error);
+            }
+        }
+
+        function formatColor(v) {
+            return `rgb(${v[0]},${v[1]},${v[2]})`;
+        }
+
+        /**
+         * Canvas
+        */
+        let palette = [
+            [30, 30, 30],
+            [142, 75, 236],
+            [0xff, 0x63, 0x61],
+            [0xff, 0xd3, 0x80]
+        ];
+
         function drawFFT() {
-            visualizerCtx.clearRect(0, 0, visualizerCanvas.width, visualizerCanvas.height); // Clear canvas
+            // visualizerCtx.clearRect(0, 0, visualizerCanvas.width, visualizerCanvas.height); // Clear canvas
 
             if (analyser && dataArray) {
+                bufferCtx.drawImage(visualizerCanvas, 0, 0, visualizerCanvas.width, visualizerCanvas.height);
+
                 analyser.getByteFrequencyData(dataArray); // Get frequency data
                 const bufferLength = analyser.frequencyBinCount;
 
@@ -237,12 +296,10 @@
                 let barHeight;
 
                 for (let i = 0; i < bufferLength; i++) {
-                    barHeight = dataArray[i] / 255 * visualizerCanvas.height; // Get amplitude value
-                    const offset = (visualizerCanvas.height - barHeight) / 2; // Center the bar
-
-                    visualizerCtx.fillStyle = `hsl(${(i / bufferLength) * 360}, 100%, 50%)`; // Color gradient
-                    visualizerCtx.fillRect(i * barWidth, offset, barWidth + 1, barHeight);
+                    visualizerCtx.fillStyle = colorTrans(palette, dataArray[i] / 255)
+                    visualizerCtx.fillRect(i * barWidth, 0, 1, 1);
                 }
+                visualizerCtx.drawImage(canvasBuffer, 0, 1, visualizerCanvas.width, visualizerCanvas.height);
             }
             requestAnimationFrame(drawFFT); // Loop the draw function
         }
