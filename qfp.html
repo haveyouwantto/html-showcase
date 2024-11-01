@@ -179,7 +179,7 @@
             [4000, 8000, 52],
             [8000, 12000, 55],
             [12000, 15000, 57],
-            [15000, 20000, 63],
+            [15000, 20000, 60],
             [20000, 192000, 999],
         ]
 
@@ -443,6 +443,11 @@
             return Math.min(2 ** power, 65536);
         }
 
+        function getFrameNum(sec, sampleRate, samplesPerFrame) {
+            return Math.ceil((sec * sampleRate) / samplesPerFrame);
+        }
+
+
         class QFPEncoder {
             constructor(audioBuffer, qp) {
                 this.buffer = audioBuffer;
@@ -552,6 +557,7 @@
                 this.ptr = 0;
                 this.read = 0;
                 this.readHeader();
+                this.generatePos();
             }
 
             readHeader() {
@@ -611,10 +617,25 @@
                 return [l, r]; // Return left and right channels
             }
 
+            generatePos() {
+                this.lookUp = [];
+                for (let i = 0; i < this.numWindows; i++) {
+                    this.lookUp.push(this.ptr);
+                    for (let ch = 0; ch < 2; ch++) {
+                        const length = this.view.getUint16(this.ptr, true); // Read length of the frame
+                        this.ptr += 2 + length; // Move pointer
+                    }
+                }
+                this.reset();
+            }
+
+            seek(frame) {
+                this.ptr = 17 + this.lookUp[frame];
+            }
+
             reset() {
-                this.ptr = 0;
+                this.ptr = 17;
                 this.read = 0;
-                this.readHeader();
             }
         }
 
