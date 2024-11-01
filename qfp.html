@@ -792,51 +792,46 @@
             reader.readAsArrayBuffer(file);
 
             reader.onload = function (event) {
-                try {
-                    const arrayBuffer = event.target.result; // Get the result from the reader
-                    ctx.decodeAudioData(arrayBuffer).then(data => {
-                        const encoder = new QFPEncoder(data, parseInt(document.getElementById('qp').value));
-                        const chunks = [];
+                const arrayBuffer = event.target.result; // Get the result from the reader
+                ctx.decodeAudioData(arrayBuffer).then(data => {
+                    const encoder = new QFPEncoder(data, parseInt(document.getElementById('qp').value));
+                    const chunks = [];
 
-                        // Write header
-                        chunks.push(encoder.encodeHeader());
+                    // Write header
+                    chunks.push(encoder.encodeHeader());
 
-                        // Write frames
-                        while (encoder.available()) {
-                            for (const frame of encoder.encodeFrame()) {
-                                chunks.push(frame.buffer);
-                                // chunks.push(frame[1])
-                            }
+                    // Write frames
+                    while (encoder.available()) {
+                        for (const frame of encoder.encodeFrame()) {
+                            chunks.push(frame.buffer);
+                            // chunks.push(frame[1])
                         }
+                    }
 
-                        // Concatenate chunks into a single Uint8Array
-                        const combinedChunks = new Uint8Array(chunks.reduce((acc, chunk) => acc + chunk.byteLength, 0));
-                        let offset = 0;
-                        for (const chunk of chunks) {
-                            combinedChunks.set(new Uint8Array(chunk), offset);
-                            offset += chunk.byteLength;
-                        }
+                    // Concatenate chunks into a single Uint8Array
+                    const combinedChunks = new Uint8Array(chunks.reduce((acc, chunk) => acc + chunk.byteLength, 0));
+                    let offset = 0;
+                    for (const chunk of chunks) {
+                        combinedChunks.set(new Uint8Array(chunk), offset);
+                        offset += chunk.byteLength;
+                    }
 
-                        // Compress the combined data using pako
-                        const compressedData = pako.gzip(combinedChunks);
+                    // Compress the combined data using pako
+                    const compressedData = pako.gzip(combinedChunks);
 
-                        // Create a Blob from the compressed data and download it as a file
-                        const blob = new Blob([compressedData], { type: "application/octet-stream" });
-                        const url = URL.createObjectURL(blob);
-                        const a = document.createElement("a");
-                        a.href = url;
-                        a.download = replaceFileExtension(file.name, "qfp"); // Name of the file to download
-                        document.body.appendChild(a);
-                        a.click();
-                        document.body.removeChild(a);
-                        URL.revokeObjectURL(url); // Clean up the URL
-                    });
-
-
-                } catch (error) {
-                    alert("Error loading audio:", error);
-                    throw error;
-                }
+                    // Create a Blob from the compressed data and download it as a file
+                    const blob = new Blob([compressedData], { type: "application/octet-stream" });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement("a");
+                    a.href = url;
+                    a.download = replaceFileExtension(file.name, "qfp"); // Name of the file to download
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    URL.revokeObjectURL(url); // Clean up the URL
+                }).catch(e => {
+                    alert("Error decoding audio: " + e)
+                });
             };
 
             reader.onerror = function (event) {
