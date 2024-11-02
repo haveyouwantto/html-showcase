@@ -83,6 +83,11 @@
             /* Darker purple on hover */
         }
 
+        button:disabled {
+            background-color: #444;
+            cursor: default;
+        }
+
         .btn {
             display: flex;
         }
@@ -845,7 +850,9 @@
             player.replay();
         })
 
-        document.getElementById('encode').addEventListener('click', e => {
+        const encodeBtn = document.getElementById('encode')
+
+        encodeBtn.addEventListener('click', e => {
             const fileInput = document.getElementById('audioInput');
             const file = fileInput.files[0];
 
@@ -853,59 +860,63 @@
                 alert('Please select a file.'); // Alert if no file is selected
                 return;
             }
+            encodeBtn.disabled = true;
 
-            const reader = new FileReader(); // Create a FileReader
+            const promise = new Promise((resolve, reject) => {
+                const reader = new FileReader(); // Create a FileReader
 
-            // Read the file as an ArrayBuffer
-            reader.readAsArrayBuffer(file);
+                // Read the file as an ArrayBuffer
+                reader.readAsArrayBuffer(file);
 
-            reader.onload = function (event) {
-                const arrayBuffer = event.target.result; // Get the result from the reader
-                ctx.decodeAudioData(arrayBuffer).then(data => {
-                    const encoder = new QFPEncoder(data, parseInt(document.getElementById('qp').value));
-                    const chunks = [];
+                reader.onload = function (event) {
+                    const arrayBuffer = event.target.result; // Get the result from the reader
+                    ctx.decodeAudioData(arrayBuffer).then(data => {
+                        const encoder = new QFPEncoder(data, parseInt(document.getElementById('qp').value));
+                        const chunks = [];
 
-                    // Write header
-                    chunks.push(encoder.encodeHeader());
+                        // Write header
+                        chunks.push(encoder.encodeHeader());
 
-                    // Write frames
-                    while (encoder.available()) {
-                        for (const frame of encoder.encodeFrame()) {
-                            chunks.push(frame);
-                            // chunks.push(frame[1])
+                        // Write frames
+                        while (encoder.available()) {
+                            for (const frame of encoder.encodeFrame()) {
+                                chunks.push(frame);
+                                // chunks.push(frame[1])
+                            }
                         }
-                    }
 
-                    // Concatenate chunks into a single Uint8Array
-                    const combinedChunks = new Uint8Array(chunks.reduce((acc, chunk) => acc + chunk.byteLength, 0));
-                    let offset = 0;
-                    for (const chunk of chunks) {
-                        combinedChunks.set(new Uint8Array(chunk), offset);
-                        offset += chunk.byteLength;
-                    }
+                        // Concatenate chunks into a single Uint8Array
+                        const combinedChunks = new Uint8Array(chunks.reduce((acc, chunk) => acc + chunk.byteLength, 0));
+                        let offset = 0;
+                        for (const chunk of chunks) {
+                            combinedChunks.set(new Uint8Array(chunk), offset);
+                            offset += chunk.byteLength;
+                        }
 
-                    // Compress the combined data using pako
-                    const compressedData = pako.gzip(combinedChunks);
+                        // Compress the combined data using pako
+                        const compressedData = pako.gzip(combinedChunks);
 
-                    // Create a Blob from the compressed data and download it as a file
-                    const blob = new Blob([compressedData], { type: "application/octet-stream" });
-                    const url = URL.createObjectURL(blob);
-                    const a = document.createElement("a");
-                    a.href = url;
-                    a.download = replaceFileExtension(file.name, "qfp"); // Name of the file to download
-                    document.body.appendChild(a);
-                    a.click();
-                    document.body.removeChild(a);
-                    URL.revokeObjectURL(url); // Clean up the URL
-                }).catch(e => {
-                    alert("Error decoding audio: " + e)
-                });
-            };
+                        // Create a Blob from the compressed data and download it as a file
+                        const blob = new Blob([compressedData], { type: "application/octet-stream" });
+                        const url = URL.createObjectURL(blob);
+                        const a = document.createElement("a");
+                        a.href = url;
+                        a.download = replaceFileExtension(file.name, "qfp"); // Name of the file to download
+                        document.body.appendChild(a);
+                        a.click();
+                        document.body.removeChild(a);
+                        URL.revokeObjectURL(url); // Clean up the URL
+                    }).catch(e => {
+                        reject("Error decoding audio: " + e)
+                    });
+                };
 
-            reader.onerror = function (event) {
-                console.error('Error reading file:', event); // Log error
-                alert('Error reading file.'); // Alert on error
-            };
+                reader.onerror = function (event) {
+                    reject('Error reading file:' + event);
+                };
+            })
+
+            promise.catch(e => alert(e)).finally(() => encodeBtn.disabled = false);
         })
     </script>
 </body>
