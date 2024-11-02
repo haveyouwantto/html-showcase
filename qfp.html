@@ -584,8 +584,7 @@
                         const bandEnd = Math.floor(this.winSize * subBand[1]);
                         // console.log(bandStart,bandEnd)
                         const band = ampQ.slice(bandStart, bandEnd).map(value => Math.abs(value) < subBand[2] ? 0 : value);
-
-                        ampQ = ampQ.map((e, i) => i >= bandStart && i <= bandEnd ? band[i - bandStart] : e);
+                        band.forEach((v, i) => ampQ[bandStart + i] = v)
                     }
 
                     // Trim trailing zeros
