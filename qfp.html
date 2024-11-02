@@ -64,7 +64,8 @@
             margin-top: 16px;
         }
 
-        button {
+        button,
+        input::file-selector-button {
             background-color: #8e4bec;
             /* Purple button */
             color: white;
@@ -76,7 +77,8 @@
             margin-left: 8px;
         }
 
-        button:hover {
+        button:hover,
+        input::file-selector-button:hover {
             background-color: #6400ea;
             /* Darker purple on hover */
         }
@@ -157,14 +159,20 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pako/1.0.11/pako.min.js"></script>
     <script>
 
+        const dpr = window.devicePixelRatio;
         const visualizerCanvas = document.getElementById('visualizer');
-        visualizerCanvas.width = visualizerCanvas.clientWidth;
-        visualizerCanvas.height = visualizerCanvas.clientHeight;
+        visualizerCanvas.width = visualizerCanvas.clientWidth * dpr;
+        visualizerCanvas.height = visualizerCanvas.clientHeight * dpr;
         const visualizerCtx = visualizerCanvas.getContext('2d');
+        const canvasBuffer = document.createElement('canvas');
+        canvasBuffer.width = visualizerCanvas.clientWidth * dpr;
+        canvasBuffer.height = visualizerCanvas.clientHeight * dpr;
+        const bufferCtx = canvasBuffer.getContext('2d');
 
         const ctx = new AudioContext({ latencyHint: "balanced" });
 
         const analyser = ctx.createAnalyser();
+        analyser.smoothingTimeConstant = 0;
         analyser.fftSize = 2048; // Size of the FFT
 
         const bufferLength = analyser.frequencyBinCount;
@@ -179,7 +187,7 @@
             [4000, 8000, 52],
             [8000, 12000, 55],
             [12000, 15000, 57],
-            [15000, 20000, 63],
+            [15000, 20000, 60],
             [20000, 192000, 999],
         ]
 
@@ -226,23 +234,74 @@
             }
         }
 
+
+
+        function add(v1, v2) {
+            return [v1[0] + v2[0], v1[1] + v2[1], v1[2] + v2[2]];
+        }
+
+        function sub(v1, v2) {
+            return [v1[0] - v2[0], v1[1] - v2[1], v1[2] - v2[2]];
+        }
+
+        function mul(v1, mul) {
+            return [v1[0] * mul, v1[1] * mul, v1[2] * mul];
+        }
+
+        function colorTrans(pal, prog) {
+            if (prog < 0) return formatColor(pal[0]);
+            else if (prog >= 1) return formatColor(pal[pal.length - 1]);
+            let i = parseInt(prog * (pal.length - 1));
+            let v1 = pal[i];
+            let v2 = pal[i + 1];
+
+            try {
+                let delta = sub(v2, v1);
+                let percent = (prog / (1 / (pal.length - 1)));
+                let int = parseInt(percent);
+                percent -= int;
+                let adv = mul(delta, percent);
+                let result = add(v1, adv);
+                return formatColor(result);
+            } catch (error) {
+                // console.log(i, v1, v2);
+                // console.error(error);
+            }
+        }
+
+        function formatColor(v) {
+            return `rgb(${v[0]},${v[1]},${v[2]})`;
+        }
+
+        /**
+         * Canvas
+        */
+        let palette = [
+            [30, 30, 30],
+            [142, 75, 236],
+            [0xff, 0x63, 0x61],
+            [0xff, 0xd3, 0x80]
+        ];
+
         function drawFFT() {
-            visualizerCtx.clearRect(0, 0, visualizerCanvas.width, visualizerCanvas.height); // Clear canvas
+            // visualizerCtx.clearRect(0, 0, visualizerCanvas.width, visualizerCanvas.height); // Clear canvas
 
             if (analyser && dataArray) {
+                bufferCtx.drawImage(visualizerCanvas, 0, 0, visualizerCanvas.width, visualizerCanvas.height);
+
                 analyser.getByteFrequencyData(dataArray); // Get frequency data
                 const bufferLength = analyser.frequencyBinCount;
 
                 const barWidth = (visualizerCanvas.width / bufferLength); // Width of each bar
                 let barHeight;
 
-                for (let i = 0; i < bufferLength; i++) {
-                    barHeight = dataArray[i] / 255 * visualizerCanvas.height; // Get amplitude value
-                    const offset = (visualizerCanvas.height - barHeight) / 2; // Center the bar
+                for (let i = 0; i < visualizerCanvas.width; i++) {
+                    let index = Math.floor(i / visualizerCanvas.width * dataArray.length)
 
-                    visualizerCtx.fillStyle = `hsl(${(i / bufferLength) * 360}, 100%, 50%)`; // Color gradient
-                    visualizerCtx.fillRect(i * barWidth, offset, barWidth + 1, barHeight);
+                    visualizerCtx.fillStyle = colorTrans(palette, dataArray[index] / 255)
+                    visualizerCtx.fillRect(i, 0, 1, 1);
                 }
+                visualizerCtx.drawImage(canvasBuffer, 0, 1, visualizerCanvas.width, visualizerCanvas.height);
             }
             requestAnimationFrame(drawFFT); // Loop the draw function
         }
@@ -282,11 +341,12 @@
             }
             miniFFT(re, im)
 
-            const mul = Math.sqrt(1 / N);
+            const mul = Math.sqrt(2 / N);
 
             for (var i = 0; i < N; i++) {
                 s[i] = (re[i] * Math.cos(K * i) - im[i] * Math.sin(K * i)) * mul;
             }
+            s[0] *= Math.SQRT1_2;
         }
 
         // Function to perform the inverse discrete cosine transform (IDCT)
@@ -294,20 +354,29 @@
             var N = s.length,
                 K = Math.PI / (2 * N),
                 im = new Float64Array(N),
-                re = new Float64Array(N);
-            re[0] = s[0] / N / 2;
+                re = new Float64Array(N),
+                scale = Math.sqrt(2 / N);
+
+            // Scale first coefficient differently for orthogonal normalization
+            re[0] = s[0] / Math.sqrt(N);
+
             for (var i = 1; i < N; i++) {
-                var im2 = Math.sin(i * K), re2 = Math.cos(i * K);
-                re[i] = (s[N - i] * im2 + s[i] * re2) / N / 2;
-                im[i] = (im2 * s[i] - s[N - i] * re2) / N / 2;
+                var im2 = Math.sin(i * K),
+                    re2 = Math.cos(i * K);
+
+                // Apply scaling and normalization for orthogonal IDCT
+                re[i] = (s[N - i] * im2 + s[i] * re2) * scale / 2;
+                im[i] = (im2 * s[i] - s[N - i] * re2) * scale / 2;
             }
-            miniFFT(im, re)
-            const mul = N * Math.sqrt(2 / N);
+
+            miniFFT(im, re);
+
             for (var i = 0; i < N / 2; i++) {
-                s[2 * i] = re[i] * mul;
-                s[2 * i + 1] = re[N - i - 1] * mul;
+                s[2 * i] = re[i];
+                s[2 * i + 1] = re[N - i - 1];
             }
         }
+
 
         function rleCompress(data) {
             const compressed = [];
@@ -443,6 +512,11 @@
             return Math.min(2 ** power, 65536);
         }
 
+        function getFrameNum(sec, sampleRate, samplesPerFrame) {
+            return Math.ceil((sec * sampleRate) / samplesPerFrame);
+        }
+
+
         class QFPEncoder {
             constructor(audioBuffer, qp) {
                 this.buffer = audioBuffer;
@@ -552,6 +626,7 @@
                 this.ptr = 0;
                 this.read = 0;
                 this.readHeader();
+                this.generatePos();
             }
 
             readHeader() {
@@ -611,10 +686,25 @@
                 return [l, r]; // Return left and right channels
             }
 
+            generatePos() {
+                this.lookUp = [];
+                for (let i = 0; i < this.numWindows; i++) {
+                    this.lookUp.push(this.ptr);
+                    for (let ch = 0; ch < 2; ch++) {
+                        const length = this.view.getUint16(this.ptr, true); // Read length of the frame
+                        this.ptr += 2 + length; // Move pointer
+                    }
+                }
+                this.reset();
+            }
+
+            seek(frame) {
+                this.ptr = 17 + this.lookUp[frame];
+            }
+
             reset() {
-                this.ptr = 0;
+                this.ptr = 17;
                 this.read = 0;
-                this.readHeader();
             }
         }
 
@@ -771,14 +861,13 @@
             reader.readAsArrayBuffer(file);
 
             reader.onload = function (event) {
-                try {
-                    const arrayBuffer = event.target.result; // Get the result from the reader
-                    ctx.decodeAudioData(arrayBuffer).then(data => {
-                        const encoder = new QFPEncoder(data, parseInt(document.getElementById('qp').value));
-                        const chunks = [];
+                const arrayBuffer = event.target.result; // Get the result from the reader
+                ctx.decodeAudioData(arrayBuffer).then(data => {
+                    const encoder = new QFPEncoder(data, parseInt(document.getElementById('qp').value));
+                    const chunks = [];
 
-                        // Write header
-                        chunks.push(encoder.encodeHeader());
+                    // Write header
+                    chunks.push(encoder.encodeHeader());
 
                         // Write frames
                         while (encoder.available()) {
@@ -787,35 +876,32 @@
                                 // chunks.push(frame[1])
                             }
                         }
+                    }
 
-                        // Concatenate chunks into a single Uint8Array
-                        const combinedChunks = new Uint8Array(chunks.reduce((acc, chunk) => acc + chunk.byteLength, 0));
-                        let offset = 0;
-                        for (const chunk of chunks) {
-                            combinedChunks.set(new Uint8Array(chunk), offset);
-                            offset += chunk.byteLength;
-                        }
+                    // Concatenate chunks into a single Uint8Array
+                    const combinedChunks = new Uint8Array(chunks.reduce((acc, chunk) => acc + chunk.byteLength, 0));
+                    let offset = 0;
+                    for (const chunk of chunks) {
+                        combinedChunks.set(new Uint8Array(chunk), offset);
+                        offset += chunk.byteLength;
+                    }
 
-                        // Compress the combined data using pako
-                        const compressedData = pako.gzip(combinedChunks);
+                    // Compress the combined data using pako
+                    const compressedData = pako.gzip(combinedChunks);
 
-                        // Create a Blob from the compressed data and download it as a file
-                        const blob = new Blob([compressedData], { type: "application/octet-stream" });
-                        const url = URL.createObjectURL(blob);
-                        const a = document.createElement("a");
-                        a.href = url;
-                        a.download = replaceFileExtension(file.name, "qfp"); // Name of the file to download
-                        document.body.appendChild(a);
-                        a.click();
-                        document.body.removeChild(a);
-                        URL.revokeObjectURL(url); // Clean up the URL
-                    });
-
-
-                } catch (error) {
-                    alert("Error loading audio:", error);
-                    throw error;
-                }
+                    // Create a Blob from the compressed data and download it as a file
+                    const blob = new Blob([compressedData], { type: "application/octet-stream" });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement("a");
+                    a.href = url;
+                    a.download = replaceFileExtension(file.name, "qfp"); // Name of the file to download
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    URL.revokeObjectURL(url); // Clean up the URL
+                }).catch(e => {
+                    alert("Error decoding audio: " + e)
+                });
             };
 
             reader.onerror = function (event) {
