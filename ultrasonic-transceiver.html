@@ -99,17 +99,9 @@
         let reverse = false;
 
         function createCosineWindow(length) {
-           const window = new Float64Array(length);
-  const alpha = 0.16;
-  const a0 = 0.5 * (1 - alpha);
-  const a1 = 0.5;
-  const a2 = 0.5 * alpha;
-
-  for (let i = 0; i < length; i++) {
-    window[i] = a0 - a1 * Math.cos((2 * Math.PI * i) / (length - 1)) + a2 * Math.cos((4 * Math.PI * i) / (length - 1));
-  }
-
-  return window;
+           return [...Array(length)].map((v, i) => {
+                return Math.cos(Math.PI * (i / length - 0.5));
+            });
         }
 
         function roundDownToPowerOfTwo(number) {
