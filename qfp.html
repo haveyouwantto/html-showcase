@@ -869,12 +869,11 @@
                     // Write header
                     chunks.push(encoder.encodeHeader());
 
-                        // Write frames
-                        while (encoder.available()) {
-                            for (const frame of encoder.encodeFrame()) {
-                                chunks.push(frame);
-                                // chunks.push(frame[1])
-                            }
+                    // Write frames
+                    while (encoder.available()) {
+                        for (const frame of encoder.encodeFrame()) {
+                            chunks.push(frame);
+                            // chunks.push(frame[1])
                         }
                     }
 
