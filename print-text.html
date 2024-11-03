@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="zh">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>文本单字出现示例</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #121212;
+            /* Dark background */
+            color: #e0e0e0;
+            /* Light text color */
+            margin: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        h1 {
+            margin-bottom: 20px;
+            font-size: 24px;
+            text-align: center;
+        }
+
+        textarea {
+            width: 100%;
+            max-width: 600px;
+            /* Maximum width for textarea */
+            height: 100px;
+            background-color: #1e1e1e;
+            /* Darker textarea background */
+            color: #e0e0e0;
+            /* Light text color for textarea */
+            border: 1px solid #3a3a3a;
+            /* Border for textarea */
+            border-radius: 5px;
+            /* Rounded corners */
+            padding: 10px;
+            /* Padding inside textarea */
+            font-size: 16px;
+            /* Font size for textarea */
+            resize: none;
+            /* Disable resizing */
+        }
+
+        button {
+            margin-top: 10px;
+            padding: 10px 15px;
+            background-color: #6200ea;
+            /* Button color */
+            color: #ffffff;
+            /* Button text color */
+            border: none;
+            /* No border */
+            border-radius: 5px;
+            /* Rounded corners */
+            font-size: 16px;
+            /* Font size for button */
+            cursor: pointer;
+            /* Pointer cursor on hover */
+            transition: background-color 0.3s;
+            /* Transition for hover effect */
+        }
+
+        button:hover {
+            background-color: #3700b3;
+            /* Darker shade on hover */
+        }
+    </style>
+</head>
+
+<body>
+
+    <h1>文本单字出现示例</h1>
+    <textarea id="textInput" placeholder="在这里输入文本...">你想重温第一次打开《Minecraft》时的好奇心吗？DecIsland 插件为游戏增加了大约 500 种物品、100 多种方块、100 多种结构和 100 多种生物，大部分都遵循原版游戏的风格。只有少数物品和方块无法在生存模式中找到，因为它们仍在测试中或存在严重的错误。这个插件可以在你的生存世界中激活，并且比原版游戏更具挑战性，因为有更多的危险和更复杂的系统，比如魔法点或夜间事件。</textarea>
+    <button id="showButton">出现</button>
+    <div id="area"></div>
+
+    <script>
+        const area = document.getElementById('area');
+
+        document.getElementById('showButton').addEventListener('click', function () {
+            const textArea = document.getElementById('textInput');
+            textArea.value.split('').forEach((char, i) => {
+                setTimeout(() => area.appendChild(document.createTextNode(char)), i * 100 + 500)
+            });
+        });
+    </script>
+
+</body>
+
+</html>
