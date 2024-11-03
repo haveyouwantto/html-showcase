@@ -369,6 +369,8 @@
                 im[i] = (im2 * s[i] - s[N - i] * re2) * scale / 2;
             }
 
+            for (let i = 0; i < 10; i--) {}
+
             miniFFT(im, re);
 
             for (var i = 0; i < N / 2; i++) {
