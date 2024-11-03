@@ -82,6 +82,7 @@
         const area = document.getElementById('area');
 
         document.getElementById('showButton').addEventListener('click', function () {
+            area.textContent = '';
             const textArea = document.getElementById('textInput');
             textArea.value.split('').forEach((char, i) => {
                 setTimeout(() => area.appendChild(document.createTextNode(char)), i * 100 + 500)
