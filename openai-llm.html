@@ -397,7 +397,7 @@
                 fileReader.readAsText(input.files[0]);    //读取文件
 
                 fileReader.onloadend = () => {
-                    const preset = JSON.parse(fileReader.result);//将文件读取结果转换为json对象
+                    const preset = JSON.parse(fileReader.result.trim());//将文件读取结果转换为json对象
                     editor.fromPreset(preset)     //将preset转换为editor中的preset
                 }
             }
@@ -412,7 +412,7 @@
 
         document.getElementById('paste-preset').onclick = () => {
             navigator.clipboard.readText().then(text => {
-                const preset = JSON.parse(text);//从剪贴板中读取preset
+                const preset = JSON.parse(text.trim());//从剪贴板中读取preset
                 editor.fromPreset(preset)    //将preset转换为editor中的preset
             })
         }
