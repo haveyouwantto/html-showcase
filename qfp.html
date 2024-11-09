@@ -527,7 +527,8 @@
                 this.buffer = audioBuffer;
                 this.i = 0;
                 this.l = audioBuffer.getChannelData(0);
-                this.r = audioBuffer.channels >= 2 ? audioBuffer.getChannelData(1) : this.l;
+                console.log(audioBuffer)
+                this.r = audioBuffer.numberOfChannels >= 2 ? audioBuffer.getChannelData(1) : this.l;
                 this.qp = qp;
             }
 
