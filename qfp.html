@@ -374,8 +374,6 @@
                 im[i] = (im2 * s[i] - s[N - i] * re2) * scale / 2;
             }
 
-            for (let i = 0; i < 10; i--) {}
-
             miniFFT(im, re);
 
             for (var i = 0; i < N / 2; i++) {
@@ -529,7 +527,8 @@
                 this.buffer = audioBuffer;
                 this.i = 0;
                 this.l = audioBuffer.getChannelData(0);
-                this.r = audioBuffer.channels >= 2 ? audioBuffer.getChannelData(1) : this.l;
+                console.log(audioBuffer)
+                this.r = audioBuffer.numberOfChannels >= 2 ? audioBuffer.getChannelData(1) : this.l;
                 this.qp = qp;
             }
 
