@@ -166,12 +166,18 @@
 
         const dpr = window.devicePixelRatio;
         const visualizerCanvas = document.getElementById('visualizer');
-        visualizerCanvas.width = visualizerCanvas.clientWidth * dpr;
-        visualizerCanvas.height = visualizerCanvas.clientHeight * dpr;
         const visualizerCtx = visualizerCanvas.getContext('2d');
         const canvasBuffer = document.createElement('canvas');
-        canvasBuffer.width = visualizerCanvas.clientWidth * dpr;
-        canvasBuffer.height = visualizerCanvas.clientHeight * dpr;
+
+        function initCanvas() {
+            visualizerCanvas.width = visualizerCanvas.clientWidth * dpr;
+            visualizerCanvas.height = visualizerCanvas.clientHeight * dpr;
+            canvasBuffer.width = visualizerCanvas.clientWidth * dpr;
+            canvasBuffer.height = visualizerCanvas.clientHeight * dpr;
+        }
+        initCanvas();
+        document.onvisibilitychange = initCanvas;
+
         const bufferCtx = canvasBuffer.getContext('2d');
 
         const ctx = new AudioContext({ latencyHint: "balanced" });
