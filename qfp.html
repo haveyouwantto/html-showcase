@@ -167,18 +167,12 @@
         const dpr = window.devicePixelRatio;
         const visualizerCanvas = document.getElementById('visualizer');
         const visualizerCtx = visualizerCanvas.getContext('2d');
-        const canvasBuffer = document.createElement('canvas');
 
         function initCanvas() {
             visualizerCanvas.width = visualizerCanvas.clientWidth * dpr;
             visualizerCanvas.height = visualizerCanvas.clientHeight * dpr;
-            canvasBuffer.width = visualizerCanvas.clientWidth * dpr;
-            canvasBuffer.height = visualizerCanvas.clientHeight * dpr;
         }
         initCanvas();
-        document.onvisibilitychange = initCanvas;
-
-        const bufferCtx = canvasBuffer.getContext('2d');
 
         const ctx = new AudioContext({ latencyHint: "balanced" });
 
@@ -295,11 +289,12 @@
         ];
 
         function drawFFT() {
-            // visualizerCtx.clearRect(0, 0, visualizerCanvas.width, visualizerCanvas.height); // Clear canvas
 
+            visualizerCtx.drawImage(visualizerCanvas, 0, 1, visualizerCanvas.width, visualizerCanvas.height);
+            //visualizerCtx.clearRect(0, 0, visualizerCanvas.width, 1); // Clear canvas
 
             if (analyser && dataArray) {
-                bufferCtx.drawImage(visualizerCanvas, 0, 0, visualizerCanvas.width, visualizerCanvas.height);
+                //visualizerCanvas.drawImage(visualizerCanvas, 0, 0, visualizerCanvas.width, visualizerCanvas.height);
 
                 analyser.getByteFrequencyData(dataArray); // Get frequency data
                 const bufferLength = analyser.frequencyBinCount;
@@ -313,11 +308,9 @@
                     visualizerCtx.fillStyle = colorTrans(palette, dataArray[index] / 255)
                     visualizerCtx.fillRect(i, 0, 1, 1);
                 }
-                visualizerCtx.drawImage(canvasBuffer, 0, 1, visualizerCanvas.width, visualizerCanvas.height);
-
                 visualizerCtx.fillStyle = '#ffffff80';
                 SUB_BANDS.forEach(e => {
-                    const x = e[0] / ctx.sampleRate * canvasBuffer.width * 2;
+                    const x = e[0] / ctx.sampleRate * visualizerCanvas.width * 2;
                     visualizerCtx.fillRect(x, 0, 1, 1)
 
                 })
