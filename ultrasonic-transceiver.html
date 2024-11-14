@@ -95,8 +95,20 @@
         const startFreq = 15000;
         const bandwidth = 3000;
         const reverseFreq = 16000;
-        const guardBw = 0;
+        const multiplier = ctx.sampleRate / 48000;
+        const taps = parseInt(1001 * multiplier) | 1;
+        const guardBw = ctx.sampleRate / (2 * taps);
         let reverse = false;
+
+        console.log({
+            'startFreq': startFreq,
+            'bandwidth': bandwidth,
+            'reverseFreq': reverseFreq,
+            'multiplier': multiplier,
+            'taps': taps,
+            'guardBw': guardBw,
+            'finalBw': bandwidth - guardBw,
+        })
 
         function createHannWindow(length) {
             return [...Array(length)].map((v, i) => {
@@ -219,7 +231,6 @@
             else channelSelection.value = Math.floor(channelSelection.value)
         })
 
-        const multiplier = ctx.sampleRate / 48000;
 
         txBtn.addEventListener('click', e => {
             acquireWakelock();
@@ -245,10 +256,10 @@
                 reverse = freq < reverseFreq;
                 if (!reverse) {
                     localOscillator.frequency.value = freq;
-                    filter.buffer = createFilter(parseInt(1001 * multiplier) | 1, freq + (bandwidth - guardBw) / 2, bandwidth / 2 - guardBw);
+                    filter.buffer = createFilter(taps, freq + (bandwidth - guardBw) / 2, bandwidth / 2 - guardBw);
                 } else {
                     localOscillator.frequency.value = freq + bandwidth;
-                    filter.buffer = createFilter(parseInt(1001 * multiplier) | 1, freq + (bandwidth + guardBw) / 2, bandwidth / 2 - guardBw);
+                    filter.buffer = createFilter(taps, freq + (bandwidth + guardBw) / 2, bandwidth / 2 - guardBw);
                 }
             }
             setFrequency(startFreq + bandwidth * (channelSelection.value - 1), bandwidth)
@@ -342,10 +353,10 @@
                     reverse = freq < reverseFreq;
                     if (!reverse) {
                         localOscillator.frequency.value = freq;
-                        bandpass.buffer = createFilter(parseInt(1001 * multiplier) | 1, freq + (bandwidth - guardBw) / 2, bandwidth / 2 - guardBw);
+                        bandpass.buffer = createFilter(taps, freq + (bandwidth - guardBw) / 2, bandwidth / 2 - guardBw);
                     } else {
                         localOscillator.frequency.value = freq + bandwidth;
-                        bandpass.buffer = createFilter(parseInt(1001 * multiplier) | 1, freq + (bandwidth + guardBw) / 2, bandwidth / 2 - guardBw);
+                        bandpass.buffer = createFilter(taps, freq + (bandwidth + guardBw) / 2, bandwidth / 2 - guardBw);
                     }
                     lowpass.buffer = createFilter(101, bandwidth / 2, bandwidth / 2);
                 }
