@@ -91,16 +91,16 @@
     </div>
     <canvas id="spectrum"></canvas>
     <script>
-        const ctx = new AudioContext({latencyHint: "balanced"});
+        const ctx = new AudioContext({ latencyHint: "balanced" });
         const startFreq = 15000;
         const bandwidth = 3000;
         const reverseFreq = 16000;
         const guardBw = 0;
         let reverse = false;
 
-        function createCosineWindow(length) {
-           return [...Array(length)].map((v, i) => {
-                return Math.cos(Math.PI * (i / length - 0.5));
+        function createHannWindow(length) {
+            return [...Array(length)].map((v, i) => {
+                return 0.5 * (1 - Math.cos((2 * Math.PI * i) / (length - 1)));
             });
         }
 
@@ -122,7 +122,7 @@
 
         function createFilter(taps, freq, bw) {
             const buffer = ctx.createBuffer(1, taps, ctx.sampleRate);
-            const window = createCosineWindow(taps);
+            const window = createHannWindow(taps);
 
             buffer.getChannelData(0).set(
                 [...Array(taps)].map((v, i) => {
