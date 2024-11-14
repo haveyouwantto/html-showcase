@@ -142,7 +142,7 @@
         <h2>编码器</h2>
         <input type="file" id="audioInput" accept="audio/*" />
         <div>
-            QP: <input type="number" id="qp" min="0" max="63" value="32">
+            QP: <input type="number" id="qp" min="0" max="80" value="32">
             <button id="encode">编码</button>
         </div>
         <hr>
@@ -166,13 +166,13 @@
 
         const dpr = window.devicePixelRatio;
         const visualizerCanvas = document.getElementById('visualizer');
-        visualizerCanvas.width = visualizerCanvas.clientWidth * dpr;
-        visualizerCanvas.height = visualizerCanvas.clientHeight * dpr;
         const visualizerCtx = visualizerCanvas.getContext('2d');
-        const canvasBuffer = document.createElement('canvas');
-        canvasBuffer.width = visualizerCanvas.clientWidth * dpr;
-        canvasBuffer.height = visualizerCanvas.clientHeight * dpr;
-        const bufferCtx = canvasBuffer.getContext('2d');
+
+        function initCanvas() {
+            visualizerCanvas.width = visualizerCanvas.clientWidth * dpr;
+            visualizerCanvas.height = visualizerCanvas.clientHeight * dpr;
+        }
+        initCanvas();
 
         const ctx = new AudioContext({ latencyHint: "balanced" });
 
@@ -188,11 +188,11 @@
 
         const SUB_BANDS = [
             [0, 1000, 46],
-            [1000, 4000, 49],
-            [4000, 8000, 52],
-            [8000, 12000, 55],
-            [12000, 15000, 57],
-            [15000, 20000, 60],
+            [1000, 4000, 50],
+            [4000, 8000, 54],
+            [8000, 12000, 59],
+            [12000, 15000, 64],
+            [15000, 20000, 67],
             [20000, 192000, 999],
         ]
 
@@ -289,10 +289,12 @@
         ];
 
         function drawFFT() {
-            // visualizerCtx.clearRect(0, 0, visualizerCanvas.width, visualizerCanvas.height); // Clear canvas
+
+            visualizerCtx.drawImage(visualizerCanvas, 0, 1, visualizerCanvas.width, visualizerCanvas.height);
+            //visualizerCtx.clearRect(0, 0, visualizerCanvas.width, 1); // Clear canvas
 
             if (analyser && dataArray) {
-                bufferCtx.drawImage(visualizerCanvas, 0, 0, visualizerCanvas.width, visualizerCanvas.height);
+                //visualizerCanvas.drawImage(visualizerCanvas, 0, 0, visualizerCanvas.width, visualizerCanvas.height);
 
                 analyser.getByteFrequencyData(dataArray); // Get frequency data
                 const bufferLength = analyser.frequencyBinCount;
@@ -306,7 +308,12 @@
                     visualizerCtx.fillStyle = colorTrans(palette, dataArray[index] / 255)
                     visualizerCtx.fillRect(i, 0, 1, 1);
                 }
-                visualizerCtx.drawImage(canvasBuffer, 0, 1, visualizerCanvas.width, visualizerCanvas.height);
+                visualizerCtx.fillStyle = '#ffffff80';
+                SUB_BANDS.forEach(e => {
+                    const x = e[0] / ctx.sampleRate * visualizerCanvas.width * 2;
+                    visualizerCtx.fillRect(x, 0, 1, 1)
+
+                })
             }
             requestAnimationFrame(drawFFT); // Loop the draw function
         }
