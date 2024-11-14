@@ -97,7 +97,7 @@
         const reverseFreq = 16000;
         const multiplier = ctx.sampleRate / 48000;
         const taps = parseInt(1001 * multiplier) | 1;
-        const guardBw = ctx.sampleRate / (2 * taps);
+        const guardBw = ctx.sampleRate / (2 * taps) * 2;
         let reverse = false;
 
         console.log({
