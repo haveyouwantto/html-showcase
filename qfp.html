@@ -630,15 +630,18 @@
         // Class to decode QFP files
         class QFPDecoder {
             constructor(arrayBuffer) {
-                // Decompress the gzipped data
-                const decompressedData = pako.inflate(new Uint8Array(arrayBuffer));
 
-                this.buffer = decompressedData.buffer; // Use the decompressed data
+                this.buffer = arrayBuffer; // Use the decompressed data
                 this.view = new DataView(this.buffer);
                 this.ptr = 0;
                 this.read = 0;
                 this.readHeader();
-                this.generatePos();
+                
+                // Decompress the gzipped data
+                this.decompressedData = pako.inflate(arrayBuffer.slice(17));
+                this.decompressedView = new DataView(this.decompressedData.buffer);
+
+                // this.generatePos();
             }
 
             readHeader() {
@@ -646,16 +649,11 @@
                 console.log("magic: " + magic);
                 if (magic !== 'QFPA') throw new Error("magic not match"); // Check magic number
 
-                this.ptr += 4; // Move pointer
-
                 // Read version, sample rate, and window size
-                this.version = this.view.getUint8(this.ptr++, true);
-                this.sampleRate = this.view.getUint32(this.ptr, true);
-                this.ptr += 4;
-                this.winSize = this.view.getUint32(this.ptr, true);
-                this.ptr += 4;
-                this.numWindows = this.view.getUint32(this.ptr, true);
-                this.ptr += 4;
+                this.version = this.view.getUint8(4, true);
+                this.sampleRate = this.view.getUint32(5, true);
+                this.winSize = this.view.getUint32(9, true);
+                this.numWindows = this.view.getUint32(13, true);
 
                 console.log("version: " + this.version);
                 console.log("sample rate: " + this.sampleRate);
@@ -670,10 +668,10 @@
 
                 const lr = []; // Array to hold left and right channel data
                 for (let ch = 0; ch < 2; ch++) {
-                    const length = this.view.getUint16(this.ptr, true); // Read length of the frame
+                    const length = this.decompressedView.getUint16(this.ptr, true); // Read length of the frame
                     this.ptr += 2; // Move pointer
 
-                    let ampQ = new Int8Array(this.buffer.slice(this.ptr, this.ptr + length)); // Read amplitude data
+                    let ampQ = new Int8Array(this.decompressedData.slice(this.ptr, this.ptr + length)); // Read amplitude data
                     this.ptr += length; // Move pointer
 
                     ampQ = rleDecompress(ampQ); // Decompress amplitude data
@@ -883,7 +881,7 @@
                         const chunks = [];
 
                         // Write header
-                        chunks.push(encoder.encodeHeader());
+                        const header = encoder.encodeHeader();
 
                         // Write frames
                         while (encoder.available()) {
@@ -901,10 +899,10 @@
                         }
 
                         // Compress the combined data using pako
-                        const compressedData = pako.gzip(combinedChunks);
+                        const compressedData = pako.deflate(combinedChunks);
 
                         // Create a Blob from the compressed data and download it as a file
-                        const blob = new Blob([compressedData], { type: "application/octet-stream" });
+                        const blob = new Blob([header, compressedData], { type: "application/octet-stream" });
                         const url = URL.createObjectURL(blob);
                         const a = document.createElement("a");
                         a.href = url;
