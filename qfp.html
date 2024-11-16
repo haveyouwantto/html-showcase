@@ -709,11 +709,11 @@
             }
 
             seek(frame) {
-                this.ptr = 17 + this.lookUp[frame];
+                this.ptr = 0 + this.lookUp[frame];
             }
 
             reset() {
-                this.ptr = 17;
+                this.ptr = 0;
                 this.read = 0;
             }
         }
