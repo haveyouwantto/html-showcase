@@ -25,7 +25,7 @@
         .status {
             display: flex;
             align-items: center;
-            margin-top: 16px;
+            margin-top: 8px;
             width: 100%;
             justify-content: center;
         }
@@ -75,6 +75,10 @@
             border-radius: 5px;
             transition: background-color 0.3s;
             margin-left: 8px;
+        }
+        
+        #info {
+            margin-top: 8px;
         }
 
         button:hover,
@@ -131,6 +135,7 @@
             <button id="pause">播放</button>
             <button id="replay">重播</button>
         </div>
+        <div id="info"></div>
         <div class="status">
             <div id="progress">
                 <div id="progress-inner"></div>
@@ -185,6 +190,7 @@
 
         const timeDisplay = document.getElementById("time")
         const progressDisplay = document.getElementById("progress-inner")
+        const info = document.getElementById("info")
 
         const SUB_BANDS = [
             [0, 1000, 46],
@@ -641,6 +647,8 @@
                 this.decompressedData = pako.inflate(arrayBuffer.slice(17));
                 this.decompressedView = new DataView(this.decompressedData.buffer);
 
+                this.compressRate = this.buffer.byteLength / this.decompressedData.buffer.byteLength;
+
                 // this.generatePos();
             }
 
@@ -667,8 +675,12 @@
                 if (this.read >= this.numWindows) throw new Error("No more frames to read");
 
                 const lr = []; // Array to hold left and right channel data
+
+                let totalLength = 0;
+
                 for (let ch = 0; ch < 2; ch++) {
                     const length = this.decompressedView.getUint16(this.ptr, true); // Read length of the frame
+                    totalLength += length;
                     this.ptr += 2; // Move pointer
 
                     let ampQ = new Int8Array(this.decompressedData.slice(this.ptr, this.ptr + length)); // Read amplitude data
@@ -693,7 +705,7 @@
                 }
 
                 this.read++;
-                return [l, r]; // Return left and right channels
+                return [l, r, totalLength]; // Return left and right channels
             }
 
             generatePos() {
@@ -725,6 +737,7 @@
                 this.started = false;
                 this.nodeList = [];
                 this.stopped = false;
+                this.bitrates = [];
             }
 
             start() {
@@ -732,7 +745,7 @@
                 this.startTime = ctx.currentTime;
                 this.updateProgress();
 
-                let preloadFrames = Math.max(Math.floor(5 / (this.qfp.winSize / this.qfp.sampleRate)), 2); // Preload 5 sec
+                let preloadFrames = Math.max(Math.floor(1 / (this.qfp.winSize / this.qfp.sampleRate)), 2); // Preload 5 sec
                 for (let i = 0; i < preloadFrames; i++) {
                     this.playFrame();
                 }
@@ -762,6 +775,19 @@
                     const r = buffer.getChannelData(1)
                     l.set(frame[0])
                     r.set(frame[1])
+
+                    const bitrate = frame[2] * (ctx.sampleRate / this.qfp.winSize) / 128 * this.qfp.compressRate;
+                    this.bitrates.push(bitrate);
+
+                    let maxFrames = Math.max(Math.floor(1 / (this.qfp.winSize / this.qfp.sampleRate)), 2);
+                    while (this.bitrates.length > maxFrames) {
+                        this.bitrates.shift()
+                    }
+
+                    let abr = this.bitrates.reduce((a,b)=>a+b) / this.bitrates.length;
+                    info.textContent = `ABR ≈ ${abr.toFixed(1)} kbps`
+
+                    console.log()
 
                     const node = ctx.createBufferSource();
                     node.buffer = buffer;
