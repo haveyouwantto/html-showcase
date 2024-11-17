@@ -295,35 +295,47 @@
         ];
 
         function drawFFT() {
-
+            // 将当前画布内容向上移动一行（垂直滚动视觉效果）
             visualizerCtx.drawImage(visualizerCanvas, 0, 1, visualizerCanvas.width, visualizerCanvas.height);
-            //visualizerCtx.clearRect(0, 0, visualizerCanvas.width, 1); // Clear canvas
 
+            // 检查音频分析器和数据数组是否已定义
             if (analyser && dataArray) {
-                //visualizerCanvas.drawImage(visualizerCanvas, 0, 0, visualizerCanvas.width, visualizerCanvas.height);
+                // 从音频分析器获取频率数据
+                analyser.getByteFrequencyData(dataArray);
 
-                analyser.getByteFrequencyData(dataArray); // Get frequency data
-                const bufferLength = analyser.frequencyBinCount;
+                const bufferLength = analyser.frequencyBinCount; // 获取频率数据长度
+                const barWidth = (visualizerCanvas.width / bufferLength); // 每个频率条的宽度
 
-                const barWidth = (visualizerCanvas.width / bufferLength); // Width of each bar
-                let barHeight;
-
+                // 遍历画布的宽度，为每个像素列绘制相应的频率条
                 for (let i = 0; i < visualizerCanvas.width; i++) {
-                    let index = Math.floor(i / visualizerCanvas.width * dataArray.length)
+                    // 将画布的像素索引映射到频率数据数组的索引
+                    let index = Math.floor(i / visualizerCanvas.width * dataArray.length);
 
-                    visualizerCtx.fillStyle = colorTrans(palette, dataArray[index] / 255)
+                    // 设置颜色，颜色基于数据值的比例计算
+                    visualizerCtx.fillStyle = colorTrans(palette, dataArray[index] / 255);
+
+                    // 绘制一个单像素宽的条形，垂直堆叠
                     visualizerCtx.fillRect(i, 0, 1, 1);
                 }
-                visualizerCtx.fillStyle = '#ffffff80';
-                SUB_BANDS.slice(1).forEach(e => {
-                    const x = e[0] / ctx.sampleRate * visualizerCanvas.width * 2;
-                    visualizerCtx.fillRect(x, 0, 1, 1)
 
-                })
+                // 绘制分频带指示线（用于标记特定频率）
+                visualizerCtx.fillStyle = '#ffffff80'; // 设置透明白色
+                SUB_BANDS.slice(1).forEach(e => {
+                    // 将分频带频率转换为画布上的 X 坐标
+                    const x = e[0] / ctx.sampleRate * visualizerCanvas.width * 2;
+
+                    // 在对应频率位置画一条细线
+                    visualizerCtx.fillRect(x, 0, 1, 1);
+                });
             }
-            requestAnimationFrame(drawFFT); // Loop the draw function
+
+            // 请求下一帧动画以实现循环绘制
+            requestAnimationFrame(drawFFT);
         }
-        requestAnimationFrame(drawFFT)
+
+        // 启动绘制循环
+        requestAnimationFrame(drawFFT);
+
 
         // Function to perform a mini Fast Fourier Transform (FFT)
         function miniFFT(re, im) {
@@ -537,28 +549,30 @@
 
         class QFPEncoder {
             constructor(audioBuffer, qp) {
-                this.buffer = audioBuffer;
-                this.i = 0;
-                this.l = audioBuffer.getChannelData(0);
+                this.buffer = audioBuffer; // 音频数据
+                this.i = 0; // 当前窗口索引
+                this.l = audioBuffer.getChannelData(0); // 左声道数据
                 console.log(audioBuffer)
-                this.r = audioBuffer.numberOfChannels >= 2 ? audioBuffer.getChannelData(1) : this.l;
-                this.qp = qp;
+                this.r = audioBuffer.numberOfChannels >= 2 ? audioBuffer.getChannelData(1) : this.l; // 右声道数据，如果单声道则与左声道相同
+                this.qp = qp; // 量化参数
             }
 
+            // 编码文件头部，包含采样率、窗口大小等元信息
             encodeHeader() {
-                const buffer = new ArrayBuffer(17);
-                this.sampleRate = this.buffer.sampleRate;
-                this.winSize = roundDownToPowerOfTwo(this.sampleRate / 16);
-                this.numWins = parseInt(this.buffer.length / this.winSize);
+                const buffer = new ArrayBuffer(17); // 文件头固定17字节
+                this.sampleRate = this.buffer.sampleRate; // 获取采样率
+                this.winSize = roundDownToPowerOfTwo(this.sampleRate / 16); // 窗口大小设置为采样率的1/16，并向下取整到2的次方
+                this.numWins = parseInt(this.buffer.length / this.winSize); // 根据音频长度和窗口大小计算总窗口数量
 
-                const diff = 63 - this.qp;
+                const diff = 63 - this.qp; // 用于计算子带量化的偏移值
 
+                // 初始化子带量化参数
                 this.subBands = [[], []];
                 for (const b of SUB_BANDS) {
                     this.subBands[0].push([
-                        Math.min(Math.max(b[0] / this.sampleRate * 2, 0), 1),
-                        Math.min(Math.max(b[1] / this.sampleRate * 2, 0), 1),
-                        Math.min(Math.max(b[2] - diff - Math.log10(this.winSize / 1024) * 10, 0), 127),
+                        Math.min(Math.max(b[0] / this.sampleRate * 2, 0), 1), // 归一化子带的起始频率
+                        Math.min(Math.max(b[1] / this.sampleRate * 2, 0), 1), // 归一化子带的结束频率
+                        Math.min(Math.max(b[2] - diff - Math.log10(this.winSize / 1024) * 10, 0), 127), // 子带的量化阈值
                     ]);
                     this.subBands[1].push([
                         Math.min(Math.max(b[0] / this.sampleRate * 2, 0), 1),
@@ -567,360 +581,380 @@
                     ]);
                 }
 
-                console.log(this.subBands);
+                console.log(this.subBands); // 打印子带信息，方便调试
 
                 const view = new DataView(buffer);
-                view.setUint32(0, 1095779921, true); //magic
-                view.setUint8(4, 1) //version
-                view.setUint32(5, this.sampleRate, true);
-                view.setUint32(9, this.winSize, true);
-                view.setUint32(13, this.numWins, true);
+                view.setUint32(0, 1095779921, true); // 设置魔数"QFPA"
+                view.setUint8(4, 1); // 版本号
+                view.setUint32(5, this.sampleRate, true); // 采样率
+                view.setUint32(9, this.winSize, true); // 窗口大小
+                view.setUint32(13, this.numWins, true); // 窗口总数
                 return buffer;
             }
 
+            // 编码单个帧，处理 L+R 和 L-R 通道
             encodeFrame() {
-                // Process both L+R and L-R channels
-                const L = this.l.slice(this.i * this.winSize, (this.i + 1) * this.winSize);
-                const R = this.r.slice(this.i * this.winSize, (this.i + 1) * this.winSize);
+                const L = this.l.slice(this.i * this.winSize, (this.i + 1) * this.winSize); // 当前帧的左声道数据
+                const R = this.r.slice(this.i * this.winSize, (this.i + 1) * this.winSize); // 当前帧的右声道数据
 
-                const winDataLPlusR = L.map((val, idx) => val + R[idx]);
-                const winDataLMinusR = L.map((val, idx) => val - R[idx]);
+                const winDataLPlusR = L.map((val, idx) => val + R[idx]); // L+R 数据
+                const winDataLMinusR = L.map((val, idx) => val - R[idx]); // L-R 数据
 
-                const encodedFrames = []
+                const encodedFrames = []; // 用于存储编码后的数据
 
                 for (let ch = 0; ch < 2; ch++) {
-                    const winData = ch === 0 ? winDataLPlusR : winDataLMinusR;
+                    const winData = ch === 0 ? winDataLPlusR : winDataLMinusR; // 处理 L+R 或 L-R 数据
 
-                    miniDCT(winData);  // Define applyDCT with orthogonal normalization
+                    miniDCT(winData); // 对数据应用离散余弦变换
 
-                    // Normalize and quantize the amplitude
+                    // 归一化并量化
                     let amp = winData.map(value => value / this.winSize);
-                    let ampQ = quantizeAmp(amp);  // Define quantizeAmp function based on _quantize_amp()
+                    let ampQ = quantizeAmp(amp); // 将幅值量化
 
-                    // Process sub-bands
+                    // 子带处理
                     for (const subBand of this.subBands[ch]) {
-                        const bandStart = Math.floor(this.winSize * subBand[0]);
-                        const bandEnd = Math.floor(this.winSize * subBand[1]);
-                        // console.log(bandStart,bandEnd)
-                        const band = ampQ.slice(bandStart, bandEnd).map(value => Math.abs(value) < subBand[2] ? 0 : value);
-                        band.forEach((v, i) => ampQ[bandStart + i] = v)
+                        const bandStart = Math.floor(this.winSize * subBand[0]); // 子带起始索引
+                        const bandEnd = Math.floor(this.winSize * subBand[1]); // 子带结束索引
+                        const band = ampQ.slice(bandStart, bandEnd).map(value => Math.abs(value) < subBand[2] ? 0 : value); // 应用量化阈值
+                        band.forEach((v, i) => ampQ[bandStart + i] = v); // 更新量化后的数据
                     }
 
-                    // Trim trailing zeros
+                    // 去除尾部的零
                     ampQ = trimZeros(ampQ);
 
-                    // Limit length to 65535
+                    // 限制最大长度为 65535
                     if (ampQ.length > 65535) {
                         ampQ = ampQ.slice(0, 65535);
                     }
 
-                    // RLE compression
-                    const compressedData = rleCompress(ampQ);  // Define rleCompress function
+                    // 运行长度编码压缩
+                    const compressedData = rleCompress(ampQ);
 
-                    // Pack length and compressed data
+                    // 打包长度和压缩数据
                     const lenArray = new ArrayBuffer(2);
                     new DataView(lenArray).setUint16(0, compressedData.byteLength, true);
 
-                    encodedFrames.push(lenArray)
+                    encodedFrames.push(lenArray);
                     encodedFrames.push(compressedData.buffer);
                 }
                 this.i++;
                 return encodedFrames;
             }
 
+            // 判断是否还有未编码的帧
             available() {
                 return this.i < this.numWins;
             }
         }
 
-        // Class to decode QFP files
+
+        // QFPDecoder: 用于解码 QFP 文件的类
         class QFPDecoder {
             constructor(arrayBuffer) {
-
-                this.buffer = arrayBuffer; // Use the decompressed data
+                // 初始化缓冲区和数据视图
+                this.buffer = arrayBuffer; // 使用输入的原始压缩数据
                 this.view = new DataView(this.buffer);
-                this.ptr = 0;
-                this.read = 0;
-                this.readHeader();
+                this.ptr = 0; // 指针位置
+                this.read = 0; // 已读取帧数
+                this.readHeader(); // 读取文件头信息
 
-                // Decompress the gzipped data
-                this.decompressedData = pako.inflate(arrayBuffer.slice(17));
-                this.decompressedView = new DataView(this.decompressedData.buffer);
+                // 解压 gzipped 数据
+                this.decompressedData = pako.inflate(arrayBuffer.slice(17)); // 跳过文件头
+                this.decompressedView = new DataView(this.decompressedData.buffer); // 创建解压数据的 DataView
 
-                this.compressRatio = this.buffer.byteLength / this.decompressedData.buffer.byteLength;
+                this.compressRatio = this.buffer.byteLength / this.decompressedData.buffer.byteLength; // 计算压缩比
 
-                // this.generatePos();
+                // this.generatePos(); // 可选：预生成帧位置表
             }
 
+            // 读取文件头信息
             readHeader() {
-                let magic = new TextDecoder('utf-8').decode(this.buffer.slice(0, 4)); // Read magic number
+                let magic = new TextDecoder('utf-8').decode(this.buffer.slice(0, 4)); // 读取文件标识符
                 console.log("magic: " + magic);
-                if (magic !== 'QFPA') throw new Error("magic not match"); // Check magic number
+                if (magic !== 'QFPA') throw new Error("magic not match"); // 检查文件标识符是否匹配
 
-                // Read version, sample rate, and window size
-                this.version = this.view.getUint8(4, true);
-                this.sampleRate = this.view.getUint32(5, true);
-                this.winSize = this.view.getUint32(9, true);
-                this.numWindows = this.view.getUint32(13, true);
+                // 读取版本、采样率、窗口大小等元信息
+                this.version = this.view.getUint8(4, true); // 版本号
+                this.sampleRate = this.view.getUint32(5, true); // 采样率
+                this.winSize = this.view.getUint32(9, true); // 窗口大小
+                this.numWindows = this.view.getUint32(13, true); // 总窗口数
 
                 console.log("version: " + this.version);
                 console.log("sample rate: " + this.sampleRate);
                 console.log("win size:" + this.winSize);
                 console.log("num win:" + this.numWindows);
 
-                this.duration = this.numWindows * (this.winSize / this.sampleRate)
+                // 计算音频总时长
+                this.duration = this.numWindows * (this.winSize / this.sampleRate);
             }
 
+            // 读取并解码单帧数据
             readFrame() {
-                if (this.read >= this.numWindows) throw new Error("No more frames to read");
+                if (this.read >= this.numWindows) throw new Error("No more frames to read"); // 检查是否还有帧可读
 
-                const lr = []; // Array to hold left and right channel data
+                const lr = []; // 存储左右声道数据的数组
+                let totalLength = 0; // 累计帧数据长度
 
-                let totalLength = 0;
-
+                // 遍历左右声道
                 for (let ch = 0; ch < 2; ch++) {
-                    const length = this.decompressedView.getUint16(this.ptr, true); // Read length of the frame
+                    const length = this.decompressedView.getUint16(this.ptr, true); // 读取帧长度
                     totalLength += length;
-                    this.ptr += 2; // Move pointer
+                    this.ptr += 2; // 移动指针
 
-                    let ampQ = new Int8Array(this.decompressedData.slice(this.ptr, this.ptr + length)); // Read amplitude data
-                    this.ptr += length; // Move pointer
+                    let ampQ = new Int8Array(this.decompressedData.slice(this.ptr, this.ptr + length)); // 读取量化幅度数据
+                    this.ptr += length; // 移动指针
 
-                    ampQ = rleDecompress(ampQ); // Decompress amplitude data
-                    ampQ = padArray(ampQ, this.winSize); // Pad the array
+                    ampQ = rleDecompress(ampQ); // 运行长度解压缩
+                    ampQ = padArray(ampQ, this.winSize); // 对数据进行填充
 
-                    let amp = dequantizeAmp(ampQ).map(e => e * this.winSize); // Dequantize amplitudes
+                    let amp = dequantizeAmp(ampQ).map(e => e * this.winSize); // 去量化并放大数据
 
-                    miniIDCT(amp); // Apply IDCT
+                    miniIDCT(amp); // 对解压后的数据应用逆离散余弦变换（IDCT）
 
-                    lr[ch] = amp; // Store channel data
+                    lr[ch] = amp; // 存储解码后的声道数据
                 }
 
-                const l = new Float32Array(this.winSize), r = new Float32Array(this.winSize); // Create arrays for left and right channels
+                const l = new Float32Array(this.winSize), r = new Float32Array(this.winSize); // 创建左右声道的浮点数组
 
-                // Calculate left and right channels
+                // 将左右声道数据转换为实际音频样本
                 for (let i = 0; i < this.winSize; i++) {
-                    l[i] = (lr[0][i] + lr[1][i]) / 2; // Left channel
-                    r[i] = (lr[0][i] - lr[1][i]) / 2; // Right channel
+                    l[i] = (lr[0][i] + lr[1][i]) / 2; // 左声道数据
+                    r[i] = (lr[0][i] - lr[1][i]) / 2; // 右声道数据
                 }
 
-                this.read++;
-                return [l, r, totalLength]; // Return left and right channels
+                this.read++; // 更新已读取帧数
+                return [l, r, totalLength]; // 返回解码后的左右声道数据和帧总长度
             }
 
+            // 可选：预生成帧位置表（加速随机访问）
             generatePos() {
                 this.lookUp = [];
                 for (let i = 0; i < this.numWindows; i++) {
-                    this.lookUp.push(this.ptr);
+                    this.lookUp.push(this.ptr); // 存储当前帧的指针位置
                     for (let ch = 0; ch < 2; ch++) {
-                        const length = this.view.getUint16(this.ptr, true); // Read length of the frame
-                        this.ptr += 2 + length; // Move pointer
+                        const length = this.view.getUint16(this.ptr, true); // 读取帧长度
+                        this.ptr += 2 + length; // 移动指针到下一帧
                     }
                 }
-                this.reset();
+                this.reset(); // 重置指针和读取状态
             }
 
+            // 定位到指定帧（需要预生成帧位置表）
             seek(frame) {
                 this.ptr = 0 + this.lookUp[frame];
             }
 
+            // 重置解码器状态
             reset() {
                 this.ptr = 0;
                 this.read = 0;
             }
         }
 
+
         class QFPPlayer {
             /**
-             * @param {QFPDecoder} qfp 
+             * @param {QFPDecoder} qfp 解码器实例，用于读取音频帧
              */
             constructor(qfp) {
-                this.qfp = qfp;
-                this.t = 0;
-                this.started = false;
-                this.nodeList = [];
-                this.stopped = false;
-                this.frameLength = [];
-                this.preloadDuration = 1;
+                this.qfp = qfp; // 关联解码器
+                this.t = 0; // 当前音频播放进度（秒）
+                this.started = false; // 是否已经开始播放
+                this.nodeList = []; // 存储已创建的音频节点
+                this.stopped = false; // 是否已经停止
+                this.frameLength = []; // 用于计算平均比特率的帧长度记录
+                this.preloadDuration = 1; // 预加载的音频时长（秒）
             }
 
+            // 启动音频播放，只能启动一次
             start() {
                 if (this.started) throw new Error("QFPPlayer can only be started once.");
-                this.startTime = ctx.currentTime;
-                this.updateProgress();
+                this.startTime = ctx.currentTime; // 记录启动时间
+                this.updateProgress(); // 初始化进度条
 
-                let preloadFrames = Math.max(Math.floor(this.preloadDuration / (this.qfp.winSize / this.qfp.sampleRate)), 2); // Preload 5 sec
+                // 根据窗口大小和采样率计算需要预加载的帧数
+                let preloadFrames = Math.max(Math.floor(this.preloadDuration / (this.qfp.winSize / this.qfp.sampleRate)), 2);
                 for (let i = 0; i < preloadFrames; i++) {
-                    this.playFrame();
+                    this.playFrame(); // 逐帧预加载
                 }
             }
 
+            // 设置播放/暂停状态
             setPaused(b) {
                 if (b) {
-                    ctx.suspend();
+                    ctx.suspend(); // 暂停音频上下文
                 } else {
-                    ctx.resume();
+                    ctx.resume(); // 恢复音频上下文
                 }
             }
 
+            // 更新进度条信息
             updateProgress() {
-                let currentTime = Math.min(ctx.currentTime - this.startTime, this.qfp.duration)
-                let prog = currentTime / this.qfp.duration;
-                timeDisplay.textContent = `${formatTime(currentTime)} / ${formatTime(this.qfp.duration)}`
-                progressDisplay.style.width = (prog * 100) + "%"
+                let currentTime = Math.min(ctx.currentTime - this.startTime, this.qfp.duration); // 当前播放时间
+                let prog = currentTime / this.qfp.duration; // 播放进度百分比
+                timeDisplay.textContent = `${formatTime(currentTime)} / ${formatTime(this.qfp.duration)}`;
+                progressDisplay.style.width = (prog * 100) + "%"; // 更新进度条显示
             }
 
+            // 播放一个音频帧
             playFrame() {
                 if (!this.stopped) {
-                    const frame = this.qfp.readFrame();
+                    const frame = this.qfp.readFrame(); // 从解码器读取下一帧
 
-                    const buffer = ctx.createBuffer(2, this.qfp.winSize, this.qfp.sampleRate)
-                    const l = buffer.getChannelData(0)
-                    const r = buffer.getChannelData(1)
-                    l.set(frame[0])
-                    r.set(frame[1])
+                    // 创建音频缓冲区并填充左右声道数据
+                    const buffer = ctx.createBuffer(2, this.qfp.winSize, this.qfp.sampleRate);
+                    const l = buffer.getChannelData(0);
+                    const r = buffer.getChannelData(1);
+                    l.set(frame[0]);
+                    r.set(frame[1]);
 
-                    this.frameLength.push(frame[2]);
+                    this.frameLength.push(frame[2]); // 记录帧的比特长度
 
+                    // 控制 frameLength 的缓存大小，避免内存占用过多
                     const frameOf1S = Math.max(Math.floor(1 / (this.qfp.winSize / this.qfp.sampleRate)), 2);
                     while (this.frameLength.length > frameOf1S * (this.preloadDuration + 0.5)) {
                         this.frameLength.shift();
                     }
 
+                    // 计算平均比特率（ABR）并更新界面
                     let abrBuffer = this.frameLength.slice(0, frameOf1S / 2);
                     let abr = abrBuffer.reduce((a, b) => a + b, 0) / (this.qfp.winSize / this.qfp.sampleRate * abrBuffer.length) / 128 * this.qfp.compressRatio;
-                    info.textContent = `ABR ≈ ${abr.toFixed(1)} kbps`
+                    info.textContent = `ABR ≈ ${abr.toFixed(1)} kbps`;
 
-                    console.log()
-
-                    const node = ctx.createBufferSource();
+                    const node = ctx.createBufferSource(); // 创建音频节点
                     node.buffer = buffer;
-                    node.onended = () => {
+                    node.onended = () => { // 当帧播放完毕时的回调
                         node.disconnect();
-                        this.nodeList.shift();
+                        this.nodeList.shift(); // 移除已完成的节点
 
                         if (!this.stopped) {
                             this.updateProgress();
-                            this.playFrame();
+                            this.playFrame(); // 播放下一帧
                         }
                     };
-                    node.connect(analyser).connect(ctx.destination)
-                    node.start(this.startTime + this.t);
-                    this.nodeList.push(node);
-                    this.t += (1 / this.qfp.sampleRate * this.qfp.winSize)
+                    node.connect(analyser).connect(ctx.destination); // 连接到音频分析器和输出
+                    node.start(this.startTime + this.t); // 安排帧播放时间
+                    this.nodeList.push(node); // 添加节点到列表
+                    this.t += (1 / this.qfp.sampleRate * this.qfp.winSize); // 更新进度
                 }
             }
 
+            // 停止播放
             stop() {
                 if (this.stopped) throw new Error("QFPPlayer already stopped.");
                 for (const node of this.nodeList) {
-                    node.disconnect();
+                    node.disconnect(); // 断开所有音频节点
                 }
                 this.stopped = true;
             }
 
+            // 重新播放
             replay() {
-                this.stop();
-                this.t = 0;
+                this.stop(); // 停止当前播放
+                this.t = 0; // 重置播放进度
                 this.stopped = false;
                 this.started = false;
-                this.qfp.reset();
-                this.start();
+                this.qfp.reset(); // 重置解码器
+                this.start(); // 重新启动播放
             }
         }
 
         let paused = true;
         let player;
 
+        // 监听文件输入事件，用于加载音频文件
         document.getElementById('fileInput').addEventListener('change', e => {
             const fileInput = document.getElementById('fileInput');
             const file = fileInput.files[0];
 
             if (!file) {
-                alert('Please select a file.'); // Alert if no file is selected
+                alert('Please select a file.'); // 未选择文件时提示
                 return;
             }
 
-            const reader = new FileReader(); // Create a FileReader
+            const reader = new FileReader(); // 创建文件读取器
 
-            // Read the file as an ArrayBuffer
+            // 将文件读取为 ArrayBuffer
             reader.readAsArrayBuffer(file);
 
             reader.onload = function (event) {
                 try {
-                    const arrayBuffer = event.target.result; // Get the result from the reader
+                    const arrayBuffer = event.target.result; // 获取读取结果
 
-                    let qfp = new QFPDecoder(arrayBuffer); // Create a new QFPDecoder
-                    if (player) player.stop();
-                    player = new QFPPlayer(qfp);
-                    player.start();
+                    let qfp = new QFPDecoder(arrayBuffer); // 创建解码器实例
+                    if (player) player.stop(); // 如果已有播放器实例，先停止
+                    player = new QFPPlayer(qfp); // 创建新的播放器实例
+                    player.start(); // 开始播放
 
-                    // Start the audio processing
-                    if (paused) pauseBtn.click();// Resume audio if paused
+                    // 如果当前是暂停状态，自动开始播放
+                    if (paused) pauseBtn.click();
                 } catch (error) {
-                    alert("Error decoding QFP:", error);
+                    alert("Error decoding QFP:", error); // 解码错误提示
                     throw error;
                 }
             };
 
             reader.onerror = function (event) {
-                console.error('Error reading file:', event); // Log error
-                alert('Error reading file.'); // Alert on error
+                console.error('Error reading file:', event); // 输出错误日志
+                alert('Error reading file.'); // 提示文件读取错误
             };
-        })
+        });
 
-        let pauseBtn = document.getElementById('pause');   // Pause button
+        // 暂停按钮控制逻辑
+        let pauseBtn = document.getElementById('pause');
         pauseBtn.addEventListener('click', function () {
-            paused = !paused;  // Toggle pause state
+            paused = !paused; // 切换播放状态
 
             if (paused) {
-                ctx.suspend();
-                pauseBtn.innerHTML = '播放';  // Set pause button text to Play
+                ctx.suspend(); // 暂停音频上下文
+                pauseBtn.innerHTML = '播放'; // 更新按钮文本为“播放”
             } else {
-                ctx.resume();
-                pauseBtn.innerHTML = '暂停';    // Set pause button text to Pause
+                ctx.resume(); // 恢复音频上下文
+                pauseBtn.innerHTML = '暂停'; // 更新按钮文本为“暂停”
             }
         });
 
+        // 重新播放按钮
         document.getElementById('replay').addEventListener('click', e => {
-            player.replay();
-        })
+            player.replay(); // 调用播放器重新播放方法
+        });
 
-        const encodeBtn = document.getElementById('encode')
+        // 编码按钮逻辑
+        const encodeBtn = document.getElementById('encode');
 
         encodeBtn.addEventListener('click', e => {
             const fileInput = document.getElementById('audioInput');
             const file = fileInput.files[0];
 
             if (!file) {
-                alert('Please select a file.'); // Alert if no file is selected
+                alert('Please select a file.'); // 未选择文件时提示
                 return;
             }
-            encodeBtn.disabled = true;
+            encodeBtn.disabled = true; // 编码过程中禁用按钮
 
             const promise = new Promise((resolve, reject) => {
-                const reader = new FileReader(); // Create a FileReader
+                const reader = new FileReader(); // 创建文件读取器
 
-                // Read the file as an ArrayBuffer
+                // 将文件读取为 ArrayBuffer
                 reader.readAsArrayBuffer(file);
 
                 reader.onload = function (event) {
-                    const arrayBuffer = event.target.result; // Get the result from the reader
+                    const arrayBuffer = event.target.result; // 获取读取结果
                     ctx.decodeAudioData(arrayBuffer).then(data => {
-                        const encoder = new QFPEncoder(data, parseInt(document.getElementById('qp').value));
+                        const encoder = new QFPEncoder(data, parseInt(document.getElementById('qp').value)); // 创建编码器
                         const chunks = [];
 
-                        // Write header
+                        // 编码头部信息
                         const header = encoder.encodeHeader();
 
-                        // Write frames
+                        // 编码音频帧
                         while (encoder.available()) {
                             for (const frame of encoder.encodeFrame()) {
                                 chunks.push(frame);
                             }
                         }
 
-                        // Concatenate chunks into a single Uint8Array
+                        // 合并所有帧为一个 Uint8Array
                         const combinedChunks = new Uint8Array(chunks.reduce((acc, chunk) => acc + chunk.byteLength, 0));
                         let offset = 0;
                         for (const chunk of chunks) {
@@ -928,32 +962,33 @@
                             offset += chunk.byteLength;
                         }
 
-                        // Compress the combined data using pako
+                        // 使用 pako 压缩数据
                         const compressedData = pako.deflate(combinedChunks);
 
-                        // Create a Blob from the compressed data and download it as a file
+                        // 创建 Blob 并生成下载链接
                         const blob = new Blob([header, compressedData], { type: "application/octet-stream" });
                         const url = URL.createObjectURL(blob);
                         const a = document.createElement("a");
                         a.href = url;
-                        a.download = replaceFileExtension(file.name, "qfp"); // Name of the file to download
+                        a.download = replaceFileExtension(file.name, "qfp"); // 设置文件名
                         document.body.appendChild(a);
                         a.click();
                         document.body.removeChild(a);
-                        URL.revokeObjectURL(url); // Clean up the URL
+                        URL.revokeObjectURL(url); // 清理 URL
                         resolve();
                     }).catch(e => {
-                        reject("Error decoding audio: " + e)
+                        reject("Error decoding audio: " + e); // 解码失败
                     });
                 };
 
                 reader.onerror = function (event) {
-                    reject('Error reading file:' + event);
+                    reject('Error reading file:' + event); // 文件读取失败
                 };
-            })
+            });
 
-            promise.catch(e => alert(e)).finally(() => encodeBtn.disabled = false);
-        })
+            promise.catch(e => alert(e)).finally(() => encodeBtn.disabled = false); // 最终启用按钮
+        });
+
     </script>
 </body>
 
