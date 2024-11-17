@@ -58,7 +58,7 @@
         canvas {
             width: 100%;
             height: 150px;
-            background-color: #1e1e1e;
+            background-color: #000;
             /* Dark canvas */
             border: 1px solid #333;
             margin-top: 16px;
@@ -76,7 +76,7 @@
             transition: background-color 0.3s;
             margin-left: 8px;
         }
-        
+
         #info {
             margin-top: 8px;
         }
@@ -288,7 +288,7 @@
          * Canvas
         */
         let palette = [
-            [30, 30, 30],
+            [0, 0, 0],
             [142, 75, 236],
             [0xff, 0x63, 0x61],
             [0xff, 0xd3, 0x80]
@@ -315,7 +315,7 @@
                     visualizerCtx.fillRect(i, 0, 1, 1);
                 }
                 visualizerCtx.fillStyle = '#ffffff80';
-                SUB_BANDS.forEach(e => {
+                SUB_BANDS.slice(1).forEach(e => {
                     const x = e[0] / ctx.sampleRate * visualizerCanvas.width * 2;
                     visualizerCtx.fillRect(x, 0, 1, 1)
 
@@ -642,12 +642,12 @@
                 this.ptr = 0;
                 this.read = 0;
                 this.readHeader();
-                
+
                 // Decompress the gzipped data
                 this.decompressedData = pako.inflate(arrayBuffer.slice(17));
                 this.decompressedView = new DataView(this.decompressedData.buffer);
 
-                this.compressRate = this.buffer.byteLength / this.decompressedData.buffer.byteLength;
+                this.compressRatio = this.buffer.byteLength / this.decompressedData.buffer.byteLength;
 
                 // this.generatePos();
             }
@@ -731,13 +731,17 @@
         }
 
         class QFPPlayer {
+            /**
+             * @param {QFPDecoder} qfp 
+             */
             constructor(qfp) {
                 this.qfp = qfp;
                 this.t = 0;
                 this.started = false;
                 this.nodeList = [];
                 this.stopped = false;
-                this.bitrates = [];
+                this.frameLength = [];
+                this.preloadDuration = 1;
             }
 
             start() {
@@ -745,7 +749,7 @@
                 this.startTime = ctx.currentTime;
                 this.updateProgress();
 
-                let preloadFrames = Math.max(Math.floor(1 / (this.qfp.winSize / this.qfp.sampleRate)), 2); // Preload 5 sec
+                let preloadFrames = Math.max(Math.floor(this.preloadDuration / (this.qfp.winSize / this.qfp.sampleRate)), 2); // Preload 5 sec
                 for (let i = 0; i < preloadFrames; i++) {
                     this.playFrame();
                 }
@@ -776,15 +780,15 @@
                     l.set(frame[0])
                     r.set(frame[1])
 
-                    const bitrate = frame[2] * (ctx.sampleRate / this.qfp.winSize) / 128 * this.qfp.compressRate;
-                    this.bitrates.push(bitrate);
+                    this.frameLength.push(frame[2]);
 
-                    let maxFrames = Math.max(Math.floor(1 / (this.qfp.winSize / this.qfp.sampleRate)), 2);
-                    while (this.bitrates.length > maxFrames) {
-                        this.bitrates.shift()
+                    const frameOf1S = Math.max(Math.floor(1 / (this.qfp.winSize / this.qfp.sampleRate)), 2);
+                    while (this.frameLength.length > frameOf1S * (this.preloadDuration + 0.5)) {
+                        this.frameLength.shift();
                     }
 
-                    let abr = this.bitrates.reduce((a,b)=>a+b) / this.bitrates.length;
+                    let abrBuffer = this.frameLength.slice(0, frameOf1S / 2);
+                    let abr = abrBuffer.reduce((a, b) => a + b, 0) / (this.qfp.winSize / this.qfp.sampleRate * abrBuffer.length) / 128 * this.qfp.compressRatio;
                     info.textContent = `ABR ≈ ${abr.toFixed(1)} kbps`
 
                     console.log()
