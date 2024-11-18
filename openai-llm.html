@@ -437,7 +437,7 @@
             fetch(api + "/v1/chat/completions", {
                 method: 'POST',
                 body: JSON.stringify(data),
-                headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer' + key }
+                headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + key }
             })
                 .then((response) => {
                     if (response.ok) return response.json()
