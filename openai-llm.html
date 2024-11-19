@@ -450,7 +450,7 @@
                     editor.addNewDialogue(message.role, message.content)
                     console.log(data);
                 }).catch((error) => {
-                    alert(error);
+                    alert(error.message);
                 }).finally(() => {
                     generateBtn.disabled = false;   //将generateBtn的disabled属性设置为false
                 });
