@@ -136,6 +136,8 @@
             <option value="martin1">Martin 1</option>
             <option value="martin2">Martin 2</option>
             <option value="wrassesc2_180">Wrasse SC2-180</option>
+            <option value="robot36">Robot 36</option>
+            <option value="robot72">Robot 72</option>
         </select>
     </div>
     <button id="generateButton" disabled>发射 SSTV</button>
@@ -146,6 +148,51 @@
         const canvas = document.getElementById('imageCanvas');
         const ctx = canvas.getContext('2d');
         let imageData = null;
+
+        function canvasToYUV(canvas) {
+            const ctx = canvas.getContext('2d');
+            const width = canvas.width;
+            const height = canvas.height;
+
+            // 获取图像数据
+            const imageData = ctx.getImageData(0, 0, width, height);
+            const data = imageData.data;
+
+            // 创建 Y, U, V 数据数组
+            const y = new Array(height).fill(0).map(() => new Array(width));
+            const u = new Array(height).fill(0).map(() => new Array(width));
+            const v = new Array(height).fill(0).map(() => new Array(width));
+
+            // 转换为 YUV444
+            let yIndex = 0;
+            for (let i = 0; i < data.length; i += 4) {
+                const r = data[i];
+                const g = data[i + 1];
+                const b = data[i + 2];
+
+                // Y = 0.299*R + 0.587*G + 0.114*B
+                // U = -0.1687*R - 0.3313*G + 0.5*B + 128
+                // V = 0.5*R - 0.419*G - 0.0813*B + 128
+                const yValue = 0.299 * r + 0.587 * g + 0.114 * b;
+                const uValue = -0.1687 * r - 0.3313 * g + 0.5 * b + 128;
+                const vValue = 0.5 * r - 0.419 * g - 0.0813 * b + 128;
+
+                // 填充 Y, U, V 通道
+                const row = Math.floor(yIndex / width);
+                const col = yIndex % width;
+
+                y[row][col] = Math.min(255, Math.max(0, Math.round(yValue))) / 255;
+                u[row][col] = Math.min(255, Math.max(0, Math.round(uValue))) / 255;
+                v[row][col] = Math.min(255, Math.max(0, Math.round(vValue))) / 255;
+
+                yIndex++;
+            }
+
+            return {
+                y: y, u: u, v: v
+            };
+        }
+
 
         class SSTVEncoder {
             constructor(startTime) {
@@ -248,7 +295,7 @@
             }
         }
 
-        class ScottieEncoder extends SSTVEncoder {
+        class Scottie1Encoder extends SSTVEncoder {
             scanImage(canvas) {
                 const imgWidth = canvas.width;
                 const imgHeight = canvas.height;
@@ -301,8 +348,7 @@
             }
         }
 
-        class Scottie1Encoder extends ScottieEncoder { }
-        class Scottie2Encoder extends ScottieEncoder {
+        class Scottie2Encoder extends Scottie1Encoder {
             get scanTime() {
                 return 0.088064;
             }
@@ -311,7 +357,7 @@
                 return 56;
             }
         }
-        class ScottieDxEncoder extends ScottieEncoder {
+        class ScottieDxEncoder extends Scottie1Encoder {
             get scanTime() {
                 return 0.3456;
             }
@@ -321,8 +367,7 @@
             }
         }
 
-
-        class MartinEncoder extends SSTVEncoder {
+        class Martin1Encoder extends SSTVEncoder {
             scanImage(canvas) {
                 const imgWidth = canvas.width;
                 const imgHeight = canvas.height;
@@ -375,8 +420,7 @@
             }
         }
 
-        class Martin1Encoder extends MartinEncoder { }
-        class Martin2Encoder extends MartinEncoder {
+        class Martin2Encoder extends Martin1Encoder {
             get scanTime() {
                 return 0.073216;
             }
@@ -386,38 +430,118 @@
             }
         }
 
+        class Robot36Encoder extends SSTVEncoder {
+            scanImage(canvas) {
+                const yuv = canvasToYUV(canvas);
+
+                console.log(yuv);
+                for (let line = 0; line < canvas.height; line++) {
+                    this.setFreq(1200, 0.009);
+                    this.setFreq(1500, 0.003);
+
+                    // Y
+                    this.scanLine(yuv.y[line], this.scanTime);
+
+                    switch (line % 2) {
+                        case 0:
+                            // U
+                            this.setFreq(1500, 0.0045);
+                            this.setFreq(1900, 0.0015);
+                            this.scanLine(yuv.v[line], this.scanTime / 2);
+                            break;
+
+                        default:
+                            // V
+                            this.setFreq(2300, 0.0045);
+                            this.setFreq(1900, 0.0015);
+                            this.scanLine(yuv.u[line], this.scanTime / 2);
+                            break;
+                    }
+                }
+            }
+
+            getResolution() {
+                return [320, 240];
+            }
+
+            get scanTime() {
+                return 0.088;
+            }
+
+            get code() {
+                return 8;
+            }
+        }
+
+        class Robot72Encoder extends Robot36Encoder {
+            scanImage(canvas) {
+                const yuv = canvasToYUV(canvas);
+
+                console.log(yuv);
+                for (let line = 0; line < canvas.height; line++) {
+                    this.setFreq(1200, 0.009);
+                    this.setFreq(1500, 0.003);
+
+                    // Y
+                    this.scanLine(yuv.y[line], this.scanTime);
+
+                    // U
+                    this.setFreq(1500, 0.0045);
+                    this.setFreq(1900, 0.0015);
+                    this.scanLine(yuv.v[line], this.scanTime / 2);
+
+                    // V
+                    this.setFreq(2300, 0.0045);
+                    this.setFreq(1500, 0.0015);
+                    this.scanLine(yuv.u[line], this.scanTime / 2);
+                }
+            }
+            getResolution() {
+                return [320, 240];
+            }
+
+            get scanTime() {
+                return 0.138;
+            }
+
+            get code() {
+                return 12;
+            }
+        }
+
         // 处理文件上传
+        let uploadedImage = new Image();
+        function drawImage(image) {
+            const aspectRatio = image.width / image.height;
+
+            ctx.fillColor = 'black';
+            ctx.fillRect(0, 0, canvas.width, canvas.height)
+            if (aspectRatio > 4 / 3) {
+                let div = image.width / canvas.width;
+                let h = image.height / div;
+                ctx.drawImage(image, 0, (canvas.height - h) / 2, canvas.width, h);
+            }
+            else {
+                let div = image.height / canvas.height;
+                let w = image.width / div;
+                ctx.drawImage(image, (canvas.width - w) / 2, 0, w, canvas.height);
+            }
+            imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+            document.getElementById('generateButton').disabled = false;
+        }
+
         document.getElementById('upload').onchange = (e) => {
             const file = e.target.files[0];
             if (!file) return;
 
-            const img = new Image();
-            img.onload = () => {
-                const aspectRatio = img.width / img.height;
-                const size = encoder.getResolution();
-                canvas.width = size[0];
-                canvas.height = size[1];
-
-                ctx.fillColor = 'black';
-                ctx.fillRect(0, 0, canvas.width, canvas.height)
-                if (aspectRatio > 4 / 3) {
-                    let div = img.width / size[0];
-                    let h = img.height / div;
-                    ctx.drawImage(img, 0, (canvas.height - h) / 2, canvas.width, h);
-                }
-                else {
-                    let div = img.height / size[1];
-                    let w = img.width / div;
-                    ctx.drawImage(img, (canvas.width - w) / 2, 0, w, canvas.height);
-                }
-                imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-                document.getElementById('generateButton').disabled = false;
+            uploadedImage.onload = () => {
+                drawImage(uploadedImage);
             };
-            img.src = URL.createObjectURL(file);
+            uploadedImage.src = URL.createObjectURL(file);
         };
 
 
-        let encoder = new ScottieEncoder();
+        let encoder = new Scottie1Encoder();
         let isTransmitting = false; // 添加状态标志
         let activeOscillator = null; // 记录当前的发射振荡器
 
@@ -457,12 +581,24 @@
             scottie1: Scottie1Encoder,
             scottie2: Scottie2Encoder,
             scottiedx: ScottieDxEncoder,
-            wrassesc2_180: WrasseSC2_180Encoder
+            wrassesc2_180: WrasseSC2_180Encoder,
+            robot36: Robot36Encoder,
+            robot72: Robot72Encoder
         }
-        document.getElementById('encoderSelect').addEventListener('change', (e) => {
-            const encoderClass = e.target.value;
+
+        function updateEncoder(encoderClass) {
             encoder = new encoders[encoderClass](); // 反射创建 encoder 对象
+            const size = encoder.getResolution();
+            canvas.width = size[0];
+            canvas.height = size[1];
+            drawImage(uploadedImage);
+        }
+
+        document.getElementById('encoderSelect').addEventListener('change', (e) => {
+            updateEncoder(e.target.value);
         });
+
+        updateEncoder(document.getElementById('encoderSelect').value)
     </script>
 </body>
 
