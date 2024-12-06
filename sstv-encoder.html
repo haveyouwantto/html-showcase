@@ -286,6 +286,7 @@
                 this.setFreq(parity ? 1100 : 1300, 0.03);
 
                 this.setFreq(1200, 0.03);
+                return this.time;
             }
 
             scanLine(data, duration) {
@@ -301,7 +302,7 @@
                 this.osc = osc;
                 this.time = now;
                 this.osc.start(this.time);
-                this.encodeHeader(this.code);
+                this.headerTime = this.encodeHeader(this.code);
                 this.scanImage(image);
                 this.osc.stop(this.time);
             }
@@ -923,8 +924,8 @@
                 encoder.transmit(oscillator, now, canvas);
 
                 const animator = () => {
-                    let total = encoder.time - now;
-                    let prog = (audioCtx.currentTime - now) / total;
+                    let total = encoder.time - encoder.headerTime;
+                    let prog = Math.max(audioCtx.currentTime - encoder.headerTime, 0) / total;
                     updateProgress(prog);
                     interval = requestAnimationFrame(animator);
                 }
