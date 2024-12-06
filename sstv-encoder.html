@@ -161,6 +161,8 @@
             <option value="martin1">Martin 1</option>
             <option value="martin2">Martin 2</option>
             <option value="wrassesc2_180">Wrasse SC2-180</option>
+            <option value="robot12">Robot 12</option>
+            <option value="robot24">Robot 24</option>
             <option value="robot36">Robot 36</option>
             <option value="robot72">Robot 72</option>
             <option value="pd50">PD 50</option>
@@ -477,8 +479,8 @@
 
                 console.log(yuv);
                 for (let line = 0; line < canvas.height; line++) {
-                    this.setFreq(1200, 0.009);
-                    this.setFreq(1500, 0.003);
+                    this.setFreq(1200, this.syncTime / 4 * 3);
+                    this.setFreq(1500, this.syncTime / 4);
 
                     // Y
                     this.scanLine(yuv.y[line], this.scanTime);
@@ -486,15 +488,15 @@
                     switch (line % 2) {
                         case 0:
                             // U
-                            this.setFreq(1500, 0.0045);
-                            this.setFreq(1900, 0.0015);
+                            this.setFreq(1500, this.porchTime / 4 * 3);
+                            this.setFreq(1900, this.porchTime / 4);
                             this.scanLine(yuv.v[line], this.scanTime / 2);
                             break;
 
                         default:
                             // V
-                            this.setFreq(2300, 0.0045);
-                            this.setFreq(1900, 0.0015);
+                            this.setFreq(2300, this.porchTime / 4 * 3);
+                            this.setFreq(1900, this.porchTime / 4);
                             this.scanLine(yuv.u[line], this.scanTime / 2);
                             break;
                     }
@@ -505,8 +507,16 @@
                 return [320, 240];
             }
 
+            get syncTime() {
+                return 10.5e-3
+            }
+
+            get porchTime() {
+                return 4.5e-3
+            }
+
             get scanTime() {
-                return 0.088;
+                return 0.09;
             }
 
             get code() {
@@ -520,25 +530,33 @@
 
                 console.log(yuv);
                 for (let line = 0; line < canvas.height; line++) {
-                    this.setFreq(1200, 0.009);
-                    this.setFreq(1500, 0.003);
+                    this.setFreq(1200, this.syncTime / 4 * 3);
+                    this.setFreq(1500, this.syncTime / 4);
 
                     // Y
                     this.scanLine(yuv.y[line], this.scanTime);
 
                     // U
-                    this.setFreq(1500, 0.0045);
-                    this.setFreq(1900, 0.0015);
+                    this.setFreq(1500, this.porchTime / 4 * 3);
+                    this.setFreq(1900, this.porchTime / 4);
                     this.scanLine(yuv.v[line], this.scanTime / 2);
 
                     // V
-                    this.setFreq(2300, 0.0045);
-                    this.setFreq(1500, 0.0015);
+                    this.setFreq(2300, this.porchTime / 4 * 3);
+                    this.setFreq(1500, this.porchTime / 4);
                     this.scanLine(yuv.u[line], this.scanTime / 2);
                 }
             }
             getResolution() {
                 return [320, 240];
+            }
+
+            get syncTime() {
+                return 12e-3
+            }
+
+            get porchTime() {
+                return 6e-3
             }
 
             get scanTime() {
@@ -547,6 +565,42 @@
 
             get code() {
                 return 12;
+            }
+        }
+
+        class Robot12Encoder extends Robot36Encoder {
+            getResolution() {
+                return [160, 120];
+            }
+
+            get syncTime() {
+                return 7e-3
+            }
+
+            get porchTime() {
+                return 3e-3
+            }
+
+            get scanTime() {
+                return 0.06;
+            }
+
+            get code() {
+                return 0;
+            }
+        }
+
+        class Robot24Encoder extends Robot72Encoder {
+            getResolution() {
+                return [160, 120];
+            }
+
+            get scanTime() {
+                return 0.088;
+            }
+
+            get code() {
+                return 4;
             }
         }
 
@@ -862,6 +916,8 @@
             scottie2: Scottie2Encoder,
             scottiedx: ScottieDxEncoder,
             wrassesc2_180: WrasseSC2_180Encoder,
+            robot12: Robot12Encoder,
+            robot24: Robot24Encoder,
             robot36: Robot36Encoder,
             robot72: Robot72Encoder,
             pd50: PD50Encoder,

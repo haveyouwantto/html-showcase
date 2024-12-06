@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Audio with Spectrum Display</title>
+  <style>
+    html{
+        background-color: #202020;
+        color: white;
+    }
+    body {
+      font-family: Arial, sans-serif;
+      text-align: center;
+      margin: 0;
+      padding: 0;
+    }
+
+    #audio-player {
+      margin-top: 20px;
+    }
+
+    #spectrum-container {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 300px;
+      background-color: black;
+    }
+
+    .bar {
+      width: 10px;
+      height: 100px;
+      background-color: lime;
+      margin: 0 2px;
+    }
+  </style>
+</head>
+<body>
+
+  <h1>Audio Player with Spectrum Visualizer</h1>
+
+  <!-- File input for local audio selection -->
+  <input type="file" id="file-input" accept="audio/*">
+  
+  <!-- Audio player (Hidden, controlled by file input) -->
+  <audio id="audio-player" controls ></audio>
+
+  <!-- Spectrum container -->
+  <div id="spectrum-container"></div>
+
+  <script>
+    const audio = document.getElementById('audio-player');
+    const fileInput = document.getElementById('file-input');
+    const spectrumContainer = document.getElementById('spectrum-container');
+
+    // Create 60 bars for the frequency spectrum
+    const bars = [];
+    for (let i = 0; i < 60; i++) {
+      const bar = document.createElement('div');
+      bar.classList.add('bar');
+      spectrumContainer.appendChild(bar);
+      bars.push(bar);
+    }
+
+    // Setup Web Audio API
+    const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+    const analyser = audioContext.createAnalyser();
+    analyser.fftSize = 128; // Control the frequency resolution
+
+    let source;
+
+    // Frequency data array
+    const frequencyData = new Uint8Array(analyser.frequencyBinCount);
+
+    // Render the frequency spectrum
+    function renderSpectrum() {
+      analyser.getByteFrequencyData(frequencyData);
+
+      // Update each bar height based on frequency data
+      bars.forEach((bar, i) => {
+        const barHeight = frequencyData[i] / 2; // Scale down the height
+        bar.style.height = `${barHeight}px`;
+      });
+
+      requestAnimationFrame(renderSpectrum);
+    }
+
+    // When a file is selected
+    fileInput.addEventListener('change', function(event) {
+      const file = event.target.files[0];
+
+      if (file) {
+        const fileURL = URL.createObjectURL(file);
+        audio.src = fileURL;
+        audio.load();
+        audio.play();
+
+        // Create or reconnect audio source to the analyser
+        if (source) {
+          source.disconnect();
+        }
+        source = audioContext.createMediaElementSource(audio);
+        source.connect(analyser);
+        analyser.connect(audioContext.destination);
+
+        // Start rendering spectrum
+        renderSpectrum();
+      }
+    });
+
+    // Start rendering when the audio is played
+    audio.onplay = function () {
+      audioContext.resume().then(() => {
+        renderSpectrum();
+      });
+    };
+  </script>
+</body>
+</html>
