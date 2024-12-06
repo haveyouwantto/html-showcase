@@ -8,6 +8,7 @@
         :root {
             --theme-color: #f4704b;
         }
+
         body {
             font-family: 'Arial', sans-serif;
             margin: 0;
@@ -235,19 +236,37 @@
 
 
         let encoder = new WrasseSC180Encoder();
+        let isTransmitting = false; // 添加状态标志
+        let activeOscillator = null; // 记录当前的发射振荡器
 
         // 发射 SSTV 信号
         document.getElementById('generateButton').addEventListener('click', () => {
-            if (!imageData) {
-                alert('请先上传图像！');
-                return;
-            }
+            if (isTransmitting) {
+                // 停止发射
+                activeOscillator.stop();
+                activeOscillator = null;
+                isTransmitting = false;
+                document.getElementById('generateButton').innerText = '发射 SSTV';
+                document.getElementById('generateButton').disabled = false; // 恢复可用状态
+            } else {
+                // 开始发射
+                if (!imageData) {
+                    alert('请先上传图像！');
+                    return;
+                }
 
-            let now = audioCtx.currentTime;
-            audioCtx.resume();
-            const oscillator = audioCtx.createOscillator();
-            oscillator.connect(audioCtx.destination);
-            encoder.transmit(oscillator, now, canvas);
+                let now = audioCtx.currentTime;
+                audioCtx.resume();
+                const oscillator = audioCtx.createOscillator();
+                oscillator.connect(audioCtx.destination);
+
+                activeOscillator = oscillator; // 记录当前振荡器
+                isTransmitting = true;
+                document.getElementById('generateButton').innerText = '停止发射';
+                document.getElementById('generateButton').disabled = false; // 保持可用状态
+
+                encoder.transmit(oscillator, now, canvas);
+            }
         });
     </script>
 </body>
