@@ -16,6 +16,9 @@
             background-color: #121212;
             color: #e0e0e0;
             text-align: center;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
         }
 
         h1 {
@@ -59,11 +62,20 @@
             transform: scale(0.98);
         }
 
+        .card {
+            border: 1px solid var(--theme-color);
+            border-radius: 5px;
+        }
+
+        .div {
+            padding: 10px;
+        }
+
         canvas {
-            margin-top: 20px;
             border: 2px solid var(--theme-color);
-            background-color: #1f1f1f;
             border-radius: 10px;
+            margin-top: 20px;
+            background-color: #1f1f1f;
             display: block;
             margin-left: auto;
             margin-right: auto;
@@ -92,6 +104,15 @@
 <body>
     <h1>SSTV 生成器</h1>
     <input type="file" accept="image/*" id="upload">
+    <div class="card div">
+        制式：
+        <select id="encoderSelect">
+            <option value="scottie1">Scottie 1</option>
+            <option value="scottie2">Scottie 2</option>
+            <option value="scottiedx">Scottie DX</option>
+            <option value="wrassesc2_180">Wrasse SC180</option>
+        </select>
+    </div>
     <button id="generateButton" disabled>发射 SSTV</button>
     <canvas id="imageCanvas"></canvas>
 
@@ -106,32 +127,31 @@
                 this.time = startTime;
             }
 
+            setFreq(freq, time) {
+                this.osc.frequency.setValueAtTime(freq, this.time);
+                this.time += time;
+            }
+
             encodeHeader(code) {
                 // Start Tone
-                this.osc.frequency.setValueAtTime(1900, this.time);
-                this.time += 0.3;
-                this.osc.frequency.setValueAtTime(1200, this.time);
-                this.time += 0.01;
-                this.osc.frequency.setValueAtTime(1900, this.time);
-                this.time += 0.3;
+                this.setFreq(1900, 0.3);
+                this.setFreq(1200, 0.01);
+                this.setFreq(1900, 0.3);
 
                 // 格式
-                this.osc.frequency.setValueAtTime(1200, this.time);
-                this.time += 0.03;
+                this.setFreq(1200, 0.03);
 
                 let parity = false;
                 for (let i = 0; i < 7; i++) {
                     const bit = (code & 1) === 1;
+                    this.setFreq(bit ? 1100 : 1300, 0.03);
                     this.osc.frequency.setValueAtTime(bit ? 1100 : 1300, this.time);
-                    this.time += 0.03;
                     code >>= 1;
                     parity = parity ^ bit;
                 }
-                this.osc.frequency.setValueAtTime(parity ? 1100 : 1300, this.time);
-                this.time += 0.03;
+                this.setFreq(parity ? 1100 : 1300, 0.03);
 
-                this.osc.frequency.setValueAtTime(1200, this.time);
-                this.time += 0.03;
+                this.setFreq(1200, 0.03);
             }
 
             scanLine(data, duration) {
@@ -156,7 +176,7 @@
             get code() { }
         }
 
-        class WrasseSC180Encoder extends SSTVEncoder {
+        class WrasseSC2_180Encoder extends SSTVEncoder {
 
             scanImage(canvas) {
                 const imgWidth = canvas.width;
@@ -167,10 +187,9 @@
 
                 for (let line = 0; line < imgHeight; line++) {
                     // 起始脉冲
-                    this.osc.frequency.setValueAtTime(1200, this.time);
-                    this.time += 0.0055225;
-                    this.osc.frequency.setValueAtTime(1500, this.time);
-                    this.time += 0.0005;
+
+                    this.setFreq(1200, 0.0055225);
+                    this.setFreq(1500, 0.0005);
 
                     const lineData = imageData.data.slice(line * imgWidth * 4, (line + 1) * imgWidth * 4);
 
@@ -196,11 +215,84 @@
             }
 
             getResolution() {
-                return [340, 256];
+                return [320, 256];
             }
 
             get code() {
                 return 55;
+            }
+        }
+
+        class ScottieEncoder extends SSTVEncoder {
+            scanImage(canvas) {
+                const imgWidth = canvas.width;
+                const imgHeight = canvas.height;
+
+                const ctx = canvas.getContext('2d');
+                const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+
+                // 起始脉冲
+                this.setFreq(1200, 0.009)
+
+                for (let line = 0; line < imgHeight; line++) {
+
+                    const lineData = imageData.data.slice(line * imgWidth * 4, (line + 1) * imgWidth * 4);
+
+                    // 分离 RGB 通道并逐个处理
+                    const rData = [];
+                    const gData = [];
+                    const bData = [];
+
+                    for (let i = 0; i < imgWidth; i++) {
+                        const r = lineData[i * 4] / 255;  // R 通道
+                        const g = lineData[i * 4 + 1] / 255;  // G 通道
+                        const b = lineData[i * 4 + 2] / 255;  // B 通道
+
+                        rData.push(r);  // R 通道频率
+                        gData.push(g);  // G 通道频率
+                        bData.push(b);  // B 通道频率
+                    }
+
+                    this.setFreq(1500, 0.0015)//separator
+                    this.scanLine(gData, this.scanTime);
+                    this.setFreq(1500, 0.0015)//separator
+                    this.scanLine(bData, this.scanTime);
+                    this.setFreq(1200, 0.009) //sync
+                    this.setFreq(1500, 0.0015)//separator
+                    this.scanLine(rData, this.scanTime);
+                }
+            }
+
+            getResolution() {
+                return [320, 256];
+            }
+            
+            get scanTime() {
+                return 0.13824;
+            }
+
+            get code() {
+                return 60;
+            }
+        }
+
+        class Scottie1Encoder extends ScottieEncoder { }
+        class Scottie2Encoder extends ScottieEncoder {
+            get scanTime() {
+                return 0.088064;
+            }
+
+            get code() {
+                return 56;
+            }
+        }
+        class ScottieDxEncoder extends ScottieEncoder {
+            get scanTime() {
+                return 0.3456;
+            }
+
+            get code() {
+                return 76;
             }
         }
 
@@ -235,7 +327,7 @@
         };
 
 
-        let encoder = new WrasseSC180Encoder();
+        let encoder = new ScottieEncoder();
         let isTransmitting = false; // 添加状态标志
         let activeOscillator = null; // 记录当前的发射振荡器
 
@@ -267,6 +359,17 @@
 
                 encoder.transmit(oscillator, now, canvas);
             }
+        });
+
+        const encoders = {
+            scottie1: Scottie1Encoder,
+            scottie2: Scottie2Encoder,
+            scottiedx: ScottieDxEncoder,
+            wrassesc2_180: WrasseSC2_180Encoder
+        }
+        document.getElementById('encoderSelect').addEventListener('change', (e) => {
+            const encoderClass = e.target.value;
+            encoder = new encoders[encoderClass](); // 反射创建 encoder 对象
         });
     </script>
 </body>
