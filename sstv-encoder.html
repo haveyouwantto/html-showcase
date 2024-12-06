@@ -174,7 +174,7 @@
     </div>
     <button id="generateButton" disabled>发射 SSTV</button>
     <div class="status">
-        <div id="prog-num">0%</div>
+        <div id="prog-num">0.00%</div>
         <div id="progress">
             <div id="progress-inner"></div>
         </div>
@@ -716,7 +716,6 @@
                 // 停止发射
                 activeOscillator.stop();
                 activeOscillator = null;
-                cancelAnimationFrame(interval);
             } else {
                 // 开始发射
                 if (!imageData) {
@@ -737,6 +736,7 @@
                     document.getElementById('generateButton').innerText = '发射 SSTV';
                     document.getElementById('generateButton').disabled = false; // 恢复可用状态
                     isTransmitting = false;
+                    cancelAnimationFrame(interval);
                 }
 
                 isTransmitting = true;
