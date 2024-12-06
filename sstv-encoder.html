@@ -83,6 +83,29 @@
             height: auto;
         }
 
+        #encoderSelect {
+            padding: 10px;
+            font-size: 1rem;
+            background-color: #1f1f1f;
+            color: #e0e0e0;
+            border: 1px solid var(--theme-color);
+            border-radius: 5px;
+            cursor: pointer;
+            width: 100%;
+            max-width: 300px;
+            transition: background-color 0.3s ease;
+        }
+
+        #encoderSelect:hover {
+            background-color: #333;
+        }
+
+        #encoderSelect:focus {
+            outline: none;
+            border-color: var(--theme-color);
+            background-color: #333;
+        }
+
         @media (max-width: 600px) {
             h1 {
                 font-size: 1.5rem;
