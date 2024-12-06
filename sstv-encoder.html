@@ -83,6 +83,8 @@
             display: block;
             margin-left: auto;
             margin-right: auto;
+            margin-top: 0;
+            margin-bottom: 0;
             width: 90%;
             height: auto;
         }
@@ -914,14 +916,6 @@
                 generateButton.innerText = '停止发射';
                 generateButton.disabled = false; // 保持可用状态
 
-                oscillator.onended = () => {
-                    encoderSelect.disabled = false;
-                    uploadInput.disabled = false;
-                    generateButton.innerText = '发射 SSTV';
-                    generateButton.disabled = false; // 恢复可用状态
-                    isTransmitting = false;
-                    cancelAnimationFrame(interval);
-                };
 
                 isTransmitting = true;
                 encoder.transmit(oscillator, now, canvas);
@@ -932,9 +926,21 @@
                     updateProgress(prog);
                     interval = requestAnimationFrame(animator);
                 };
+
+                oscillator.onended = () => {
+                    encoderSelect.disabled = false;
+                    uploadInput.disabled = false;
+                    generateButton.innerText = '发射 SSTV';
+                    generateButton.disabled = false; // 恢复可用状态
+                    isTransmitting = false;
+                    cancelAnimationFrame(interval);
+                    updateProgress(0);
+                };
+
                 interval = requestAnimationFrame(animator);
             }
         });
+
 
         const encoders = {
             martin1: Martin1Encoder,
