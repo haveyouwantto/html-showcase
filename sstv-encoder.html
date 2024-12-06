@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"> 
+  <title>SSTV Generator</title>
+  <style>
+    /* CSS样式 */
+    body {
+      /* CSS样式 */
+    }
+  </style>
+</head>
+<body>
+  <h1>SSTV 生成器</h1> 
+  <button id="generateButton">生成 SSTV</button>
+
+  <script>
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    
+    function SSTVHeader(osc, time, code){
+    	let t=time;
+    	osc.frequency.setValueAtTime(1900,t);
+    	t+=0.3;
+    	osc.frequency.setValueAtTime( 1200,t);
+    	t+=0.01;
+    	osc.frequency.setValueAtTime( 1900,t);
+    	t+=0.3;
+    	
+    	// format
+    	osc.frequency.setValueAtTime( 1200,t);
+    	t+=0.03;
+    	
+    	let parity=false;
+    	for(let i=0;i<7;i++){
+    		let bit = code & 1 ==1;
+    		osc.frequency.setValueAtTime( bit?1100:1300,t);
+    	t+=0.03;
+    	code >>=1;
+    	parity=parity^bit;
+    	}
+    	osc.frequency.setValueAtTime( parity?1100:1300,t);
+    	t+=0.03;
+    	osc.frequency.setValueAtTime( 1200,t);
+    	t+=0.03;
+    	return t;
+    }
+    
+    const rgb=[0x4c,0xaf,0x50];
+
+    document.getElementById('generateButton').addEventListener('click', function() {
+    	try{
+      let now = audioCtx.currentTime; 		// 获取当前上下文时间
+      const oscillator = audioCtx.createOscillator();
+      oscillator.connect(audioCtx.destination);
+      oscillator.start(now);           // 开始播放
+      
+      now=SSTVHeader(oscillator, now, 55);
+      
+      for (let line=0;line<256;line++){
+      	oscillator.frequency.setValueAtTime( 1200,now);
+    	now+=0.0055225;
+    	oscillator.frequency.setValueAtTime( 1500,now);
+    	now+=0.0005;
+    	
+    	for(let i=0;i<3;i++){
+    		const c=rgb[i];
+    		const freq =c/255*800+1500;
+    	oscillator.frequency.setValueAtTime(freq,now);
+    	now+=0.235;
+    	}
+      }
+
+      // 播放 5 秒后停止
+      oscillator.stop(now);
+      }catch(e){
+      	alert(e)
+      }
+    });    
+  </script>
+</body>
+</html>
