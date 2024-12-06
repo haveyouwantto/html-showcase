@@ -4,78 +4,148 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0"> 
   <title>SSTV Generator</title>
   <style>
-    /* CSS样式 */
     body {
-      /* CSS样式 */
+      font-family: Arial, sans-serif;
+      margin: 20px;
+      text-align: center;
+    }
+    canvas {
+      margin-top: 20px;
+      border: 1px solid #ddd;
     }
   </style>
 </head>
 <body>
   <h1>SSTV 生成器</h1> 
-  <button id="generateButton">生成 SSTV</button>
+  <button id="uploadButton">上传图像</button>
+  <button id="generateButton" disabled>发射 SSTV</button>
+  <canvas id="imageCanvas"></canvas>
 
   <script>
     const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-    
-    function SSTVHeader(osc, time, code){
-    	let t=time;
-    	osc.frequency.setValueAtTime(1900,t);
-    	t+=0.3;
-    	osc.frequency.setValueAtTime( 1200,t);
-    	t+=0.01;
-    	osc.frequency.setValueAtTime( 1900,t);
-    	t+=0.3;
-    	
-    	// format
-    	osc.frequency.setValueAtTime( 1200,t);
-    	t+=0.03;
-    	
-    	let parity=false;
-    	for(let i=0;i<7;i++){
-    		let bit = code & 1 ==1;
-    		osc.frequency.setValueAtTime( bit?1100:1300,t);
-    	t+=0.03;
-    	code >>=1;
-    	parity=parity^bit;
-    	}
-    	osc.frequency.setValueAtTime( parity?1100:1300,t);
-    	t+=0.03;
-    	osc.frequency.setValueAtTime( 1200,t);
-    	t+=0.03;
-    	return t;
+    const canvas = document.getElementById('imageCanvas');
+    const ctx = canvas.getContext('2d');
+    let imageData = null;
+
+    // 将图像扫描为 SSTV 信号的封装函数
+    function scanImage(osc, startTime) {
+      const imgWidth = canvas.width;
+      const imgHeight = canvas.height;
+
+      for (let line = 0; line < imgHeight; line++) {
+        // 起始脉冲
+        osc.frequency.setValueAtTime(1200, startTime);
+        startTime += 0.0055225;
+        osc.frequency.setValueAtTime(1500, startTime);
+        startTime += 0.0005;
+
+        const lineData = imageData.data.slice(line * imgWidth * 4, (line + 1) * imgWidth * 4);
+
+        // 分离 RGB 通道并逐个处理
+        const rFrequencies = [];
+        const gFrequencies = [];
+        const bFrequencies = [];
+
+        for (let i = 0; i < imgWidth; i++) {
+          const r = lineData[i * 4] / 255 * 800 + 1500;  // R 通道
+          const g = lineData[i * 4 + 1] / 255 * 800 + 1500;  // G 通道
+          const b = lineData[i * 4 + 2] / 255 * 800 + 1500;  // B 通道
+
+          rFrequencies.push(r);  // R 通道频率
+          gFrequencies.push(g);  // G 通道频率
+          bFrequencies.push(b);  // B 通道频率
+        }
+
+        // 使用 setValueCurveAtTime 批量设置频率
+        const curveDuration = 0.235;  // 每像素 3 通道
+
+        // 为每个通道分别设置频率
+        osc.frequency.setValueCurveAtTime(rFrequencies, startTime, curveDuration);
+        startTime += curveDuration;
+
+        osc.frequency.setValueCurveAtTime(gFrequencies, startTime, curveDuration);
+        startTime += curveDuration;
+
+        osc.frequency.setValueCurveAtTime(bFrequencies, startTime, curveDuration);
+        startTime += curveDuration;
+      }
+
+      return startTime;
     }
-    
-    const rgb=[0x4c,0xaf,0x50];
 
-    document.getElementById('generateButton').addEventListener('click', function() {
-    	try{
-      let now = audioCtx.currentTime; 		// 获取当前上下文时间
-      const oscillator = audioCtx.createOscillator();
-      oscillator.connect(audioCtx.destination);
-      oscillator.start(now);           // 开始播放
-      
-      now=SSTVHeader(oscillator, now, 55);
-      
-      for (let line=0;line<256;line++){
-      	oscillator.frequency.setValueAtTime( 1200,now);
-    	now+=0.0055225;
-    	oscillator.frequency.setValueAtTime( 1500,now);
-    	now+=0.0005;
-    	
-    	for(let i=0;i<3;i++){
-    		const c=rgb[i];
-    		const freq =c/255*800+1500;
-    	oscillator.frequency.setValueAtTime(freq,now);
-    	now+=0.235;
-    	}
+    // 处理文件上传
+    document.getElementById('uploadButton').addEventListener('click', () => {
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.accept = 'image/*';
+      input.onchange = (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        const img = new Image();
+        img.onload = () => {
+          const aspectRatio = img.width / img.height;
+          canvas.width = Math.floor(aspectRatio * 256); // 缩放到 ? x 256
+          canvas.height = 256;
+          ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+          imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+          document.getElementById('generateButton').disabled = false;
+        };
+        img.src = URL.createObjectURL(file);
+      };
+      input.click();
+    });
+
+    // 发射 SSTV 信号
+    document.getElementById('generateButton').addEventListener('click', () => {
+      if (!imageData) {
+        alert('请先上传图像！');
+        return;
       }
 
-      // 播放 5 秒后停止
-      oscillator.stop(now);
-      }catch(e){
-      	alert(e)
+      try {
+        let now = audioCtx.currentTime;
+        const oscillator = audioCtx.createOscillator();
+        oscillator.connect(audioCtx.destination);
+        oscillator.start(now);
+
+        // 生成帧头
+        const SSTVHeader = (osc, time, code) => {
+          let t = time;
+          osc.frequency.setValueAtTime(1900, t);
+          t += 0.3;
+          osc.frequency.setValueAtTime(1200, t);
+          t += 0.01;
+          osc.frequency.setValueAtTime(1900, t);
+          t += 0.3;
+
+          // 格式
+          osc.frequency.setValueAtTime(1200, t);
+          t += 0.03;
+
+          let parity = false;
+          for (let i = 0; i < 7; i++) {
+            const bit = (code & 1) === 1;
+            osc.frequency.setValueAtTime(bit ? 1100 : 1300, t);
+            t += 0.03;
+            code >>= 1;
+            parity = parity ^ bit;
+          }
+          osc.frequency.setValueAtTime(parity ? 1100 : 1300, t);
+          t += 0.03;
+          osc.frequency.setValueAtTime(1200, t);
+          t += 0.03;
+          return t;
+        };
+
+        now = SSTVHeader(oscillator, now, 55); // 发射帧头
+        now = scanImage(oscillator, now);     // 扫描图像
+
+        oscillator.stop(now + 5);
+      } catch (e) {
+        alert(`发射失败: ${e.message}`);
       }
-    });    
+    });
   </script>
 </body>
 </html>
