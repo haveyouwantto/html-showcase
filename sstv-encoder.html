@@ -71,16 +71,32 @@
             padding: 10px;
         }
 
+        .canvas-div {
+            position: relative;
+            margin-top: 20px;
+        }
+
         canvas {
             border: 2px solid var(--theme-color);
             border-radius: 10px;
-            margin-top: 20px;
             background-color: #1f1f1f;
             display: block;
             margin-left: auto;
             margin-right: auto;
             max-width: 100%;
             height: auto;
+        }
+
+        .scanline {
+            position: absolute;
+            width: 100%;
+            height: 3px;
+            background-color: var(--theme-color);
+            border: 0;
+            border-radius: 999px;
+            top: 0;
+            margin: 0;
+            box-shadow: 0px 0px 8px 4px var(--theme-color);
         }
 
         #encoderSelect {
@@ -184,7 +200,10 @@
             <div id="progress-inner"></div>
         </div>
     </div>
-    <canvas id="imageCanvas"></canvas>
+    <div class="canvas-div">
+        <canvas id="imageCanvas"></canvas>
+        <hr class="scanline" id="scanline">
+    </div>
 
     <script>
         const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -847,8 +866,10 @@
         }
 
         function updateProgress(p) {
-            document.getElementById('prog-num').textContent = (p * 100).toFixed(2) + "%"
-            document.getElementById('progress-inner').style.width = (p * 100) + "%"
+            const percent = (p * 100).toFixed(2);
+            document.getElementById('prog-num').textContent = percent + "%"
+            document.getElementById('progress-inner').style.width = percent + "%"
+            document.getElementById('scanline').style.top = percent + "%"
         }
 
         document.getElementById('upload').onchange = (e) => {
@@ -886,10 +907,12 @@
                 oscillator.connect(audioCtx.destination);
 
                 activeOscillator = oscillator; // 记录当前振荡器
+                document.getElementById('encoderSelect').disabled = true;
                 document.getElementById('generateButton').innerText = '停止发射';
                 document.getElementById('generateButton').disabled = false; // 保持可用状态
 
                 oscillator.onended = () => {
+                    document.getElementById('encoderSelect').disabled = false;
                     document.getElementById('generateButton').innerText = '发射 SSTV';
                     document.getElementById('generateButton').disabled = false; // 恢复可用状态
                     isTransmitting = false;
