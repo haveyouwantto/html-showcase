@@ -191,6 +191,7 @@
             <option value="wrassesc2_180">Wraase SC2-180</option>
             <!-- <option value="robot12">Robot 12</option>
             <option value="robot24">Robot 24</option> -->
+            <option value="robotbw8">Robot BW 8</option>
             <option value="robot36">Robot 36</option>
             <option value="robot72">Robot 72</option>
             <option value="pd50">PD 50</option>
@@ -325,7 +326,6 @@
                 for (let i = 0; i < 7; i++) {
                     const bit = (code & 1) === 1;
                     this.setFreq(bit ? 1100 : 1300, 0.03);
-                    this.osc.frequency.setValueAtTime(bit ? 1100 : 1300, this.time);
                     code >>= 1;
                     parity = parity ^ bit;
                 }
@@ -355,6 +355,10 @@
 
             getResolution() { }
             get code() { }
+
+            get grayscale() {
+                return false;
+            }
         }
 
         class WrasseSC2_180Encoder extends SSTVEncoder {
@@ -647,6 +651,38 @@
 
             get code() {
                 return 4;
+            }
+        }
+
+        class RobotBW8 extends SSTVEncoder {
+            scanImage(bitmap) {
+                const yuv = bitmapToYUV(bitmap);
+
+                for (let line = 0; line < bitmap.imgHeight; line++) {
+                    this.setFreq(1200, this.syncTime);
+                    // Y
+                    this.scanLine(yuv.y[line], this.scanTime);
+                }
+            }
+
+            getResolution() {
+                return [160, 120];
+            }
+
+            get syncTime() {
+                return 0.005;
+            }
+
+            get scanTime() {
+                return 0.0619;
+            }
+
+            get code() {
+                return 2;
+            }
+
+            get grayscale() {
+                return true;
             }
         }
 
@@ -959,6 +995,7 @@
             wrassesc2_60: WraaseSC2_60Encoder,
             wrassesc2_120: WraaseSC2_120Encoder,
             wrassesc2_180: WrasseSC2_180Encoder,
+            robotbw8: RobotBW8,
             robot12: Robot12Encoder,
             robot24: Robot24Encoder,
             robot36: Robot36Encoder,
@@ -981,6 +1018,7 @@
             canvas.width = size[0];
             canvas.height = size[1];
             drawImage(uploadedImage);
+            canvas.style.filter = encoder.grayscale ? 'grayscale(1)' : ""
         }
 
         encoderSelect.addEventListener('change', (e) => {
