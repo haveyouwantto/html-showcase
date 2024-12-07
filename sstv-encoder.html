@@ -191,7 +191,6 @@
             <option value="wrassesc2_180">Wraase SC2-180</option>
             <!-- <option value="robot12">Robot 12</option>
             <option value="robot24">Robot 24</option> -->
-            <option value="robotbw8">Robot BW 8</option>
             <option value="robot36">Robot 36</option>
             <option value="robot72">Robot 72</option>
             <option value="pd50">PD 50</option>
@@ -204,6 +203,7 @@
             <option value="pasokonp3">Pasokon P3</option>
             <option value="pasokonp5">Pasokon P5</option>
             <option value="pasokonp7">Pasokon P7</option>
+            <option value="bw8">BW 8</option>
         </select>
     </div>
     <button id="generateButton" disabled>发射 SSTV</button>
@@ -654,7 +654,7 @@
             }
         }
 
-        class RobotBW8 extends SSTVEncoder {
+        class BW8Encoder extends SSTVEncoder {
             scanImage(bitmap) {
                 const yuv = bitmapToYUV(bitmap);
 
@@ -674,7 +674,7 @@
             }
 
             get scanTime() {
-                return 0.0619;
+                return 0.06189725;
             }
 
             get code() {
@@ -995,7 +995,6 @@
             wrassesc2_60: WraaseSC2_60Encoder,
             wrassesc2_120: WraaseSC2_120Encoder,
             wrassesc2_180: WrasseSC2_180Encoder,
-            robotbw8: RobotBW8,
             robot12: Robot12Encoder,
             robot24: Robot24Encoder,
             robot36: Robot36Encoder,
@@ -1009,7 +1008,8 @@
             pd290: PD290Encoder,
             pasokonp3: PasokonP3Encoder,
             pasokonp5: PasokonP5Encoder,
-            pasokonp7: PasokonP7Encoder
+            pasokonp7: PasokonP7Encoder,
+            bw8: BW8Encoder
         };
 
         function updateEncoder(encoderClass) {
