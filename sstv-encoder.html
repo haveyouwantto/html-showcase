@@ -38,7 +38,7 @@
         }
 
         button,
-        input::file-selector-button{
+        input::file-selector-button {
             padding: 10px 20px;
             font-size: 1rem;
             color: #121212;
@@ -220,14 +220,11 @@
         const ctx = canvas.getContext('2d');
         let imageData = null;
 
-        function canvasToYUV(canvas) {
-            const ctx = canvas.getContext('2d');
-            const width = canvas.width;
-            const height = canvas.height;
-
+        function bitmapToYUV(bitmap) {
             // 获取图像数据
-            const imageData = ctx.getImageData(0, 0, width, height);
-            const data = imageData.data;
+            const width = bitmap.imgWidth;
+            const height = bitmap.imgHeight;
+            const data = bitmap.getData();
 
             // 创建 Y, U, V 数据数组
             const y = new Array(height).fill(0).map(() => new Array(width));
@@ -264,6 +261,43 @@
             };
         }
 
+        class Bitmap {
+            constructor(canvas) {
+                this.imgWidth = canvas.width;
+                this.imgHeight = canvas.height;
+                this.ctx = canvas.getContext('2d');
+                this.imageData = this.ctx.getImageData(0, 0, canvas.width, canvas.height);
+            }
+
+            // Return the raw image data
+            getData() {
+                return this.imageData.data;
+            }
+
+            // Return the RGB channels for a specific line
+            getLine(line) {
+                if (line < 0 || line >= this.imgHeight) {
+                    throw new Error("Line index out of bounds");
+                }
+
+                const lineData = this.imageData.data.slice(
+                    line * this.imgWidth * 4,
+                    (line + 1) * this.imgWidth * 4
+                );
+
+                const rData = [];
+                const gData = [];
+                const bData = [];
+
+                for (let i = 0; i < this.imgWidth; i++) {
+                    rData.push(lineData[i * 4] / 255);     // Normalize R channel
+                    gData.push(lineData[i * 4 + 1] / 255); // Normalize G channel
+                    bData.push(lineData[i * 4 + 2] / 255); // Normalize B channel
+                }
+
+                return { r: rData, g: gData, b: bData };
+            }
+        }
 
         class SSTVEncoder {
             constructor(startTime) {
@@ -322,39 +356,15 @@
 
         class WrasseSC2_180Encoder extends SSTVEncoder {
 
-            scanImage(canvas) {
-                const imgWidth = canvas.width;
-                const imgHeight = canvas.height;
-
-                const ctx = canvas.getContext('2d');
-                const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-
-                for (let line = 0; line < imgHeight; line++) {
-                    // 起始脉冲
-
+            scanImage(bitmap) {
+                for (let line = 0; line < bitmap.imgHeight; line++) {
                     this.setFreq(1200, 0.0055225);
                     this.setFreq(1500, 0.0005);
 
-                    const lineData = imageData.data.slice(line * imgWidth * 4, (line + 1) * imgWidth * 4);
-
-                    // 分离 RGB 通道并逐个处理
-                    const rData = [];
-                    const gData = [];
-                    const bData = [];
-
-                    for (let i = 0; i < imgWidth; i++) {
-                        const r = lineData[i * 4] / 255;  // R 通道
-                        const g = lineData[i * 4 + 1] / 255;  // G 通道
-                        const b = lineData[i * 4 + 2] / 255;  // B 通道
-
-                        rData.push(r);  // R 通道频率
-                        gData.push(g);  // G 通道频率
-                        bData.push(b);  // B 通道频率
-                    }
-
-                    this.scanLine(rData, 0.235);
-                    this.scanLine(gData, 0.235);
-                    this.scanLine(bData, 0.235);
+                    const data = bitmap.getLine(line);
+                    this.scanLine(data.r, 0.235);
+                    this.scanLine(data.g, 0.235);
+                    this.scanLine(data.b, 0.235);
                 }
             }
 
@@ -368,42 +378,20 @@
         }
 
         class Scottie1Encoder extends SSTVEncoder {
-            scanImage(canvas) {
-                const imgWidth = canvas.width;
-                const imgHeight = canvas.height;
-
-                const ctx = canvas.getContext('2d');
-                const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-
+            scanImage(bitmap) {
                 // 起始脉冲
-                this.setFreq(1200, 0.009)
+                this.setFreq(1200, 0.009);
 
-                for (let line = 0; line < imgHeight; line++) {
-
-                    const lineData = imageData.data.slice(line * imgWidth * 4, (line + 1) * imgWidth * 4);
-
-                    // 分离 RGB 通道并逐个处理
-                    const rData = [];
-                    const gData = [];
-                    const bData = [];
-
-                    for (let i = 0; i < imgWidth; i++) {
-                        const r = lineData[i * 4] / 255;  // R 通道
-                        const g = lineData[i * 4 + 1] / 255;  // G 通道
-                        const b = lineData[i * 4 + 2] / 255;  // B 通道
-
-                        rData.push(r);  // R 通道频率
-                        gData.push(g);  // G 通道频率
-                        bData.push(b);  // B 通道频率
-                    }
+                for (let line = 0; line < bitmap.imgHeight; line++) {
+                    const data = bitmap.getLine(line);
 
                     this.setFreq(1500, 0.0015)//separator
-                    this.scanLine(gData, this.scanTime);
+                    this.scanLine(data.g, this.scanTime);
                     this.setFreq(1500, 0.0015)//separator
-                    this.scanLine(bData, this.scanTime);
+                    this.scanLine(data.b, this.scanTime);
                     this.setFreq(1200, 0.009) //sync
                     this.setFreq(1500, 0.0015)//separator
-                    this.scanLine(rData, this.scanTime);
+                    this.scanLine(data.r, this.scanTime);
                 }
             }
 
@@ -440,41 +428,19 @@
         }
 
         class Martin1Encoder extends SSTVEncoder {
-            scanImage(canvas) {
-                const imgWidth = canvas.width;
-                const imgHeight = canvas.height;
+            scanImage(bitmap) {
+                for (let line = 0; line < bitmap.imgHeight; line++) {
 
-                const ctx = canvas.getContext('2d');
-                const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-
-
-                for (let line = 0; line < imgHeight; line++) {
-
-                    const lineData = imageData.data.slice(line * imgWidth * 4, (line + 1) * imgWidth * 4);
-
-                    // 分离 RGB 通道并逐个处理
-                    const rData = [];
-                    const gData = [];
-                    const bData = [];
-
-                    for (let i = 0; i < imgWidth; i++) {
-                        const r = lineData[i * 4] / 255;  // R 通道
-                        const g = lineData[i * 4 + 1] / 255;  // G 通道
-                        const b = lineData[i * 4 + 2] / 255;  // B 通道
-
-                        rData.push(r);  // R 通道频率
-                        gData.push(g);  // G 通道频率
-                        bData.push(b);  // B 通道频率
-                    }
+                    const data = bitmap.getLine(line);
 
                     // 起始脉冲
                     this.setFreq(1200, 0.004862)
                     this.setFreq(1500, 0.000572)//separator
-                    this.scanLine(gData, this.scanTime);
+                    this.scanLine(data.g, this.scanTime);
                     this.setFreq(1500, 0.000572)//separator
-                    this.scanLine(bData, this.scanTime);
+                    this.scanLine(data.b, this.scanTime);
                     this.setFreq(1500, 0.000572)//separator
-                    this.scanLine(rData, this.scanTime);
+                    this.scanLine(data.r, this.scanTime);
                     this.setFreq(1500, 0.000572)//separator
                 }
             }
@@ -503,11 +469,10 @@
         }
 
         class Robot36Encoder extends SSTVEncoder {
-            scanImage(canvas) {
-                const yuv = canvasToYUV(canvas);
+            scanImage(bitmap) {
+                const yuv = bitmapToYUV(bitmap);
 
-                console.log(yuv);
-                for (let line = 0; line < canvas.height; line++) {
+                for (let line = 0; line < bitmap.imgHeight; line++) {
                     this.setFreq(1200, this.syncTime / 4 * 3);
                     this.setFreq(1500, this.syncTime / 4);
 
@@ -554,11 +519,10 @@
         }
 
         class Robot72Encoder extends Robot36Encoder {
-            scanImage(canvas) {
-                const yuv = canvasToYUV(canvas);
+            scanImage(bitmap) {
+                const yuv = bitmapToYUV(bitmap);
 
-                console.log(yuv);
-                for (let line = 0; line < canvas.height; line++) {
+                for (let line = 0; line < bitmap.imgHeight; line++) {
                     this.setFreq(1200, this.syncTime / 4 * 3);
                     this.setFreq(1500, this.syncTime / 4);
 
@@ -634,11 +598,10 @@
         }
 
         class PD50Encoder extends SSTVEncoder {
-            scanImage(canvas) {
-                const yuv = canvasToYUV(canvas);
+            scanImage(bitmap) {
+                const yuv = bitmapToYUV(bitmap);
 
-                console.log(yuv);
-                for (let line = 0; line < canvas.height; line += 2) {
+                for (let line = 0; line < bitmap.imgHeight; line += 2) {
                     this.setFreq(1200, 0.02);
                     this.setFreq(1500, 0.00208);
 
@@ -754,41 +717,18 @@
 
         class PasokonP3Encoder extends SSTVEncoder {
 
-            scanImage(canvas) {
-                const imgWidth = canvas.width;
-                const imgHeight = canvas.height;
-
-                const ctx = canvas.getContext('2d');
-                const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-
-
-                for (let line = 0; line < imgHeight; line++) {
-
-                    const lineData = imageData.data.slice(line * imgWidth * 4, (line + 1) * imgWidth * 4);
-
-                    // 分离 RGB 通道并逐个处理
-                    const rData = [];
-                    const gData = [];
-                    const bData = [];
-
-                    for (let i = 0; i < imgWidth; i++) {
-                        const r = lineData[i * 4] / 255;  // R 通道
-                        const g = lineData[i * 4 + 1] / 255;  // G 通道
-                        const b = lineData[i * 4 + 2] / 255;  // B 通道
-
-                        rData.push(r);  // R 通道频率
-                        gData.push(g);  // G 通道频率
-                        bData.push(b);  // B 通道频率
-                    }
+            scanImage(bitmap) {
+                for (let line = 0; line < bitmap.imgHeight; line++) {
+                    const data = bitmap.getLine(line);
 
                     // 起始脉冲
                     this.setFreq(1200, this.syncTime)
                     this.setFreq(1500, this.porchTime)//separator
-                    this.scanLine(rData, this.scanTime);
+                    this.scanLine(data.r, this.scanTime);
                     this.setFreq(1500, this.porchTime)//separator
-                    this.scanLine(gData, this.scanTime);
+                    this.scanLine(data.g, this.scanTime);
                     this.setFreq(1500, this.porchTime)//separator
-                    this.scanLine(bData, this.scanTime);
+                    this.scanLine(data.b, this.scanTime);
                     this.setFreq(1500, this.porchTime)//separator
                 }
             }
@@ -931,7 +871,7 @@
 
 
                 isTransmitting = true;
-                encoder.transmit(oscillator, now, canvas);
+                encoder.transmit(oscillator, now, new Bitmap(canvas));
 
                 const animator = () => {
                     let total = encoder.time - encoder.headerTime;
