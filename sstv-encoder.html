@@ -28,7 +28,7 @@
         }
 
         input[type="file"] {
-            margin: 20px 10px;
+            margin: 8px;
             padding: 10px;
             background-color: #1f1f1f;
             color: #e0e0e0;
@@ -37,9 +37,9 @@
             cursor: pointer;
         }
 
-        button {
+        button,
+        input::file-selector-button{
             padding: 10px 20px;
-            margin: 20px 10px;
             font-size: 1rem;
             color: #121212;
             background-color: var(--theme-color);
@@ -47,6 +47,14 @@
             border-radius: 5px;
             cursor: pointer;
             transition: background-color 0.3s ease, transform 0.2s ease;
+        }
+
+        button#generateButton {
+            margin: 20px 10px;
+        }
+
+        button#cameraButton {
+            margin: 8px;
         }
 
         button:disabled {
@@ -165,8 +173,10 @@
 
 <body>
     <h1>SSTV 生成器</h1>
-    <input type="file" accept="image/*" id="upload">
-    <button id="cameraButton">拍照</button>
+    <div>
+        <input type="file" accept="image/*" id="upload">
+        或<button id="cameraButton">拍照</button>
+    </div>
     <div class="card div">
         制式：
         <select id="encoderSelect">
