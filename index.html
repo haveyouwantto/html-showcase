@@ -1,116 +1,268 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>简单的代码示例网站</title>
+    <title>Maple Kaede's Playground</title>
     <style>
+        /* Reset default styles */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
         body {
-            font-family: Arial, sans-serif;
-            line-height: 1.6;
+            font-family: 'Arial', sans-serif;
+            background-color: #121212;
+            /* Dark background */
+            color: #e0e0e0;
+            /* Light text color */
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            flex-direction: column;
             padding: 20px;
-            background-color: #1e1e1e;
+            min-height: 100vh;
+        }
+
+        h1 {
+            text-align: center;
+            margin-bottom: 40px;
+            font-size: 2.5em;
             color: #ffffff;
         }
-        h1, h2, h3 {
-            color: #eeeeee;
-        }
+
         p {
-            color: #cccccc;
+            text-align: center;
+            color: #bbbbbb;
+            margin-bottom: 40px;
         }
+
         .container {
-            max-width: 800px;
-            margin: auto;
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            gap: 20px;
+            max-width: 1200px;
+            width: 100%;
         }
-        .sample-item {
-            display: flex;
-            align-items: center;
+
+        .card {
+            background-color: #1e1e1e;
+            /* Dark card background */
+            border-radius: 12px;
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+            /* Subtle shadow */
+            overflow: hidden;
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+
+        .card:hover {
+            transform: translateY(-10px);
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4);
+            /* Hover shadow */
+        }
+
+        .card img {
+            width: 100%;
+            height: 200px;
+            object-fit: cover;
+        }
+
+        .card-content {
+            padding: 20px;
+        }
+
+        .card-title {
+            font-size: 1.6em;
+            color: #ffffff;
+            /* Light title color */
             margin-bottom: 10px;
         }
-        .sample-icon {
-            font-size: 24px;
-            margin-right: 10px;
+
+        .card-description {
+            color: #bbbbbb;
+            /* Light description text */
+            font-size: 1em;
+            line-height: 1.4;
         }
-        .sample-link {
-            color: #4e94e5;
+
+        /* Material Design-like button */
+        .card-button {
+            display: inline-block;
+            padding: 10px 20px;
+            background-color: #6200ea;
+            /* Vibrant purple */
+            color: white;
+            font-weight: bold;
+            text-align: center;
             text-decoration: none;
-            transition: color 0.3s;
+            border-radius: 8px;
+            margin-top: 20px;
+            transition: background-color 0.3s ease, transform 0.2s ease;
         }
-        .sample-link:hover {
-            color: #66a8ff;
+
+        .card-button:hover {
+            background-color: #3700b3;
+            /* Darker purple on hover */
+            transform: translateY(-2px);
+            /* Button hover effect */
         }
     </style>
 </head>
+
 <body>
+
+    <h1>Maple Kaede's Playground</h1>
+    <p>Here you can explore a variety of experimental projects created by Maple Kaede.</p>
+
     <div class="container">
-        <h1>欢迎来到代码示例网站</h1>
-        <p>这是一个收集我制作的各种代码示例的网站，你可以在这里找到有关Web开发、算法、数据结构等方面的示例代码。</p>
-        <h2>示例列表</h2>
-        <div class="sample-item">
-            <div class="sample-icon">🛠️</div>
-            <a href="crafting-sample.html" class="sample-link">合成示例</a>
+        <!-- Experiment Cards -->
+        <div class="card">
+            <img src="img/image1.jpg" alt="合成示例">
+            <div class="card-content">
+                <h2 class="card-title">合成示例</h2>
+                <p class="card-description">Explore the futuristic digital synthesizer with glowing buttons and sliders,
+                    creating vibrant soundscapes.</p>
+                <a href="#" class="card-button">Try It</a>
+            </div>
         </div>
-        <div class="sample-item">
-            <div class="sample-icon">🎮</div>
-            <a href="fpstest.html" class="sample-link">FPS测试</a>
+
+        <div class="card">
+            <img src="img/image2.jpg" alt="FPS测试">
+            <div class="card-content">
+                <h2 class="card-title">FPS测试</h2>
+                <p class="card-description">Test the FPS gameplay in a high-tech world with a futuristic HUD and intense
+                    action.</p>
+                <a href="#" class="card-button">Try It</a>
+            </div>
         </div>
-        <div class="sample-item">
-            <div class="sample-icon">🔬</div>
-            <a href="lanczos.html" class="sample-link">Lanczos算法</a>
+
+        <div class="card">
+            <img src="img/image3.jpg" alt="Lanczos算法">
+            <div class="card-content">
+                <h2 class="card-title">Lanczos算法</h2>
+                <p class="card-description">Visualize the Lanczos algorithm with abstract, flowing mathematical patterns
+                    and glowing grids.</p>
+                <a href="#" class="card-button">Try It</a>
+            </div>
         </div>
-        <div class="sample-item">
-            <div class="sample-icon">🌀</div>
-            <a href="mandel-pt.html" class="sample-link">Mandelbrot集示例</a>
+
+        <div class="card">
+            <img src="img/image4.jpg" alt="Mandelbrot集示例">
+            <div class="card-content">
+                <h2 class="card-title">Mandelbrot集示例</h2>
+                <p class="card-description">Dive into the stunning fractal world of Mandelbrot, where geometric patterns
+                    swirl in colorful detail.</p>
+                <a href="#" class="card-button">Try It</a>
+            </div>
         </div>
-        <div class="sample-item">
-            <div class="sample-icon">🎛️</div>
-            <a href="osctest.html" class="sample-link">振荡器测试</a>
+
+        <div class="card">
+            <img src="img/image5.jpg" alt="振荡器测试">
+            <div class="card-content">
+                <h2 class="card-title">振荡器测试</h2>
+                <p class="card-description">Test the retro-style audio oscillator with glowing knobs and waveforms.</p>
+                <a href="#" class="card-button">Try It</a>
+            </div>
         </div>
-        <div class="sample-item">
-            <div class="sample-icon">🎹</div>
-            <a href="picopiano.html" class="sample-link">迷你钢琴</a>
+
+        <div class="card">
+            <img src="img/picopiano.png" alt="迷你钢琴">
+            <div class="card-content">
+                <h2 class="card-title">迷你钢琴</h2>
+                <p class="card-description">使用小型合成器测试钢琴的调式，探索不同音调和和弦的组合，感受音乐的奇妙变化。</p>
+                <a href="picopiano.html" class="card-button">试试吧</a>
+            </div>
         </div>
-        <div class="sample-item">
-            <div class="sample-icon">🔤</div>
-            <a href="subconv.html" class="sample-link">字幕转换器</a>
+
+        <div class="card">
+            <img src="img/image7.jpg" alt="字幕转换器">
+            <div class="card-content">
+                <h2 class="card-title">字幕转换器</h2>
+                <p class="card-description">Convert subtitles with a sleek and user-friendly digital editor.</p>
+                <a href="#" class="card-button">Try It</a>
+            </div>
         </div>
-        <div class="sample-item">
-            <div class="sample-icon">🔊</div>
-            <a href="ultrasonic-transceiver.html" class="sample-link">超声波收发器</a>
+
+        <div class="card">
+            <img src="img/image8.jpg" alt="超声波收发器">
+            <div class="card-content">
+                <h2 class="card-title">超声波收发器</h2>
+                <p class="card-description">Experience the futuristic ultrasonic transceiver emitting sound waves in
+                    high-tech style.</p>
+                <a href="#" class="card-button">Try It</a>
+            </div>
         </div>
-        <div class="sample-item">
-            <div class="sample-icon">🔍</div>
-            <a href="unicode-analyzer.html" class="sample-link">Unicode分析器</a>
+
+        <div class="card">
+            <img src="img/image9.jpg" alt="Unicode分析器">
+            <div class="card-content">
+                <h2 class="card-title">Unicode分析器</h2>
+                <p class="card-description">Analyze Unicode characters with a glowing interface and futuristic
+                    typography.</p>
+                <a href="#" class="card-button">Try It</a>
+            </div>
         </div>
-        <div class="sample-item">
-            <div class="sample-icon">🎧</div>
-            <a href="vido.html" class="sample-link">原道耳机在线测试</a>
+
+        <div class="card">
+            <img src="img/image10.jpg" alt="原道耳机在线测试">
+            <div class="card-content">
+                <h2 class="card-title">原道耳机在线测试</h2>
+                <p class="card-description">Test your headphones with an interactive, online sound quality checker.</p>
+                <a href="#" class="card-button">Try It</a>
+            </div>
         </div>
-        <div class="sample-item">
-            <div class="sample-icon">🎥</div>
-            <a href="visualizer2.html" class="sample-link">音频可视化</a>
+
+        <div class="card">
+            <img src="img/image11.jpg" alt="音频可视化">
+            <div class="card-content">
+                <h2 class="card-title">音频可视化</h2>
+                <p class="card-description">Visualize audio with vibrant, glowing waveforms in a sleek design.</p>
+                <a href="#" class="card-button">Try It</a>
+            </div>
         </div>
-        <div class="sample-item">
-        	<div class="sample-icon">🔟</div>
-            <a href="fp-eval.html" class="sample-link">浮点数解析</a>
+
+        <div class="card">
+            <img src="img/image12.jpg" alt="浮点数解析">
+            <div class="card-content">
+                <h2 class="card-title">浮点数解析</h2>
+                <p class="card-description">Parse floating-point numbers with a clean, digital interface.</p>
+                <a href="#" class="card-button">Try It</a>
+            </div>
         </div>
-        <div class="sample-item">
-        	<div class="sample-icon">🤖</div>
-            <a href="openai-llm.html" class="sample-link">OpenAI预设编辑器</a>
+
+        <div class="card">
+            <img src="img/image13.jpg" alt="OpenAI预设编辑器">
+            <div class="card-content">
+                <h2 class="card-title">OpenAI预设编辑器</h2>
+                <p class="card-description">Configure OpenAI models with an advanced, futuristic preset editor
+                    interface.</p>
+                <a href="#" class="card-button">Try It</a>
+            </div>
         </div>
-        <div class="sample-item">
-            <div class="sample-icon">🖱️</div>
-            <a href="mouse-test.html" class="sample-link">鼠标采样率测试</a>
+
+        <div class="card">
+            <img src="img/image14.jpg" alt="QFP音频压缩实验">
+            <div class="card-content">
+                <h2 class="card-title">QFP音频压缩实验</h2>
+                <p class="card-description">Compress audio data with advanced QFP algorithms, exploring the digital
+                    future.</p>
+                <a href="#" class="card-button">Try It</a>
+            </div>
         </div>
-        <div class="sample-item">
-            <div class="sample-icon">〰️</div>
-            <a href="qfp.html" class="sample-link">QFP音频压缩实验</a>
+
+        <div class="card">
+            <img src="img/sstv.png" alt="SSTV生成器">
+            <div class="card-content">
+                <h2 class="card-title">SSTV生成器</h2>
+                <p class="card-description">通过简单直观的界面生成并传输静态扫描电视（SSTV）图像，适合用于数字图像传输实验。</p>
+                <a href="sstv-encoder.html" class="card-button">试试吧</a>
+            </div>
         </div>
-        <div class="sample-item">
-            <div class="sample-icon">📺</div>
-            <a href="sstv-encoder.html" class="sample-link">SSTV发射器</a>
-        </div>
-        <p>以上是我的网站的示例列表，我将不断更新和扩充示例库，感谢您的关注。</p>
     </div>
+
 </body>
+
 </html>
