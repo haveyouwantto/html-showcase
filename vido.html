@@ -7,22 +7,32 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
   <style>
     html {
-      color: #101010;
-      background-color: #f0f0f0;
+      color: #e0e0e0;
+      /* Light text for dark mode */
+      background-color: #121212;
+      /* Dark background */
     }
 
     body {
       font-family: "Roboto", "Helvetica", "Arial", sans-serif;
       margin: 20px;
+      background-color: #181818;
+      /* Darker body background */
+      color: #e0e0e0;
+      /* Light text color */
     }
 
     h1 {
       text-align: center;
       margin-bottom: 20px;
+      color: #ffffff;
+      /* Light color for the heading */
     }
 
     p {
       margin-bottom: 10px;
+      color: #bbb;
+      /* Light gray text for paragraphs */
     }
 
     .container {
@@ -41,7 +51,9 @@
       justify-content: center;
       padding: 10px 20px;
       background-color: #2196f3;
+      /* Blue background for label */
       color: #fff;
+      /* White text */
       cursor: pointer;
       border-radius: 4px;
       transition: background-color 0.3s ease;
@@ -49,6 +61,7 @@
 
     .upload-label:hover {
       background-color: #1976d2;
+      /* Darker blue on hover */
     }
 
     #audioElement {
@@ -56,6 +69,10 @@
       margin-top: 20px;
       outline: none;
       width: 100%;
+      background-color: #333;
+      /* Dark background for the audio element */
+      color: #e0e0e0;
+      /* Light text for the audio element controls */
     }
   </style>
   <meta charset="UTF-8">

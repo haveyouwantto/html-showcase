@@ -7,16 +7,21 @@
     <style>
         body {
             font-family: Arial, sans-serif;
-            background-color: #f4f4f4;
+            background-color: #2c2c2c;
+            /* Dark background */
             margin: 0;
             padding: 0;
             display: flex;
             flex-direction: column;
             align-items: center;
+            color: #e0e0e0;
+            /* Light text color */
         }
 
         h1 {
             margin-top: 20px;
+            color: #f0f0f0;
+            /* Light color for the heading */
         }
 
         #unicodeInput {
@@ -25,8 +30,13 @@
             font-size: 16px;
             width: 80%;
             max-width: 600px;
-            border: 1px solid #ccc;
+            border: 1px solid #555;
+            /* Darker border */
             border-radius: 5px;
+            background-color: #333;
+            /* Dark background for input */
+            color: #fff;
+            /* Light text color inside input */
         }
 
         #characters {
@@ -39,21 +49,25 @@
         }
 
         .character {
-            border: 1px solid #ccc;
+            border: 1px solid #555;
+            /* Dark border for character boxes */
             cursor: move;
             font-size: 26px;
             display: flex;
             flex-direction: column;
             align-items: center;
             justify-content: space-between;
-            background-color: #fff;
+            background-color: #444;
+            /* Darker background for characters */
             border-radius: 5px;
-            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
         }
 
         .char {
             padding: 5px;
             pointer-events: none;
+            color: #fff;
+            /* Light color for characters */
         }
 
         .code {
@@ -76,9 +90,16 @@
             color: white;
         }
 
+        button:hover {
+            background-color: #45a049;
+            /* Darker green for button hover */
+        }
+
         .context-menu {
-            background-color: #fff;
-            border: 1px solid #ccc;
+            background-color: #333;
+            /* Dark background for context menu */
+            border: 1px solid #555;
+            /* Darker border */
             border-radius: 5px;
             position: absolute;
             z-index: 1000;
@@ -87,11 +108,15 @@
         .context-menu div {
             padding: 8px 16px;
             cursor: pointer;
+            color: #fff;
+            /* Light text color */
         }
 
         .context-menu div:hover {
             background-color: #ff7f50;
+            /* Highlight on hover */
             color: #fff;
+            /* Ensure text stays white */
         }
     </style>
     <title>Unicode Analyzer</title>

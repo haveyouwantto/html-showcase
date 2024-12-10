@@ -11,29 +11,37 @@
             justify-content: center;
             align-items: center;
             height: 100vh;
-            background-color: #f0f0f0;
+            background-color: #181818;
+            /* Dark background for the body */
         }
 
         #container {
             width: 80%;
             height: 80%;
-            border: 2px dashed #333;
+            border: 2px dashed #bbb;
+            /* Light gray dashed border for dark mode */
             display: flex;
             flex-direction: column;
             justify-content: center;
             align-items: center;
             position: relative;
+            background-color: #222;
+            /* Slightly lighter background for the container */
+            border-radius: 8px;
         }
 
         #title {
             font-size: 3vw;
+            color: #ffffff;
+            /* White text for the title */
             user-select: none;
         }
 
         #output {
             bottom: 10px;
             left: 10px;
-            color: #00000040;
+            color: #ffffff70;
+            /* Semi-transparent white for the output */
             font-size: 10vw;
             user-select: none;
         }

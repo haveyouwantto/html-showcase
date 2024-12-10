@@ -8,18 +8,24 @@
     <style>
         body {
             font-family: Arial, sans-serif;
-            background-color: #f0f0f0;
+            background-color: #1e1e1e;
+            /* Dark background */
+            color: #e0e0e0;
+            /* Light text color */
             text-align: center;
             padding-top: 50px;
         }
 
         h1 {
-            color: #333;
+            color: #f0f0f0;
+            /* Light color for headings */
         }
 
         p {
             font-size: 18px;
             margin-top: 20px;
+            color: #d0d0d0;
+            /* Slightly dimmed text color */
         }
 
         .btn,
@@ -30,17 +36,36 @@
             font-size: 18px;
             color: #fff;
             background-color: #33b73a;
+            /* Green for default button */
             border: none;
             border-radius: 5px;
             cursor: pointer;
+            transition: background-color 0.3s ease;
         }
 
         .btn.transmit {
             background-color: #369ec7;
+            /* Blue for transmit button */
         }
 
         .btn.receive {
             background-color: rgb(221, 84, 180);
+            /* Pink for receive button */
+        }
+
+        .btn:hover {
+            background-color: #2d9b2d;
+            /* Darker green on hover */
+        }
+
+        .btn.transmit:hover {
+            background-color: #2a86b4;
+            /* Darker blue on hover */
+        }
+
+        .btn.receive:hover {
+            background-color: rgb(190, 74, 150);
+            /* Darker pink on hover */
         }
 
         #tx,
@@ -51,9 +76,20 @@
         }
 
         input[type="number"] {
-            background-color: transparent;
+            background-color: #333;
+            /* Dark input background */
             font-size: 18px;
             padding: 5px 10px;
+            border: 1px solid #555;
+            /* Subtle border for input */
+            color: #fff;
+            /* Light text color inside input */
+        }
+
+        input[type="number"]:focus {
+            outline: none;
+            border-color: #33b73a;
+            /* Highlight input on focus */
         }
 
         #spectrum {
@@ -61,6 +97,10 @@
             width: 80%;
             height: 250px;
             cursor: pointer;
+            background-color: #333;
+            /* Dark background for the spectrum */
+            border-radius: 5px;
+            /* Rounded corners */
         }
     </style>
 </head>
@@ -176,13 +216,13 @@
 
 
         function draw() {
-            canvasCtx.fillStyle = "rgb(210 210 210)";
+            canvasCtx.fillStyle = "#333333";
             canvasCtx.fillRect(0, 0, canvas.width, canvas.height);
             requestAnimationFrame(draw)
             analyser.getFloatFrequencyData(dataArray);
 
             canvasCtx.lineWidth = 1;
-            canvasCtx.strokeStyle = "rgb(0 0 0)";
+            canvasCtx.strokeStyle = "#e0e0e0";
 
             canvasCtx.beginPath();
 
