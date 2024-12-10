@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>二进制语音消息编码器</title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <style>
+        body {
+            background-color: #2C3E50;
+            /* 深色背景 */
+            font-family: 'Microsoft YaHei', sans-serif;
+            font-size: 16px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            color: #E1E1E1;
+            /* 浅色文本 */
+        }
+
+        h1 {
+            text-align: center;
+            color: #ECF0F1;
+            /* 浅色标题 */
+            margin-top: 50px;
+            margin-bottom: 30px;
+        }
+
+        label {
+            font-weight: bold;
+            color: #BDC3C7;
+            /* 更浅的标签颜色 */
+            display: block;
+            margin-bottom: 5px;
+        }
+
+        textarea {
+            padding: 10px;
+            border: none;
+            border-radius: 5px;
+            box-shadow: 0px 3px 3px rgba(0, 0, 0, 0.3);
+            resize: none;
+            width: 96%;
+            max-width: 500px;
+            background-color: #34495E;
+            /* 深色文本框背景 */
+            color: #ECF0F1;
+            /* 浅色文本框文字 */
+        }
+
+        button {
+            background-color: rgb(13, 157, 129);
+            /* 绿色按钮 */
+            color: #FFF;
+            font-size: 16px;
+            font-weight: bold;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 5px;
+            box-shadow: 0px 3px 3px rgba(0, 0, 0, 0.3);
+            cursor: pointer;
+            margin-top: 10px;
+        }
+
+        button:hover {
+            background-color: #16A085;
+            /* 按钮悬停时深绿色 */
+        }
+    </style>
+</head>
+
+<body>
+    <h1>二进制语音消息编码器</h1><label for="text-input">解码后的文本：</label>
+    <textarea id="encode" rows="5"></textarea><br>
+    <div>
+        <button onclick="encodeText()">编码</button>
+        <button onclick="decodeText()">解码</button>
+    </div>
+    <br>
+    <label for="decoded-output">编码后的文本：</label>
+    <textarea id="decode" rows="5"></textarea>
+
+    <script>const digit_map = {
+            '000': 'ı',
+            '001': 'ᛁ',
+            '010': '|',
+            '011': 'ǀ',
+            '100': 'I',
+            '101': '᱾',
+            '110': 'Ӏ',
+            '111': '❘'
+        };
+        const padding = 'ӏ';
+
+        const bit_map = {};
+        for (let key in digit_map) {
+            bit_map[digit_map[key]] = key;
+        }
+
+        function formatTime(seconds) {
+            if (seconds < 60) {
+                return `${seconds}"`;
+            }
+
+            const minutes = Math.floor(seconds / 60);
+            const remainingSeconds = seconds % 60;
+            return `${minutes}'${remainingSeconds}"`;
+        }
+
+
+        function encode(b) {
+            const origlen = b.length;
+            const paddings = (3 - origlen % 3) % 3;
+
+            b = new Uint8Array([...b, ...(new Array(paddings).fill(0))]);
+
+            // Convert bytes to list of ints
+            const b_list = [].slice.call(b);
+
+            // Convert each byte to binary string and pad with zeros
+            const binary_strs = b_list.map(x => x.toString(2).padStart(8, '0'));
+
+            // Concatenate the three binary strings into one long string
+            const concatenated_str = binary_strs.join('');
+
+            // Split the long string into 8 groups of 3 characters and get corresponding character
+            const split_str = [];
+            for (let i = 0; i < concatenated_str.length; i += 3) {
+                split_str.push(digit_map[concatenated_str.slice(i, i + 3)]);
+            }
+
+            return '▶' + split_str.join('') + padding.repeat(paddings) + ' ' + formatTime(origlen);
+        }
+
+        function decode(s) {
+            // Strip off the ▶ character at the beginning
+            s = s.split(' ')[0].substring(1);
+
+            const paddings = (s.match(new RegExp(padding, 'g')) || []).length;
+            console.log(paddings);
+
+
+            // Split the encoded string into individual characters
+            const split_str = s.split('');
+
+            // Convert each character to the corresponding binary string
+            const binary_strs = [];
+            for (let i = 0; i < split_str.length - paddings; i++) {
+                binary_strs.push(bit_map[split_str[i]]);
+            }
+
+            // Concatenate the binary strings into one long string
+            const concatenated_str = binary_strs.join('');
+
+            // Convert the binary string back to bytes
+            const b = new Uint8Array(
+                Array.from({ length: (concatenated_str.length - paddings * 8) / 8 }, (_, i) => parseInt(concatenated_str.slice(i * 8, (i + 1) * 8), 2))
+            );
+
+            return b;
+        }
+    </script>
+    <script type="text/javascript">
+        const encoder = new TextEncoder();
+        const decoder = new TextDecoder();
+        // 定义编码函数
+        function encodeText() {
+            // 获取输入文本
+            const inputText = document.getElementById("encode").value;
+
+            // 调用 encode 函数编码文本
+            const encodedText = encode(encoder.encode(inputText));
+
+            // 设置解码后的文本框的值为编码后的文本
+            document.getElementById("decode").value = encodedText;
+        }
+
+        // 定义解码函数
+        function decodeText() {
+            // 获取编码后的文本
+            const inputText = document.getElementById("decode").value;
+
+            // 调用 decode 函数解码文本
+            const decodedText = decoder.decode(decode(inputText));
+
+            // 设置输入文本框的值为解码后的文本
+            document.getElementById("encode").value = decodedText;
+        }
+    </script>
+</body>
+
+</html>
