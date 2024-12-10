@@ -11,6 +11,7 @@
             margin: 0;
             padding: 0;
             box-sizing: border-box;
+            font-family: Roboto, sans-serif;
         }
 
         body {
@@ -59,7 +60,7 @@
         }
 
         .card:hover {
-            transform: translateY(-10px);
+            transform: scale(1.05);
             box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4);
             /* Hover shadow */
         }
@@ -77,6 +78,8 @@
         .card-title {
             font-size: 1.6em;
             color: #ffffff;
+            font-weight: 400;
+            text-align: center;
             /* Light title color */
             margin-bottom: 10px;
         }
@@ -119,7 +122,127 @@
 
     <div class="container">
         <!-- Experiment Cards -->
+
         <div class="card">
+            <img src="img/mandel.png" alt="Mandelbrot集示例">
+            <div class="card-content">
+                <h2 class="card-title">Mandelbrot集示例</h2>
+                <p class="card-description">尝试通过扰动方法（Perturbation）和级数近似（Series
+                    Approximation）技术高效计算Mandelbrot集合，探索分形的无限可能。</p>
+                <a href="mandel-pt.html" class="card-button">试试吧</a>
+            </div>
+        </div>
+
+        <!-- <div class="card">
+            <img src="img/image5.jpg" alt="振荡器测试">
+            <div class="card-content">
+                <h2 class="card-title">振荡器测试</h2>
+                <p class="card-description">Test the retro-style audio oscillator with glowing knobs and waveforms.</p>
+                <a href="#" class="card-button">Try It</a>
+            </div>
+        </div> -->
+
+        <div class="card">
+            <img src="img/picopiano.png" alt="迷你钢琴">
+            <div class="card-content">
+                <h2 class="card-title">迷你钢琴</h2>
+                <p class="card-description">使用小型合成器测试钢琴的调式，探索不同音调和和弦的组合，感受音乐的奇妙变化。</p>
+                <a href="picopiano.html" class="card-button">试试吧</a>
+            </div>
+        </div>
+
+        <!-- <div class="card">
+            <img src="img/image7.jpg" alt="字幕转换器">
+            <div class="card-content">
+                <h2 class="card-title">字幕转换器</h2>
+                <p class="card-description">Convert subtitles with a sleek and user-friendly digital editor.</p>
+                <a href="#" class="card-button">Try It</a>
+            </div>
+        </div> -->
+
+        <div class="card">
+            <img src="img/ultrasonic.png" alt="超声波收发器">
+            <div class="card-content">
+                <h2 class="card-title">超声波收发器</h2>
+                <p class="card-description">利用调制高频声波，通过单边带（SSB）技术实现声音传输，探索高频音频通信的可能性。</p>
+                <a href="ultrasonic-transceiver.html" class="card-button">试试吧</a>
+            </div>
+        </div>
+
+        <div class="card">
+            <img src="img/unicode.png" alt="Unicode分析器">
+            <div class="card-content">
+                <h2 class="card-title">Unicode分析器</h2>
+                <p class="card-description">展示和解析单个Unicode字符，显示其对应的Hex值，并支持拖动编辑，探索字符编码的奥秘。</p>
+                <a href="unicode-analyzer.html" class="card-button">试试吧</a>
+            </div>
+        </div>
+
+        <div class="card">
+            <img src="img/vido.png" alt="原道耳机在线测试">
+            <div class="card-content">
+                <h2 class="card-title">原道耳机在线测试</h2>
+                <p class="card-description">通过冲激响应测试，评估原道耳机的音质表现，帮助你判断是否值得购买。</p>
+                <a href="vido.html" class="card-button">试试吧</a>
+            </div>
+        </div>
+
+        <div class="card">
+            <img src="img/mouse-test.png" alt="鼠标刷新率测试">
+            <div class="card-content">
+                <h2 class="card-title">鼠标刷新率测试</h2>
+                <p class="card-description">测试鼠标的刷新率（Polling Rate），直观显示鼠标每秒发送的数据更新频率。</p>
+                <a href="mouse-test.html" class="card-button">试试吧</a>
+            </div>
+        </div>
+
+        <div class="card">
+            <img src="img/visualizer.png" alt="音频可视化">
+            <div class="card-content">
+                <h2 class="card-title">音频可视化</h2>
+                <p class="card-description">通过简单的 FFT 技术实时显示音频波形，直观感受音频信号的频谱特性。</p>
+                <a href="visualizer2.html" class="card-button">试试吧</a>
+            </div>
+        </div>
+
+        <div class="card">
+            <img src="img/fp-eval.png" alt="浮点数解析">
+            <div class="card-content">
+                <h2 class="card-title">浮点数解析</h2>
+                <p class="card-description">解析并调整 FP64 的二进制表示，直观展示浮点数的结构和精度细节。</p>
+                <a href="fp-eval.html" class="card-button">试试吧</a>
+            </div>
+        </div>
+
+        <div class="card">
+            <img src="img/openai.png" alt="OpenAI预设编辑器">
+            <div class="card-content">
+                <h2 class="card-title">OpenAI预设编辑器</h2>
+                <p class="card-description">使用图形化编辑器配置 OpenAI 模型，提供直观的操作界面，优化模型性能和个性化设置。</p>
+                <a href="openai-llm.html" class="card-button">试试吧</a>
+            </div>
+        </div>
+
+        <div class="card">
+            <img src="img/qfp.png" alt="QFP音频压缩实验">
+            <div class="card-content">
+                <h2 class="card-title">QFP音频压缩实验</h2>
+                <p class="card-description">尝试自制音频编码器，探索音频数据压缩的原理和实现过程，感受音频压缩技术的核心思想。</p>
+                <a href="qfp.html" class="card-button">试试吧</a>
+            </div>
+        </div>
+
+        <div class="card">
+            <img src="img/sstv.png" alt="SSTV生成器">
+            <div class="card-content">
+                <h2 class="card-title">SSTV生成器</h2>
+                <p class="card-description">通过简单直观的界面生成并传输静态扫描电视（SSTV）图像，适合用于数字图像传输实验。</p>
+                <a href="sstv-encoder.html" class="card-button">试试吧</a>
+            </div>
+        </div>
+
+        
+        <!-- <div class="card">
             <img src="img/image1.jpg" alt="合成示例">
             <div class="card-content">
                 <h2 class="card-title">合成示例</h2>
@@ -137,130 +260,17 @@
                     action.</p>
                 <a href="#" class="card-button">Try It</a>
             </div>
-        </div>
+        </div> -->
 
         <div class="card">
-            <img src="img/image3.jpg" alt="Lanczos算法">
+            <img src="img/lanczous.png" alt="Lanczos算法">
             <div class="card-content">
-                <h2 class="card-title">Lanczos算法</h2>
-                <p class="card-description">Visualize the Lanczos algorithm with abstract, flowing mathematical patterns
-                    and glowing grids.</p>
-                <a href="#" class="card-button">Try It</a>
+              <h2 class="card-title">Lanczos算法</h2>
+              <p class="card-description">测试1D Lanczos插值的效果，展示不同样本大小和核大小下的插值结果。</p>
+              <a href="lanczos.html" class="card-button">试试吧</a>
             </div>
-        </div>
-
-        <div class="card">
-            <img src="img/image4.jpg" alt="Mandelbrot集示例">
-            <div class="card-content">
-                <h2 class="card-title">Mandelbrot集示例</h2>
-                <p class="card-description">Dive into the stunning fractal world of Mandelbrot, where geometric patterns
-                    swirl in colorful detail.</p>
-                <a href="#" class="card-button">Try It</a>
-            </div>
-        </div>
-
-        <div class="card">
-            <img src="img/image5.jpg" alt="振荡器测试">
-            <div class="card-content">
-                <h2 class="card-title">振荡器测试</h2>
-                <p class="card-description">Test the retro-style audio oscillator with glowing knobs and waveforms.</p>
-                <a href="#" class="card-button">Try It</a>
-            </div>
-        </div>
-
-        <div class="card">
-            <img src="img/picopiano.png" alt="迷你钢琴">
-            <div class="card-content">
-                <h2 class="card-title">迷你钢琴</h2>
-                <p class="card-description">使用小型合成器测试钢琴的调式，探索不同音调和和弦的组合，感受音乐的奇妙变化。</p>
-                <a href="picopiano.html" class="card-button">试试吧</a>
-            </div>
-        </div>
-
-        <div class="card">
-            <img src="img/image7.jpg" alt="字幕转换器">
-            <div class="card-content">
-                <h2 class="card-title">字幕转换器</h2>
-                <p class="card-description">Convert subtitles with a sleek and user-friendly digital editor.</p>
-                <a href="#" class="card-button">Try It</a>
-            </div>
-        </div>
-
-        <div class="card">
-            <img src="img/image8.jpg" alt="超声波收发器">
-            <div class="card-content">
-                <h2 class="card-title">超声波收发器</h2>
-                <p class="card-description">Experience the futuristic ultrasonic transceiver emitting sound waves in
-                    high-tech style.</p>
-                <a href="#" class="card-button">Try It</a>
-            </div>
-        </div>
-
-        <div class="card">
-            <img src="img/image9.jpg" alt="Unicode分析器">
-            <div class="card-content">
-                <h2 class="card-title">Unicode分析器</h2>
-                <p class="card-description">Analyze Unicode characters with a glowing interface and futuristic
-                    typography.</p>
-                <a href="#" class="card-button">Try It</a>
-            </div>
-        </div>
-
-        <div class="card">
-            <img src="img/image10.jpg" alt="原道耳机在线测试">
-            <div class="card-content">
-                <h2 class="card-title">原道耳机在线测试</h2>
-                <p class="card-description">Test your headphones with an interactive, online sound quality checker.</p>
-                <a href="#" class="card-button">Try It</a>
-            </div>
-        </div>
-
-        <div class="card">
-            <img src="img/image11.jpg" alt="音频可视化">
-            <div class="card-content">
-                <h2 class="card-title">音频可视化</h2>
-                <p class="card-description">Visualize audio with vibrant, glowing waveforms in a sleek design.</p>
-                <a href="#" class="card-button">Try It</a>
-            </div>
-        </div>
-
-        <div class="card">
-            <img src="img/image12.jpg" alt="浮点数解析">
-            <div class="card-content">
-                <h2 class="card-title">浮点数解析</h2>
-                <p class="card-description">Parse floating-point numbers with a clean, digital interface.</p>
-                <a href="#" class="card-button">Try It</a>
-            </div>
-        </div>
-
-        <div class="card">
-            <img src="img/image13.jpg" alt="OpenAI预设编辑器">
-            <div class="card-content">
-                <h2 class="card-title">OpenAI预设编辑器</h2>
-                <p class="card-description">Configure OpenAI models with an advanced, futuristic preset editor
-                    interface.</p>
-                <a href="#" class="card-button">Try It</a>
-            </div>
-        </div>
-
-        <div class="card">
-            <img src="img/image14.jpg" alt="QFP音频压缩实验">
-            <div class="card-content">
-                <h2 class="card-title">QFP音频压缩实验</h2>
-                <p class="card-description">Compress audio data with advanced QFP algorithms, exploring the digital
-                    future.</p>
-                <a href="#" class="card-button">Try It</a>
-            </div>
-        </div>
-
-        <div class="card">
-            <img src="img/sstv.png" alt="SSTV生成器">
-            <div class="card-content">
-                <h2 class="card-title">SSTV生成器</h2>
-                <p class="card-description">通过简单直观的界面生成并传输静态扫描电视（SSTV）图像，适合用于数字图像传输实验。</p>
-                <a href="sstv-encoder.html" class="card-button">试试吧</a>
-            </div>
-        </div>
+          </div>
+          
     </div>
 
 </body>
