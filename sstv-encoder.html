@@ -185,9 +185,12 @@
             <option value="scottiedx">Scottie DX</option>
             <option value="martin1">Martin 1</option>
             <option value="martin2">Martin 2</option>
-            <option value="wrassesc2_180">Wrasse SC2-180</option>
-            <option value="robot12">Robot 12</option>
-            <option value="robot24">Robot 24</option>
+            <!-- <option value="wrassesc2_30">Wraase SC2-30</option>
+            <option value="wrassesc2_60">Wraase SC2-60</option>
+            <option value="wrassesc2_120">Wraase SC2-120</option> -->
+            <option value="wrassesc2_180">Wraase SC2-180</option>
+            <!-- <option value="robot12">Robot 12</option>
+            <option value="robot24">Robot 24</option> -->
             <option value="robot36">Robot 36</option>
             <option value="robot72">Robot 72</option>
             <option value="pd50">PD 50</option>
@@ -200,6 +203,7 @@
             <option value="pasokonp3">Pasokon P3</option>
             <option value="pasokonp5">Pasokon P5</option>
             <option value="pasokonp7">Pasokon P7</option>
+            <option value="bw8">BW 8</option>
         </select>
     </div>
     <button id="generateButton" disabled>发射 SSTV</button>
@@ -322,7 +326,6 @@
                 for (let i = 0; i < 7; i++) {
                     const bit = (code & 1) === 1;
                     this.setFreq(bit ? 1100 : 1300, 0.03);
-                    this.osc.frequency.setValueAtTime(bit ? 1100 : 1300, this.time);
                     code >>= 1;
                     parity = parity ^ bit;
                 }
@@ -352,6 +355,10 @@
 
             getResolution() { }
             get code() { }
+
+            get grayscale() {
+                return false;
+            }
         }
 
         class WrasseSC2_180Encoder extends SSTVEncoder {
@@ -362,9 +369,9 @@
                     this.setFreq(1500, 0.0005);
 
                     const data = bitmap.getLine(line);
-                    this.scanLine(data.r, 0.235);
-                    this.scanLine(data.g, 0.235);
-                    this.scanLine(data.b, 0.235);
+                    this.scanLine(data.r, this.rbScan);
+                    this.scanLine(data.g, this.gScan);
+                    this.scanLine(data.b, this.rbScan);
                 }
             }
 
@@ -374,6 +381,56 @@
 
             get code() {
                 return 55;
+            }
+            
+            get gScan() {
+            	return 0.235;
+            }
+            
+            get rbScan() {
+            	return 0.235;
+            } 
+        }
+        
+        class WraaseSC2_30Encoder extends WrasseSC2_180Encoder {
+        	getResolution() {
+                return [256, 128];
+            }
+
+            get code() {
+                return 51;
+            }
+            
+            get gScan() {
+            	return 0.117;
+            }
+            
+            get rbScan() {
+            	return 0.058;
+            }
+        }
+        
+        class WraaseSC2_60Encoder extends WraaseSC2_30Encoder {
+        	getResolution() {
+                return [256, 256];
+            }
+
+            get code() {
+                return 59;
+            }
+        }
+        
+        class WraaseSC2_120Encoder extends WrasseSC2_180Encoder {
+        	getResolution() {
+                return [320, 256];
+            }
+
+            get code() {
+                return 63;
+            }
+            
+            get rbScan() {
+            	return 0.117;
             }
         }
 
@@ -594,6 +651,38 @@
 
             get code() {
                 return 4;
+            }
+        }
+
+        class BW8Encoder extends SSTVEncoder {
+            scanImage(bitmap) {
+                const yuv = bitmapToYUV(bitmap);
+
+                for (let line = 0; line < bitmap.imgHeight; line++) {
+                    this.setFreq(1200, this.syncTime);
+                    // Y
+                    this.scanLine(yuv.y[line], this.scanTime);
+                }
+            }
+
+            getResolution() {
+                return [160, 120];
+            }
+
+            get syncTime() {
+                return 0.005;
+            }
+
+            get scanTime() {
+                return 0.06189725;
+            }
+
+            get code() {
+                return 2;
+            }
+
+            get grayscale() {
+                return true;
             }
         }
 
@@ -902,6 +991,9 @@
             scottie1: Scottie1Encoder,
             scottie2: Scottie2Encoder,
             scottiedx: ScottieDxEncoder,
+            wrassesc2_30: WraaseSC2_30Encoder,
+            wrassesc2_60: WraaseSC2_60Encoder,
+            wrassesc2_120: WraaseSC2_120Encoder,
             wrassesc2_180: WrasseSC2_180Encoder,
             robot12: Robot12Encoder,
             robot24: Robot24Encoder,
@@ -916,7 +1008,8 @@
             pd290: PD290Encoder,
             pasokonp3: PasokonP3Encoder,
             pasokonp5: PasokonP5Encoder,
-            pasokonp7: PasokonP7Encoder
+            pasokonp7: PasokonP7Encoder,
+            bw8: BW8Encoder
         };
 
         function updateEncoder(encoderClass) {
@@ -925,6 +1018,7 @@
             canvas.width = size[0];
             canvas.height = size[1];
             drawImage(uploadedImage);
+            canvas.style.filter = encoder.grayscale ? 'grayscale(1)' : ""
         }
 
         encoderSelect.addEventListener('change', (e) => {
