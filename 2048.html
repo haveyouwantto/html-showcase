@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -14,6 +15,7 @@
             margin: 0;
             background-color: #faf8ef;
         }
+
         .grid {
             display: grid;
             grid-template-columns: repeat(4, 100px);
@@ -23,6 +25,7 @@
             padding: 10px;
             border-radius: 10px;
         }
+
         .tile {
             width: 100px;
             height: 100px;
@@ -34,19 +37,64 @@
             font-size: 2em;
             border-radius: 10px;
         }
-        .tile[data-value="2"] { background-color: #eee4da; color: #776e65; }
-        .tile[data-value="4"] { background-color: #ede0c8; color: #776e65; }
-        .tile[data-value="8"] { background-color: #f2b179; color: #f9f6f2; }
-        .tile[data-value="16"] { background-color: #f59563; color: #f9f6f2; }
-        .tile[data-value="32"] { background-color: #f67c5f; color: #f9f6f2; }
-        .tile[data-value="64"] { background-color: #f65e3b; color: #f9f6f2; }
-        .tile[data-value="128"] { background-color: #edcf72; color: #f9f6f2; }
-        .tile[data-value="256"] { background-color: #edcc61; color: #f9f6f2; }
-        .tile[data-value="512"] { background-color: #edc850; color: #f9f6f2; }
-        .tile[data-value="1024"] { background-color: #edc53f; color: #f9f6f2; }
-        .tile[data-value="2048"] { background-color: #edc22e; color: #f9f6f2; }
+
+        .tile[data-value="2"] {
+            background-color: #eee4da;
+            color: #776e65;
+        }
+
+        .tile[data-value="4"] {
+            background-color: #ede0c8;
+            color: #776e65;
+        }
+
+        .tile[data-value="8"] {
+            background-color: #f2b179;
+            color: #f9f6f2;
+        }
+
+        .tile[data-value="16"] {
+            background-color: #f59563;
+            color: #f9f6f2;
+        }
+
+        .tile[data-value="32"] {
+            background-color: #f67c5f;
+            color: #f9f6f2;
+        }
+
+        .tile[data-value="64"] {
+            background-color: #f65e3b;
+            color: #f9f6f2;
+        }
+
+        .tile[data-value="128"] {
+            background-color: #edcf72;
+            color: #f9f6f2;
+        }
+
+        .tile[data-value="256"] {
+            background-color: #edcc61;
+            color: #f9f6f2;
+        }
+
+        .tile[data-value="512"] {
+            background-color: #edc850;
+            color: #f9f6f2;
+        }
+
+        .tile[data-value="1024"] {
+            background-color: #edc53f;
+            color: #f9f6f2;
+        }
+
+        .tile[data-value="2048"] {
+            background-color: #edc22e;
+            color: #f9f6f2;
+        }
     </style>
 </head>
+
 <body>
 
     <div class="grid">
@@ -109,57 +157,94 @@
 
         function moveLeft() {
             let newGrid = [];
+            let moved = false; // 标志是否有移动
             for (let i = 0; i < grid.length; i += gridSize) {
                 let row = grid.slice(i, i + gridSize);
+                let originalRow = [...row]; // 保存原始行
                 row = slide(row);
                 row = combine(row);
                 row = slide(row);
+
+                if (JSON.stringify(row) !== JSON.stringify(originalRow)) {
+                    moved = true; // 如果行有变化，标记为有移动
+                }
+
                 newGrid = newGrid.concat(row);
             }
             grid = newGrid;
-            randomTile();
+            if (moved) {
+                randomTile(); // 只有在有移动时才生成新方块
+            }
         }
 
         function moveRight() {
             let newGrid = [];
+            let moved = false;
             for (let i = 0; i < grid.length; i += gridSize) {
                 let row = grid.slice(i, i + gridSize).reverse();
+                let originalRow = [...row];
                 row = slide(row);
                 row = combine(row);
                 row = slide(row);
+
+                if (JSON.stringify(row) !== JSON.stringify(originalRow)) {
+                    moved = true;
+                }
+
                 newGrid = newGrid.concat(row.reverse());
             }
             grid = newGrid;
-            randomTile();
+            if (moved) {
+                randomTile();
+            }
         }
 
         function moveUp() {
+            let moved = false;
             for (let i = 0; i < gridSize; i++) {
                 let row = [grid[i], grid[i + gridSize], grid[i + 2 * gridSize], grid[i + 3 * gridSize]];
+                let originalRow = [...row];
                 row = slide(row);
                 row = combine(row);
                 row = slide(row);
+
+                if (JSON.stringify(row) !== JSON.stringify(originalRow)) {
+                    moved = true;
+                }
+
                 grid[i] = row[0];
                 grid[i + gridSize] = row[1];
                 grid[i + 2 * gridSize] = row[2];
                 grid[i + 3 * gridSize] = row[3];
             }
-            randomTile();
+            if (moved) {
+                randomTile();
+            }
         }
 
         function moveDown() {
+            let moved = false;
             for (let i = 0; i < gridSize; i++) {
                 let row = [grid[i], grid[i + gridSize], grid[i + 2 * gridSize], grid[i + 3 * gridSize]].reverse();
+                let originalRow = [...row];
                 row = slide(row);
                 row = combine(row);
                 row = slide(row);
+
+                if (JSON.stringify(row) !== JSON.stringify(originalRow)) {
+                    moved = true;
+                }
+
                 grid[i] = row[3];
                 grid[i + gridSize] = row[2];
                 grid[i + 2 * gridSize] = row[1];
                 grid[i + 3 * gridSize] = row[0];
             }
-            randomTile();
+            if (moved) {
+                randomTile();
+            }
         }
+
 
         function handleKeyPress(event) {
             switch (event.key) {
@@ -220,4 +305,5 @@
     </script>
 
 </body>
+
 </html>
