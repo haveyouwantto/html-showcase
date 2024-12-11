@@ -884,9 +884,8 @@
                 const B = new Complex(1, 0);
                 lv1.push({
                     A: A, B: B,
-                    step: 1,
                     radius: Math.max(0,
-                        (point.norm() - B.norm() * scale) / (A.norm() + 1)
+                        (point.norm() - B.norm() * scale) / (A.norm() + 1) * 0.001
                     )
                 })
             }
@@ -895,7 +894,6 @@
             while (true) {
                 table.push([]);
 
-                console.log(level)
                 for (let i = 0; i < table[level - 1].length; i += 2) {
                     const bla1 = table[level - 1][i];
                     const bla2 = table[level - 1][i + 1];
@@ -912,10 +910,8 @@
                             bla1.radius, Math.max(
                                 0, (bla2.radius - bla1.B.norm() * scale) / bla1.A.norm()
                             )
-                        ),
-                        step: bla1.step + bla2.step
+                        )
                     })
-                    console.log(bla2.radius, bla1.B.norm(), scale)
 
                 }
                 if (table[level].length <= 1) break;
@@ -925,30 +921,61 @@
             return table;
         }
 
-        function lookupBLA(table, refLen, normDz, normDc){
+        function lookup(table, i, refLen, norm_dz, norm_dc) {
+            if (i === 0 || i >= refLen || table.length === 0) {
+                return { first: null, second: 0 };
+            }
 
+            let result = { first: null, second: 0 }; // { step, length }
+            let index = i - 1, length = 1;
+
+            for (let level of table) {
+                if (norm_dz > level[index].radius) {
+                    break;
+                }
+                result.first = level[index];
+                result.second = length;
+
+                if (index % 2) {
+                    break;
+                }
+                index >>= 1;  // equivalent to index = Math.floor(index / 2)
+                length <<= 1; // equivalent to length *= 2
+            }
+
+            result.second = Math.min(result.second, refLen - i);
+            return result;
         }
+
 
         /**
          * Calculates the escape time for a point in the Mandelbrot set using perturbation theory.
          * @param {Complex} dc - The perturbation applied to the point.
          * @param {Complex[]} ref - The reference orbit.
+         * @param {Complex[][]} table - The BLA table.
          * @param {number} maxIter - The maximum iteration.
          * @param {number} bailout - The bailout value used for iteration termination.
          * @returns {number|null} - The escape time for the point or null if it doesn't escape.
          */
-        function getPTBLA(dc, ref, maxIter, bailout) {
+        function getPTBLA(dc, ref, table, maxIter, bailout) {
             let dz = new Complex(0, 0)
 
             let iter = 0;
             let refIter = 0;
             while (iter < maxIter) {
-                // let result = look
+                let result = lookup(table, refIter, ref.length, dz.norm(), dc.norm())
 
-                const Z = ref[refIter]
-
-                dz = dz.mul(2).mul(Z).add(dz.mul(dz)).add(dc)
-                refIter++;
+                if (result.first != null) {
+                    dz = dz.mul(result.first.A).add(dc.mul(result.first.B));
+                    iter += result.second;
+                    refIter += result.second;
+                } else {
+                    const Z = ref[refIter]
+                    dz = dz.mul(2).mul(Z).add(dz.mul(dz)).add(dc)
+                    iter++;
+                    refIter++;
+                }
+                if (refIter >= ref.length) return iter;
 
                 const Z2 = ref[refIter]
                 const val = Z2.add(dz);
@@ -957,7 +984,6 @@
                     dz = val;
                     refIter = 0;
                 }
-                iter++;
             }
             return iter;
         }
@@ -1206,6 +1232,7 @@
 
                 let base, ref, refComplex, glitches, coeff;
                 let refLen = 0;
+                let blaTable;
                 if (this.size.doubleValue() <= 1e-11) {
                     console.log(performance.now() + " computing reference")
                     base = rebase ? this.center.add(this.getDelta(this.rebase[0], this.rebase[1])) : this.center;
@@ -1216,17 +1243,18 @@
                     console.log("ref iter: " + ref.length)
                     if (!rebase) this.ref = ref;
 
-                    console.log(createBLATable(refComplex, this.size.doubleValue()))
+                    blaTable = createBLATable(refComplex, this.size.doubleValue())
+                    console.log(blaTable);
 
-                    console.log(performance.now() + " series approximation")
-                    coeff = getSeriesCoefficients(ref, [
-                        this.getDelta(0, 0),
-                        this.getDelta(0, this.canvas.height - 1),
-                        this.getDelta(this.canvas.width - 1, 0),
-                        this.getDelta(this.canvas.width - 1, this.canvas.height - 1)
-                    ], this.iterations, this.bailout)
-                    console.log(coeff)
-                    this.stats.approx = coeff.it;
+                    // console.log(performance.now() + " series approximation")
+                    // coeff = getSeriesCoefficients(ref, [
+                    //     this.getDelta(0, 0),
+                    //     this.getDelta(0, this.canvas.height - 1),
+                    //     this.getDelta(this.canvas.width - 1, 0),
+                    //     this.getDelta(this.canvas.width - 1, this.canvas.height - 1)
+                    // ], this.iterations, this.bailout)
+                    // console.log(coeff)
+                    // this.stats.approx = coeff.it;
 
                     console.log(performance.now() + " perturbation")
 
@@ -1243,22 +1271,22 @@
                     }
                     else {
                         let delta = rebase ? this.getDelta(x, y, this.rebase[0], this.rebase[1]) : this.getDelta(x, y);
-                        // newIter = getPTBLA(delta.toComplex(), refComplex, this.iterations, this.bailout);
-                        if (coeff.it > 200) {
-                            let approx = approximate(delta, coeff.coeff)
-                            if (approx.re.exp < -160 || approx.im.exp < -160) {
-                                let result = getPTIterFloatExp(approx, delta, ref, this.iterations, this.bailout, coeff.it);
-                                newIter = result[1] == null ? result[0] : getPT(result[1].toComplex(), delta.toComplex(), refComplex, this.iterations, this.bailout, result[0]);
-                            } else
-                                newIter = getPT(approx.toComplex(), delta.toComplex(), refComplex, this.iterations, this.bailout, coeff.it);
-                        } else {
-                            if (delta.scale < -320) {
-                                newIter = getPTIterFloatExp(delta, delta, ref, this.iterations, this.bailout);
-                            } else {
-                                delta = delta.toComplex();
-                                newIter = getPT(delta, delta, refComplex, this.iterations, this.bailout);
-                            }
-                        }
+                        newIter = getPTBLA(delta.toComplex(), refComplex, blaTable, this.iterations, this.bailout);
+                        // if (coeff.it > 200) {
+                        //     let approx = approximate(delta, coeff.coeff)
+                        //     if (approx.re.exp < -160 || approx.im.exp < -160) {
+                        //         let result = getPTIterFloatExp(approx, delta, ref, this.iterations, this.bailout, coeff.it);
+                        //         newIter = result[1] == null ? result[0] : getPT(result[1].toComplex(), delta.toComplex(), refComplex, this.iterations, this.bailout, result[0]);
+                        //     } else
+                        //         newIter = getPT(approx.toComplex(), delta.toComplex(), refComplex, this.iterations, this.bailout, coeff.it);
+                        // } else {
+                        //     if (delta.scale < -320) {
+                        //         newIter = getPTIterFloatExp(delta, delta, ref, this.iterations, this.bailout);
+                        //     } else {
+                        //         delta = delta.toComplex();
+                        //         newIter = getPT(delta, delta, refComplex, this.iterations, this.bailout);
+                        //     }
+                        // }
                     }
 
                     if (newIter < 0) glitches.push([x, y])
