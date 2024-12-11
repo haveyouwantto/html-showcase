@@ -436,12 +436,38 @@
                 }
             }
 
+            mulMut(other) {
+                if (typeof other === 'number') {
+                    this.re *= other;
+                    this.im *= other;
+                    return this;
+                } else {
+                    let re = this.re;
+                    let im = this.im;
+                    this.re = re * other.re - im * other.im
+                    this.im = re * other.im + im * other.re;
+                    return this;
+                }
+            }
+
             add(other) {
                 return new Complex(this.re + other.re, this.im + other.im);
             }
 
+            addMut(other) {
+                this.re += other.re;
+                this.im += other.im;
+                return this;
+            }
+
             sub(other) {
                 return new Complex(this.re - other.re, this.im - other.im);
+            }
+
+            subMut(other) {
+                this.re -= other.re;
+                this.im -= other.im;
+                return this;
             }
 
             norm() {
@@ -966,12 +992,12 @@
                 let result = lookup(table, refIter, ref.length, dz.norm(), dc.norm())
 
                 if (result.first != null) {
-                    dz = dz.mul(result.first.A).add(dc.mul(result.first.B));
+                    dz = dz.mul(result.first.A).addMut(dc.mul(result.first.B));
                     iter += result.second;
                     refIter += result.second;
                 } else {
                     const Z = ref[refIter]
-                    dz = dz.mul(2).mul(Z).add(dz.mul(dz)).add(dc)
+                    dz = dz.mul(2).mulMut(Z).addMut(dz.mul(dz)).addMut(dc)
                     iter++;
                     refIter++;
                 }
