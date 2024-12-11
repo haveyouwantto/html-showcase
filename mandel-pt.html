@@ -686,26 +686,34 @@
         * @param {number} iterations - The number of iterations to perform.
         * @returns {FloatExpComplex[]} - An array containing the reference orbit.
         */
-        function getReferenceOrbit(c, iterations) {
-            const z = new DeepComplex(0, 0);
-            const orbit = [];
+        function getReferenceOrbit(C, radius, iterations) {
+            let Z = new DeepComplex(0, 0),
+                z = new Complex(0, 0),
+                dzdc = new Complex(1, 0),
+                one = new Complex(1, 0);
+            const orbit = [new FloatExpComplex(0, 0)];
             for (let i = 0; i < iterations; i++) {
-                const x = z.re;
-                const y = z.im;
-                const x2 = x.times(x);
-                const y2 = y.times(y);
+                dzdc = z.mul(2).mulMut(dzdc).add(one);
 
-                if (x2.add(y2) > 10000) {
-                    console.warn(`${c} is not a valid reference point!`)
-                    break
-                };
+                Z = Z.mul(Z).add(C);
 
-                orbit.push(z.toFloatExp());
+                z = Z.downCast();
+                orbit.push(Z.toFloatExp());
 
-                z.re = x2.minus(y2).add(c.re)
-                z.im = x.mul(y).mul(2).add(c.im)
+                if (radius * dzdc.norm() * 2.0 > z.norm()) break;
+                if (z.norm() > 16.0) break;
+
+                // if (x2.add(y2) > 10000) {
+                //     console.warn(`${c} is not a valid reference point!`)
+                //     break
+                // };
+
+
+                // z.re = x2.minus(y2).add(c.re)
+                // z.im = x.mul(y).mul(2).add(c.im)
 
             }
+            console.log(orbit)
             return orbit;
         }
 
@@ -1262,7 +1270,7 @@
                 if (this.size.doubleValue() <= 1e-11) {
                     console.log(performance.now() + " computing reference")
                     base = rebase ? this.center.add(this.getDelta(this.rebase[0], this.rebase[1])) : this.center;
-                    ref = getReferenceOrbit(base, this.iterations, this.bailout);
+                    ref = getReferenceOrbit(base, this.size, this.iterations, this.bailout);
                     refComplex = ref.map(e => e.toComplex());
                     refLen = ref.length;
                     this.stats.ref++;
