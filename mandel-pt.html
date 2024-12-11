@@ -1156,6 +1156,7 @@
      */
             goto(c) {
                 this.center = c;
+                this.refValid = false;
             }
 
             /**
@@ -1249,15 +1250,18 @@
                 let refLen = 0;
                 let blaTable;
                 if (this.size.doubleValue() <= 1e-11) {
-                    console.log(performance.now() + " computing reference")
                     base = this.center;
                     if (!this.refValid) {
+                        console.log(performance.now() + " computing reference")
                         ref = getReferenceOrbit(base, this.size, this.iterations, this.bailout);
-                        refComplex = ref.map(e => e.toComplex());
-                        refLen = ref.length;
-                        this.stats.ref++;
                         this.ref = ref;
+                        this.refValid = true;
+                    } else {
+                        ref = this.ref;
                     }
+                    refComplex = ref.map(e => e.toComplex());
+                    refLen = ref.length;
+                    this.stats.ref++;
                     console.log("ref iter: " + ref.length)
 
                     console.log(performance.now() + " bla calculation")
