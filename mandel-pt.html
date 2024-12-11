@@ -1090,6 +1090,10 @@
                 imInput.value = this.center.im;
                 zoomInput.value = new FloatExp(4).div(this.size).toString()
                 itInput.value = this.iterations;
+                location.hash = "#re=" + this.center.re +
+                "&im=" + this.center.im +
+                "&zoom=" + new FloatExp(4).div(this.size) +
+                "&iter=" + this.iterations;
 
                 let base, ref, refComplex, glitches, coeff;
                 let refLen = 0;
@@ -1277,7 +1281,7 @@
         let bailout = 2;
         let iterations = 256;
 
-        location.search.slice(1).split("&").forEach(e => {
+        location.hash.slice(1).split("&").forEach(e => {
             let kv = e.split("=", 2);
             switch (kv[0]) {
                 case "re":
@@ -1356,7 +1360,7 @@
 
         document.getElementById("copy").addEventListener('click', e => {
             const url = location.protocol + "//" + location.host + location.pathname +
-                "?re=" + mandelbrot.center.re +
+                "#re=" + mandelbrot.center.re +
                 "&im=" + mandelbrot.center.im +
                 "&zoom=" + new FloatExp(4).div(mandelbrot.size) +
                 "&iter=" + mandelbrot.iterations;
