@@ -1074,7 +1074,8 @@
             context;
 
             ref;
-            rebase;
+
+            refValid;
 
             stats;
 
@@ -1195,14 +1196,6 @@
                 // )
             }
 
-            /**
-     * Sets the rebase point for the Mandelbrot set visualization.
-     * @param {number[]} xy - The coordinates of the rebase point.
-     * @private
-     */
-            _rebase(xy) {
-                this.rebase = xy;
-            }
 
             /**
      * Retrieves the color of a pixel in the Mandelbrot set visualization.
@@ -1231,19 +1224,17 @@
 
             /**
          * Updates the Mandelbrot set visualization.
-         * @param {boolean} [rebase=false] - Indicates whether to rebase the visualization (optional).
+         *
          */
-            update(rebase = false) {
+            update() {
                 this.rendering = true;
-                if (!rebase) {
-                    this.stats = {
-                        ref: 0,
-                        calc: 0,
-                        guess: 0,
-                        approx: 0,
-                        time: performance.now()
-                    };
-                }
+                this.stats = {
+                    ref: 0,
+                    calc: 0,
+                    guess: 0,
+                    approx: 0,
+                    time: performance.now()
+                };
 
                 reInput.value = this.center.re;
                 imInput.value = this.center.im;
@@ -1259,13 +1250,15 @@
                 let blaTable;
                 if (this.size.doubleValue() <= 1e-11) {
                     console.log(performance.now() + " computing reference")
-                    base = rebase ? this.center.add(this.getDelta(this.rebase[0], this.rebase[1])) : this.center;
-                    ref = getReferenceOrbit(base, this.size, this.iterations, this.bailout);
-                    refComplex = ref.map(e => e.toComplex());
-                    refLen = ref.length;
-                    this.stats.ref++;
+                    base = this.center;
+                    if (!this.refValid) {
+                        ref = getReferenceOrbit(base, this.size, this.iterations, this.bailout);
+                        refComplex = ref.map(e => e.toComplex());
+                        refLen = ref.length;
+                        this.stats.ref++;
+                        this.ref = ref;
+                    }
                     console.log("ref iter: " + ref.length)
-                    if (!rebase) this.ref = ref;
 
                     console.log(performance.now() + " bla calculation")
                     blaTable = createBLATable(refComplex, this.size.doubleValue())
@@ -1294,7 +1287,7 @@
                         newIter = getDirect(z.re, z.im, this.bailout, this.iterations)
                     }
                     else {
-                        let delta = rebase ? this.getDelta(x, y, this.rebase[0], this.rebase[1]) : this.getDelta(x, y);
+                        let delta = this.getDelta(x, y);
                         newIter = getPTBLA(delta.toComplex(), refComplex, blaTable, this.iterations, this.bailout);
                         // if (coeff.it > 200) {
                         //     let approx = approximate(delta, coeff.coeff)
@@ -1332,9 +1325,7 @@
                     return new Promise((r, j) => {
                         for (let y = 0; y < this.canvas.height; y += 2) {
                             for (let x = 0; x < this.canvas.width; x += 2) {
-                                if (!rebase || (rebase && this.getColor(x, y)[3] == 0)) {
-                                    paint(x, y);
-                                }
+                                paint(x, y);
                             }
                         }
                         this.context.putImageData(this.img, 0, 0)
@@ -1347,16 +1338,15 @@
                     return new Promise((r, j) => {
                         for (let y = 0; y < this.canvas.height; y += 2) {
                             for (let x = 1; x < this.canvas.width; x += 2) {
-                                if (!rebase || (rebase && this.getColor(x, y)[3] == 0)) {
-                                    let leftColor = this.getColor(x - 1, y);
-                                    let rightColor = this.getColor(x + 1, y);
-                                    if (leftColor[0] == rightColor[0] && leftColor[1] == rightColor[1] && leftColor[2] == rightColor[2] && leftColor[3] == 255 && rightColor[3] == 255) {
-                                        this.setColor(x, y, leftColor);
-                                        this.stats.guess++;
-                                    } else {
-                                        paint(x, y);
-                                    }
+                                let leftColor = this.getColor(x - 1, y);
+                                let rightColor = this.getColor(x + 1, y);
+                                if (leftColor[0] == rightColor[0] && leftColor[1] == rightColor[1] && leftColor[2] == rightColor[2] && leftColor[3] == 255 && rightColor[3] == 255) {
+                                    this.setColor(x, y, leftColor);
+                                    this.stats.guess++;
+                                } else {
+                                    paint(x, y);
                                 }
+
                             }
                         }
                         this.context.putImageData(this.img, 0, 0)
@@ -1369,16 +1359,16 @@
                     return new Promise((r, j) => {
                         for (let y = 1; y < this.canvas.height; y += 2) {
                             for (let x = 0; x < this.canvas.width; x++) {
-                                if (!rebase || (rebase && this.getColor(x, y)[3] == 0)) {
-                                    let upColor = this.getColor(x, y - 1);
-                                    let downColor = this.getColor(x, y + 1);
-                                    if (upColor[0] == downColor[0] && upColor[1] == downColor[1] && upColor[2] == downColor[2] && upColor[3] == 255 && downColor[3] == 255) {
-                                        this.setColor(x, y, upColor);
-                                        this.stats.guess++;
-                                    } else {
-                                        paint(x, y);
-                                    }
+
+                                let upColor = this.getColor(x, y - 1);
+                                let downColor = this.getColor(x, y + 1);
+                                if (upColor[0] == downColor[0] && upColor[1] == downColor[1] && upColor[2] == downColor[2] && upColor[3] == 255 && downColor[3] == 255) {
+                                    this.setColor(x, y, upColor);
+                                    this.stats.guess++;
+                                } else {
+                                    paint(x, y);
                                 }
+
                             }
                         }
                         this.context.putImageData(this.img, 0, 0)
@@ -1433,7 +1423,6 @@
                         }
                     }
                 }
-                if (!this.rebase) this.rebase = [parseInt(this.canvas.width / 2), parseInt(this.canvas.height)]
                 this.update(true)
             }
         }
