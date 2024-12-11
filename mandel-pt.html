@@ -702,18 +702,7 @@
 
                 if (radius * dzdc.norm() * 2.0 > z.norm()) break;
                 if (z.norm() > 16.0) break;
-
-                // if (x2.add(y2) > 10000) {
-                //     console.warn(`${c} is not a valid reference point!`)
-                //     break
-                // };
-
-
-                // z.re = x2.minus(y2).add(c.re)
-                // z.im = x.mul(y).mul(2).add(c.im)
-
             }
-            console.log(orbit)
             return orbit;
         }
 
@@ -1003,13 +992,13 @@
                     dz = dz.mul(result.first.A).addMut(dc.mul(result.first.B));
                     iter += result.second;
                     refIter += result.second;
+                    if (refIter >= ref.length) return iter;
                 } else {
                     const Z = ref[refIter]
                     dz = dz.mul(2).mulMut(Z).addMut(dz.mul(dz)).addMut(dc)
                     iter++;
                     refIter++;
                 }
-                if (refIter >= ref.length) return iter;
 
                 const Z2 = ref[refIter]
                 const val = Z2.add(dz);
@@ -1278,8 +1267,8 @@
                     console.log("ref iter: " + ref.length)
                     if (!rebase) this.ref = ref;
 
+                    console.log(performance.now() + " bla calculation")
                     blaTable = createBLATable(refComplex, this.size.doubleValue())
-                    console.log(blaTable);
 
                     // console.log(performance.now() + " series approximation")
                     // coeff = getSeriesCoefficients(ref, [
