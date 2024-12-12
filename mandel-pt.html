@@ -981,30 +981,54 @@
          * @returns {number|null} - The escape time for the point or null if it doesn't escape.
          */
         function getPTBLA(dc, ref, table, maxIter, bailout) {
-            let dz = new Complex(0, 0)
+            let dzRe = 0, dzIm = 0; // Real and imaginary parts of dz
 
             let iter = 0;
             let refIter = 0;
             while (iter < maxIter) {
-                let result = lookup(table, refIter, ref.length, dz.norm(), dc.norm())
+                let dzNorm = Math.max(Math.abs(dzRe), Math.abs(dzIm)); // Chebyshev norm
+                let dcNorm = Math.max(Math.abs(dc.re), Math.abs(dc.im));
+
+                let result = lookup(table, refIter, ref.length, dzNorm, dcNorm);
 
                 if (result.first != null) {
-                    dz = dz.mul(result.first.A).addMut(dc.mul(result.first.B));
+                    let aRe = result.first.A.re, aIm = result.first.A.im;
+                    let bRe = result.first.B.re, bIm = result.first.B.im;
+
+                    let newDzRe = dzRe * aRe - dzIm * aIm + dc.re * bRe - dc.im * bIm;
+                    let newDzIm = dzRe * aIm + dzIm * aRe + dc.re * bIm + dc.im * bRe;
+
+                    dzRe = newDzRe;
+                    dzIm = newDzIm;
+
                     iter += result.second;
                     refIter += result.second;
                     if (refIter >= ref.length) return iter;
                 } else {
-                    const Z = ref[refIter]
-                    dz = dz.mul(2).mulMut(Z).addMut(dz.mul(dz)).addMut(dc)
+                    const Z = ref[refIter];
+
+                    let tempRe = dzRe, tempIm = dzIm;
+
+                    // dz = dz * 2 * Z + dz^2 + dc
+                    dzRe =  (2 * Z.re + tempRe) * tempRe - (2 * Z.im + tempIm) * tempIm + dc.re;
+                    dzIm = 2 * (Z.re * tempIm + Z.im * tempRe + tempRe * tempIm) + dc.im;
+
                     iter++;
                     refIter++;
                 }
 
-                const Z2 = ref[refIter]
-                const val = Z2.add(dz);
-                if (val.abs() > bailout) return iter;
-                if (val.abs() < dz.abs() || refIter == ref.length - 1) {
-                    dz = val;
+                const Z2 = ref[refIter];
+                let valRe = Z2.re + dzRe;
+                let valIm = Z2.im + dzIm;
+
+                // Squared Euclidean distance (abs squared)
+                let valAbsSq = valRe * valRe + valIm * valIm;
+                if (valAbsSq > bailout) return iter;
+
+                let dzAbsSq = dzRe * dzRe + dzIm * dzIm;
+                if (valAbsSq < dzAbsSq || refIter == ref.length - 1) {
+                    dzRe = valRe;
+                    dzIm = valIm;
                     refIter = 0;
                 }
             }
