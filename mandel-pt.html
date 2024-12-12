@@ -1010,7 +1010,7 @@
                     let tempRe = dzRe, tempIm = dzIm;
 
                     // dz = dz * 2 * Z + dz^2 + dc
-                    dzRe =  (2 * Z.re + tempRe) * tempRe - (2 * Z.im + tempIm) * tempIm + dc.re;
+                    dzRe = (2 * Z.re + tempRe) * tempRe - (2 * Z.im + tempIm) * tempIm + dc.re;
                     dzIm = 2 * (Z.re * tempIm + Z.im * tempRe + tempRe * tempIm) + dc.im;
 
                     iter++;
@@ -1157,7 +1157,6 @@
                 })
 
                 this.stats = {
-                    ref: 0,
                     calc: 0,
                     guess: 0,
                     approx: 0,
@@ -1254,7 +1253,6 @@
             update() {
                 this.rendering = true;
                 this.stats = {
-                    ref: 0,
                     calc: 0,
                     guess: 0,
                     approx: 0,
@@ -1272,7 +1270,6 @@
 
                 let base, ref, refComplex, glitches, coeff;
                 let refLen = 0;
-                let blaTable;
                 if (this.size.doubleValue() <= 1e-11) {
                     base = this.center;
                     if (!this.refValid) {
@@ -1285,11 +1282,10 @@
                     }
                     refComplex = ref.map(e => e.toComplex());
                     refLen = ref.length;
-                    this.stats.ref++;
                     console.log("ref iter: " + ref.length)
 
                     console.log(performance.now() + " bla calculation")
-                    blaTable = createBLATable(refComplex, this.size.doubleValue())
+                    this.blaTable = createBLATable(refComplex, this.size.doubleValue())
 
                     // console.log(performance.now() + " series approximation")
                     // coeff = getSeriesCoefficients(ref, [
@@ -1316,7 +1312,7 @@
                     }
                     else {
                         let delta = this.getDelta(x, y);
-                        newIter = getPTBLA(delta.toComplex(), refComplex, blaTable, this.iterations, this.bailout);
+                        newIter = getPTBLA(delta.toComplex(), refComplex, this.blaTable, this.iterations, this.bailout);
                         // if (coeff.it > 200) {
                         //     let approx = approximate(delta, coeff.coeff)
                         //     if (approx.re.exp < -160 || approx.im.exp < -160) {
@@ -1344,7 +1340,7 @@
 
                 let showInfo = () => {
                     let totalPixels = this.canvas.width * this.canvas.height;
-                    let statusText = `Reference: ${this.stats.ref} (${refLen}it)\nApproximation: ${this.stats.approx}it (${(this.stats.approx / refLen * 100).toFixed(2)}%)\nCalculation: ${this.stats.calc} (${(this.stats.calc / totalPixels * 100).toFixed(2)}%)\nGuessed: ${this.stats.guess} (${(this.stats.guess / totalPixels * 100).toFixed(2)}%)\nTime: ${((performance.now() - this.stats.time) / 1000).toFixed(3)}s`;
+                    let statusText = `Reference: ${refLen}it\nApproximation: ${this.blaTable?.length ?? 0} levels\nCalculation: ${this.stats.calc} (${(this.stats.calc / totalPixels * 100).toFixed(2)}%)\nGuessed: ${this.stats.guess} (${(this.stats.guess / totalPixels * 100).toFixed(2)}%)\nTime: ${((performance.now() - this.stats.time) / 1000).toFixed(3)}s`;
                     if (!this.rendering) statusText += "\nDone!";
                     statsLabel.innerText = statusText;
                 }
@@ -1407,19 +1403,8 @@
 
                 this.context.clearRect(0, 0, this.canvas.width, this.canvas.height);
                 p1().then(() => p2()).then(() => p3()).then(() => {
-                    if (glitches.length > 4 && this.stats.ref < 70) {
-                        let i = parseInt(glitches.length / 10);
-                        //this._rebase(glitches[i])
-
-                        setTimeout(() => {
-                            this.update(true)
-                        }, 1);
-
-                    } else {
-                        console.log('done!')
-                        this.rendering = false;
-                    }
-
+                    console.log('done!')
+                    this.rendering = false;
                     showInfo();
                 })
             }
