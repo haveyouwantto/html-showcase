@@ -680,13 +680,17 @@
             }
         }
 
+        function delay(ms) {
+            return new Promise(resolve => setTimeout(resolve, ms));
+        }
+
         /**
         * Calculates the reference orbit for a given complex number 'c' using the Mandelbrot iteration.
         * @param {DeepComplex} c - The complex number for which the reference orbit is calculated.
         * @param {number} iterations - The number of iterations to perform.
         * @returns {FloatExpComplex[]} - An array containing the reference orbit.
         */
-        function getReferenceOrbit(C, radius, iterations) {
+        async function* getReferenceOrbit(C, radius, iterations) {
             let Z = new DeepComplex(0, 0),
                 z = new Complex(0, 0),
                 dzdc = new Complex(1, 0),
@@ -702,6 +706,10 @@
 
                 if (radius * dzdc.norm() * 2.0 > z.norm()) break;
                 if (z.norm() > 16.0) break;
+                if (i % 10000 == 0) {
+                    yield i;
+                    await delay(50);
+                };
             }
             return orbit;
         }
@@ -1157,6 +1165,7 @@
                 })
 
                 this.stats = {
+                    ref: 0,
                     calc: 0,
                     guess: 0,
                     approx: 0,
@@ -1246,13 +1255,21 @@
                 this.img.data[index + 3] = color[3]
             }
 
+            showInfo() {
+                let totalPixels = this.canvas.width * this.canvas.height;
+                let statusText = `Reference: ${this.stats.ref}it\nApproximation: ${this.blaTable?.length ?? 0} levels\nCalculation: ${this.stats.calc} (${(this.stats.calc / totalPixels * 100).toFixed(2)}%)\nGuessed: ${this.stats.guess} (${(this.stats.guess / totalPixels * 100).toFixed(2)}%)\nTime: ${((performance.now() - this.stats.time) / 1000).toFixed(3)}s`;
+                if (!this.rendering) statusText += "\nDone!";
+                statsLabel.innerText = statusText;
+            }
+
             /**
          * Updates the Mandelbrot set visualization.
          *
          */
-            update() {
+            async update() {
                 this.rendering = true;
                 this.stats = {
+                    ref: 0,
                     calc: 0,
                     guess: 0,
                     approx: 0,
@@ -1274,7 +1291,16 @@
                     base = this.center;
                     if (!this.refValid) {
                         console.log(performance.now() + " computing reference")
-                        ref = getReferenceOrbit(base, this.size, this.iterations, this.bailout);
+                        let nextTerm;
+
+                        const generator = getReferenceOrbit(base, this.size, this.iterations, this.bailout);
+                        while (!(nextTerm = await generator.next()).done) {
+                            this.stats.ref = nextTerm.value;
+                            this.showInfo(); // Update progress
+                        }
+                        ref = nextTerm.value;
+                        this.stats.ref = ref.length;
+
                         this.ref = ref;
                         this.refValid = true;
                     } else {
@@ -1338,13 +1364,6 @@
                     this.setColor(x, y, color);
                 }
 
-                let showInfo = () => {
-                    let totalPixels = this.canvas.width * this.canvas.height;
-                    let statusText = `Reference: ${refLen}it\nApproximation: ${this.blaTable?.length ?? 0} levels\nCalculation: ${this.stats.calc} (${(this.stats.calc / totalPixels * 100).toFixed(2)}%)\nGuessed: ${this.stats.guess} (${(this.stats.guess / totalPixels * 100).toFixed(2)}%)\nTime: ${((performance.now() - this.stats.time) / 1000).toFixed(3)}s`;
-                    if (!this.rendering) statusText += "\nDone!";
-                    statsLabel.innerText = statusText;
-                }
-
                 let p1 = () => {
                     return new Promise((r, j) => {
                         for (let y = 0; y < this.canvas.height; y += 2) {
@@ -1353,7 +1372,7 @@
                             }
                         }
                         this.context.putImageData(this.img, 0, 0)
-                        showInfo();
+                        this.showInfo();
                         setTimeout(r, 10);
                     })
                 }
@@ -1374,7 +1393,7 @@
                             }
                         }
                         this.context.putImageData(this.img, 0, 0)
-                        showInfo();
+                        this.showInfo();
                         setTimeout(r, 10);
                     })
                 }
@@ -1396,7 +1415,7 @@
                             }
                         }
                         this.context.putImageData(this.img, 0, 0)
-                        showInfo();
+                        this.showInfo();
                         setTimeout(r, 10);
                     })
                 }
@@ -1405,7 +1424,7 @@
                 p1().then(() => p2()).then(() => p3()).then(() => {
                     console.log('done!')
                     this.rendering = false;
-                    showInfo();
+                    this.showInfo();
                 })
             }
 
