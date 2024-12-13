@@ -21,7 +21,7 @@
         /* 文件输入框和按钮 */
         input[type="file"],
         button {
-            background-color: #004d40;
+            background-color: #004d4040;
             /* Teal 深色 */
             color: #ffffff;
             /* 白色文字 */
@@ -146,6 +146,10 @@
             min-width: fit-content;
         }
 
+        .icon {
+            font-size: 26px;
+        }
+
         /* 响应式调整 */
         @media (max-width: 768px) {
             body {
@@ -167,8 +171,8 @@
 
     <div class="container">
         <!-- Audio and Image Upload -->
-        <div>Audio: <input type="file" id="audioFile" accept="audio/*"></div>
-        <div>Image: <input type="file" id="imageFile" accept="image/*"></div>
+        <div><span class="icon">🎨</span><input type="file" id="audioFile" accept="audio/*"></div>
+        <div><span class="icon">🎧</span><input type="file" id="imageFile" accept="image/*"></div>
 
         <!-- Buttons for conversion -->
         <div>
