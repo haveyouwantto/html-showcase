@@ -191,6 +191,7 @@
             <button id="audioToImageBtn" class="icon">🔴</button>
             <button id="imageToAudioBtn" class="icon">⤵️</button>
             <button id="pauseBtn" class="icon">▶</button>
+            <button id="downloadBtn" class="icon">💾</button>
         </div>
         <div class="status">
             <div id="progress">
@@ -207,6 +208,9 @@
         let audioContext = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 8000 });
         let canvas = document.getElementById('canvas');
         let ctx = canvas.getContext('2d');
+        ctx.fillStyle = "gray";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        
         let audioElement = new Audio();
         let audioBuffer = null;
 
@@ -224,6 +228,8 @@
         const progressBar = document.getElementById("progress")
 
         const pauseBtn = document.getElementById("pauseBtn")
+        let download = document.getElementById('downloadBtn');
+        
 
         function padding(num) {
             if (isNaN(num) || !isFinite(num)) {
@@ -513,6 +519,16 @@
             player.pause = player.isPlaying;
             if (!player.isPlaying) pauseBtn.textContent = '▶';
             else pauseBtn.textContent = '⏸';
+        })
+        
+        downloadBtn.addEventListener('click', e => {
+        	canvas.toBlob(blob=>{
+        		const url = URL.createObjectURL(blob);	
+        		let a = document.createElement("a");
+            	a.href = url;
+            	a.download = "tape.png"; 
+            	a.click();
+        	});
         })
 
     </script>
