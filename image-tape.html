@@ -123,7 +123,7 @@
             display: flex;
             align-items: center;
             margin-top: 8px;
-            width: 100%;
+            width: 95%;
             justify-content: center;
         }
 
@@ -132,7 +132,8 @@
             width: 75%;
             background-color: #333;
             margin-right: 16px;
-            cursor: pointer; /* if clickable*/
+            cursor: pointer;
+            /* if clickable*/
         }
 
         #progress-inner {
@@ -253,11 +254,22 @@
                 this.ptr = 0;
                 this.frameSize = 1024; // Number of samples per frame
                 this.sampleRate = audioContext.sampleRate;
+                this.buffers = [];
+            }
+
+            stop() {
+                this.stopped = true;
+                for (const source of this.buffers) {
+                    source.disconnect();
+                }
+                this.buffers = [];
             }
 
             setImageData(imageData) {
+                this.stop();
                 this.imageData = imageData;
                 this.ptr = 0; // Reset playback position
+                this.stopped = false;
             }
 
             start() {
@@ -317,24 +329,28 @@
                 const buffer = audioContext.createBuffer(1, len, this.sampleRate);
                 buffer.copyToChannel(audioData, 0);
 
-                this.source = audioContext.createBufferSource();
-                this.source.buffer = buffer;
-                this.source.connect(audioContext.destination);
+                const source = audioContext.createBufferSource();
+                source.buffer = buffer;
+                source.connect(audioContext.destination);
 
-                this.source.onended = () => {
+                source.onended = () => {
+                    console.log(this)
+                    source.disconnect();
+                    this.buffers.shift();
                     updateProgress(this.currentTime, this.duration);
-                    if (this.ptr < data.length / 4 && this.isPlaying) {
+                    if (this.ptr < data.length / 4 && this.isPlaying && !this.stopped) {
                         this._playBuffer();
                     } else {
                         this.isPlaying = false;
                     }
                 };
+                this.buffers.push(source);
 
-                this.source.start();
+                source.start();
             }
         }
 
-        const player = new Player();
+        let player;
 
         // Convert audio to image
         audioToImageBtn.addEventListener('click', () => {
@@ -391,11 +407,14 @@
         // Convert image to audio
         imageToAudioBtn.addEventListener('click', () => {
             let imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+            player?.stop();
+            player = new Player();
             player.setImageData(imgData)
             player.start();
+            pauseBtn.textContent = '⏸';
         });
 
-        pauseBtn.addEventListener('click',e=>{
+        pauseBtn.addEventListener('click', e => {
             player.pause = player.isPlaying;
             if (!player.isPlaying) pauseBtn.textContent = '▶';
             else pauseBtn.textContent = '⏸';
