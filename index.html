@@ -123,12 +123,57 @@
         <!-- Experiment Cards -->
 
         <div class="card">
+            <img src="img/image-tape.png" alt="音频图片录音带">
+            <div class="card-content">
+                <h2 class="card-title">音频图片录音带</h2>
+                <p class="card-description">将音频数据录制到图片中，实现图片即音频的效果。接收者只需解码图片即可还原音频。</p>
+                <a href="image-tape.html" class="card-button">试试吧</a>
+            </div>
+        </div>
+
+        <div class="card">
             <img src="img/mandel.png" alt="Mandelbrot集示例">
             <div class="card-content">
                 <h2 class="card-title">Mandelbrot集示例</h2>
-                <p class="card-description">通过扰动方法（Perturbation）和级数近似（Series
+                <p class="card-description">通过扰动方法（Perturbation）和双线性近似（Bilinear
                     Approximation）技术高效计算Mandelbrot集合，探索分形的无限可能。</p>
                 <a href="mandel-pt.html" class="card-button">试试吧</a>
+            </div>
+        </div>
+
+        <div class="card">
+            <img src="img/sstv.png" alt="SSTV生成器">
+            <div class="card-content">
+                <h2 class="card-title">SSTV生成器</h2>
+                <p class="card-description">通过简单直观的界面生成并传输慢扫描电视（SSTV）图像，适合用于音频图像传输实验。</p>
+                <a href="sstv-encoder.html" class="card-button">试试吧</a>
+            </div>
+        </div>
+
+        <div class="card">
+            <img src="img/qfp.png" alt="QFP音频压缩实验">
+            <div class="card-content">
+                <h2 class="card-title">QFP音频压缩实验</h2>
+                <p class="card-description">使用JavaScript自制音频编码器，探索音频数据压缩的原理与实现过程，感受音频压缩技术的核心思想。</p>
+                <a href="qfp.html" class="card-button">试试吧</a>
+            </div>
+        </div>
+
+        <div class="card">
+            <img src="img/openai.png" alt="OpenAI预设编辑器">
+            <div class="card-content">
+                <h2 class="card-title">OpenAI预设编辑器</h2>
+                <p class="card-description">使用图形化编辑器配置 OpenAI 模型，提供直观的操作界面，优化模型性能和个性化设置。</p>
+                <a href="openai-llm.html" class="card-button">试试吧</a>
+            </div>
+        </div>
+
+        <div class="card">
+            <img src="img/speaker.png" alt="Sinc 波形播放器">
+            <div class="card-content">
+                <h2 class="card-title">Sinc 波形播放器</h2>
+                <p class="card-description">通过调整频率、间隔频率与上变频频率，播放不同的 Sinc 波形，进行不同频段的音频信号生成与实验。</p>
+                <a href="sinc-player.html" class="card-button">试试吧</a>
             </div>
         </div>
 
@@ -147,6 +192,24 @@
                 <h2 class="card-title">迷你钢琴</h2>
                 <p class="card-description">使用小型合成器测试钢琴的调式，探索不同音调与和弦的组合，感受音乐的奇妙变化。</p>
                 <a href="picopiano.html" class="card-button">试试吧</a>
+            </div>
+        </div>
+
+        <div class="card">
+            <img src="img/fp-eval.png" alt="浮点数解析">
+            <div class="card-content">
+                <h2 class="card-title">浮点数解析</h2>
+                <p class="card-description">自由编辑FP64的二进制表示，直观展示并调整浮点数的结构和精度细节，探索浮点数的内部运作。</p>
+                <a href="fp-eval.html" class="card-button">试试吧</a>
+            </div>
+        </div>
+
+        <div class="card">
+            <img src="img/mouse-test.png" alt="鼠标刷新率测试">
+            <div class="card-content">
+                <h2 class="card-title">鼠标刷新率测试</h2>
+                <p class="card-description">测试鼠标的刷新率（Polling Rate），直观显示鼠标每秒发送的数据更新频率。</p>
+                <a href="mouse-test.html" class="card-button">试试吧</a>
             </div>
         </div>
 
@@ -187,15 +250,6 @@
         </div>
 
         <div class="card">
-            <img src="img/mouse-test.png" alt="鼠标刷新率测试">
-            <div class="card-content">
-                <h2 class="card-title">鼠标刷新率测试</h2>
-                <p class="card-description">测试鼠标的刷新率（Polling Rate），直观显示鼠标每秒发送的数据更新频率。</p>
-                <a href="mouse-test.html" class="card-button">试试吧</a>
-            </div>
-        </div>
-
-        <div class="card">
             <img src="img/visualizer.png" alt="音频可视化">
             <div class="card-content">
                 <h2 class="card-title">音频可视化</h2>
@@ -205,41 +259,13 @@
         </div>
 
         <div class="card">
-            <img src="img/fp-eval.png" alt="浮点数解析">
+            <img src="img/binary-voice.png" alt="二进制语音波形">
             <div class="card-content">
-                <h2 class="card-title">浮点数解析</h2>
-                <p class="card-description">自由编辑FP64的二进制表示，直观展示并调整浮点数的结构和精度细节，探索浮点数的内部运作。</p>
-                <a href="fp-eval.html" class="card-button">试试吧</a>
+                <h2 class="card-title">二进制语音波形</h2>
+                <p class="card-description">通过将文本信息隐藏在波形符号中，创造出独特的视觉效果。符号代表二进制位，解码后即可恢复原始文本信息。</p>
+                <a href="binary-voice.html" class="card-button">试试吧</a>
             </div>
         </div>
-
-        <div class="card">
-            <img src="img/openai.png" alt="OpenAI预设编辑器">
-            <div class="card-content">
-                <h2 class="card-title">OpenAI预设编辑器</h2>
-                <p class="card-description">使用图形化编辑器配置 OpenAI 模型，提供直观的操作界面，优化模型性能和个性化设置。</p>
-                <a href="openai-llm.html" class="card-button">试试吧</a>
-            </div>
-        </div>
-
-        <div class="card">
-            <img src="img/qfp.png" alt="QFP音频压缩实验">
-            <div class="card-content">
-                <h2 class="card-title">QFP音频压缩实验</h2>
-                <p class="card-description">使用JavaScript自制音频编码器，探索音频数据压缩的原理与实现过程，感受音频压缩技术的核心思想。</p>
-                <a href="qfp.html" class="card-button">试试吧</a>
-            </div>
-        </div>
-
-        <div class="card">
-            <img src="img/sstv.png" alt="SSTV生成器">
-            <div class="card-content">
-                <h2 class="card-title">SSTV生成器</h2>
-                <p class="card-description">通过简单直观的界面生成并传输慢扫描电视（SSTV）图像，适合用于音频图像传输实验。</p>
-                <a href="sstv-encoder.html" class="card-button">试试吧</a>
-            </div>
-        </div>
-
 
         <!-- <div class="card">
             <img src="img/image1.jpg" alt="合成示例">
@@ -269,25 +295,6 @@
                 <a href="lanczos.html" class="card-button">试试吧</a>
             </div>
         </div>
-
-        <div class="card">
-            <img src="img/speaker.png" alt="Sinc 波形播放器">
-            <div class="card-content">
-                <h2 class="card-title">Sinc 波形播放器</h2>
-                <p class="card-description">通过调整频率、间隔频率与上变频频率，播放不同的 Sinc 波形，进行不同频段的音频信号生成与实验。</p>
-                <a href="sinc-player.html" class="card-button">试试吧</a>
-            </div>
-        </div>
-
-        <div class="card">
-            <img src="img/binary-voice.png" alt="二进制语音波形">
-            <div class="card-content">
-                <h2 class="card-title">二进制语音波形</h2>
-                <p class="card-description">通过将文本信息隐藏在波形符号中，创造出独特的视觉效果。符号代表二进制位，解码后即可恢复原始文本信息。</p>
-                <a href="binary-voice.html" class="card-button">试试吧</a>
-            </div>
-        </div>
-    </div>
 
 </body>
 

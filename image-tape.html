@@ -1,0 +1,521 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ImageTape</title>
+    <style>
+        /* 通用暗黑模式 Material Design 风格设置 */
+        body {
+            background-color: #121212;
+            /* 深色背景 */
+            color: #e0e0e0;
+            /* 浅色文字 */
+            font-family: 'Roboto', 'Arial', sans-serif;
+            margin: 0;
+            padding: 0;
+            line-height: 1.6;
+        }
+
+        /* 文件输入框和按钮 */
+        input[type="file"],
+        button {
+            /* Teal 深色 */
+            color: #ffffff;
+            /* 白色文字 */
+            border: none;
+            border-radius: 4px;
+            padding: 10px 20px;
+            margin: 10px 0;
+            font-size: 1rem;
+            cursor: pointer;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+            transition: background-color 0.3s, box-shadow 0.3s;
+        }
+
+        input[type="file"] {
+            background-color: #004d4040;
+        }
+
+        button {
+            background-color: #00695c;
+        }
+
+        input[type="file"]::file-selector-button {
+            background-color: #00695c;
+            /* 更亮的 Teal */
+            color: #e0e0e0;
+            border: none;
+            padding: 8px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: background-color 0.3s, box-shadow 0.3s;
+        }
+
+        input[type="file"]::file-selector-button:hover,
+        button:hover {
+            background-color: #009c89;
+            /* Hover 状态 */
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.4);
+        }
+
+        /* Canvas 样式 */
+        canvas {
+            display: block;
+            background-color: #263238;
+            /* 深蓝灰背景 */
+            margin: 20px auto;
+            border: none;
+            border-radius: 8px;
+            max-width: 95%;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+        }
+
+        /* 标题和描述文字 */
+        h1,
+        h2,
+        p {
+            text-align: center;
+            margin: 10px 0;
+        }
+
+        h1 {
+            color: #ffffff;
+            font-size: 2.2rem;
+        }
+
+        h2 {
+            color: #b2dfdb;
+            /* 浅 Teal */
+            font-size: 1.6rem;
+        }
+
+        p {
+            color: #80cbc4;
+            /* 更浅 Teal */
+            font-size: 1rem;
+        }
+
+        /* 超链接样式 */
+        a {
+            color: #4db6ac;
+            /* Teal 色链接 */
+            text-decoration: none;
+            transition: color 0.3s;
+        }
+
+        a:hover {
+            color: #26a69a;
+            /* Hover 状态的更亮 Teal */
+        }
+
+        /* Footer 样式 */
+        footer {
+            text-align: center;
+            color: #607d8b;
+            margin: 20px 0;
+            font-size: 0.9rem;
+        }
+
+        /* 容器布局 */
+        .container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+
+        .status {
+            display: flex;
+            align-items: center;
+            margin-top: 8px;
+            width: 95%;
+            justify-content: center;
+        }
+
+        #progress {
+            height: 10px;
+            width: 75%;
+            background-color: #333;
+            margin-right: 16px;
+            cursor: pointer;
+            /* if clickable*/
+        }
+
+        #progress-inner {
+            background-color: #008577;
+            width: 0;
+            height: 100%;
+        }
+
+        #time {
+            min-width: fit-content;
+        }
+
+        .icon {
+            font-size: 26px;
+            width: 48px;
+            height: 48px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        /* 响应式调整 */
+        @media (max-width: 768px) {
+            body {
+                font-size: 0.9rem;
+            }
+
+            button,
+            input[type="file"] {
+                padding: 8px 10px;
+                font-size: 0.9rem;
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+    <h1>ImageTape</h1>
+
+    <div class="container">
+        <!-- Audio and Image Upload -->
+        <div><span class="icon">🎧</span><input type="file" id="audioFile" accept="audio/*"></div>
+        <div><span class="icon">🎨</span><input type="file" id="imageFile" accept="image/*"></div>
+
+        <!-- Buttons for conversion -->
+        <div>
+            <button id="audioToImageBtn" class="icon">🔴</button>
+            <button id="imageToAudioBtn" class="icon">⤵️</button>
+            <button id="pauseBtn" class="icon">▶</button>
+        </div>
+        <div class="status">
+            <div id="progress">
+                <div id="progress-inner"></div>
+            </div>
+            <div id="time">00:00 / 00:00</div>
+        </div>
+    </div>
+
+    <!-- Canvas for visualizing the conversion -->
+    <canvas id="canvas" width="1920" height="1080"></canvas>
+
+    <script>
+        let audioContext = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 8000 });
+        let canvas = document.getElementById('canvas');
+        let ctx = canvas.getContext('2d');
+        let audioElement = new Audio();
+        let audioBuffer = null;
+
+        // File inputs
+        let audioFileInput = document.getElementById('audioFile');
+        let imageFileInput = document.getElementById('imageFile');
+
+        // Buttons for conversion actions
+        let audioToImageBtn = document.getElementById('audioToImageBtn');
+        let imageToAudioBtn = document.getElementById('imageToAudioBtn');
+
+
+        const timeDisplay = document.getElementById("time")
+        const progressDisplay = document.getElementById("progress-inner")
+        const progressBar = document.getElementById("progress")
+
+        const pauseBtn = document.getElementById("pauseBtn")
+
+        function padding(num) {
+            if (isNaN(num) || !isFinite(num)) {
+                return '**';
+            }
+            if (num < 10) {
+                return '0' + num;
+            }
+            else {
+                return num;
+            }
+        }
+
+        function formatTime(seconds) {
+            if (isNaN(seconds) || !isFinite(seconds)) return "**:**";
+
+            let sec = parseInt(seconds % 60);
+            let minutes = seconds / 60;
+            let min = parseInt(minutes % 60);
+            if (minutes < 60) {
+                return padding(min) + ':' + padding(sec);
+            } else {
+                let hours = minutes / 60;
+                return padding(parseInt(hours)) + ':' + padding(min) + ':' + padding(sec);
+            }
+        }
+
+        function updateProgress(currentTime, totalLength) {
+            let prog = currentTime / totalLength; // 播放进度百分比
+            timeDisplay.textContent = `${formatTime(currentTime)} / ${formatTime(totalLength)}`;
+            progressDisplay.style.width = (prog * 100) + "%"; // 更新进度条显示
+        }
+
+        progressBar.addEventListener('click', e => {
+            let r = e.offsetX / progressBar.offsetWidth;
+            player.currentTime = player.duration * r;
+        })
+
+        class Player {
+            constructor() {
+                this.isPlaying = false;
+                this.source = null;
+                this.imageData = null;
+                this.ptr = 0;
+                this.frameSize = 1024; // Number of samples per frame
+                this.sampleRate = audioContext.sampleRate;
+                this.buffers = [];
+            }
+
+            stop() {
+                this.stopped = true;
+                for (const source of this.buffers) {
+                    source.disconnect();
+                }
+                this.buffers = [];
+            }
+
+            setImageData(imageData) {
+                this.stop();
+                this.imageData = imageData;
+                this.ptr = 0; // Reset playback position
+                this.stopped = false;
+            }
+
+            start() {
+                this.pause = false;
+                this._playBuffer();
+            }
+
+            set pause(isPaused) {
+                if (isPaused) {
+                    audioContext.suspend();
+                    this.isPlaying = false;
+                } else {
+                    audioContext.resume();
+                    this.isPlaying = true;
+                }
+            }
+
+            set currentTime(position) {
+                if (!this.imageData) {
+                    console.error("No image data set. Use setImageData() to set data.");
+                    return;
+                }
+
+                const totalSamples = this.imageData.data.length / 4;
+                const targetSample = Math.min(Math.max(0, Math.floor(position * this.sampleRate)), totalSamples);
+                this.ptr = targetSample;
+            }
+
+            get currentTime() {
+                return this.ptr / 8000;
+            }
+
+            get duration() {
+                return this.imageData?.data?.length / 4 / 8000 ?? 0;
+            }
+
+            _playBuffer() {
+                if (!this.isPlaying) return;
+
+                const { data } = this.imageData;
+                const len = Math.min(this.frameSize, data.length / 4 - this.ptr);
+
+                if (len <= 0) {
+                    this.isPlaying = false;
+                    return;
+                }
+
+                const audioData = [new Float32Array(len), new Float32Array(len)];
+
+                // Process image data and convert to audio data
+                for (let i = 0; i < len; i++, this.ptr++) {
+                    // Extract RGB values from image data
+                    const r = data[this.ptr * 4];
+                    const g = data[this.ptr * 4 + 1];
+                    const b = data[this.ptr * 4 + 2];
+
+                    // Convert RGB to YUV
+                    const y = 0.299 * r + 0.587 * g + 0.114 * b;
+                    const u = -0.1687 * r - 0.3313 * g + 0.5 * b + 128;
+                    const v = 0.5 * r - 0.419 * g - 0.0813 * b + 128;
+
+                    // Normalize Y value to range [-1, 1]
+                    const yQ = (y / 127.5) - 1;
+                    const sign = Math.sign(yQ);
+
+                    // Determine which channel (U or V) to use based on row index
+                    const isEvenRow = parseInt(this.ptr / 1920) % 2 === 0;
+                    const uvQ = isEvenRow ? (u / 127.5) - 1 : (v / 127.5) - 1;
+                    const sign2 = Math.sign(uvQ);
+
+                    // Compute sum and difference of left and right channels
+                    const lrSum = yQ * yQ * sign;
+                    const lrDiff = uvQ * uvQ * sign2;
+
+                    // Calculate left and right channel audio data
+                    const lChannel = lrSum + lrDiff;
+                    const rChannel = lrSum - lrDiff;
+
+                    // Store audio data in output arrays
+                    audioData[0][i] = lChannel;
+                    audioData[1][i] = rChannel;
+                }
+
+                const buffer = audioContext.createBuffer(2, len, this.sampleRate);
+                buffer.copyToChannel(audioData[0], 0);
+                buffer.copyToChannel(audioData[1], 1);
+
+                const source = audioContext.createBufferSource();
+                source.buffer = buffer;
+                source.connect(audioContext.destination);
+
+                source.onended = () => {
+                    source.disconnect();
+                    this.buffers.shift();
+                    updateProgress(this.currentTime, this.duration);
+                    if (this.ptr < data.length / 4 && this.isPlaying && !this.stopped) {
+                        this._playBuffer();
+                    } else {
+                        this.isPlaying = false;
+                    }
+                };
+                this.buffers.push(source);
+
+                source.start();
+            }
+        }
+
+        let player;
+
+        // Convert audio to image
+        audioToImageBtn.addEventListener('click', () => {
+            let file = audioFileInput.files[0];
+            if (file) {
+                let reader = new FileReader();
+                reader.onload = (event) => {
+                    const buffer = event.target.result;
+                    // Decode the audio buffer and process the data
+                    audioContext.decodeAudioData(buffer, (decodedBuffer) => {
+
+                        // Get audio channels (left and right, or use left if mono)
+                        let lChannel = decodedBuffer.getChannelData(0);
+                        let rChannel = decodedBuffer.numberOfChannels >= 2 ? decodedBuffer.getChannelData(1) : lChannel;
+
+                        // Clear canvas and fill with gray background
+                        ctx.fillStyle = 'gray';
+                        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+                        // Prepare image data for canvas manipulation
+                        let imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+                        let data = imgData.data;
+
+                        // Temporary buffers for Y, U, and V channels
+                        const tempY = new Float32Array(3840);
+                        const tempU = new Float32Array(3840);
+                        const tempV = new Float32Array(3840);
+
+                        // Process audio data in chunks of 3840 samples
+                        for (let i = 0; i < lChannel.length; i += 3840) {
+                            for (let j = 0; j < 3840; j++) {
+                                const idx = i + j;
+
+                                // Ensure the index is within bounds
+                                if (idx >= lChannel.length) break;
+
+                                const left = lChannel[idx];
+                                const right = rChannel[idx];
+
+                                // Compute the sum and difference of left and right channels
+                                const lrSum = (left + right) / 2;
+                                const lrDiff = (left - right) / 2;
+
+                                // Normalize values for visualization
+                                const normSum = Math.sqrt(Math.abs(lrSum)) * Math.sign(lrSum);
+                                const normDiff = Math.sqrt(Math.abs(lrDiff)) * Math.sign(lrDiff);
+
+                                // Map normalized values to Y, U, and V channels
+                                tempY[j] = (normSum + 1) * 127.5;
+                                if (j < 1920) {
+                                    tempU[j] = (normDiff + 1) * 127.5;
+                                    tempU[j + 1920] = (normDiff + 1) * 127.5;
+                                } else {
+                                    tempV[j] = (normDiff + 1) * 127.5;
+                                    tempV[j - 1920] = (normDiff + 1) * 127.5;
+                                }
+                            }
+
+                            // Convert YUV to RGB and update canvas image data
+                            for (let j = 0; j < 3840; j++) {
+                                const y = tempY[j];
+                                const u = tempU[j];
+                                const v = tempV[j];
+
+                                // YUV to RGB conversion formula
+                                let r = y + 1.402 * (v - 128);
+                                let g = y - 0.344136 * (u - 128) - 0.714136 * (v - 128);
+                                let b = y + 1.772 * (u - 128);
+
+                                // Ensure the index is within bounds for image data
+                                const pixelIdx = (i + j) * 4;
+                                if (pixelIdx >= data.length) break;
+
+                                // Assign RGB values to image data
+                                data[pixelIdx] = r;
+                                data[pixelIdx + 1] = g;
+                                data[pixelIdx + 2] = b;
+                                data[pixelIdx + 3] = 255; // Fully opaque
+                            }
+                        }
+
+                        // Update canvas with processed image data
+                        ctx.putImageData(imgData, 0, 0);
+                    });
+
+                };
+                reader.readAsArrayBuffer(file);
+            }
+        });
+
+        imageFileInput.addEventListener('change', e => {
+            let imageFile = imageFileInput.files[0];
+            if (imageFile) {
+                let reader = new FileReader();
+                reader.onload = (e) => {
+                    let img = new Image();
+                    img.onload = () => {
+                        ctx.drawImage(img, 0, 0, 1920, 1080);
+                    };
+                    img.src = e.target.result;
+                };
+                reader.readAsDataURL(imageFile);
+            }
+        })
+
+        // Convert image to audio
+        imageToAudioBtn.addEventListener('click', () => {
+            let imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+            player?.stop();
+            player = new Player();
+            player.setImageData(imgData)
+            player.start();
+            pauseBtn.textContent = '⏸';
+        });
+
+        pauseBtn.addEventListener('click', e => {
+            player.pause = player.isPlaying;
+            if (!player.isPlaying) pauseBtn.textContent = '▶';
+            else pauseBtn.textContent = '⏸';
+        })
+
+    </script>
+</body>
+
+</html>
