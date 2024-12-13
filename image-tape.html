@@ -394,8 +394,6 @@
                 reader.onload = (e) => {
                     let img = new Image();
                     img.onload = () => {
-                        canvas.width = img.width;
-                        canvas.height = img.height;
                         ctx.drawImage(img, 0, 0, 1920, 1080);
                     };
                     img.src = e.target.result;
