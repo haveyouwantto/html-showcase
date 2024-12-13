@@ -991,7 +991,7 @@
         function getPTBLA(dc, ref, table, maxIter, bailout) {
             let dzRe = 0, dzIm = 0; // Real and imaginary parts of dz
 
-            let iter = 0;
+            let iter = -1;
             let refIter = 0;
             while (iter < maxIter) {
                 let dzNorm = Math.max(Math.abs(dzRe), Math.abs(dzIm)); // Chebyshev norm
@@ -1276,18 +1276,9 @@
                     time: performance.now()
                 };
 
-                reInput.value = this.center.re;
-                imInput.value = this.center.im;
-                zoomInput.value = new FloatExp(4).div(this.size).toString()
-                itInput.value = this.iterations;
-                location.hash = "#re=" + this.center.re +
-                    "&im=" + this.center.im +
-                    "&zoom=" + new FloatExp(4).div(this.size) +
-                    "&iter=" + this.iterations;
-
                 let base, ref, refComplex, glitches, coeff;
                 let refLen = 0;
-                if (this.size.doubleValue() <= 1e-11) {
+                
                     base = this.center;
                     if (!this.refValid) {
                         console.log(performance.now() + " computing reference")
@@ -1312,7 +1303,9 @@
 
                     console.log(performance.now() + " bla calculation")
                     this.blaTable = createBLATable(refComplex, this.size.doubleValue())
-
+                    
+                    let autoIter = Math.max((refLen-1)*32,this.iterations);
+                    this.setIterations(autoIter);
                     // console.log(performance.now() + " series approximation")
                     // coeff = getSeriesCoefficients(ref, [
                     //     this.getDelta(0, 0),
@@ -1325,18 +1318,13 @@
 
                     console.log(performance.now() + " perturbation")
 
-                }
+                
                 glitches = [];
 
                 let paint = (x, y) => {
                     // if (this.size > 1e-10) delta = delta.toComplex()
                     let newIter;
-                    if (this.size.doubleValue() > 1e-11) {
-                        let delta = this.getDelta(x, y);
-                        let z = this.center.downCast().add(delta.toComplex())
-                        newIter = getDirect(z.re, z.im, this.bailout, this.iterations)
-                    }
-                    else {
+                    
                         let delta = this.getDelta(x, y);
                         newIter = getPTBLA(delta.toComplex(), refComplex, this.blaTable, this.iterations, this.bailout);
                         // if (coeff.it > 200) {
@@ -1354,7 +1342,7 @@
                         //         newIter = getPT(delta, delta, refComplex, this.iterations, this.bailout);
                         //     }
                         // }
-                    }
+                    
 
                     if (newIter < 0) glitches.push([x, y])
                     else this.stats.calc++;
@@ -1425,6 +1413,14 @@
                     console.log('done!')
                     this.rendering = false;
                     this.showInfo();
+                    reInput.value = this.center.re;
+                    imInput.value = this.center.im;
+                    zoomInput.value = new FloatExp(4).div(this.size).toString()
+                    itInput.value = this.iterations;
+                    location.hash = "#re=" + this.center.re +
+                        "&im=" + this.center.im +
+                        "&zoom=" + new FloatExp(4).div(this.size) +
+                        "&iter=" + this.iterations;
                 })
             }
 
