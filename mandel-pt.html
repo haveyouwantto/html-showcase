@@ -182,1562 +182,1568 @@
     <div id="more"></div>
     <script src="lib/decimal.9.0.0.js"></script>
     <script>
+        const canvas = document.getElementById('mandelbrot');
+        const reInput = document.getElementById('re')
+        const imInput = document.getElementById('im');
+        const zoomInput = document.getElementById('zoom')
+        const itInput = document.getElementById('it')
+        const statsLabel = document.getElementById('stats')
+        const sampleSelect = document.getElementById('samples')
+        const sampleLoadBtn = document.getElementById('load-sample')
+        const more = document.getElementById("more");
 
-const canvas = document.getElementById('mandelbrot');
-const reInput = document.getElementById('re')
-const imInput = document.getElementById('im');
-const zoomInput = document.getElementById('zoom')
-const itInput = document.getElementById('it')
-const statsLabel = document.getElementById('stats')
-const sampleSelect = document.getElementById('samples')
-const sampleLoadBtn = document.getElementById('load-sample')
-const more = document.getElementById("more");
+        class FloatExp {
+            static expTable = [];
+            static {
+                this.expTable = [];
+                for (let i = 0; i < 324 + 308; i++) {
+                    this.expTable[i] = Math.pow(10, i - 324);
+                }
+            }
 
-class FloatExp {
-    static expTable = [];
-    static {
-        this.expTable = [];
-        for (let i = 0; i < 324 + 308; i++) {
-            this.expTable[i] = Math.pow(10, i - 324);
+            static getExp(exp) {
+                if (exp < -324) return 0;
+                else if (exp > 308) return Infinity;
+                return this.expTable[exp + 324];
+            }
+
+            static getExpOfDouble(d) {
+                if (d < 0) d = -d; // Handling negative numbers
+                let low = 0,
+                    high = this.expTable.length - 1;
+
+                // Binary search
+                while (low <= high) {
+                    const mid = Math.floor((low + high) / 2);
+                    if (this.expTable[mid] === d) {
+                        return mid - 324; // Adjusting the result to match the original logic
+                    } else if (this.expTable[mid] < d) {
+                        low = mid + 1;
+                    } else {
+                        high = mid - 1;
+                    }
+                }
+
+                // Return the exponent of the closest lower value
+                return low - 325;
+            }
+
+            constructor(base, exp = 0) {
+                if (isNaN(base) || isNaN(exp) || !isFinite(base) || !isFinite(exp)) {
+                    console.log(base, exp)
+                    throw new Error("Invalid FloatExp");
+                }
+                this.base = base;
+                this.exp = exp;
+                this.norm();
+            }
+
+            norm() {
+                if (this.base == 0) {
+                    this.exp = 0;
+                    return this;
+                }
+                if (this.base != 0 && (this.base > 10 || this.base < 1)) {
+                    let exp = FloatExp.getExpOfDouble(this.base);
+                    this.exp += exp;
+                    this.base /= FloatExp.getExp(exp);
+                }
+                return this;
+            }
+
+            doubleValue() {
+                return this.base * FloatExp.getExp(this.exp);
+            }
+
+            toString() {
+                this.norm();
+                return `${this.base}e${this.exp}`
+            }
+
+            add(other) {
+                if (typeof other == 'number') return this.add(new FloatExp(other));
+                if (other.base == 0) return this;
+                else if (this.base == 0) return other;
+                const expDiff = other.exp - this.exp;
+                if (expDiff == 0)
+                    return new FloatExp(this.base + other.base, this.exp)
+                else if (expDiff > 16) return other;
+                else {
+                    return new FloatExp(this.base + other.base * FloatExp.getExp(other.exp - this.exp), this.exp)
+                }
+            }
+
+            addMut(other) {
+                if (other.base == 0) return this;
+                else if (this.base == 0) {
+                    this.base = other.base;
+                    this.exp = other.exp;
+                    return this;
+                }
+                const expDiff = other.exp - this.exp;
+                if (expDiff == 0) {
+                    this.base += other.base;
+                    return this.norm();
+                } else if (expDiff > 16) {
+                    this.base = other.base;
+                    this.exp = other.exp;
+                    return this;
+                } else {
+                    this.base += other.base * FloatExp.getExp(expDiff);
+                    return this.norm();
+                }
+            }
+
+            sub(other) {
+                if (typeof other == 'number') return this.sub(new FloatExp(other));
+                if (other.base == 0) return this;
+                else if (this.base == 0) return other.rev();
+                const expDiff = other.exp - this.exp;
+                if (expDiff == 0)
+                    return new FloatExp(this.base - other.base, this.exp)
+                else if (expDiff > 16) return other.rev();
+                else {
+                    return new FloatExp(this.base - other.base * FloatExp.getExp(other.exp - this.exp), this.exp)
+                }
+            }
+
+            subMut(other) {
+                if (other.base == 0) return this;
+                else if (this.base == 0) {
+                    this.base = -other.base;
+                    this.exp = other.exp;
+                    return this;
+                }
+                const expDiff = other.exp - this.exp;
+                if (expDiff == 0) {
+                    this.base -= other.base;
+                    return this.norm();
+                } else if (expDiff > 16) {
+                    this.base = -other.base;
+                    this.exp = other.exp;
+                    return this;
+                } else {
+                    this.base -= other.base * FloatExp.getExp(expDiff);
+                    return this.norm();
+                }
+            }
+
+
+            mul(other) {
+                if (other instanceof FloatExp)
+                    return new FloatExp(this.base * other.base, this.exp + other.exp)
+                else if (typeof other == 'number')
+                    return new FloatExp(this.base * other, this.exp);
+            }
+
+            mulMut(other) {
+                this.base *= other.base;
+                this.exp += other.exp;
+                return this.norm();
+            }
+
+            div(other) {
+                if (other instanceof FloatExp)
+                    return new FloatExp(this.base / other.base, this.exp - other.exp)
+                else if (typeof other == 'number')
+                    return new FloatExp(this.base / other, this.exp);
+            }
+
+            divMut(other) {
+                this.base /= other.base;
+                this.exp -= other.exp;
+                return this.norm();
+            }
+
+            abs() {
+                return new FloatExp(Math.abs(this.base), this.exp);
+            }
+
+            sqrt() {
+                if (this.base < 0) throw new Error("Cannot take square root of negative number");
+                return new FloatExp(Math.sqrt(this.base), this.exp / 2);
+            }
+
+            rev() {
+                return new FloatExp(-this.base, this.exp);
+            }
+
+            copy() {
+                return new FloatExp(this.base, this.exp);
+            }
+
+            compareTo(o) {
+                // 1. Compare sign
+                if (this.base > 0 && o.base < 0) return 1;
+                if (this.base < 0 && o.base > 0) return -1;
+
+                // 2. Handle zero cases
+                if (this.base === 0 && o.base === 0) return 0; // Both are zero
+                if (this.base === 0) return o.base > 0 ? -1 : 1; // This is zero
+                if (o.base === 0) return this.base > 0 ? 1 : -1; // Other is zero
+
+                // 3. Compare exponents
+                if (this.exp > o.exp) return this.base > 0 ? 1 : -1;
+                if (this.exp < o.exp) return this.base > 0 ? -1 : 1;
+
+                // 4. Compare bases when exponents are equal
+                if (this.base > o.base) return 1;
+                if (this.base < o.base) return -1;
+
+                return 0; // Equal
+            }
+
         }
-    }
 
-    static getExp(exp) {
-        if (exp < -324) return 0;
-        else if (exp > 308) return Infinity;
-        return this.expTable[exp + 324];
-    }
+        function parseFloatExp(string) {
+            var [b, e] = string.split("e");
+            e = parseInt(e)
+            var fp = new FloatExp(parseFloat(b), (isNaN(e) ? 0 : e));
+            // fp.norm();
+            return fp;
+        }
 
-    static getExpOfDouble(d) {
-        if (d < 0) d = -d; // Handling negative numbers
-        let low = 0,
-            high = this.expTable.length - 1;
+        function doubleToFloatExp(num) {
+            if (num === 0) return new FloatExp(0, 0);
+            // Get the exponent
+            let exponent = Math.floor(Math.log10(Math.abs(num)));
+            // Calculate the significand
+            let significand = num / FloatExp.getExp(exponent);
+            return new FloatExp(significand, exponent);
+        }
 
-        // Binary search
-        while (low <= high) {
-            const mid = Math.floor((low + high) / 2);
-            if (this.expTable[mid] === d) {
-                return mid - 324; // Adjusting the result to match the original logic
-            } else if (this.expTable[mid] < d) {
-                low = mid + 1;
-            } else {
-                high = mid - 1;
+        function decimalToFloatExp(num) {
+            let base = num.d[0];
+            for (let i = 1; i < 3; i++) {
+                if (num.d[i]) base = base * 1e8 + num.d[i];
+            }
+            if (num.e == 0) return new FloatExp(base, 0);
+            let off = Math.floor(Math.log10(base));
+            let exp = num.e - off;
+            return new FloatExp(base, exp);
+        }
+
+        function getFloatExp(obj) {
+            if (obj instanceof FloatExp) return obj;
+            else if (typeof obj === "number") {
+                return doubleToFloatExp(obj);
+            } else if (obj instanceof Decimal) {
+                return decimalToFloatExp(obj);
+            } else return parseFloatExp(obj.toString())
+        }
+
+        class Complex {
+            absValue;
+            constructor(re, im) {
+                this.re = re;
+                this.im = im;
+            }
+
+            abs() {
+                if (!this.absValue) this.absValue = this.re ** 2 + this.im ** 2;
+                return this.absValue
+            }
+
+            toNumberArray() {
+                return [this.re, this.im];
+            }
+
+            mul(other) {
+                if (typeof other === 'number') {
+                    return new Complex(this.re * other, this.im * other);
+                } else {
+                    return new Complex(
+                        this.re * other.re - this.im * other.im,
+                        this.re * other.im + this.im * other.re
+                    );
+                }
+            }
+
+            mulMut(other) {
+                if (typeof other === 'number') {
+                    this.re *= other;
+                    this.im *= other;
+                    return this;
+                } else {
+                    let re = this.re;
+                    let im = this.im;
+                    this.re = re * other.re - im * other.im
+                    this.im = re * other.im + im * other.re;
+                    return this;
+                }
+            }
+
+            add(other) {
+                return new Complex(this.re + other.re, this.im + other.im);
+            }
+
+            addMut(other) {
+                this.re += other.re;
+                this.im += other.im;
+                return this;
+            }
+
+            sub(other) {
+                return new Complex(this.re - other.re, this.im - other.im);
+            }
+
+            subMut(other) {
+                this.re -= other.re;
+                this.im -= other.im;
+                return this;
+            }
+
+            norm() {
+                return Math.max(Math.abs(this.re), Math.abs(this.im));
             }
         }
 
-        // Return the exponent of the closest lower value
-        return low - 325;
-    }
+        class DeepComplex {
+            constructor(re, im) {
+                this.re = re instanceof Decimal ? re : new Decimal(re);
+                this.im = im instanceof Decimal ? im : new Decimal(im);
+            }
 
-    constructor(base, exp = 0) {
-        if (isNaN(base) || isNaN(exp) || !isFinite(base) || !isFinite(exp)) {
-            console.log(base, exp)
-            throw new Error("Invalid FloatExp");
+            abs() {
+                return this.re.pow(2).plus(this.im.pow(2));
+            }
+
+            mul(other) {
+                if (other instanceof DeepComplex) {
+                    const realPart = this.re.times(other.re).minus(this.im.times(other.im));
+                    const imagPart = this.re.times(other.im).plus(this.im.times(other.re));
+                    return new DeepComplex(realPart, imagPart);
+                } else if (other instanceof Complex) {
+                    const realPart = this.re.times(other.re).minus(this.im.times(other.im));
+                    const imagPart = this.re.times(other.im).plus(this.im.times(other.re));
+                    return new DeepComplex(realPart, imagPart);
+                } else if (other instanceof FloatExpComplex) {
+                    other = other.toDeepComplex();
+                    const realPart = this.re.times(re).minus(this.im.times(im));
+                    const imagPart = this.re.times(im).plus(this.im.times(re));
+                    return new DeepComplex(realPart, imagPart);
+                } else if (typeof other === 'number') {
+                    return new DeepComplex(this.re.times(other), this.im.times(other));
+                } else {
+                    throw new Error('Invalid type for multiplication');
+                }
+            }
+
+            add(other) {
+                if (other instanceof FloatExpComplex) {
+                    other = other.toDeepComplex();
+                }
+                return new DeepComplex(this.re.plus(other.re), this.im.plus(other.im));
+            }
+
+            sub(other) {
+                if (other instanceof FloatExpComplex) {
+                    other = other.toDeepComplex();
+                }
+                return new DeepComplex(this.re.minus(other.re), this.im.minus(other.im));
+            }
+
+            downCast() {
+                return new Complex(this.re.toNumber(), this.im.toNumber())
+            }
+
+            toFloatExp() {
+                return new FloatExpComplex(
+                    getFloatExp(this.re.toString()),
+                    getFloatExp(this.im.toString())
+                )
+            }
         }
-        this.base = base;
-        this.exp = exp;
-        this.norm();
-    }
 
-    norm() {
-        if (this.base == 0) {
-            this.exp = 0;
-            return this;
+        class FloatExpComplex {
+            constructor(re, im) {
+                this.re = getFloatExp(re);
+                this.im = getFloatExp(im);
+            }
+
+            abs() {
+                return this.re.mul(this.re).add(this.im.mul(this.im));
+            }
+
+            mul(other) {
+                if (typeof other === 'number') {
+                    return new FloatExpComplex(this.re.mul(new FloatExp(other, 0)), this.im.mul(new FloatExp(other, 0)));
+                } else
+                    return new FloatExpComplex(
+                        this.re.mul(other.re).sub(this.im.mul(other.im)),
+                        this.re.mul(other.im).add(this.im.mul(other.re))
+                    )
+            }
+
+            div(other) {
+                if (typeof other === 'number') {
+                    return new FloatExpComplex(this.re.div(new FloatExp(other, 0)), this.im.div(new FloatExp(other, 0)));
+                } else
+                    return new FloatExpComplex(
+                        this.re.div(other.re).sub(this.im.div(other.im)),
+                        this.re.div(other.im).add(this.im.div(other.re))
+                    )
+            }
+
+            add(other) {
+                return new FloatExpComplex(
+                    this.re.add(other.re),
+                    this.im.add(other.im)
+                )
+            }
+
+            sub(other) {
+                return new FloatExpComplex(
+                    this.re.sub(other.re),
+                    this.im.sub(other.im)
+                )
+            }
+
+            addMut(other) {
+                this.re.addMut(other.re);
+                this.im.addMut(other.im);
+                return this;
+            }
+
+            subMut(other) {
+                this.re.subMut(other.re);
+                this.im.subMut(other.im);
+                return this;
+            }
+
+            mulMut(other) {
+                const x = this.re;
+                const y = this.im;
+                this.re = x.mul(other.re).subMut(y.mul(other.im));
+                this.im = x.mulMut(other.im).addMut(y.mulMut(other.re));
+                return this;
+            }
+
+            copy() {
+                return new FloatExpComplex(this.re.copy(), this.im.copy());
+            }
+
+            toComplex() {
+                return new Complex(this.re.doubleValue(), this.im.doubleValue());
+            }
+
+            toDeepComplex() {
+                return new DeepComplex(
+                    new Decimal(this.re.toString()),
+                    new Decimal(this.im.toString())
+                )
+            }
+
+            norm() {
+                return FEmax(this.re.abs(), this.im.abs());
+
+            }
         }
-        if (this.base != 0 && (this.base > 10 || this.base < 1)) {
-            let exp = FloatExp.getExpOfDouble(this.base);
-            this.exp += exp;
-            this.base /= FloatExp.getExp(exp);
+
+        function FEmax(a, b) {
+            if (a.compareTo(b) > 0) return a;
+            else return b;
         }
-        return this;
-    }
 
-    doubleValue() {
-        return this.base * FloatExp.getExp(this.exp);
-    }
-
-    toString() {
-        this.norm();
-        return `${this.base}e${this.exp}`
-    }
-
-    add(other) {
-        if (typeof other == 'number') return this.add(new FloatExp(other));
-        if (other.base == 0) return this;
-        else if (this.base == 0) return other;
-        const expDiff = other.exp - this.exp;
-        if (expDiff == 0)
-            return new FloatExp(this.base + other.base, this.exp)
-        else if (expDiff > 16) return other;
-        else {
-            return new FloatExp(this.base + other.base * FloatExp.getExp(other.exp - this.exp), this.exp)
+        function FEmin(a, b) {
+            if (a.compareTo(b) < 0) return a;
+            else return b;
         }
-    }
 
-    addMut(other) {
-        if (other.base == 0) return this;
-        else if (this.base == 0) {
-            this.base = other.base;
-            this.exp = other.exp;
-            return this;
+        const samples = {
+            seahorse: {
+                re: "-0.74543",
+                im: "0.11301",
+                zoom: 5e4,
+                it: 2048
+            },
+            snowflake: {
+                re: "-0.10109629004872408548585126380133943559",
+                im: "0.9562865745329222746947099385459096648",
+                zoom: 3.169126e+29,
+                it: 2048
+            },
+            spiral: {
+                re: "-1.999993942175717867792242968103527549859576",
+                im: "8.6071861910492399703689002138183e-21",
+                zoom: 5.192297e+33,
+                it: 2048
+            },
+            luxury: {
+                re: "-0.79580869118304321175952779938151856806452507855882",
+                im: "0.18469182276676613095841056743436302824144029079562",
+                zoom: 1.3e42,
+                it: 4096
+            },
+            horizon: {
+                re: "-1.8584343800176784682217288203669595446250882516610855163",
+                im: 0,
+                zoom: 2.338403e+48,
+                it: 8192
+            },
+            flora: {
+                re: "-1.99909599626591118385320862404514647238736998791060410728750271382258617296138194612160227",
+                im: "2.7580719798153099801178971305087708486297199751987655897677764832896127755911711978e-7",
+                zoom: 1.554135e+85,
+                it: 12000
+            },
+            classic: {
+                re: "-1.740062382579339905220844167065825638296641720436171866879862418461182919644153056054840718339483225743450008259172138785492983677915427169",
+                im: "0.02817533977921104899241152114431950968753907674299060857040130959588017432409201863854008146585605536156950844867740770006690377105617915918",
+                zoom: 3.169127e+129,
+                it: 16384
+            },
+            e200: {
+                re: "-1.966802851116594708819298912851462114119985811705618926682822172678211294505900454587066386326486696211109981444987492635874831274786202351721769325471466717092496114767216598301545236111458996508055081585396",
+                im: "0.0010977722859744975944199816905137002369183368289711851029920379829671969621655021360812521504061553173015969230096789768757462998082308739346850130554776214016764573717626859656016612926260380492615038665711972",
+                zoom: 3.061802e+200,
+                it: 2560
+            },
+            radiant: {
+                re: "-1.99999999999999999999999999999999999999999999999999999999999985604992427869224505485316659406169263456244557162707394015035258073628597813990573253878488792954728746460753235734445467801735035140789540329931747966277516467943284583061883624921231436068907582257",
+                im: "-8.91471704727989229599363700420508490047745648395754111902776340339365777429490330220597376804879333373511664660430230981300478098523390924266124801444129e-108",
+                zoom: 6.190352e+250,
+                it: 32768
+            },
+            branches: {
+                re: "-1.6292734442048283318938320396270139993976098667361842769438797568378211896685981215295380430631824444939812959088045104000652511090002918608428367750404559604873908045574737562161798763493882467959347522331334565200535419490490792109572426042012307199142243133244778278658423929305351347449296418283955642234980665610830226069420767708737186375011028341136058680534715563202637094315075646672266222835522732620561624291470918925972479094214439824838059879454955180554531579035878862691173748960700828240715259267985644677355092076437915522889997465324097488586896011539207914088325170690741321143420090542550202239848652811940259393780795046066233233901935939495310855142242101042",
+                im: "0.03869400209621531644885884354220643543483856432312340490566021352296232798895918154015224599032404970872042582187369535150768927860463654320654167750197244691011756126324382371624135105468469098307733451525287938447855301549425418319315644599440229040004000393629694918121347776683198213801647169431881760881989559740902877967780796990256450970464951956949842553605553300056814346433987027958609011265495269006410527939833349934593968626122035005120083542187577701148430417027976032242752140056316110069588785859474053819290291277818754134945550976828752797151560991794888216365813883286779093669780620189356923473044461454552716354829377180996852428111452867133487261674235339815",
+                zoom: "1.5710523668200003e671",
+                it: 22067
+            }
         }
-        const expDiff = other.exp - this.exp;
-        if (expDiff == 0) {
-            this.base += other.base;
-            return this.norm();
-        } else if (expDiff > 16) {
-            this.base = other.base;
-            this.exp = other.exp;
-            return this;
-        } else {
-            this.base += other.base * FloatExp.getExp(expDiff);
-            return this.norm();
+
+        function delay(ms) {
+            return new Promise(resolve => setTimeout(resolve, ms));
         }
-    }
 
-    sub(other) {
-        if (typeof other == 'number') return this.sub(new FloatExp(other));
-        if (other.base == 0) return this;
-        else if (this.base == 0) return other.rev();
-        const expDiff = other.exp - this.exp;
-        if (expDiff == 0)
-            return new FloatExp(this.base - other.base, this.exp)
-        else if (expDiff > 16) return other.rev();
-        else {
-            return new FloatExp(this.base - other.base * FloatExp.getExp(other.exp - this.exp), this.exp)
+
+        async function* getReferenceOrbit(C, radius, iterations) {
+            let Z = new DeepComplex(0, 0),
+                z = new Complex(0, 0),
+                dzdc = new Complex(1, 0),
+                one = new Complex(1, 0);
+            const orbit = [new Complex(0, 0)];
+            for (let i = 0; i < iterations; i++) {
+                dzdc = z.mul(2).mulMut(dzdc).addMut(one);
+
+                Z = Z.mul(Z).add(C);
+
+                z = Z.downCast();
+                orbit.push(z);
+
+                if (dzdc.norm() * radius * 2 > z.norm()) break;
+                if (z.norm() > 16.0) break;
+                if (i % 10000 == 0) {
+                    yield i;
+                    await delay(50);
+                };
+            }
+            return orbit;
         }
-    }
 
-    subMut(other) {
-        if (other.base == 0) return this;
-        else if (this.base == 0) {
-            this.base = -other.base;
-            this.exp = other.exp;
-            return this;
+        /**
+         * Calculates the reference orbit for a given complex number 'c' using the Mandelbrot iteration.
+         * @param {DeepComplex} c - The complex number for which the reference orbit is calculated.
+         * @param {number} iterations - The number of iterations to perform.
+         * @returns {FloatExpComplex[]} - An array containing the reference orbit.
+         */
+        async function* getReferenceOrbitFE(C, radius, iterations) {
+            let Z = new DeepComplex(0, 0),
+                z = new FloatExpComplex(0, 0),
+                dzdc = new FloatExpComplex(1, 0),
+                one = new FloatExpComplex(1, 0);
+            const orbit = [new FloatExpComplex(0, 0)];
+            for (let i = 0; i < iterations; i++) {
+                dzdc = z.mul(2).mulMut(dzdc).add(one);
+
+                Z = Z.mul(Z).add(C);
+
+                z = Z.toFloatExp();
+                orbit.push(z);
+
+                if (dzdc.norm().mul(radius).mul(2).compareTo(z.norm()) > 0) break;
+                if (z.norm().doubleValue() > 16.0) break;
+                if (i % 10000 == 0) {
+                    yield i;
+                    await delay(50);
+                };
+            }
+            return orbit;
         }
-        const expDiff = other.exp - this.exp;
-        if (expDiff == 0) {
-            this.base -= other.base;
-            return this.norm();
-        } else if (expDiff > 16) {
-            this.base = -other.base;
-            this.exp = other.exp;
-            return this;
-        } else {
-            this.base -= other.base * FloatExp.getExp(expDiff);
-            return this.norm();
-        }
-    }
 
+        /**
+         * Calculates the series coefficients for a given reference orbit and validation set.
+         * @param {Complex[]} ref - The reference orbit.
+         * @param {FloatExpComplex[]} validate - The validation set.
+         * @param {number} iterations - The number of iterations to perform.
+         * @param {number} [bailout=2] - The bailout value used for iteration termination.
+         * @returns {{ it: number, coeff: FloatExpComplex[] }} - An object containing the number of iterations and series coefficients.
+         */
+        function getSeriesCoefficients(ref, validate, iterations, bailout = 4) {
+            let coefficients = [...Array(6)].map(e => new FloatExpComplex(0, 0));
+            let lastCoeff;
 
-    mul(other) {
-        if (other instanceof FloatExp)
-            return new FloatExp(this.base * other.base, this.exp + other.exp)
-        else if (typeof other == 'number')
-            return new FloatExp(this.base * other, this.exp);
-    }
+            const iterZ = [...validate];
 
-    mulMut(other) {
-        this.base *= other.base;
-        this.exp += other.exp;
-        return this.norm();
-    }
+            for (let n = 0; n < ref.length; n++) {
+                const Z = ref[n]
 
-    div(other) {
-        if (other instanceof FloatExp)
-            return new FloatExp(this.base / other.base, this.exp - other.exp)
-        else if (typeof other == 'number')
-            return new FloatExp(this.base / other, this.exp);
-    }
+                lastCoeff = coefficients;
+                coefficients = iterateCoeff(Z, coefficients)
 
-    divMut(other) {
-        this.base /= other.base;
-        this.exp -= other.exp;
-        return this.norm();
-    }
+                for (let i = 0; i < iterZ.length; i++) {
+                    let z = validate[i];
+                    let v = iterZ[i];
+                    let v2 = v.mul(Z).mul(2).addMut(v.mul(v)).addMut(validate[i]); // 2Zz+z^2+c
 
-    abs() {
-        return new FloatExp(Math.abs(this.base), this.exp);
-    }
+                    let approx = approximate(z, coefficients)
 
-    sqrt() {
-        if (this.base < 0) throw new Error("Cannot take square root of negative number");
-        return new FloatExp(Math.sqrt(this.base), this.exp / 2);
-    }
+                    let error = Math.abs((approx.re.div(v2.re).abs().addMut(approx.im.div(v2.im).abs())).subMut(new FloatExp(2, 0)).doubleValue());
+                    // console.log(n, approx, v2, error)
 
-    rev() {
-        return new FloatExp(-this.base, this.exp);
-    }
+                    if (error > 1e-4 || Z.add(v2).abs().doubleValue() > bailout) return {
+                        it: n,
+                        coeff: lastCoeff
 
-    copy() {
-        return new FloatExp(this.base, this.exp);
-    }
+                    };
+                    iterZ[i] = v2;
+                }
 
-    compareTo(o) {
-        // 1. Compare sign
-        if (this.base > 0 && o.base < 0) return 1;
-        if (this.base < 0 && o.base > 0) return -1;
+            }
 
-        // 2. Handle zero cases
-        if (this.base === 0 && o.base === 0) return 0; // Both are zero
-        if (this.base === 0) return o.base > 0 ? -1 : 1; // This is zero
-        if (o.base === 0) return this.base > 0 ? 1 : -1; // Other is zero
-
-        // 3. Compare exponents
-        if (this.exp > o.exp) return this.base > 0 ? 1 : -1;
-        if (this.exp < o.exp) return this.base > 0 ? -1 : 1;
-
-        // 4. Compare bases when exponents are equal
-        if (this.base > o.base) return 1;
-        if (this.base < o.base) return -1;
-
-        return 0; // Equal
-    }
-
-}
-
-function parseFloatExp(string) {
-    var [b, e] = string.split("e");
-    e = parseInt(e)
-    var fp = new FloatExp(parseFloat(b), (isNaN(e) ? 0 : e));
-    // fp.norm();
-    return fp;
-}
-
-function doubleToFloatExp(num) {
-    if (num === 0) return new FloatExp(0, 0);
-    // Get the exponent
-    let exponent = Math.floor(Math.log10(Math.abs(num)));
-    // Calculate the significand
-    let significand = num / FloatExp.getExp(exponent);
-    return new FloatExp(significand, exponent);
-}
-
-function decimalToFloatExp(num) {
-    let base = num.d[0];
-    for (let i = 1; i < 3; i++) {
-        if (num.d[i]) base = base * 1e8 + num.d[i];
-    }
-    if (num.e == 0) return new FloatExp(base, 0);
-    let off = Math.floor(Math.log10(base));
-    let exp = num.e - off;
-    return new FloatExp(base, exp);
-}
-
-function getFloatExp(obj) {
-    if (obj instanceof FloatExp) return obj;
-    else if (typeof obj === "number") {
-        return doubleToFloatExp(obj);
-    } else if (obj instanceof Decimal) {
-        return decimalToFloatExp(obj);
-    } else return parseFloatExp(obj.toString())
-}
-
-class Complex {
-    absValue;
-    constructor(re, im) {
-        this.re = re;
-        this.im = im;
-    }
-
-    abs() {
-        if (!this.absValue) this.absValue = this.re ** 2 + this.im ** 2;
-        return this.absValue
-    }
-
-    toNumberArray() {
-        return [this.re, this.im];
-    }
-
-    mul(other) {
-        if (typeof other === 'number') {
-            return new Complex(this.re * other, this.im * other);
-        } else {
-            return new Complex(
-                this.re * other.re - this.im * other.im,
-                this.re * other.im + this.im * other.re
-            );
-        }
-    }
-
-    mulMut(other) {
-        if (typeof other === 'number') {
-            this.re *= other;
-            this.im *= other;
-            return this;
-        } else {
-            let re = this.re;
-            let im = this.im;
-            this.re = re * other.re - im * other.im
-            this.im = re * other.im + im * other.re;
-            return this;
-        }
-    }
-
-    add(other) {
-        return new Complex(this.re + other.re, this.im + other.im);
-    }
-
-    addMut(other) {
-        this.re += other.re;
-        this.im += other.im;
-        return this;
-    }
-
-    sub(other) {
-        return new Complex(this.re - other.re, this.im - other.im);
-    }
-
-    subMut(other) {
-        this.re -= other.re;
-        this.im -= other.im;
-        return this;
-    }
-
-    norm() {
-        return Math.max(Math.abs(this.re), Math.abs(this.im));
-    }
-}
-
-class DeepComplex {
-    constructor(re, im) {
-        this.re = re instanceof Decimal ? re : new Decimal(re);
-        this.im = im instanceof Decimal ? im : new Decimal(im);
-    }
-
-    abs() {
-        return this.re.pow(2).plus(this.im.pow(2));
-    }
-
-    mul(other) {
-        if (other instanceof DeepComplex) {
-            const realPart = this.re.times(other.re).minus(this.im.times(other.im));
-            const imagPart = this.re.times(other.im).plus(this.im.times(other.re));
-            return new DeepComplex(realPart, imagPart);
-        } else if (other instanceof Complex) {
-            const realPart = this.re.times(other.re).minus(this.im.times(other.im));
-            const imagPart = this.re.times(other.im).plus(this.im.times(other.re));
-            return new DeepComplex(realPart, imagPart);
-        } else if (other instanceof FloatExpComplex) {
-            other = other.toDeepComplex();
-            const realPart = this.re.times(re).minus(this.im.times(im));
-            const imagPart = this.re.times(im).plus(this.im.times(re));
-            return new DeepComplex(realPart, imagPart);
-        } else if (typeof other === 'number') {
-            return new DeepComplex(this.re.times(other), this.im.times(other));
-        } else {
-            throw new Error('Invalid type for multiplication');
-        }
-    }
-
-    add(other) {
-        if (other instanceof FloatExpComplex) {
-            other = other.toDeepComplex();
-        }
-        return new DeepComplex(this.re.plus(other.re), this.im.plus(other.im));
-    }
-
-    sub(other) {
-        if (other instanceof FloatExpComplex) {
-            other = other.toDeepComplex();
-        }
-        return new DeepComplex(this.re.minus(other.re), this.im.minus(other.im));
-    }
-
-    downCast() {
-        return new Complex(this.re.toNumber(), this.im.toNumber())
-    }
-
-    toFloatExp() {
-        return new FloatExpComplex(
-            getFloatExp(this.re.toString()),
-            getFloatExp(this.im.toString())
-        )
-    }
-}
-
-class FloatExpComplex {
-    constructor(re, im) {
-        this.re = getFloatExp(re);
-        this.im = getFloatExp(im);
-    }
-
-    abs() {
-        return this.re.mul(this.re).add(this.im.mul(this.im));
-    }
-
-    mul(other) {
-        if (typeof other === 'number') {
-            return new FloatExpComplex(this.re.mul(new FloatExp(other, 0)), this.im.mul(new FloatExp(other, 0)));
-        } else
-            return new FloatExpComplex(
-                this.re.mul(other.re).sub(this.im.mul(other.im)),
-                this.re.mul(other.im).add(this.im.mul(other.re))
-            )
-    }
-
-    div(other) {
-        if (typeof other === 'number') {
-            return new FloatExpComplex(this.re.div(new FloatExp(other, 0)), this.im.div(new FloatExp(other, 0)));
-        } else
-            return new FloatExpComplex(
-                this.re.div(other.re).sub(this.im.div(other.im)),
-                this.re.div(other.im).add(this.im.div(other.re))
-            )
-    }
-
-    add(other) {
-        return new FloatExpComplex(
-            this.re.add(other.re),
-            this.im.add(other.im)
-        )
-    }
-
-    sub(other) {
-        return new FloatExpComplex(
-            this.re.sub(other.re),
-            this.im.sub(other.im)
-        )
-    }
-
-    addMut(other) {
-        this.re.addMut(other.re);
-        this.im.addMut(other.im);
-        return this;
-    }
-
-    subMut(other) {
-        this.re.subMut(other.re);
-        this.im.subMut(other.im);
-        return this;
-    }
-
-    mulMut(other) {
-        const x = this.re;
-        const y = this.im;
-        this.re = x.mul(other.re).subMut(y.mul(other.im));
-        this.im = x.mulMut(other.im).addMut(y.mulMut(other.re));
-        return this;
-    }
-
-    copy() {
-        return new FloatExpComplex(this.re.copy(), this.im.copy());
-    }
-
-    toComplex() {
-        return new Complex(this.re.doubleValue(), this.im.doubleValue());
-    }
-
-    toDeepComplex() {
-        return new DeepComplex(
-            new Decimal(this.re.toString()),
-            new Decimal(this.im.toString())
-        )
-    }
-
-    norm() {
-        return FEmax(this.re.abs(), this.im.abs());
-
-    }
-}
-
-function FEmax(a, b) {
-    if (a.compareTo(b) > 0) return a;
-    else return b;
-}
-
-function FEmin(a, b) {
-    if (a.compareTo(b) < 0) return a;
-    else return b;
-}
-
-const samples = {
-    seahorse: {
-        re: "-0.74543",
-        im: "0.11301",
-        zoom: 5e4,
-        it: 2048
-    },
-    snowflake: {
-        re: "-0.10109629004872408548585126380133943559",
-        im: "0.9562865745329222746947099385459096648",
-        zoom: 3.169126e+29,
-        it: 2048
-    },
-    spiral: {
-        re: "-1.999993942175717867792242968103527549859576",
-        im: "8.6071861910492399703689002138183e-21",
-        zoom: 5.192297e+33,
-        it: 2048
-    },
-    luxury: {
-        re: "-0.79580869118304321175952779938151856806452507855882",
-        im: "0.18469182276676613095841056743436302824144029079562",
-        zoom: 1.3e42,
-        it: 4096
-    },
-    horizon: {
-        re: "-1.8584343800176784682217288203669595446250882516610855163",
-        im: 0,
-        zoom: 2.338403e+48,
-        it: 8192
-    },
-    flora: {
-        re: "-1.99909599626591118385320862404514647238736998791060410728750271382258617296138194612160227",
-        im: "2.7580719798153099801178971305087708486297199751987655897677764832896127755911711978e-7",
-        zoom: 1.554135e+85,
-        it: 12000
-    },
-    classic: {
-        re: "-1.740062382579339905220844167065825638296641720436171866879862418461182919644153056054840718339483225743450008259172138785492983677915427169",
-        im: "0.02817533977921104899241152114431950968753907674299060857040130959588017432409201863854008146585605536156950844867740770006690377105617915918",
-        zoom: 3.169127e+129,
-        it: 16384
-    },
-    e200: {
-        re: "-1.966802851116594708819298912851462114119985811705618926682822172678211294505900454587066386326486696211109981444987492635874831274786202351721769325471466717092496114767216598301545236111458996508055081585396",
-        im: "0.0010977722859744975944199816905137002369183368289711851029920379829671969621655021360812521504061553173015969230096789768757462998082308739346850130554776214016764573717626859656016612926260380492615038665711972",
-        zoom: 3.061802e+200,
-        it: 2560
-    },
-    radiant: {
-        re: "-1.99999999999999999999999999999999999999999999999999999999999985604992427869224505485316659406169263456244557162707394015035258073628597813990573253878488792954728746460753235734445467801735035140789540329931747966277516467943284583061883624921231436068907582257",
-        im: "-8.91471704727989229599363700420508490047745648395754111902776340339365777429490330220597376804879333373511664660430230981300478098523390924266124801444129e-108",
-        zoom: 6.190352e+250,
-        it: 32768
-    },
-    branches: {
-        re: "-1.6292734442048283318938320396270139993976098667361842769438797568378211896685981215295380430631824444939812959088045104000652511090002918608428367750404559604873908045574737562161798763493882467959347522331334565200535419490490792109572426042012307199142243133244778278658423929305351347449296418283955642234980665610830226069420767708737186375011028341136058680534715563202637094315075646672266222835522732620561624291470918925972479094214439824838059879454955180554531579035878862691173748960700828240715259267985644677355092076437915522889997465324097488586896011539207914088325170690741321143420090542550202239848652811940259393780795046066233233901935939495310855142242101042",
-        im: "0.03869400209621531644885884354220643543483856432312340490566021352296232798895918154015224599032404970872042582187369535150768927860463654320654167750197244691011756126324382371624135105468469098307733451525287938447855301549425418319315644599440229040004000393629694918121347776683198213801647169431881760881989559740902877967780796990256450970464951956949842553605553300056814346433987027958609011265495269006410527939833349934593968626122035005120083542187577701148430417027976032242752140056316110069588785859474053819290291277818754134945550976828752797151560991794888216365813883286779093669780620189356923473044461454552716354829377180996852428111452867133487261674235339815",
-        zoom: "1.5710523668200003e671",
-        it: 22067
-    }
-}
-
-function delay(ms) {
-    return new Promise(resolve => setTimeout(resolve, ms));
-}
-
-
-async function* getReferenceOrbit(C, radius, iterations) {
-    let Z = new DeepComplex(0, 0),
-        z = new Complex(0, 0),
-        dzdc = new Complex(1, 0),
-        one = new Complex(1, 0);
-    const orbit = [new Complex(0, 0)];
-    for (let i = 0; i < iterations; i++) {
-        dzdc = z.mul(2).mulMut(dzdc).addMut(one);
-
-        Z = Z.mul(Z).add(C);
-
-        z = Z.downCast();
-        orbit.push(z);
-
-        if (dzdc.norm() * radius * 2 > z.norm()) break;
-        if (z.norm() > 16.0) break;
-        if (i % 10000 == 0) {
-            yield i;
-            await delay(50);
-        };
-    }
-    return orbit;
-}
-
-/**
- * Calculates the reference orbit for a given complex number 'c' using the Mandelbrot iteration.
- * @param {DeepComplex} c - The complex number for which the reference orbit is calculated.
- * @param {number} iterations - The number of iterations to perform.
- * @returns {FloatExpComplex[]} - An array containing the reference orbit.
- */
-async function* getReferenceOrbitFE(C, radius, iterations) {
-    let Z = new DeepComplex(0, 0),
-        z = new FloatExpComplex(0, 0),
-        dzdc = new FloatExpComplex(1, 0),
-        one = new FloatExpComplex(1, 0);
-    const orbit = [new FloatExpComplex(0, 0)];
-    for (let i = 0; i < iterations; i++) {
-        dzdc = z.mul(2).mulMut(dzdc).add(one);
-
-        Z = Z.mul(Z).add(C);
-
-        z = Z.toFloatExp();
-        orbit.push(z);
-
-        if (dzdc.norm().mul(radius).mul(2).compareTo(z.norm()) > 0) break;
-        if (z.norm().doubleValue() > 16.0) break;
-        if (i % 10000 == 0) {
-            yield i;
-            await delay(50);
-        };
-    }
-    return orbit;
-}
-
-/**
- * Calculates the series coefficients for a given reference orbit and validation set.
- * @param {Complex[]} ref - The reference orbit.
- * @param {FloatExpComplex[]} validate - The validation set.
- * @param {number} iterations - The number of iterations to perform.
- * @param {number} [bailout=2] - The bailout value used for iteration termination.
- * @returns {{ it: number, coeff: FloatExpComplex[] }} - An object containing the number of iterations and series coefficients.
- */
-function getSeriesCoefficients(ref, validate, iterations, bailout = 4) {
-    let coefficients = [...Array(6)].map(e => new FloatExpComplex(0, 0));
-    let lastCoeff;
-
-    const iterZ = [...validate];
-
-    for (let n = 0; n < ref.length; n++) {
-        const Z = ref[n]
-
-        lastCoeff = coefficients;
-        coefficients = iterateCoeff(Z, coefficients)
-
-        for (let i = 0; i < iterZ.length; i++) {
-            let z = validate[i];
-            let v = iterZ[i];
-            let v2 = v.mul(Z).mul(2).addMut(v.mul(v)).addMut(validate[i]); // 2Zz+z^2+c
-
-            let approx = approximate(z, coefficients)
-
-            let error = Math.abs((approx.re.div(v2.re).abs().addMut(approx.im.div(v2.im).abs())).subMut(new FloatExp(2, 0)).doubleValue());
-            // console.log(n, approx, v2, error)
-
-            if (error > 1e-4 || Z.add(v2).abs().doubleValue() > bailout) return {
-                it: n,
-                coeff: lastCoeff
-
+            return {
+                it: 0,
+                coeff: []
             };
-            iterZ[i] = v2;
         }
 
-    }
+        function iterateCoeff(ref, coefficients) {
+            let terms = coefficients.length;
+            let newCoeff = [];
+            for (let i = 0; i < terms; i++) {
+                let c = coefficients[i];
+                c = c.mul(ref).mul(2);
+                if (i == 0) {
+                    c = c.add(new FloatExpComplex(1, 0));
+                } else {
+                    let n = 0;
+                    while (n < i - 1 - n) {
+                        let termA = coefficients[n];
+                        let termB = coefficients[i - 1 - n];
+                        c = c.add(termA.mul(termB).mul(2));
+                        n++;
+                    }
 
-    return {
-        it: 0,
-        coeff: []
-    };
-}
-
-function iterateCoeff(ref, coefficients) {
-    let terms = coefficients.length;
-    let newCoeff = [];
-    for (let i = 0; i < terms; i++) {
-        let c = coefficients[i];
-        c = c.mul(ref).mul(2);
-        if (i == 0) {
-            c = c.add(new FloatExpComplex(1, 0));
-        } else {
-            let n = 0;
-            while (n < i - 1 - n) {
-                let termA = coefficients[n];
-                let termB = coefficients[i - 1 - n];
-                c = c.add(termA.mul(termB).mul(2));
-                n++;
+                    if (i % 2 == 1) {
+                        let sq = coefficients[parseInt(i / 2)];
+                        c = c.add(sq.mul(sq));
+                    }
+                }
+                newCoeff[i] = c;
             }
+            return newCoeff;
+        }
 
-            if (i % 2 == 1) {
-                let sq = coefficients[parseInt(i / 2)];
-                c = c.add(sq.mul(sq));
+        /**
+         * Approximates a complex number 'c' using the given series coefficients.
+         * @param {} c - The complex number to approximate.
+         * @param {FloatExpComplex[]} coeff - The series coefficients.
+         * @returns {FloatExpComplex} - The approximate value of 'c'.
+         */
+        function approximate(c, coeff) {
+            let result = new FloatExpComplex(0, 0);
+            let cn = c.copy();
+            for (let i = 0; i < coeff.length; i++) {
+                result.addMut(coeff[i].mul(cn))
+                cn.mulMut(c)
             }
+            return result
         }
-        newCoeff[i] = c;
-    }
-    return newCoeff;
-}
 
-/**
- * Approximates a complex number 'c' using the given series coefficients.
- * @param {} c - The complex number to approximate.
- * @param {FloatExpComplex[]} coeff - The series coefficients.
- * @returns {FloatExpComplex} - The approximate value of 'c'.
- */
-function approximate(c, coeff) {
-    let result = new FloatExpComplex(0, 0);
-    let cn = c.copy();
-    for (let i = 0; i < coeff.length; i++) {
-        result.addMut(coeff[i].mul(cn))
-        cn.mulMut(c)
-    }
-    return result
-}
+        /**
+         * Calculates the number of iterations required for a complex number to exceed a given bailout value.
+         *
+         * @param {number} re - The real part of the complex number.
+         * @param {number} im - The imaginary part of the complex number.
+         * @param {number} bailout - The bailout value.
+         * @param {number} maxiter - The maximum number of iterations to perform.
+         * @returns {number} - The number of iterations required for the complex number to exceed the bailout value.
+         */
+        function getDirect(re, im, bailout, maxiter) {
+            let it = 0;
+            let re1 = re;
+            let im1 = im;
 
-/**
- * Calculates the number of iterations required for a complex number to exceed a given bailout value.
- *
- * @param {number} re - The real part of the complex number.
- * @param {number} im - The imaginary part of the complex number.
- * @param {number} bailout - The bailout value.
- * @param {number} maxiter - The maximum number of iterations to perform.
- * @returns {number} - The number of iterations required for the complex number to exceed the bailout value.
- */
-function getDirect(re, im, bailout, maxiter) {
-    let it = 0;
-    let re1 = re;
-    let im1 = im;
-
-    while (it <= maxiter) {
-        // console.log(re, im);
-        let re2 = re * re;
-        let im2 = im * im;
-        if (re2 + im2 > bailout) return it;
-        let temp = re2 - im2 + re1;
-        im = 2 * re * im + im1;
-        re = temp;
-        it++;
-    }
-    return it;
-}
-
-/**
- * Calculates the escape time for a point in the Mandelbrot set using perturbation theory.
- * @param {Complex} delta - The perturbation applied to the point.
- * @param {Complex} origin - The origin of the perturbation.
- * @param {Complex[]} ref - The reference orbit.
- * @param {number} maxIter - The maximum iteration.
- * @param {number} bailout - The bailout value used for iteration termination.
- * @param {number} [start=0] - The index from which to start iterating the reference orbit.
- * @returns {number|null} - The escape time for the point or null if it doesn't escape.
- */
-function getPT(delta, origin, ref, maxIter, bailout, start = 0) {
-    let pertR = delta.re;
-    let pertI = delta.im;
-    let tmp;
-
-    let iter = start;
-    let refIter = start;
-    while (iter < maxIter) {
-        const Z = ref[refIter]
-
-        tmp = (2 * Z.re + pertR) * pertR - (2 * Z.im + pertI) * pertI + origin.re;
-        pertI = 2 * (Z.re * pertI + Z.im * pertR + pertR * pertI) + origin.im;
-        pertR = tmp;
-        refIter++;
-
-        const Z2 = ref[refIter]
-        const valR = Z2.re + pertR;
-        const valI = Z2.im + pertI;
-        const val = valR * valR + valI * valI;
-        if (val > bailout) return iter;
-        if (val < pertR * pertR + pertI * pertI || refIter == ref.length - 1) {
-            pertR = valR;
-            pertI = valI;
-            refIter = 0;
+            while (it <= maxiter) {
+                // console.log(re, im);
+                let re2 = re * re;
+                let im2 = im * im;
+                if (re2 + im2 > bailout) return it;
+                let temp = re2 - im2 + re1;
+                im = 2 * re * im + im1;
+                re = temp;
+                it++;
+            }
+            return it;
         }
-        iter++;
-    }
-    return iter;
-}
 
-function getPTIterFloatExp(delta, origin, ref, maxIter, bailout, start = 0) {
-    let iter = start;
-    let refIter = start;
-    while (iter < maxIter) {
-        let Z = ref[refIter];
+        /**
+         * Calculates the escape time for a point in the Mandelbrot set using perturbation theory.
+         * @param {Complex} delta - The perturbation applied to the point.
+         * @param {Complex} origin - The origin of the perturbation.
+         * @param {Complex[]} ref - The reference orbit.
+         * @param {number} maxIter - The maximum iteration.
+         * @param {number} bailout - The bailout value used for iteration termination.
+         * @param {number} [start=0] - The index from which to start iterating the reference orbit.
+         * @returns {number|null} - The escape time for the point or null if it doesn't escape.
+         */
+        function getPT(delta, origin, ref, maxIter, bailout, start = 0) {
+            let pertR = delta.re;
+            let pertI = delta.im;
+            let tmp;
 
-        // 计算delta的影响
-        delta.mulMut(Z.mul(2).addMut(delta)).addMut(origin);
-        refIter++;
+            let iter = start;
+            let refIter = start;
+            while (iter < maxIter) {
+                const Z = ref[refIter]
 
-        let Z2 = ref[refIter];
-        let val = Z2.add(delta); // 合并参考与delta
+                tmp = (2 * Z.re + pertR) * pertR - (2 * Z.im + pertI) * pertI + origin.re;
+                pertI = 2 * (Z.re * pertI + Z.im * pertR + pertR * pertI) + origin.im;
+                pertR = tmp;
+                refIter++;
 
-        if (delta.re.exp > -160 && delta.im.exp > -160) {
-            return [iter, delta];
+                const Z2 = ref[refIter]
+                const valR = Z2.re + pertR;
+                const valI = Z2.im + pertI;
+                const val = valR * valR + valI * valI;
+                if (val > bailout) return iter;
+                if (val < pertR * pertR + pertI * pertI || refIter == ref.length - 1) {
+                    pertR = valR;
+                    pertI = valI;
+                    refIter = 0;
+                }
+                iter++;
+            }
+            return iter;
         }
-        if (val.abs().doubleValue() > 4) {
+
+        function getPTIterFloatExp(delta, origin, ref, maxIter, bailout, start = 0) {
+            let iter = start;
+            let refIter = start;
+            while (iter < maxIter) {
+                let Z = ref[refIter];
+
+                // 计算delta的影响
+                delta.mulMut(Z.mul(2).addMut(delta)).addMut(origin);
+                refIter++;
+
+                let Z2 = ref[refIter];
+                let val = Z2.add(delta); // 合并参考与delta
+
+                if (delta.re.exp > -160 && delta.im.exp > -160) {
+                    return [iter, delta];
+                }
+                if (val.abs().doubleValue() > 4) {
+                    return [iter, null];
+                } // 逃逸检测
+                if (val.abs().sub(delta.abs()).doubleValue() < 0 || refIter == ref.length - 1) { // 检测是否需要变基
+                    delta = val;
+                    refIter = 0;
+                }
+                iter++;
+            }
             return [iter, null];
-        } // 逃逸检测
-        if (val.abs().sub(delta.abs()).doubleValue() < 0 || refIter == ref.length - 1) { // 检测是否需要变基
-            delta = val;
-            refIter = 0;
         }
-        iter++;
-    }
-    return [iter, null];
-}
 
 
-/**
- * Generate BLA table
- * @param {Complex[]} ref - The reference orbit
- * @param {number} scale - Current image scale
- * */
+        /**
+         * Generate BLA table
+         * @param {Complex[]} ref - The reference orbit
+         * @param {number} scale - Current image scale
+         * */
 
-function createBLATable(ref, scale) {
-    const lv1 = [];
-    const table = [lv1];
-    for (let i = 1; i < ref.length; i++) {
-        const point = ref[i];
+        function createBLATable(ref, scale) {
+            const lv1 = [];
+            const table = [lv1];
+            for (let i = 1; i < ref.length; i++) {
+                const point = ref[i];
 
-        const A = point.mul(2);
-        const B = new Complex(1, 0);
-        lv1.push({
-            A: A,
-            B: B,
-            radius: Math.max(0,
-                (point.norm() - B.norm() * scale) / (A.norm() + 1) * 5.96e-8
-            )
-        })
-    }
-
-    let level = 1;
-    while (true) {
-        table.push([]);
-
-        for (let i = 0; i < table[level - 1].length; i += 2) {
-            const bla1 = table[level - 1][i];
-            const bla2 = table[level - 1][i + 1];
-
-            if (bla2 == null) {
-                table[level].push(bla1)
-                continue;
-            };
-
-            table[level].push({
-                A: bla1.A.mul(bla2.A),
-                B: bla1.B.mul(bla2.A).add(bla2.B),
-                radius: Math.min(
-                    bla1.radius, Math.max(
-                        0, (bla2.radius - bla1.B.norm() * scale) / bla1.A.norm()
+                const A = point.mul(2);
+                const B = new Complex(1, 0);
+                lv1.push({
+                    A: A,
+                    B: B,
+                    radius: Math.max(0,
+                        (point.norm() - B.norm() * scale) / (A.norm() + 1) * 5.96e-8
                     )
-                )
-            })
-
-        }
-        if (table[level].length <= 1) break;
-        level++;
-    }
-
-    return table;
-}
-
-function lookup(table, i, refLen, norm_dz, norm_dc) {
-    if (i === 0 || i >= refLen || table.length === 0) {
-        return {
-            first: null,
-            second: 0
-        };
-    }
-
-    let result = {
-        first: null,
-        second: 0
-    }; // { step, length }
-    let index = i - 1,
-        length = 1;
-
-    for (let level of table) {
-        if (norm_dz > level[index].radius) {
-            break;
-        }
-        result.first = level[index];
-        result.second = length;
-
-        if (index % 2) {
-            break;
-        }
-        index >>= 1; // equivalent to index = Math.floor(index / 2)
-        length <<= 1; // equivalent to length *= 2
-    }
-
-    result.second = Math.min(result.second, refLen - i);
-    return result;
-}
-
-function createBLATableFE(ref, scale) {
-    const lv1 = [];
-    const table = [lv1];
-    for (let i = 1; i < ref.length; i++) {
-        const point = ref[i];
-
-        const A = point.mul(2);
-        const B = new FloatExpComplex(1, 0);
-        lv1.push({
-            A: A,
-            B: B,
-            radius: FEmax(new FloatExp(0),
-                (point.norm().sub(B.norm().mul(scale))).div(A.norm().add(1)).mul(5.96e-8)
-            )
-        })
-    }
-
-    let level = 1;
-    while (true) {
-        table.push([]);
-
-        for (let i = 0; i < table[level - 1].length; i += 2) {
-            const bla1 = table[level - 1][i];
-            const bla2 = table[level - 1][i + 1];
-
-            if (bla2 == null) {
-                table[level].push(bla1)
-                continue;
-            };
-
-            table[level].push({
-                A: bla1.A.mul(bla2.A),
-                B: bla1.B.mul(bla2.A).add(bla2.B),
-                radius: FEmin(
-                    bla1.radius, FEmax(
-                        new FloatExp(0), (bla2.radius.sub(bla1.B.norm().mul(scale))).div(bla1.A.norm())
-                    )
-                )
-            })
-
-        }
-        if (table[level].length <= 1) break;
-        level++;
-    }
-
-    return table;
-}
-
-function lookupFE(table, i, refLen, norm_dz, norm_dc) {
-    if (i === 0 || i >= refLen || table.length === 0) {
-        return {
-            first: null,
-            second: new FloatExp(0)
-        };
-    }
-
-    let result = {
-        first: null,
-        second: new FloatExp(0)
-    }; // { step, length }
-    let index = i - 1,
-        length = 1;
-
-    for (let level of table) {
-        if (norm_dz.compareTo(level[index].radius) > 0) {
-            break;
-        }
-        result.first = level[index];
-        result.second = length;
-
-        if (index % 2) {
-            break;
-        }
-        index >>= 1; // equivalent to index = Math.floor(index / 2)
-        length <<= 1; // equivalent to length *= 2
-    }
-
-    result.second = Math.min(result.second, refLen - i);
-    return result;
-}
-
-
-/**
- * Calculates the escape time for a point in the Mandelbrot set using perturbation theory.
- * @param {Complex} dc - The perturbation applied to the point.
- * @param {Complex[]} ref - The reference orbit.
- * @param {Complex[][]} table - The BLA table.
- * @param {number} maxIter - The maximum iteration.
- * @param {number} bailout - The bailout value used for iteration termination.
- * @returns {number|null} - The escape time for the point or null if it doesn't escape.
- */
-function getPTBLA(dc, ref, table, maxIter, bailout) {
-    let dzRe = 0,
-        dzIm = 0; // Real and imaginary parts of dz
-
-    let iter = -1;
-    let refIter = 0;
-    while (iter < maxIter) {
-        let dzNorm = Math.max(Math.abs(dzRe), Math.abs(dzIm)); // Chebyshev norm
-        let dcNorm = Math.max(Math.abs(dc.re), Math.abs(dc.im));
-
-        let result = lookup(table, refIter, ref.length, dzNorm, dcNorm);
-
-        if (result.first != null) {
-            let aRe = result.first.A.re,
-                aIm = result.first.A.im;
-            let bRe = result.first.B.re,
-                bIm = result.first.B.im;
-
-            let newDzRe = dzRe * aRe - dzIm * aIm + dc.re * bRe - dc.im * bIm;
-            let newDzIm = dzRe * aIm + dzIm * aRe + dc.re * bIm + dc.im * bRe;
-
-            dzRe = newDzRe;
-            dzIm = newDzIm;
-
-            iter += result.second;
-            refIter += result.second;
-            if (refIter >= ref.length) return iter;
-        } else {
-            const Z = ref[refIter];
-
-            let tempRe = dzRe,
-                tempIm = dzIm;
-
-            // dz = dz * 2 * Z + dz^2 + dc
-            dzRe = (2 * Z.re + tempRe) * tempRe - (2 * Z.im + tempIm) * tempIm + dc.re;
-            dzIm = 2 * (Z.re * tempIm + Z.im * tempRe + tempRe * tempIm) + dc.im;
-
-            iter++;
-            refIter++;
-        }
-
-        const Z2 = ref[refIter];
-        let valRe = Z2.re + dzRe;
-        let valIm = Z2.im + dzIm;
-
-        // Squared Euclidean distance (abs squared)
-        let valAbsSq = valRe * valRe + valIm * valIm;
-        if (valAbsSq > bailout) return iter;
-
-        let dzAbsSq = dzRe * dzRe + dzIm * dzIm;
-        if (valAbsSq < dzAbsSq || refIter == ref.length - 1) {
-            dzRe = valRe;
-            dzIm = valIm;
-            refIter = 0;
-        }
-    }
-    return iter;
-}
-
-function getPTBLAFE(dc, ref, table, maxIter, bailout) {
-    let dz = new FloatExpComplex(0, 0)
-
-    let iter = -1;
-    let refIter = 0;
-    while (iter < maxIter) {
-        let result = lookupFE(table, refIter, ref.length, dz.norm(), dc.norm())
-
-        if (result.first != null) {
-            dz = dz.mul(result.first.A).addMut(dc.mul(result.first.B));
-            iter += result.second;
-            refIter += result.second;
-        } else {
-            const Z = ref[refIter]
-            dz = dz.mul(2).mulMut(Z).addMut(dz.mul(dz)).addMut(dc)
-            iter++;
-            refIter++;
-        }
-        if (refIter >= ref.length) return iter;
-
-        const Z2 = ref[refIter]
-        const val = Z2.add(dz);
-        if (val.abs().doubleValue() > bailout) return iter;
-        if (val.abs().sub(dz.abs()).doubleValue() < 0 || refIter == ref.length - 1) { // 检测是否需要变基
-            dz = val;
-            refIter = 0;
-        }
-    }
-    return iter;
-}
-
-/**
- * Generates a rainbow palette of colors.
- * @param {number} numColors - The number of colors to generate.
- * @returns {number[][]} - An array containing RGBA values for each color in the palette.
- */
-function generateRainbowPalette(numColors) {
-    const rainbowColors = [];
-    const frequency = 0.2; // Adjust the frequency to change the spread of colors
-
-    for (let i = 0; i < numColors; i++) {
-        const red = Math.sin(frequency * i) * 127 + 128;
-        const green = Math.sin(frequency * 1.1 * i) * 127 + 128;
-        const blue = Math.sin(frequency * 1.2 * i) * 127 + 128;
-        rainbowColors.push([red | 0, green | 0, blue | 0, 255]);
-    }
-
-    return rainbowColors;
-}
-
-const palette = [[0, 0, 0], [190, 35, 41], [108, 225, 132], [82, 174, 214], [241, 73, 144], [233, 187, 241], [166, 179, 235], [135, 60, 219], [153, 62, 12], [13, 94, 36], [183, 6, 28], [179, 222, 71], [200, 77, 18], [139, 187, 67], [3, 31, 166], [9, 125, 90], [31, 37, 56], [203, 212, 93], [245, 150, 252], [19, 59, 69], [10, 137, 13], [174, 219, 28], [154, 32, 50], [64, 238, 80], [253, 54, 120], [50, 73, 18], [125, 158, 246], [173, 220, 73], [242, 20, 79], [102, 64, 68], [196, 107, 208], [50, 183, 48], [34, 161, 59], [145, 34, 246], [139, 225, 157], [176, 218, 31], [2, 153, 202], [157, 114, 185], [128, 44, 73], [153, 197, 126], [128, 233, 213], [201, 234, 178], [191, 83, 204], [191, 214, 103], [126, 214, 20], [142, 220, 45], [239, 131, 102], [97, 73, 87], [143, 105, 255], [209, 205, 97], [156, 157, 30], [114, 114, 22], [240, 29, 230], [74, 79, 132], [215, 2, 119], [44, 57, 232], [201, 203, 83], [51, 30, 18], [12, 158, 116], [212, 213, 244], [164, 212, 159], [53, 126, 89], [34, 50, 207], [207, 204, 244], [45, 144, 211], [143, 211, 72], [217, 230, 117], [229, 42, 29], [43, 247, 192], [135, 129, 120], [95, 14, 68], [212, 0, 80], [190, 141, 97], [21, 5, 123], [51, 59, 7], [24, 31, 130], [218, 146, 112], [206, 84, 100], [62, 133, 177], [248, 21, 105], [4, 106, 70], [14, 115, 150], [47, 22, 217], [212, 104, 103], [74, 74, 247], [104, 87, 208], [22, 250, 118], [173, 17, 187], [136, 36, 174], [82, 254, 121], [67, 37, 219], [244, 60, 229], [216, 211, 69], [11, 206, 40], [96, 197, 245], [151, 61, 89], [89, 138, 39], [208, 45, 118], [205, 201, 194], [73, 212, 104], [37, 121, 106], [64, 97, 8], [59, 177, 20], [17, 165, 106], [140, 193, 40], [11, 169, 214], [140, 151, 135], [21, 241, 47], [149, 154, 29], [225, 155, 193], [233, 126, 192], [167, 154, 168], [181, 194, 134], [154, 191, 84], [35, 217, 231], [144, 85, 209], [209, 40, 56], [161, 108, 217], [78, 94, 102], [156, 48, 225], [113, 217, 254], [165, 226, 159], [155, 12, 226], [101, 71, 180], [70, 42, 56], [130, 169, 137], [118, 122, 121], [99, 194, 120]]
-
-/**
- * Calculates the color transition between two colors in a palette based on a percentage.
- * @param {number[][]} pal - The palette containing RGB values for colors.
- * @param {number} it - The percentage of transition between two colors (0 to 1).
- * @returns {number[]} - An array containing RGB values for the interpolated color.
- */
-function colorTrans(pal, it) {
-    var percent = it - Math.floor(it);
-    var c1 = Math.floor(it) % pal.length;
-    var c2 = (c1 + 1) % pal.length;
-    var r = (1 - percent) * pal[c1][0] + (percent) * pal[c2][0];
-    var g = (1 - percent) * pal[c1][1] + (percent) * pal[c2][1];
-    var b = (1 - percent) * pal[c1][2] + (percent) * pal[c2][2];
-    return [r, g, b]
-}
-
-/**
- * Gets the color associated with the escape time 'it'.
- * @param {number|null} it - The escape time for a point or null if it doesn't escape.
- * @returns {number[]} - An array containing RGBA values for the color associated with the escape time.
- */
-function getColor(it, maxIter) {
-    if (it == null || it >= maxIter) return [0, 0, 0, 255];
-    else if (it < 0) return [0, 0, 0, 0];
-    let color = colorTrans(palette, it / 8);
-    return [color[0], color[1], color[2], 255];
-}
-
-/**
- * Represents a Mandelbrot set visualization.
- */
-class Mandelbrot {
-    center;
-    iterations;
-    bailout;
-    size;
-
-    canvas;
-    context;
-
-    ref;
-
-    refValid;
-
-    stats;
-
-    img;
-
-    rendering;
-
-    /**
-     * @param {HTMLCanvasElement} canvas - The canvas element to draw the Mandelbrot set.
-     * @param {DeepComplex} center - The center point of the Mandelbrot set.
-     * @param {number} iterations - The number of iterations to perform for each point.
-     * @param {number} bailout - The bailout value used for iteration termination.
-     */
-    constructor(canvas, center, iterations, bailout) {
-        this.center = center;
-        this.iterations = iterations;
-        this.bailout = bailout * bailout;
-
-        this.size = new FloatExp(4);
-
-        this.canvas = canvas;
-        this.context = canvas.getContext('2d');
-        this.img = this.context.getImageData(0, 0, this.canvas.width, this.canvas.height);
-        this.rendering = false;
-
-        canvas.addEventListener('mousedown', e => {
-            if (e.button === 0 && !this.rendering) {
-                // Left click: decrease size
-                console.log(this.getDelta(e.offsetX, e.offsetY));
-                this.goto(this.center.add(this.getDelta(e.offsetX, e.offsetY)));
-                this.zoom(this.size.div(4))
-                this.update();
+                })
             }
-        });
 
-        canvas.addEventListener('wheel', (e) => {
-            e.preventDefault();
-            if (!this.rendering)
-                if (e.deltaY < 0) {
-                    this.goto(this.center.add(this.getDelta(e.offsetX, e.offsetY)));
-                    this.zoom(this.size.div(4))
-                    this.update();
-                } else if (e.deltaY > 0) {
-                this.zoom(this.size.mul(4));
-                this.update();
-            }
-        });
+            let level = 1;
+            while (true) {
+                table.push([]);
 
-        canvas.addEventListener('contextmenu', e => {
-            e.preventDefault();
-            if (!this.rendering) {
-                this.zoom(this.size.div(4));
-                this.update();
-            }
-        })
+                for (let i = 0; i < table[level - 1].length; i += 2) {
+                    const bla1 = table[level - 1][i];
+                    const bla2 = table[level - 1][i + 1];
 
-        this.stats = {
-            ref: 0,
-            calc: 0,
-            guess: 0,
-            approx: 0,
-            time: performance.now()
-        }
-    }
+                    if (bla2 == null) {
+                        table[level].push(bla1)
+                        continue;
+                    };
 
-    /**
-     * Zooms the Mandelbrot set visualization.
-     * @param {FloatExp} size - The new size of the visualization.
-     */
-    zoom(size) {
-        Decimal.config({
-            precision: -size.exp + 10
-        })
-        this.size = size;
-    }
+                    table[level].push({
+                        A: bla1.A.mul(bla2.A),
+                        B: bla1.B.mul(bla2.A).add(bla2.B),
+                        radius: Math.min(
+                            bla1.radius, Math.max(
+                                0, (bla2.radius - bla1.B.norm() * scale) / bla1.A.norm()
+                            )
+                        )
+                    })
 
-    /**
-     * Moves the center of the Mandelbrot set visualization.
-     * @param {DeepComplex} c - The new center point.
-     */
-    goto(c) {
-        this.center = c;
-        this.refValid = false;
-    }
-
-    /**
-     * Sets the number of iterations for the Mandelbrot set visualization.
-     * @param {number} it - The number of iterations.
-     */
-    setIterations(it) {
-        this.iterations = parseInt(it);
-    }
-
-    /**
-     * Resets the Mandelbrot set visualization to its initial state.
-     */
-    home() {
-        this.goto(new DeepComplex(new Decimal(0), new Decimal(0)))
-        this.size = new FloatExp(4);
-        this.iterations = 256;
-    }
-
-    /**
-     * Calculates the delta between a point and the base point on the canvas.
-     * @param {number} x - The x-coordinate of the point.
-     * @param {number} y - The y-coordinate of the point.
-     * @param {number} [baseX] - The x-coordinate of the base point (optional).
-     * @param {number} [baseY] - The y-coordinate of the base point (optional).
-     * @returns {FloatExpComplex} - The delta as a complex number.
-     */
-    getDelta(x, y, baseX, baseY) {
-        if (!baseX) baseX = this.canvas.width / 2;
-        if (!baseY) baseY = this.canvas.height / 2;
-        return new FloatExpComplex(
-            this.size.mul((x - baseX) / this.canvas.width),
-            this.size.mul((baseY - y) / this.canvas.height)
-        )
-        // return new Complex(
-        //     (x - baseX) / this.canvas.width * this.size,
-        //     (baseY - y) / this.canvas.height * this.size
-        // )
-    }
-
-
-    /**
-     * Retrieves the color of a pixel in the Mandelbrot set visualization.
-     * @param {number} x - The x-coordinate of the pixel.
-     * @param {number} y - The y-coordinate of the pixel.
-     * @returns {number[]} - An array containing RGBA values for the color.
-     */
-    getColor(x, y) {
-        const index = (y * this.canvas.width + x) * 4;
-        return [this.img.data[index], this.img.data[index + 1], this.img.data[index + 2], this.img.data[index + 3]]
-    }
-
-    /**
-     * Sets the color of a pixel in the Mandelbrot set visualization.
-     * @param {number} x - The x-coordinate of the pixel.
-     * @param {number} y - The y-coordinate of the pixel.
-     * @param {number[]} color - An array containing RGBA values for the color.
-     */
-    setColor(x, y, color) {
-        const index = (y * this.canvas.width + x) * 4;
-        this.img.data[index] = color[0]
-        this.img.data[index + 1] = color[1]
-        this.img.data[index + 2] = color[2]
-        this.img.data[index + 3] = color[3]
-    }
-
-    showInfo() {
-        let totalPixels = this.canvas.width * this.canvas.height;
-        let statusText = `Reference: ${this.stats.ref}it\nApproximation: ${this.blaTable?.length ?? 0} levels\nCalculation: ${this.stats.calc} (${(this.stats.calc / totalPixels * 100).toFixed(2)}%)\nGuessed: ${this.stats.guess} (${(this.stats.guess / totalPixels * 100).toFixed(2)}%)\nTime: ${((performance.now() - this.stats.time) / 1000).toFixed(3)}s`;
-        if (!this.rendering) statusText += "\nDone!";
-        statsLabel.innerText = statusText;
-    }
-
-    /**
-     * Updates the Mandelbrot set visualization.
-     *
-     */
-    async update() {
-        this.rendering = true;
-        this.stats = {
-            ref: 0,
-            calc: 0,
-            guess: 0,
-            approx: 0,
-            time: performance.now()
-        };
-        this.deep = this.size.doubleValue() < 1e-300;
-
-        let base, ref, refComplex, glitches, coeff;
-        let refLen = 0;
-
-        base = this.center;
-        if (!this.refValid) {
-            console.log(performance.now() + " computing reference")
-            let nextTerm;
-
-
-            const generator = this.deep ? getReferenceOrbitFE(base, this.size, this.iterations, this.bailout) : getReferenceOrbit(base, this.size.doubleValue(), this.iterations, this.bailout);
-            while (!(nextTerm = await generator.next()).done) {
-                this.stats.ref = nextTerm.value;
-                this.showInfo(); // Update progress
-            }
-            ref = nextTerm.value;
-            this.stats.ref = ref.length;
-
-            this.ref = ref;
-            this.refValid = true;
-        } else {
-            ref = this.ref;
-        }
-        refLen = ref.length;
-        console.log("ref iter: " + ref.length)
-
-        console.log(performance.now() + " bla calculation")
-
-        if (this.deep)
-            this.blaTable = createBLATableFE(ref, this.size);
-        else
-            this.blaTable = createBLATable(ref, this.size.doubleValue())
-
-
-        let autoIter = Math.max((refLen - 1) * 32, this.iterations);
-        this.setIterations(autoIter);
-        // console.log(performance.now() + " series approximation")
-        // coeff = getSeriesCoefficients(ref, [
-        //     this.getDelta(0, 0),
-        //     this.getDelta(0, this.canvas.height - 1),
-        //     this.getDelta(this.canvas.width - 1, 0),
-        //     this.getDelta(this.canvas.width - 1, this.canvas.height - 1)
-        // ], this.iterations, this.bailout)
-        // console.log(coeff)
-        // this.stats.approx = coeff.it;
-
-        console.log(performance.now() + " perturbation")
-
-
-        glitches = [];
-
-        let paint = (x, y) => {
-            let newIter;
-
-            let delta = this.getDelta(x, y);
-
-            if (this.deep) newIter = getPTBLAFE(delta, ref, this.blaTable, this.iterations, this.bailout)
-            else
-                newIter = getPTBLA(delta.toComplex(), ref, this.blaTable, this.iterations, this.bailout);
-
-            if (newIter < 0) glitches.push([x, y])
-            else this.stats.calc++;
-
-            const color = getColor(newIter, this.iterations)
-
-            this.setColor(x, y, color);
-        }
-
-        let p1 = () => {
-            return new Promise(async (r, j) => {
-                for (let y = 0; y < this.canvas.height; y += 2) {
-                    for (let x = 0; x < this.canvas.width; x += 2) {
-                        paint(x, y);
-
-                    }
-                    if (y % 100 == 0) {
-                        this.context.putImageData(this.img, 0, 0)
-                        more.innerText = y;
-                        await delay(1)
-                    }
                 }
-                this.context.putImageData(this.img, 0, 0)
-                this.showInfo();
-                setTimeout(r, 10);
-            })
+                if (table[level].length <= 1) break;
+                level++;
+            }
+
+            return table;
         }
 
-        let p2 = () => {
-            return new Promise(async (r, j) => {
-                for (let y = 0; y < this.canvas.height; y += 2) {
-                    for (let x = 1; x < this.canvas.width; x += 2) {
-                        let leftColor = this.getColor(x - 1, y);
-                        let rightColor = this.getColor(x + 1, y);
-                        if (leftColor[0] == rightColor[0] && leftColor[1] == rightColor[1] && leftColor[2] == rightColor[2] && leftColor[3] == 255 && rightColor[3] == 255) {
-                            this.setColor(x, y, leftColor);
-                            this.stats.guess++;
-                        } else {
-                            paint(x, y);
+        function lookup(table, i, refLen, norm_dz, norm_dc) {
+            if (i === 0 || i >= refLen || table.length === 0) {
+                return {
+                    first: null,
+                    second: 0
+                };
+            }
+
+            let result = {
+                first: null,
+                second: 0
+            }; // { step, length }
+            let index = i - 1,
+                length = 1;
+
+            for (let level of table) {
+                if (norm_dz > level[index].radius) {
+                    break;
+                }
+                result.first = level[index];
+                result.second = length;
+
+                if (index % 2) {
+                    break;
+                }
+                index >>= 1; // equivalent to index = Math.floor(index / 2)
+                length <<= 1; // equivalent to length *= 2
+            }
+
+            result.second = Math.min(result.second, refLen - i);
+            return result;
+        }
+
+        function createBLATableFE(ref, scale) {
+            const lv1 = [];
+            const table = [lv1];
+            for (let i = 1; i < ref.length; i++) {
+                const point = ref[i];
+
+                const A = point.mul(2);
+                const B = new FloatExpComplex(1, 0);
+                lv1.push({
+                    A: A,
+                    B: B,
+                    radius: FEmax(new FloatExp(0),
+                        (point.norm().sub(B.norm().mul(scale))).div(A.norm().add(1)).mul(5.96e-8)
+                    )
+                })
+            }
+
+            let level = 1;
+            while (true) {
+                table.push([]);
+
+                for (let i = 0; i < table[level - 1].length; i += 2) {
+                    const bla1 = table[level - 1][i];
+                    const bla2 = table[level - 1][i + 1];
+
+                    if (bla2 == null) {
+                        table[level].push(bla1)
+                        continue;
+                    };
+
+                    table[level].push({
+                        A: bla1.A.mul(bla2.A),
+                        B: bla1.B.mul(bla2.A).add(bla2.B),
+                        radius: FEmin(
+                            bla1.radius, FEmax(
+                                new FloatExp(0), (bla2.radius.sub(bla1.B.norm().mul(scale))).div(bla1.A.norm())
+                            )
+                        )
+                    })
+
+                }
+                if (table[level].length <= 1) break;
+                level++;
+            }
+
+            return table;
+        }
+
+        function lookupFE(table, i, refLen, norm_dz, norm_dc) {
+            if (i === 0 || i >= refLen || table.length === 0) {
+                return {
+                    first: null,
+                    second: new FloatExp(0)
+                };
+            }
+
+            let result = {
+                first: null,
+                second: new FloatExp(0)
+            }; // { step, length }
+            let index = i - 1,
+                length = 1;
+
+            for (let level of table) {
+                if (norm_dz.compareTo(level[index].radius) > 0) {
+                    break;
+                }
+                result.first = level[index];
+                result.second = length;
+
+                if (index % 2) {
+                    break;
+                }
+                index >>= 1; // equivalent to index = Math.floor(index / 2)
+                length <<= 1; // equivalent to length *= 2
+            }
+
+            result.second = Math.min(result.second, refLen - i);
+            return result;
+        }
+
+
+        /**
+         * Calculates the escape time for a point in the Mandelbrot set using perturbation theory.
+         * @param {Complex} dc - The perturbation applied to the point.
+         * @param {Complex[]} ref - The reference orbit.
+         * @param {Complex[][]} table - The BLA table.
+         * @param {number} maxIter - The maximum iteration.
+         * @param {number} bailout - The bailout value used for iteration termination.
+         * @returns {number|null} - The escape time for the point or null if it doesn't escape.
+         */
+        function getPTBLA(dc, ref, table, maxIter, bailout) {
+            let dzRe = 0,
+                dzIm = 0; // Real and imaginary parts of dz
+
+            let iter = -1;
+            let refIter = 0;
+            let dcNorm = Math.max(Math.abs(dc.re), Math.abs(dc.im));
+            while (iter < maxIter) {
+                let dzNorm = Math.max(Math.abs(dzRe), Math.abs(dzIm)); // Chebyshev norm
+
+                let result = lookup(table, refIter, ref.length, dzNorm, dcNorm);
+
+                if (result.first != null) {
+                    let aRe = result.first.A.re,
+                        aIm = result.first.A.im;
+                    let bRe = result.first.B.re,
+                        bIm = result.first.B.im;
+
+                    let newDzRe = dzRe * aRe - dzIm * aIm + dc.re * bRe - dc.im * bIm;
+                    let newDzIm = dzRe * aIm + dzIm * aRe + dc.re * bIm + dc.im * bRe;
+
+                    dzRe = newDzRe;
+                    dzIm = newDzIm;
+
+                    iter += result.second;
+                    refIter += result.second;
+                    if (refIter >= ref.length) return iter;
+                } else {
+                    const Z = ref[refIter];
+
+                    let tempRe = dzRe,
+                        tempIm = dzIm;
+
+                    // dz = dz * 2 * Z + dz^2 + dc
+                    dzRe = (2 * Z.re + tempRe) * tempRe - (2 * Z.im + tempIm) * tempIm + dc.re;
+                    dzIm = 2 * (Z.re * tempIm + Z.im * tempRe + tempRe * tempIm) + dc.im;
+
+                    iter++;
+                    refIter++;
+                }
+
+                const Z2 = ref[refIter];
+                let valRe = Z2.re + dzRe;
+                let valIm = Z2.im + dzIm;
+
+                // Squared Euclidean distance (abs squared)
+                let valAbsSq = valRe * valRe + valIm * valIm;
+                if (valAbsSq > bailout) return iter;
+
+                let dzAbsSq = dzRe * dzRe + dzIm * dzIm;
+                if (valAbsSq < dzAbsSq || refIter == ref.length - 1) {
+                    dzRe = valRe;
+                    dzIm = valIm;
+                    refIter = 0;
+                }
+            }
+            return iter;
+        }
+
+        function getPTBLAFE(dc, ref, table, maxIter, bailout) {
+            let dz = new FloatExpComplex(0, 0)
+
+            let iter = -1;
+            let refIter = 0;
+            let normDc = dc.norm();
+            let bout = new FloatExp(bailout);
+            let zero = new FloatExp(0);
+
+            while (iter < maxIter) {
+                let dzNorm = dz.norm();
+                let result = lookupFE(table, refIter, ref.length, dzNorm, normDc)
+
+                if (result.first != null) {
+                    dz.mulMut(result.first.A).addMut(dc.mul(result.first.B));
+                    iter += result.second;
+                    refIter += result.second;
+                } else {
+                    const Z = ref[refIter]
+                    let dz2 = dz.mul(dz);
+                    dz = dz.mul(2).mulMut(Z).addMut(dz2).addMut(dc)
+                    iter++;
+                    refIter++;
+                }
+                if (refIter >= ref.length) return iter;
+
+                const Z2 = ref[refIter]
+                const val = Z2.add(dz);
+                const valAbs = val.abs();
+                if (valAbs.compareTo(bout) > 0) return iter;
+                if (valAbs.sub(dzNorm).compareTo(zero) < 0 || refIter == ref.length - 1) { // 检测是否需要变基
+                    dz = val;
+                    refIter = 0;
+                }
+            }
+            return iter;
+        }
+
+        /**
+         * Generates a rainbow palette of colors.
+         * @param {number} numColors - The number of colors to generate.
+         * @returns {number[][]} - An array containing RGBA values for each color in the palette.
+         */
+        function generateRainbowPalette(numColors) {
+            const rainbowColors = [];
+            const frequency = 0.2; // Adjust the frequency to change the spread of colors
+
+            for (let i = 0; i < numColors; i++) {
+                const red = Math.sin(frequency * i) * 127 + 128;
+                const green = Math.sin(frequency * 1.1 * i) * 127 + 128;
+                const blue = Math.sin(frequency * 1.2 * i) * 127 + 128;
+                rainbowColors.push([red | 0, green | 0, blue | 0, 255]);
+            }
+
+            return rainbowColors;
+        }
+
+        const palette = [[0, 0, 0], [190, 35, 41], [108, 225, 132], [82, 174, 214], [241, 73, 144], [233, 187, 241], [166, 179, 235], [135, 60, 219], [153, 62, 12], [13, 94, 36], [183, 6, 28], [179, 222, 71], [200, 77, 18], [139, 187, 67], [3, 31, 166], [9, 125, 90], [31, 37, 56], [203, 212, 93], [245, 150, 252], [19, 59, 69], [10, 137, 13], [174, 219, 28], [154, 32, 50], [64, 238, 80], [253, 54, 120], [50, 73, 18], [125, 158, 246], [173, 220, 73], [242, 20, 79], [102, 64, 68], [196, 107, 208], [50, 183, 48], [34, 161, 59], [145, 34, 246], [139, 225, 157], [176, 218, 31], [2, 153, 202], [157, 114, 185], [128, 44, 73], [153, 197, 126], [128, 233, 213], [201, 234, 178], [191, 83, 204], [191, 214, 103], [126, 214, 20], [142, 220, 45], [239, 131, 102], [97, 73, 87], [143, 105, 255], [209, 205, 97], [156, 157, 30], [114, 114, 22], [240, 29, 230], [74, 79, 132], [215, 2, 119], [44, 57, 232], [201, 203, 83], [51, 30, 18], [12, 158, 116], [212, 213, 244], [164, 212, 159], [53, 126, 89], [34, 50, 207], [207, 204, 244], [45, 144, 211], [143, 211, 72], [217, 230, 117], [229, 42, 29], [43, 247, 192], [135, 129, 120], [95, 14, 68], [212, 0, 80], [190, 141, 97], [21, 5, 123], [51, 59, 7], [24, 31, 130], [218, 146, 112], [206, 84, 100], [62, 133, 177], [248, 21, 105], [4, 106, 70], [14, 115, 150], [47, 22, 217], [212, 104, 103], [74, 74, 247], [104, 87, 208], [22, 250, 118], [173, 17, 187], [136, 36, 174], [82, 254, 121], [67, 37, 219], [244, 60, 229], [216, 211, 69], [11, 206, 40], [96, 197, 245], [151, 61, 89], [89, 138, 39], [208, 45, 118], [205, 201, 194], [73, 212, 104], [37, 121, 106], [64, 97, 8], [59, 177, 20], [17, 165, 106], [140, 193, 40], [11, 169, 214], [140, 151, 135], [21, 241, 47], [149, 154, 29], [225, 155, 193], [233, 126, 192], [167, 154, 168], [181, 194, 134], [154, 191, 84], [35, 217, 231], [144, 85, 209], [209, 40, 56], [161, 108, 217], [78, 94, 102], [156, 48, 225], [113, 217, 254], [165, 226, 159], [155, 12, 226], [101, 71, 180], [70, 42, 56], [130, 169, 137], [118, 122, 121], [99, 194, 120]]
+
+        /**
+         * Calculates the color transition between two colors in a palette based on a percentage.
+         * @param {number[][]} pal - The palette containing RGB values for colors.
+         * @param {number} it - The percentage of transition between two colors (0 to 1).
+         * @returns {number[]} - An array containing RGB values for the interpolated color.
+         */
+        function colorTrans(pal, it) {
+            var percent = it - Math.floor(it);
+            var c1 = Math.floor(it) % pal.length;
+            var c2 = (c1 + 1) % pal.length;
+            var r = (1 - percent) * pal[c1][0] + (percent) * pal[c2][0];
+            var g = (1 - percent) * pal[c1][1] + (percent) * pal[c2][1];
+            var b = (1 - percent) * pal[c1][2] + (percent) * pal[c2][2];
+            return [r, g, b]
+        }
+
+        /**
+         * Gets the color associated with the escape time 'it'.
+         * @param {number|null} it - The escape time for a point or null if it doesn't escape.
+         * @returns {number[]} - An array containing RGBA values for the color associated with the escape time.
+         */
+        function getColor(it, maxIter) {
+            if (it == null || it >= maxIter) return [0, 0, 0, 255];
+            else if (it < 0) return [0, 0, 0, 0];
+            let color = colorTrans(palette, it / 8);
+            return [color[0], color[1], color[2], 255];
+        }
+
+        /**
+         * Represents a Mandelbrot set visualization.
+         */
+        class Mandelbrot {
+            center;
+            iterations;
+            bailout;
+            size;
+
+            canvas;
+            context;
+
+            ref;
+
+            refValid;
+
+            stats;
+
+            img;
+
+            rendering;
+
+            /**
+             * @param {HTMLCanvasElement} canvas - The canvas element to draw the Mandelbrot set.
+             * @param {DeepComplex} center - The center point of the Mandelbrot set.
+             * @param {number} iterations - The number of iterations to perform for each point.
+             * @param {number} bailout - The bailout value used for iteration termination.
+             */
+            constructor(canvas, center, iterations, bailout) {
+                this.center = center;
+                this.iterations = iterations;
+                this.bailout = bailout * bailout;
+
+                this.size = new FloatExp(4);
+
+                this.canvas = canvas;
+                this.context = canvas.getContext('2d');
+                this.img = this.context.getImageData(0, 0, this.canvas.width, this.canvas.height);
+                this.rendering = false;
+
+                canvas.addEventListener('mousedown', e => {
+                    if (e.button === 0 && !this.rendering) {
+                        // Left click: decrease size
+                        console.log(this.getDelta(e.offsetX, e.offsetY));
+                        this.goto(this.center.add(this.getDelta(e.offsetX, e.offsetY)));
+                        this.zoom(this.size.div(4))
+                        this.update();
+                    }
+                });
+
+                canvas.addEventListener('wheel', (e) => {
+                    e.preventDefault();
+                    if (!this.rendering)
+                        if (e.deltaY < 0) {
+                            this.goto(this.center.add(this.getDelta(e.offsetX, e.offsetY)));
+                            this.zoom(this.size.div(4))
+                            this.update();
+                        } else if (e.deltaY > 0) {
+                            this.zoom(this.size.mul(4));
+                            this.update();
                         }
-                    }
-                    if (y % 100 == 0) {
-                        this.context.putImageData(this.img, 0, 0)
-                        more.innerText = y;
-                        await delay(1)
-                    }
-                }
-                this.context.putImageData(this.img, 0, 0)
-                this.showInfo();
-                setTimeout(r, 10);
-            })
-        }
+                });
 
-        let p3 = () => {
-            return new Promise(async (r, j) => {
-                for (let y = 1; y < this.canvas.height; y += 2) {
+                canvas.addEventListener('contextmenu', e => {
+                    e.preventDefault();
+                    if (!this.rendering) {
+                        this.zoom(this.size.div(4));
+                        this.update();
+                    }
+                })
+
+                this.stats = {
+                    ref: 0,
+                    calc: 0,
+                    guess: 0,
+                    approx: 0,
+                    time: performance.now()
+                }
+            }
+
+            /**
+             * Zooms the Mandelbrot set visualization.
+             * @param {FloatExp} size - The new size of the visualization.
+             */
+            zoom(size) {
+                Decimal.config({
+                    precision: -size.exp + 10
+                })
+                this.size = size;
+            }
+
+            /**
+             * Moves the center of the Mandelbrot set visualization.
+             * @param {DeepComplex} c - The new center point.
+             */
+            goto(c) {
+                this.center = c;
+                this.refValid = false;
+            }
+
+            /**
+             * Sets the number of iterations for the Mandelbrot set visualization.
+             * @param {number} it - The number of iterations.
+             */
+            setIterations(it) {
+                this.iterations = parseInt(it);
+            }
+
+            /**
+             * Resets the Mandelbrot set visualization to its initial state.
+             */
+            home() {
+                this.goto(new DeepComplex(new Decimal(0), new Decimal(0)))
+                this.size = new FloatExp(4);
+                this.iterations = 256;
+            }
+
+            /**
+             * Calculates the delta between a point and the base point on the canvas.
+             * @param {number} x - The x-coordinate of the point.
+             * @param {number} y - The y-coordinate of the point.
+             * @param {number} [baseX] - The x-coordinate of the base point (optional).
+             * @param {number} [baseY] - The y-coordinate of the base point (optional).
+             * @returns {FloatExpComplex} - The delta as a complex number.
+             */
+            getDelta(x, y, baseX, baseY) {
+                if (!baseX) baseX = this.canvas.width / 2;
+                if (!baseY) baseY = this.canvas.height / 2;
+                return new FloatExpComplex(
+                    this.size.mul((x - baseX) / this.canvas.width),
+                    this.size.mul((baseY - y) / this.canvas.height)
+                )
+                // return new Complex(
+                //     (x - baseX) / this.canvas.width * this.size,
+                //     (baseY - y) / this.canvas.height * this.size
+                // )
+            }
+
+
+            /**
+             * Retrieves the color of a pixel in the Mandelbrot set visualization.
+             * @param {number} x - The x-coordinate of the pixel.
+             * @param {number} y - The y-coordinate of the pixel.
+             * @returns {number[]} - An array containing RGBA values for the color.
+             */
+            getColor(x, y) {
+                const index = (y * this.canvas.width + x) * 4;
+                return [this.img.data[index], this.img.data[index + 1], this.img.data[index + 2], this.img.data[index + 3]]
+            }
+
+            /**
+             * Sets the color of a pixel in the Mandelbrot set visualization.
+             * @param {number} x - The x-coordinate of the pixel.
+             * @param {number} y - The y-coordinate of the pixel.
+             * @param {number[]} color - An array containing RGBA values for the color.
+             */
+            setColor(x, y, color) {
+                const index = (y * this.canvas.width + x) * 4;
+                this.img.data[index] = color[0]
+                this.img.data[index + 1] = color[1]
+                this.img.data[index + 2] = color[2]
+                this.img.data[index + 3] = color[3]
+            }
+
+            showInfo() {
+                let totalPixels = this.canvas.width * this.canvas.height;
+                let statusText = `Reference: ${this.stats.ref}it\nApproximation: ${this.blaTable?.length ?? 0} levels\nCalculation: ${this.stats.calc} (${(this.stats.calc / totalPixels * 100).toFixed(2)}%)\nGuessed: ${this.stats.guess} (${(this.stats.guess / totalPixels * 100).toFixed(2)}%)\nTime: ${((performance.now() - this.stats.time) / 1000).toFixed(3)}s`;
+                if (!this.rendering) statusText += "\nDone!";
+                statsLabel.innerText = statusText;
+            }
+
+            /**
+             * Updates the Mandelbrot set visualization.
+             *
+             */
+            async update() {
+                this.rendering = true;
+                this.stats = {
+                    ref: 0,
+                    calc: 0,
+                    guess: 0,
+                    approx: 0,
+                    time: performance.now()
+                };
+                this.deep = this.size.doubleValue() < 1e-300;
+
+                let base, ref, refComplex, glitches, coeff;
+                let refLen = 0;
+
+                base = this.center;
+                if (!this.refValid) {
+                    console.log(performance.now() + " computing reference")
+                    let nextTerm;
+
+
+                    const generator = this.deep ? getReferenceOrbitFE(base, this.size, this.iterations, this.bailout) : getReferenceOrbit(base, this.size.doubleValue(), this.iterations, this.bailout);
+                    while (!(nextTerm = await generator.next()).done) {
+                        this.stats.ref = nextTerm.value;
+                        this.showInfo(); // Update progress
+                    }
+                    ref = nextTerm.value;
+                    this.stats.ref = ref.length;
+
+                    this.ref = ref;
+                    this.refValid = true;
+                } else {
+                    ref = this.ref;
+                }
+                refLen = ref.length;
+                console.log("ref iter: " + ref.length)
+
+                console.log(performance.now() + " bla calculation")
+
+                if (this.deep)
+                    this.blaTable = createBLATableFE(ref, this.size);
+                else
+                    this.blaTable = createBLATable(ref, this.size.doubleValue())
+
+
+                let autoIter = Math.max((refLen - 1) * 32, this.iterations);
+                this.setIterations(autoIter);
+                // console.log(performance.now() + " series approximation")
+                // coeff = getSeriesCoefficients(ref, [
+                //     this.getDelta(0, 0),
+                //     this.getDelta(0, this.canvas.height - 1),
+                //     this.getDelta(this.canvas.width - 1, 0),
+                //     this.getDelta(this.canvas.width - 1, this.canvas.height - 1)
+                // ], this.iterations, this.bailout)
+                // console.log(coeff)
+                // this.stats.approx = coeff.it;
+
+                console.log(performance.now() + " perturbation")
+
+
+                glitches = [];
+
+                let paint = (x, y) => {
+                    let newIter;
+
+                    let delta = this.getDelta(x, y);
+
+                    if (this.deep) newIter = getPTBLAFE(delta, ref, this.blaTable, this.iterations, this.bailout)
+                    else
+                        newIter = getPTBLA(delta.toComplex(), ref, this.blaTable, this.iterations, this.bailout);
+
+                    if (newIter < 0) glitches.push([x, y])
+                    else this.stats.calc++;
+
+                    const color = getColor(newIter, this.iterations)
+
+                    this.setColor(x, y, color);
+                }
+
+                let p1 = () => {
+                    return new Promise(async (r, j) => {
+                        for (let y = 0; y < this.canvas.height; y += 2) {
+                            for (let x = 0; x < this.canvas.width; x += 2) {
+                                paint(x, y);
+
+                            }
+                            if (y % 100 == 0) {
+                                this.context.putImageData(this.img, 0, 0)
+                                more.innerText = y;
+                                await delay(1)
+                            }
+                        }
+                        this.context.putImageData(this.img, 0, 0)
+                        this.showInfo();
+                        setTimeout(r, 10);
+                    })
+                }
+
+                let p2 = () => {
+                    return new Promise(async (r, j) => {
+                        for (let y = 0; y < this.canvas.height; y += 2) {
+                            for (let x = 1; x < this.canvas.width; x += 2) {
+                                let leftColor = this.getColor(x - 1, y);
+                                let rightColor = this.getColor(x + 1, y);
+                                if (leftColor[0] == rightColor[0] && leftColor[1] == rightColor[1] && leftColor[2] == rightColor[2] && leftColor[3] == 255 && rightColor[3] == 255) {
+                                    this.setColor(x, y, leftColor);
+                                    this.stats.guess++;
+                                } else {
+                                    paint(x, y);
+                                }
+                            }
+                            if (y % 100 == 0) {
+                                this.context.putImageData(this.img, 0, 0)
+                                more.innerText = y;
+                                await delay(1)
+                            }
+                        }
+                        this.context.putImageData(this.img, 0, 0)
+                        this.showInfo();
+                        setTimeout(r, 10);
+                    })
+                }
+
+                let p3 = () => {
+                    return new Promise(async (r, j) => {
+                        for (let y = 1; y < this.canvas.height; y += 2) {
+                            for (let x = 0; x < this.canvas.width; x++) {
+
+                                let upColor = this.getColor(x, y - 1);
+                                let downColor = this.getColor(x, y + 1);
+                                if (upColor[0] == downColor[0] && upColor[1] == downColor[1] && upColor[2] == downColor[2] && upColor[3] == 255 && downColor[3] == 255) {
+                                    this.setColor(x, y, upColor);
+                                    this.stats.guess++;
+                                } else {
+                                    paint(x, y);
+                                }
+
+                            }
+
+                            if (y % 100 == 1) {
+                                this.context.putImageData(this.img, 0, 0)
+                                more.innerText = y;
+                                await delay(1)
+                            }
+                        }
+                        this.context.putImageData(this.img, 0, 0)
+                        this.showInfo();
+                        setTimeout(r, 10);
+                    })
+                }
+
+                this.context.clearRect(0, 0, this.canvas.width, this.canvas.height);
+                p1().then(() => p2()).then(() => p3()).then(() => {
+                    console.log('done!')
+                    this.rendering = false;
+                    this.showInfo();
+                    reInput.value = this.center.re;
+                    imInput.value = this.center.im;
+                    zoomInput.value = new FloatExp(4).div(this.size).toString()
+                    itInput.value = this.iterations;
+                    location.hash = "#re=" + this.center.re +
+                        "&im=" + this.center.im +
+                        "&zoom=" + new FloatExp(4).div(this.size) +
+                        "&iter=" + this.iterations;
+                })
+            }
+
+            /**
+             * Initiates the download of the Mandelbrot set visualization as a PNG image.
+             */
+            download() {
+                const downloadLink = document.createElement('a');
+
+                downloadLink.href = canvas.toDataURL('image/png');
+                downloadLink.download = 'mandelbrot.png';
+
+                downloadLink.click();
+            }
+
+            /**
+             * Increases the number of iterations for the Mandelbrot set visualization.
+             * @param {number} mul - The multiplier for increasing the iterations.
+             */
+            increaseIteration(mul) {
+                this.setIterations(this.iterations * mul);
+
+                for (let y = 0; y < this.canvas.height; y++) {
                     for (let x = 0; x < this.canvas.width; x++) {
-
-                        let upColor = this.getColor(x, y - 1);
-                        let downColor = this.getColor(x, y + 1);
-                        if (upColor[0] == downColor[0] && upColor[1] == downColor[1] && upColor[2] == downColor[2] && upColor[3] == 255 && downColor[3] == 255) {
-                            this.setColor(x, y, upColor);
-                            this.stats.guess++;
-                        } else {
-                            paint(x, y);
+                        const color = this.getColor(x, y);
+                        if (color[0] == 0 && color[1] == 0 && color[2] == 0) {
+                            this.setColor(x, y, [0, 0, 0, 0])
                         }
-
-                    }
-
-                    if (y % 100 == 1) {
-                        this.context.putImageData(this.img, 0, 0)
-                        more.innerText = y;
-                        await delay(1)
                     }
                 }
-                this.context.putImageData(this.img, 0, 0)
-                this.showInfo();
-                setTimeout(r, 10);
-            })
-        }
-
-        this.context.clearRect(0, 0, this.canvas.width, this.canvas.height);
-        p1().then(() => p2()).then(() => p3()).then(() => {
-            console.log('done!')
-            this.rendering = false;
-            this.showInfo();
-            reInput.value = this.center.re;
-            imInput.value = this.center.im;
-            zoomInput.value = new FloatExp(4).div(this.size).toString()
-            itInput.value = this.iterations;
-            location.hash = "#re=" + this.center.re +
-                "&im=" + this.center.im +
-                "&zoom=" + new FloatExp(4).div(this.size) +
-                "&iter=" + this.iterations;
-        })
-    }
-
-    /**
-     * Initiates the download of the Mandelbrot set visualization as a PNG image.
-     */
-    download() {
-        const downloadLink = document.createElement('a');
-
-        downloadLink.href = canvas.toDataURL('image/png');
-        downloadLink.download = 'mandelbrot.png';
-
-        downloadLink.click();
-    }
-
-    /**
-     * Increases the number of iterations for the Mandelbrot set visualization.
-     * @param {number} mul - The multiplier for increasing the iterations.
-     */
-    increaseIteration(mul) {
-        this.setIterations(this.iterations * mul);
-
-        for (let y = 0; y < this.canvas.height; y++) {
-            for (let x = 0; x < this.canvas.width; x++) {
-                const color = this.getColor(x, y);
-                if (color[0] == 0 && color[1] == 0 && color[2] == 0) {
-                    this.setColor(x, y, [0, 0, 0, 0])
-                }
+                this.update(true)
             }
         }
-        this.update(true)
-    }
-}
 
-let c = new DeepComplex(
-    new Decimal(0), new Decimal(0));
+        let c = new DeepComplex(
+            new Decimal(0), new Decimal(0));
 
-let size = new FloatExp(4);
-let bailout = 2;
-let iterations = 256;
+        let size = new FloatExp(4);
+        let bailout = 2;
+        let iterations = 256;
 
-location.hash.slice(1).split("&").forEach(e => {
-    let kv = e.split("=", 2);
-    switch (kv[0]) {
-        case "re":
-            c.re = new Decimal(kv[1]);
-            break;
-        case "im":
-            c.im = new Decimal(kv[1]);
-            break;
-        case "zoom":
-            size = new FloatExp(4).div(getFloatExp(kv[1]));
-            break;
-        case "iter":
-            iterations = parseInt(kv[1]);
-            break;
-        case "bailout":
-            bailout = parseFloat(kv[1]);
-            break;
-    }
-});
+        location.hash.slice(1).split("&").forEach(e => {
+            let kv = e.split("=", 2);
+            switch (kv[0]) {
+                case "re":
+                    c.re = new Decimal(kv[1]);
+                    break;
+                case "im":
+                    c.im = new Decimal(kv[1]);
+                    break;
+                case "zoom":
+                    size = new FloatExp(4).div(getFloatExp(kv[1]));
+                    break;
+                case "iter":
+                    iterations = parseInt(kv[1]);
+                    break;
+                case "bailout":
+                    bailout = parseFloat(kv[1]);
+                    break;
+            }
+        });
 
-const mandelbrot = new Mandelbrot(canvas, c, iterations, bailout)
-mandelbrot.zoom(size)
-mandelbrot.update()
+        const mandelbrot = new Mandelbrot(canvas, c, iterations, bailout)
+        mandelbrot.zoom(size)
+        mandelbrot.update()
 
-document.getElementById('goto').addEventListener('click', e => {
-    mandelbrot.goto(new DeepComplex(
-        new Decimal(reInput.value),
-        new Decimal(imInput.value)
-    ))
+        document.getElementById('goto').addEventListener('click', e => {
+            mandelbrot.goto(new DeepComplex(
+                new Decimal(reInput.value),
+                new Decimal(imInput.value)
+            ))
 
-    mandelbrot.zoom(new FloatExp(4).div(parseFloatExp(zoomInput.value)));
-    mandelbrot.setIterations(parseInt(itInput.value));
+            mandelbrot.zoom(new FloatExp(4).div(parseFloatExp(zoomInput.value)));
+            mandelbrot.setIterations(parseInt(itInput.value));
 
-    mandelbrot.update();
-})
+            mandelbrot.update();
+        })
 
-document.getElementById('home').addEventListener('click', e => {
-    mandelbrot.home()
-    mandelbrot.update()
-})
+        document.getElementById('home').addEventListener('click', e => {
+            mandelbrot.home()
+            mandelbrot.update()
+        })
 
-document.getElementById('download').addEventListener('click', e => {
-    mandelbrot.download()
-})
+        document.getElementById('download').addEventListener('click', e => {
+            mandelbrot.download()
+        })
 
-sampleLoadBtn.addEventListener('click', e => {
-    const loc = samples[sampleSelect.value]
-    mandelbrot.goto(new DeepComplex(
-        new Decimal(loc.re), new Decimal(loc.im)
-    ))
-    mandelbrot.zoom(new FloatExp(4).div(getFloatExp(loc.zoom)));
-    mandelbrot.setIterations(loc.it);
-    mandelbrot.update()
-})
+        sampleLoadBtn.addEventListener('click', e => {
+            const loc = samples[sampleSelect.value]
+            mandelbrot.goto(new DeepComplex(
+                new Decimal(loc.re), new Decimal(loc.im)
+            ))
+            mandelbrot.zoom(new FloatExp(4).div(getFloatExp(loc.zoom)));
+            mandelbrot.setIterations(loc.it);
+            mandelbrot.update()
+        })
 
 
-document.getElementById('zoom-in').addEventListener('click', function() {
-    mandelbrot.zoom(mandelbrot.size.div(4));
-    mandelbrot.update()
-});
+        document.getElementById('zoom-in').addEventListener('click', function () {
+            mandelbrot.zoom(mandelbrot.size.div(4));
+            mandelbrot.update()
+        });
 
-document.getElementById('zoom-out').addEventListener('click', function() {
-    mandelbrot.zoom(mandelbrot.size.mul(4));
-    mandelbrot.update()
-});
+        document.getElementById('zoom-out').addEventListener('click', function () {
+            mandelbrot.zoom(mandelbrot.size.mul(4));
+            mandelbrot.update()
+        });
 
-document.getElementById('increase-iter').addEventListener('click', function() {
-    mandelbrot.increaseIteration(2);
-});
+        document.getElementById('increase-iter').addEventListener('click', function () {
+            mandelbrot.increaseIteration(2);
+        });
 
-document.getElementById('decrease-iter').addEventListener('click', function() {
-    mandelbrot.setIterations(mandelbrot.iterations / 2);
-    mandelbrot.update()
-});
+        document.getElementById('decrease-iter').addEventListener('click', function () {
+            mandelbrot.setIterations(mandelbrot.iterations / 2);
+            mandelbrot.update()
+        });
 
-document.getElementById("copy").addEventListener('click', e => {
-    const url = location.protocol + "//" + location.host + location.pathname +
-        "#re=" + mandelbrot.center.re +
-        "&im=" + mandelbrot.center.im +
-        "&zoom=" + new FloatExp(4).div(mandelbrot.size) +
-        "&iter=" + mandelbrot.iterations;
-    navigator.clipboard.writeText(url).then(() => alert("Success"))
-})
+        document.getElementById("copy").addEventListener('click', e => {
+            const url = location.protocol + "//" + location.host + location.pathname +
+                "#re=" + mandelbrot.center.re +
+                "&im=" + mandelbrot.center.im +
+                "&zoom=" + new FloatExp(4).div(mandelbrot.size) +
+                "&iter=" + mandelbrot.iterations;
+            navigator.clipboard.writeText(url).then(() => alert("Success"))
+        })
     </script>
 </body>
 
