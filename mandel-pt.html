@@ -1335,13 +1335,13 @@
                 this.context = canvas.getContext('2d');
                 this.img = this.context.getImageData(0, 0, this.canvas.width, this.canvas.height);
                 this.rendering = false;
+                this.iterMap = [...new Array(this.canvas.height)].map(e => [...new Array(this.canvas.width)].map(e => 0))
 
                 canvas.addEventListener('mousedown', e => {
                     if (e.button === 0 && !this.rendering) {
                         // Left click: decrease size
                         console.log(this.getDelta(e.offsetX, e.offsetY));
-                        this.goto(this.center.add(this.getDelta(e.offsetX, e.offsetY)));
-                        this.zoom(this.size.div(4))
+                        this.click(e.offsetX, e.offsetY);
                         this.update();
                     }
                 });
@@ -1350,11 +1350,10 @@
                     e.preventDefault();
                     if (!this.rendering)
                         if (e.deltaY < 0) {
-                            this.goto(this.center.add(this.getDelta(e.offsetX, e.offsetY)));
-                            this.zoom(this.size.div(4))
+                            this.click(e.offsetX, e.offsetY);
                             this.update();
                         } else if (e.deltaY > 0) {
-                            this.zoom(this.size.mul(4));
+                            this.zoomOut(4);
                             this.update();
                         }
                 });
@@ -1374,6 +1373,31 @@
                     approx: 0,
                     time: performance.now()
                 }
+            }
+
+            click(x, y) {
+                // Calculate the new center and zoom level
+                this.goto(this.center.add(this.getDelta(x, y)));
+                this.zoom(this.size.div(4));
+
+                // Capture the clicked section (a quarter of the canvas size around the click point)
+                const zoomWidth = this.canvas.width / 4;
+                const zoomHeight = this.canvas.height / 4;
+                const startX = x - zoomWidth / 2; // Top-left x of the zoomed region
+                const startY = y - zoomHeight / 2; // Top-left y of the zoomed region
+
+                // Scale up the selected region to 4x its size
+                this.context.drawImage(
+                    this.canvas,
+                    startX, startY, zoomWidth, zoomHeight,  // Source region (original size)
+                    0, 0, this.canvas.width, this.canvas.height // Destination (scaled to fit canvas)
+                );
+
+                this.img = this.context.getImageData(0, 0, this.canvas.width, this.canvas.height);
+            }
+
+            zoomOut(size) {
+                this.size = this.size.mul(size);
             }
 
             /**
@@ -1436,23 +1460,26 @@
 
 
             /**
-             * Retrieves the color of a pixel in the Mandelbrot set visualization.
+             * Retrieves the iteration of a pixel in the Mandelbrot set visualization.
              * @param {number} x - The x-coordinate of the pixel.
              * @param {number} y - The y-coordinate of the pixel.
-             * @returns {number[]} - An array containing RGBA values for the color.
+             * @returns {number} - The iteration of the given point.
              */
-            getColor(x, y) {
-                const index = (y * this.canvas.width + x) * 4;
-                return [this.img.data[index], this.img.data[index + 1], this.img.data[index + 2], this.img.data[index + 3]]
+            getIter(x, y) {
+                if (x >= this.canvas.width || x < 0 || y >= this.canvas.height || y <= 0) return -1
+                return this.iterMap[y][x];
             }
 
             /**
-             * Sets the color of a pixel in the Mandelbrot set visualization.
+             * Sets the iteration of a pixel in the Mandelbrot set visualization.
              * @param {number} x - The x-coordinate of the pixel.
              * @param {number} y - The y-coordinate of the pixel.
-             * @param {number[]} color - An array containing RGBA values for the color.
+             * @param {number} it - The iteration
              */
-            setColor(x, y, color) {
+            setIter(x, y, it) {
+                this.iterMap[y][x] = it;
+
+                const color = getColor(it, this.iterations);
                 const index = (y * this.canvas.width + x) * 4;
                 this.img.data[index] = color[0]
                 this.img.data[index + 1] = color[1]
@@ -1525,7 +1552,7 @@
 
                 console.log(performance.now() + " perturbation")
 
-                let paint = (x, y) => {
+                let computePixel = (x, y) => {
                     let newIter;
 
                     let delta = this.getDelta(x, y);
@@ -1536,17 +1563,14 @@
 
                     this.stats.calc++;
 
-                    const color = getColor(newIter, this.iterations)
-
-                    this.setColor(x, y, color);
+                    this.setIter(x, y, newIter);
                 }
 
                 let p1 = () => {
                     return new Promise(async (r, j) => {
                         for (let y = 0; y < this.canvas.height; y += 2) {
                             for (let x = 0; x < this.canvas.width; x += 2) {
-                                paint(x, y);
-
+                                computePixel(x, y);
                             }
                             if (y % 100 == 0) {
                                 this.context.putImageData(this.img, 0, 0)
@@ -1556,7 +1580,8 @@
                         }
                         this.context.putImageData(this.img, 0, 0)
                         this.showInfo();
-                        setTimeout(r, 10);
+                        await delay(10);
+                        r();
                     })
                 }
 
@@ -1564,13 +1589,13 @@
                     return new Promise(async (r, j) => {
                         for (let y = 0; y < this.canvas.height; y += 2) {
                             for (let x = 1; x < this.canvas.width; x += 2) {
-                                let leftColor = this.getColor(x - 1, y);
-                                let rightColor = this.getColor(x + 1, y);
-                                if (leftColor[0] == rightColor[0] && leftColor[1] == rightColor[1] && leftColor[2] == rightColor[2] && leftColor[3] == 255 && rightColor[3] == 255) {
-                                    this.setColor(x, y, leftColor);
+                                let leftColor = this.getIter(x - 1, y);
+                                let rightColor = this.getIter(x + 1, y);
+                                if (leftColor == rightColor && leftColor > 0 && rightColor > 0) {
+                                    this.setIter(x, y, leftColor);
                                     this.stats.guess++;
                                 } else {
-                                    paint(x, y);
+                                    computePixel(x, y);
                                 }
                             }
                             if (y % 100 == 0) {
@@ -1581,7 +1606,8 @@
                         }
                         this.context.putImageData(this.img, 0, 0)
                         this.showInfo();
-                        setTimeout(r, 10);
+                        await delay(10);
+                        r();
                     })
                 }
 
@@ -1590,13 +1616,13 @@
                         for (let y = 1; y < this.canvas.height; y += 2) {
                             for (let x = 0; x < this.canvas.width; x++) {
 
-                                let upColor = this.getColor(x, y - 1);
-                                let downColor = this.getColor(x, y + 1);
-                                if (upColor[0] == downColor[0] && upColor[1] == downColor[1] && upColor[2] == downColor[2] && upColor[3] == 255 && downColor[3] == 255) {
-                                    this.setColor(x, y, upColor);
+                                let upColor = this.getIter(x, y - 1);
+                                let downColor = this.getIter(x, y + 1);
+                                if (upColor == downColor && upColor > 0 && downColor > 0) {
+                                    this.setIter(x, y, upColor);
                                     this.stats.guess++;
                                 } else {
-                                    paint(x, y);
+                                    computePixel(x, y);
                                 }
 
                             }
@@ -1609,7 +1635,8 @@
                         }
                         this.context.putImageData(this.img, 0, 0)
                         this.showInfo();
-                        setTimeout(r, 10);
+                        await delay(10);
+                        r();
                     })
                 }
 
@@ -1642,13 +1669,13 @@
              * @param {number} mul - The multiplier for increasing the iterations.
              */
             increaseIteration(mul) {
+                let prevIter = this.iterations;
                 this.setIterations(this.iterations * mul);
 
                 for (let y = 0; y < this.canvas.height; y++) {
                     for (let x = 0; x < this.canvas.width; x++) {
-                        const color = this.getColor(x, y);
-                        if (color[0] == 0 && color[1] == 0 && color[2] == 0) {
-                            this.setColor(x, y, [0, 0, 0, 0])
+                        if (this.iterMap[y][x] == this.iterations) {
+                            this.setIter(x, y, -1)
                         }
                     }
                 }
