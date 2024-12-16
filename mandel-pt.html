@@ -1467,7 +1467,12 @@
                 };
                 this.deep = this.size.doubleValue() < 1e-300;
 
-                let base, ref, refComplex, glitches, coeff;
+                reInput.value = this.center.re;
+                imInput.value = this.center.im;
+                zoomInput.value = new FloatExp(4).div(this.size).toString()
+                itInput.value = this.iterations;
+
+                let base, ref, refComplex, coeff;
                 let refLen = 0;
 
                 base = this.center;
@@ -1502,20 +1507,8 @@
 
                 let autoIter = Math.max((refLen - 1) * 32, this.iterations);
                 this.setIterations(autoIter);
-                // console.log(performance.now() + " series approximation")
-                // coeff = getSeriesCoefficients(ref, [
-                //     this.getDelta(0, 0),
-                //     this.getDelta(0, this.canvas.height - 1),
-                //     this.getDelta(this.canvas.width - 1, 0),
-                //     this.getDelta(this.canvas.width - 1, this.canvas.height - 1)
-                // ], this.iterations, this.bailout)
-                // console.log(coeff)
-                // this.stats.approx = coeff.it;
 
                 console.log(performance.now() + " perturbation")
-
-
-                glitches = [];
 
                 let paint = (x, y) => {
                     let newIter;
@@ -1526,8 +1519,7 @@
                     else
                         newIter = getPTBLA(delta.toComplex(), ref, this.blaTable, this.iterations, this.bailout);
 
-                    if (newIter < 0) glitches.push([x, y])
-                    else this.stats.calc++;
+                    this.stats.calc++;
 
                     const color = getColor(newIter, this.iterations)
 
@@ -1611,10 +1603,6 @@
                     console.log('done!')
                     this.rendering = false;
                     this.showInfo();
-                    reInput.value = this.center.re;
-                    imInput.value = this.center.im;
-                    zoomInput.value = new FloatExp(4).div(this.size).toString()
-                    itInput.value = this.iterations;
                     location.hash = "#re=" + this.center.re +
                         "&im=" + this.center.im +
                         "&zoom=" + new FloatExp(4).div(this.size) +
