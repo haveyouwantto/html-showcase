@@ -372,6 +372,16 @@
                 return new FloatExp(this.base, this.exp);
             }
 
+            square() {
+                return new FloatExp(this.base * this.base, this.exp * 2);
+            }
+
+            squareMut() {
+                this.base *= this.base;
+                this.exp *= 2;
+                return this.norm();
+            }
+
             compareTo(o) {
                 // 1. Compare sign
                 if (this.base > 0 && o.base < 0) return 1;
@@ -562,7 +572,7 @@
             }
 
             abs() {
-                return this.re.mul(this.re).add(this.im.mul(this.im));
+                return this.re.mul(this.re).addMut(this.im.mul(this.im));
             }
 
             mul(other) {
@@ -570,8 +580,8 @@
                     return new FloatExpComplex(this.re.mul(new FloatExp(other, 0)), this.im.mul(new FloatExp(other, 0)));
                 } else
                     return new FloatExpComplex(
-                        this.re.mul(other.re).sub(this.im.mul(other.im)),
-                        this.re.mul(other.im).add(this.im.mul(other.re))
+                        this.re.mul(other.re).subMut(this.im.mul(other.im)),
+                        this.re.mul(other.im).addMut(this.im.mul(other.re))
                     )
             }
 
@@ -580,8 +590,8 @@
                     return new FloatExpComplex(this.re.div(new FloatExp(other, 0)), this.im.div(new FloatExp(other, 0)));
                 } else
                     return new FloatExpComplex(
-                        this.re.div(other.re).sub(this.im.div(other.im)),
-                        this.re.div(other.im).add(this.im.div(other.re))
+                        this.re.div(other.re).subMut(this.im.div(other.im)),
+                        this.re.div(other.im).addMut(this.im.div(other.re))
                     )
             }
 
@@ -636,7 +646,12 @@
 
             norm() {
                 return FEmax(this.re.abs(), this.im.abs());
+            }
 
+            square() {
+                const realPart = this.re.square().subMut(this.im.square()); // a^2 - b^2
+                const imagPart = this.re.mul(this.im).mulMut(new FloatExp(2));     // 2ab
+                return new FloatExpComplex(realPart, imagPart);
             }
         }
 
@@ -1213,7 +1228,7 @@
                     refIter += result.second;
                 } else {
                     const Z = ref[refIter]
-                    let dz2 = dz.mul(dz);
+                    let dz2 = dz.square();
                     dz = dz.mul(2).mulMut(Z).addMut(dz2).addMut(dc)
                     iter++;
                     refIter++;
@@ -1689,7 +1704,7 @@
             // Getter for `Colors`, converts the raw color data into an array of [r, g, b] tuples
             get colors() {
                 if (!this.data.Colors) return [];
-                const colorValues = this.data.Colors.split(",").slice(0,-1).map(Number);
+                const colorValues = this.data.Colors.split(",").slice(0, -1).map(Number);
                 const rgbArray = [];
                 for (let i = 0; i < colorValues.length; i += 3) {
                     rgbArray.push([colorValues[i + 2], colorValues[i + 1], colorValues[i]]);
