@@ -1543,7 +1543,7 @@
                             }
                             if (y % 100 == 0) {
                                 this.context.putImageData(this.img, 0, 0)
-                                more.innerText = y;
+                                this.showInfo();
                                 await delay(1)
                             }
                         }
@@ -1568,7 +1568,7 @@
                             }
                             if (y % 100 == 0) {
                                 this.context.putImageData(this.img, 0, 0)
-                                more.innerText = y;
+                                this.showInfo();
                                 await delay(1)
                             }
                         }
@@ -1596,7 +1596,7 @@
 
                             if (y % 100 == 1) {
                                 this.context.putImageData(this.img, 0, 0)
-                                more.innerText = y;
+                                this.showInfo();
                                 await delay(1)
                             }
                         }
