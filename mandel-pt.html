@@ -563,6 +563,12 @@
                     getFloatExp(this.im.toString())
                 )
             }
+
+            square() {
+                const realPart = this.re.times(this.re).minus(this.im.times(this.im)); // a^2 - b^2
+                const imagPart = this.re.plus(this.re).times(this.im);     // 2ab
+                return new DeepComplex(realPart, imagPart);
+            }
         }
 
         class FloatExpComplex {
@@ -740,9 +746,9 @@
                 one = new Complex(1, 0);
             const orbit = [new Complex(0, 0)];
             for (let i = 0; i < iterations; i++) {
-                dzdc = z.mul(2).mulMut(dzdc).addMut(one);
+                dzdc = z.add(z).mulMut(dzdc).addMut(one);
 
-                Z = Z.mul(Z).add(C);
+                Z = Z.square().add(C);
 
                 z = Z.downCast();
                 orbit.push(z);
@@ -770,7 +776,7 @@
                 one = new FloatExpComplex(1, 0);
             const orbit = [new FloatExpComplex(0, 0)];
             for (let i = 0; i < iterations; i++) {
-                dzdc = z.mul(2).mulMut(dzdc).add(one);
+                dzdc = z.add(z).mulMut(dzdc).add(one);
 
                 Z = Z.mul(Z).add(C);
 
@@ -1229,7 +1235,7 @@
                 } else {
                     const Z = ref[refIter]
                     let dz2 = dz.square();
-                    dz = dz.mul(2).mulMut(Z).addMut(dz2).addMut(dc)
+                    dz.addMut(dz).mulMut(Z).addMut(dz2).addMut(dc)
                     iter++;
                     refIter++;
                 }
