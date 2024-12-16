@@ -179,6 +179,7 @@
     </div>
     <div id="stats">
     </div>
+    <div id="more"></div>
     <script src="lib/decimal.9.0.0.js"></script>
     <script>
         const canvas = document.getElementById('mandelbrot');
@@ -189,6 +190,7 @@
         const statsLabel = document.getElementById('stats')
         const sampleSelect = document.getElementById('samples')
         const sampleLoadBtn = document.getElementById('load-sample')
+        const more = document.getElementById("more");
 
         class FloatExp {
             static expTable = [];
@@ -236,6 +238,10 @@
             }
 
             norm() {
+            	if (this.base == 0) {
+            		this.exp = 0;
+            		return this;
+            	}
                 if (this.base != 0 && (this.base > 10 || this.base < 1)) {
                     let exp = FloatExp.getExpOfDouble(this.base);
                     this.exp += exp;
@@ -366,10 +372,26 @@
             }
 
             compareTo(o) {
-                let exp = this.exp - o.exp;
-                if (exp != 0) return exp;
-                else return this.base - o.base;
-            }
+    // 1. Compare sign
+    if (this.base > 0 && o.base < 0) return 1;
+    if (this.base < 0 && o.base > 0) return -1;
+
+    // 2. Handle zero cases
+    if (this.base === 0 && o.base === 0) return 0; // Both are zero
+    if (this.base === 0) return o.base > 0 ? -1 : 1; // This is zero
+    if (o.base === 0) return this.base > 0 ? 1 : -1; // Other is zero
+
+    // 3. Compare exponents
+    if (this.exp > o.exp) return this.base > 0 ? 1 : -1;
+    if (this.exp < o.exp) return this.base > 0 ? -1 : 1;
+
+    // 4. Compare bases when exponents are equal
+    if (this.base > o.base) return 1;
+    if (this.base < o.base) return -1;
+
+    return 0; // Equal
+}
+
         }
 
         function parseFloatExp(string) {
@@ -613,8 +635,19 @@
             }
 
             norm() {
-                return Math.max(this.re.abs(), this.im.abs());
+                return FEmax(this.re.abs(), this.im.abs());
+                
             }
+        }
+        
+        function FEmax(a, b) {
+        	if (a.compareTo(b) > 0) return a;
+                else return b;
+        }
+        
+        function FEmin(a, b) {
+        	if (a.compareTo(b) < 0) return a;
+                else return b;
         }
 
         const samples = {
@@ -977,6 +1010,79 @@
             result.second = Math.min(result.second, refLen - i);
             return result;
         }
+        
+        function createBLATableFE(ref, scale) {
+            const lv1 = [];
+            const table = [lv1];
+            for (let i = 1; i < ref.length; i++) {
+                const point = ref[i];
+
+                const A = point.mul(2);
+                const B = new FloatExpComplex(1, 0);
+                lv1.push({
+                    A: A, B: B,
+                    radius: FEmax(new FloatExp(0),
+                        (point.norm().sub(B.norm().mul(scale))).div(A.norm().add(1)).mul(5.96e-8)
+                    )
+                })
+            }
+
+            let level = 1;
+            while (true) {
+                table.push([]);
+
+                for (let i = 0; i < table[level - 1].length; i += 2) {
+                    const bla1 = table[level - 1][i];
+                    const bla2 = table[level - 1][i + 1];
+
+                    if (bla2 == null) {
+                        table[level].push(bla1)
+                        continue;
+                    };
+
+                    table[level].push({
+                        A: bla1.A.mul(bla2.A),
+                        B: bla1.B.mul(bla2.A).add(bla2.B),
+                        radius: FEmin(
+                            bla1.radius, FEmax(
+                                new FloatExp(0), (bla2.radius.sub(bla1.B.norm().mul(scale))).div(bla1.A.norm())
+                            )
+                        )
+                    })
+
+                }
+                if (table[level].length <= 1) break;
+                level++;
+            }
+            
+            return table;
+        }
+        
+        function lookupFE(table, i, refLen, norm_dz, norm_dc) {
+            if (i === 0 || i >= refLen || table.length === 0) {
+                return { first: null, second: new FloatExp(0) };
+            }
+
+            let result = { first: null, second: new FloatExp(0) }; // { step, length }
+            let index = i - 1, length = 1;
+
+            for (let level of table) {
+                if (norm_dz.compareTo(level[index].radius)>0) {
+                    break;
+                }
+                result.first = level[index];
+                result.second = length;
+
+                if (index % 2) {
+                    break;
+                }
+                index >>= 1;  // equivalent to index = Math.floor(index / 2)
+                length <<= 1; // equivalent to length *= 2
+            }
+
+            result.second = Math.min(result.second, refLen - i);
+            return result;
+        }
 
 
         /**
@@ -1037,6 +1143,37 @@
                 if (valAbsSq < dzAbsSq || refIter == ref.length - 1) {
                     dzRe = valRe;
                     dzIm = valIm;
+                    refIter = 0;
+                }
+            }
+            return iter;
+        }
+        
+        function getPTBLAFE(dc, ref, table, maxIter, bailout) {
+            let dz = new FloatExpComplex(0, 0)
+
+            let iter = -1;
+            let refIter = 0;
+            while (iter < maxIter) {
+               let result = lookupFE(table, refIter, ref.length, dz.norm(), dc.norm())
+
+                if (result.first != null) {
+                    dz = dz.mul(result.first.A).addMut(dc.mul(result.first.B));
+                    iter += result.second;
+                    refIter += result.second;
+                } else {
+                    const Z = ref[refIter]
+                    dz = dz.mul(2).mulMut(Z).addMut(dz.mul(dz)).addMut(dc)
+                    iter++;
+                    refIter++;
+                }
+                if (refIter >= ref.length) return iter;
+
+                const Z2 = ref[refIter]
+                const val = Z2.add(dz);
+                if (val.abs().doubleValue() > bailout) return iter;
+                if (val.abs().sub(dz.abs()).doubleValue() < 0 || refIter == ref.length - 1) { // 检测是否需要变基
+                    dz = val;
                     refIter = 0;
                 }
             }
@@ -1304,6 +1441,15 @@
                     console.log(performance.now() + " bla calculation")
                     this.blaTable = createBLATable(refComplex, this.size.doubleValue())
                     
+                    
+                    //let a = new FloatExp(3,-28);
+                    //let b = new FloatExp(0);
+                    
+                    //alert (FEmax(b, a))
+                    let Fetable= createBLATableFE(ref, this.size);
+                    /*for (let i=0;i<10;i++){
+                     	alert(JSON.stringify(this.blaTable[7][i])+ " "+JSON.stringify(Fetable[7 ][i]))
+                    }*/
                     let autoIter = Math.max((refLen-1)*32,this.iterations);
                     this.setIterations(autoIter);
                     // console.log(performance.now() + " series approximation")
@@ -1326,7 +1472,11 @@
                     let newIter;
                     
                         let delta = this.getDelta(x, y);
+                        if (this.size.doubleValue() > 1e-320)
                         newIter = getPTBLA(delta.toComplex(), refComplex, this.blaTable, this.iterations, this.bailout);
+                        else 
+                        newIter = getPTBLAFE(delta, ref, Fetable, this.iterations, this.bailout)
+                        
                         // if (coeff.it > 200) {
                         //     let approx = approximate(delta, coeff.coeff)
                         //     if (approx.re.exp < -160 || approx.im.exp < -160) {
@@ -1353,10 +1503,16 @@
                 }
 
                 let p1 = () => {
-                    return new Promise((r, j) => {
+                    return new Promise(async (r, j) => {
                         for (let y = 0; y < this.canvas.height; y += 2) {
                             for (let x = 0; x < this.canvas.width; x += 2) {
                                 paint(x, y);
+                                
+                            }
+                            if (y%100==0){
+                            this.context.putImageData(this.img, 0, 0)
+                            more.innerText=y;
+                            await delay(1)  
                             }
                         }
                         this.context.putImageData(this.img, 0, 0)
@@ -1366,7 +1522,7 @@
                 }
 
                 let p2 = () => {
-                    return new Promise((r, j) => {
+                    return new Promise(async (r, j) => {
                         for (let y = 0; y < this.canvas.height; y += 2) {
                             for (let x = 1; x < this.canvas.width; x += 2) {
                                 let leftColor = this.getColor(x - 1, y);
@@ -1377,7 +1533,11 @@
                                 } else {
                                     paint(x, y);
                                 }
-
+                            }
+                            if (y%100==0){
+                            this.context.putImageData(this.img, 0, 0)
+                            more.innerText=y;
+                            await delay(1)  
                             }
                         }
                         this.context.putImageData(this.img, 0, 0)
@@ -1387,7 +1547,7 @@
                 }
 
                 let p3 = () => {
-                    return new Promise((r, j) => {
+                    return new Promise(async (r, j) => {
                         for (let y = 1; y < this.canvas.height; y += 2) {
                             for (let x = 0; x < this.canvas.width; x++) {
 
@@ -1401,13 +1561,19 @@
                                 }
 
                             }
+                            
+                            if (y%100==1){
+                            this.context.putImageData(this.img, 0, 0)
+                            more.innerText=y;
+                            await delay(1)  
+                            }
                         }
                         this.context.putImageData(this.img, 0, 0)
                         this.showInfo();
                         setTimeout(r, 10);
                     })
                 }
-
+                
                 this.context.clearRect(0, 0, this.canvas.width, this.canvas.height);
                 p1().then(() => p2()).then(() => p3()).then(() => {
                     console.log('done!')
