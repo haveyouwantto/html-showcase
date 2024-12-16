@@ -1333,7 +1333,7 @@
 
                 this.canvas = canvas;
                 this.context = canvas.getContext('2d');
-                this.img = this.context.getImageData(0, 0, this.canvas.width, this.canvas.height);
+                this.context.imageSmoothingEnabled = false;
                 this.rendering = false;
                 this.iterMap = [...new Array(this.canvas.height)].map(e => [...new Array(this.canvas.width)].map(e => 0))
 
@@ -1377,7 +1377,7 @@
 
             click(x, y) {
                 // Calculate the new center and zoom level
-                this.goto(this.center.add(this.getDelta(x, y)));
+                this.goto(this.center.add(this.getDelta(x, y)), false);
                 this.zoom(this.size.div(4));
 
                 // Capture the clicked section (a quarter of the canvas size around the click point)
@@ -1392,8 +1392,6 @@
                     startX, startY, zoomWidth, zoomHeight,  // Source region (original size)
                     0, 0, this.canvas.width, this.canvas.height // Destination (scaled to fit canvas)
                 );
-
-                this.img = this.context.getImageData(0, 0, this.canvas.width, this.canvas.height);
             }
 
             zoomOut(size) {
@@ -1415,9 +1413,10 @@
              * Moves the center of the Mandelbrot set visualization.
              * @param {DeepComplex} c - The new center point.
              */
-            goto(c) {
+            goto(c, clear = true) {
                 this.center = c;
                 this.refValid = false;
+                if (clear) this.context.clearRect(0, 0, this.canvas.width, this.canvas.height);
             }
 
             /**
@@ -1475,16 +1474,15 @@
              * @param {number} x - The x-coordinate of the pixel.
              * @param {number} y - The y-coordinate of the pixel.
              * @param {number} it - The iteration
+             * @param {number} w - The width of the pixel.
+             * @param {number} h - The height of the pixel.
              */
-            setIter(x, y, it) {
+            setIter(x, y, it, w = 1, h = 1) {
                 this.iterMap[y][x] = it;
 
                 const color = getColor(it, this.iterations);
-                const index = (y * this.canvas.width + x) * 4;
-                this.img.data[index] = color[0]
-                this.img.data[index + 1] = color[1]
-                this.img.data[index + 2] = color[2]
-                this.img.data[index + 3] = color[3]
+                this.context.fillStyle = `rgb(${color[0]}, ${color[1]}, ${color[2]})`
+                this.context.fillRect(x, y, w, h)
             }
 
             showInfo() {
@@ -1552,7 +1550,7 @@
 
                 console.log(performance.now() + " perturbation")
 
-                let computePixel = (x, y) => {
+                let computePixel = (x, y, w, h) => {
                     let newIter;
 
                     let delta = this.getDelta(x, y);
@@ -1563,22 +1561,20 @@
 
                     this.stats.calc++;
 
-                    this.setIter(x, y, newIter);
+                    this.setIter(x, y, newIter, w, h);
                 }
 
                 let p1 = () => {
                     return new Promise(async (r, j) => {
                         for (let y = 0; y < this.canvas.height; y += 2) {
                             for (let x = 0; x < this.canvas.width; x += 2) {
-                                computePixel(x, y);
+                                computePixel(x, y, 2, 2);
                             }
                             if (y % 100 == 0) {
-                                this.context.putImageData(this.img, 0, 0)
                                 this.showInfo();
                                 await delay(1)
                             }
                         }
-                        this.context.putImageData(this.img, 0, 0)
                         this.showInfo();
                         await delay(10);
                         r();
@@ -1595,16 +1591,14 @@
                                     this.setIter(x, y, leftColor);
                                     this.stats.guess++;
                                 } else {
-                                    computePixel(x, y);
+                                    computePixel(x, y, 1, 2);
                                 }
                             }
                             if (y % 100 == 0) {
-                                this.context.putImageData(this.img, 0, 0)
                                 this.showInfo();
                                 await delay(1)
                             }
                         }
-                        this.context.putImageData(this.img, 0, 0)
                         this.showInfo();
                         await delay(10);
                         r();
@@ -1628,19 +1622,16 @@
                             }
 
                             if (y % 100 == 1) {
-                                this.context.putImageData(this.img, 0, 0)
                                 this.showInfo();
                                 await delay(1)
                             }
                         }
-                        this.context.putImageData(this.img, 0, 0)
                         this.showInfo();
                         await delay(10);
                         r();
                     })
                 }
 
-                this.context.clearRect(0, 0, this.canvas.width, this.canvas.height);
                 p1().then(() => p2()).then(() => p3()).then(() => {
                     console.log('done!')
                     this.rendering = false;
