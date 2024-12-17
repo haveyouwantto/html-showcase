@@ -3,7 +3,7 @@
 
 <head>
     <meta charset="UTF-8">
-	<meta name="description" content="Infinite deep and fast Mandelbrot set explorer">
+    <meta name="description" content="Infinite deep and fast Mandelbrot set explorer">
     <!-- <meta name="viewport" content="width=device-width, initial-scale=1.0"> -->
     <title>Mandelbrot Perturbation</title>
     <style>
@@ -161,6 +161,7 @@
             <button id="home">Home</button>
             <button id="kfr">Load KFR</button>
             <button id="download">Download PNG</button>
+            <button id="makeVideo">Make Video</button>
             <hr>
             Samples
             <select id="samples">
@@ -1628,7 +1629,6 @@
                                 } else {
                                     computePixel(x, y);
                                 }
-
                             }
 
                             if (y % 100 == 1) {
@@ -1642,15 +1642,16 @@
                     })
                 }
 
-                p1().then(() => p2()).then(() => p3()).then(() => {
-                    console.log('done!')
-                    this.rendering = false;
-                    this.showInfo();
-                    location.hash = "#re=" + this.center.re +
-                        "&im=" + this.center.im +
-                        "&zoom=" + new FloatExp(4).div(this.size) +
-                        "&iter=" + this.iterations;
-                })
+                await p1();
+                await p2();
+                await p3();
+                console.log('done!')
+                this.rendering = false;
+                this.showInfo();
+                location.hash = "#re=" + this.center.re +
+                    "&im=" + this.center.im +
+                    "&zoom=" + new FloatExp(4).div(this.size) +
+                    "&iter=" + this.iterations;
             }
 
             /**
@@ -1681,6 +1682,19 @@
                     }
                 }
                 this.update(true)
+            }
+
+            async renderFrames() {
+                let frames = [];
+                while (this.size.doubleValue() < 16) {
+                    await this.update();
+                    let url = canvas.toDataURL('image/png');
+                    let img = document.createElement('img');
+                    img.src = url;
+                    frames.push(img);
+                    this.zoomOut(2);
+                }
+                return frames.reverse();
             }
         }
 
@@ -1869,6 +1883,89 @@
             mandelbrot.update();
         });
 
+        // Trigger file upload when a button is clicked
+        document.getElementById("makeVideo").addEventListener('click', async () => {
+            const keyFrames = await mandelbrot.renderFrames();
+            console.log(keyFrames);
+
+            const stream = canvas.captureStream();
+            const recorder = new MediaRecorder(stream, { mimeType: 'video/webm;codecs=h264' });
+            const data = [];
+            recorder.ondataavailable = function (event) {
+                if (event.data && event.data.size) {
+                    data.push(event.data);
+                }
+            };
+            recorder.onstop = () => {
+                const url = URL.createObjectURL(new Blob(data, { type: 'video/webm' }));
+                console.log('video url', url)
+                var a = document.createElement('a');
+                a.download = 'file.webm';
+                a.href = url;
+                a.click();
+            };
+
+            let indexFl = 0;
+            let ctx = canvas.getContext('2d')
+            const renderer = () => {
+                // Ensure `keyFrames` array is defined and has elements
+                if (!keyFrames || keyFrames.length < 2) {
+                    console.error("keyFrames array is either undefined or contains fewer than 2 frames.");
+                    recorder.stop();
+                    return;
+                }
+
+                // Calculate indices and verify bounds
+                let i = Math.floor(indexFl);
+                if (i < 0 || i + 1 >= keyFrames.length) {
+                    recorder.stop();
+                    return;
+                }
+
+                // Get the two images for the transition
+                const image1 = keyFrames[i];
+                const image2 = keyFrames[i + 1];
+
+                // Calculate scaling factors
+                const decimalPart = indexFl - i; // Fractional part of the index
+                const scale1 = Math.pow(2, decimalPart); // Scale for image1
+                const scale2 = scale1 * .5; // Scale for image2 (fixed at half size)
+
+                // Clear canvas (assuming canvas context is `ctx`)
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+                // Draw image1 at center with scaling factor `scale1`
+                const centerX = canvas.width / 2;
+                const centerY = canvas.height / 2;
+
+                console.log(scale1)
+
+                ctx.drawImage(image1,
+                    centerX - canvas.width * scale1 / 2,
+                    centerY - canvas.height * scale1 / 2,
+                    canvas.width * scale1,
+                    canvas.width * scale1
+                );
+
+
+                ctx.drawImage(image2,
+                    centerX - canvas.width * scale2 / 2,
+                    centerY - canvas.height * scale2 / 2,
+                    canvas.width * scale2,
+                    canvas.width * scale2
+                );
+
+                // Increment index for the next frame
+                indexFl += 1 / 60;
+
+                // Loop `renderer` to maintain animation (assuming 60fps rendering)
+                requestAnimationFrame(renderer);
+            };
+
+            // Start the renderer
+            recorder.start();
+            requestAnimationFrame(renderer);
+        });
     </script>
 </body>
 
