@@ -740,7 +740,7 @@
         }
 
 
-        async function* getReferenceOrbit(C, radius, iterations) {
+        async function* getReferenceOrbit(C, radius, iterations, reportInterval = 10000) {
             let Z = new DeepComplex(0, 0),
                 z = new Complex(0, 0),
                 dzdc = new Complex(1, 0),
@@ -756,9 +756,9 @@
 
                 if (dzdc.norm() * radius * 2 > z.norm()) break;
                 if (z.norm() > 16.0) break;
-                if (i % 10000 == 0) {
+                if (i % reportInterval == 0) {
                     yield i;
-                    await delay(50);
+                    await delay(1);
                 };
             }
             return orbit;
@@ -770,7 +770,7 @@
          * @param {number} iterations - The number of iterations to perform.
          * @returns {FloatExpComplex[]} - An array containing the reference orbit.
          */
-        async function* getReferenceOrbitFE(C, radius, iterations) {
+        async function* getReferenceOrbitFE(C, radius, iterations, reportInterval = 10000) {
             let Z = new DeepComplex(0, 0),
                 z = new FloatExpComplex(0, 0),
                 dzdc = new FloatExpComplex(1, 0),
@@ -786,9 +786,9 @@
 
                 if (dzdc.norm().mul(radius).mul(2).compareTo(z.norm()) > 0) break;
                 if (z.norm().doubleValue() > 16.0) break;
-                if (i % 10000 == 0) {
+                if (i % reportInterval == 0) {
                     yield i;
-                    await delay(50);
+                    await delay(1);
                 };
             }
             return orbit;
@@ -1527,8 +1527,11 @@
                     console.log(performance.now() + " computing reference")
                     let nextTerm;
 
+                    let reportInterval = Math.max(1, Math.floor(200000 / -this.size.exp));
 
-                    const generator = this.deep ? getReferenceOrbitFE(base, this.size, this.iterations, this.bailout) : getReferenceOrbit(base, this.size.doubleValue(), this.iterations, this.bailout);
+                    const generator = this.deep ?
+                        getReferenceOrbitFE(base, this.size, this.iterations, reportInterval) :
+                        getReferenceOrbit(base, this.size.doubleValue(), this.iterations, reportInterval);
                     while (!(nextTerm = await generator.next()).done) {
                         this.stats.ref = nextTerm.value;
                         this.showInfo(); // Update progress

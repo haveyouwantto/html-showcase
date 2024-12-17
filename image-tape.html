@@ -64,12 +64,11 @@
         canvas {
             display: block;
             background-color: #263238;
-            /* 深蓝灰背景 */
-            margin: 20px auto;
             border: none;
             border-radius: 8px;
-            max-width: 95%;
+            width: 100%;
             box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+            cursor: pointer;
         }
 
         /* 标题和描述文字 */
@@ -149,6 +148,12 @@
             height: 100%;
         }
 
+        .canvas-container {
+            position: relative;
+            margin: 20px auto;
+            max-width: 95%;
+        }
+
         #time {
             min-width: fit-content;
         }
@@ -160,6 +165,19 @@
             display: inline-flex;
             align-items: center;
             justify-content: center;
+        }
+
+        #pos-marker {
+            width: 100%;
+            height: 2px;
+            position: absolute;
+            top: 0;
+            left: 0;
+            background-color: red;
+            border-radius: 999px;
+            box-shadow: 0px 0px 6px 2px red;
+            transition: 0.1s;
+            transition-timing-function: linear;
         }
 
         /* 响应式调整 */
@@ -189,7 +207,7 @@
         <!-- Buttons for conversion -->
         <div>
             <button id="audioToImageBtn" class="icon">🔴</button>
-            <button id="imageToAudioBtn" class="icon">📼️</button>
+            <button id="eraseBtn" class="icon">❌</button>
             <button id="pauseBtn" class="icon">▶</button>
             <button id="downloadBtn" class="icon">💾</button>
         </div>
@@ -202,7 +220,11 @@
     </div>
 
     <!-- Canvas for visualizing the conversion -->
-    <canvas id="canvas" width="1920" height="1080"></canvas>
+    <div class="canvas-container">
+        <canvas id="canvas" width="1920" height="1080">
+        </canvas>
+        <div id="pos-marker"></div>
+    </div>
 
     <script>
         let audioContext = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 8000 });
@@ -211,8 +233,12 @@
         ctx.fillStyle = "gray";
         ctx.fillRect(0, 0, canvas.width, canvas.height);
 
+        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+
         let audioElement = new Audio();
         let audioBuffer = null;
+
+        let posMarker = document.getElementById('pos-marker');
 
         // File inputs
         let audioFileInput = document.getElementById('audioFile');
@@ -220,7 +246,7 @@
 
         // Buttons for conversion actions
         let audioToImageBtn = document.getElementById('audioToImageBtn');
-        let imageToAudioBtn = document.getElementById('imageToAudioBtn');
+        let eraseBtn = document.getElementById('eraseBtn');
 
 
         const timeDisplay = document.getElementById("time")
@@ -261,6 +287,7 @@
             let prog = currentTime / totalLength; // 播放进度百分比
             timeDisplay.textContent = `${formatTime(currentTime)} / ${formatTime(totalLength)}`;
             progressDisplay.style.width = (prog * 100) + "%"; // 更新进度条显示
+            posMarker.style.top = (prog * 100) + "%";
         }
 
         progressBar.addEventListener('click', e => {
@@ -269,34 +296,41 @@
         })
 
         class Player {
-            constructor() {
+            constructor(imageData) {
                 this.isPlaying = false;
                 this.source = null;
-                this.imageData = null;
+                this.imageData = imageData;
                 this.ptr = 0;
                 this.frameSize = 1024; // Number of samples per frame
                 this.sampleRate = audioContext.sampleRate;
-                this.buffers = [];
+                this.buffers = new Set();
+                this.time = audioContext.currentTime;
+                this.started = false;
             }
 
             stop() {
-                this.stopped = true;
                 for (const source of this.buffers) {
                     source.disconnect();
+                    source.stop();
                 }
-                this.buffers = [];
+                this.buffers.clear();
+                this.pause = true;
+                this.lock = null;
             }
 
-            setImageData(imageData) {
+            reset() {
                 this.stop();
-                this.imageData = imageData;
                 this.ptr = 0; // Reset playback position
-                this.stopped = false;
             }
 
             start() {
+                this.time = audioContext.currentTime;
                 this.pause = false;
-                this._playBuffer();
+                let lock = performance.now();
+                if (!this.started) {
+                    this.started = true;
+                    this._playBuffer(lock);
+                }
             }
 
             set pause(isPaused) {
@@ -307,6 +341,7 @@
                     audioContext.resume();
                     this.isPlaying = true;
                 }
+                updateProgress(this.currentTime, this.duration)
             }
 
             set currentTime(position) {
@@ -318,6 +353,7 @@
                 const totalSamples = this.imageData.data.length / 4;
                 const targetSample = Math.min(Math.max(0, Math.floor(position * this.sampleRate)), totalSamples);
                 this.ptr = targetSample;
+                updateProgress(this.currentTime, this.duration)
             }
 
             get currentTime() {
@@ -328,14 +364,16 @@
                 return this.imageData?.data?.length / 4 / 8000 ?? 0;
             }
 
-            _playBuffer() {
-                if (!this.isPlaying) return;
+            _playBuffer(lock) {
+                if (this.lock && lock != this.lock) return;
+
+                if (!this.lock) this.lock = lock;
 
                 const { data } = this.imageData;
                 const len = Math.min(this.frameSize, data.length / 4 - this.ptr);
 
                 if (len <= 0) {
-                    this.isPlaying = false;
+                    this.started = false;
                     return;
                 }
 
@@ -384,21 +422,97 @@
 
                 source.onended = () => {
                     source.disconnect();
-                    this.buffers.shift();
+                    this.buffers.delete(source);
                     updateProgress(this.currentTime, this.duration);
-                    if (this.ptr < data.length / 4 && this.isPlaying && !this.stopped) {
-                        this._playBuffer();
+                    if (this.ptr >= 0 && this.ptr < data.length / 4 && this.started) {
+                        this._playBuffer(lock);
                     } else {
-                        this.isPlaying = false;
+                        this.reset();
                     }
                 };
-                this.buffers.push(source);
+                this.buffers.add(source);
 
-                source.start();
+                console.log(this.time)
+                source.start(this.time);
+                this.time += buffer.duration;
+            }
+
+            record(audioBuffer) {
+                let prevPos = this.ptr;
+
+                // Get audio channels (left and right, or use left if mono)
+                let lChannel = audioBuffer.getChannelData(0);
+                let rChannel = audioBuffer.numberOfChannels >= 2 ? audioBuffer.getChannelData(1) : lChannel;
+
+                // Prepare image data for canvas manipulation
+                let data = imageData.data;
+
+                // Temporary buffers for Y, U, and V channels
+                const tempY = new Float32Array(3840);
+                const tempU = new Float32Array(3840);
+                const tempV = new Float32Array(3840);
+
+                // Process audio data in chunks of 3840 samples
+                for (let i = 0; i < lChannel.length; i += 3840) {
+                    for (let j = 0; j < 3840; j++) {
+                        const idx = i + j;
+
+                        // Ensure the index is within bounds
+                        if (idx >= lChannel.length) break;
+
+                        const left = lChannel[idx];
+                        const right = rChannel[idx];
+
+                        // Compute the sum and difference of left and right channels
+                        const lrSum = (left + right) / 2;
+                        const lrDiff = (left - right) / 2;
+
+                        // Normalize values for visualization
+                        const normSum = Math.sqrt(Math.abs(lrSum)) * Math.sign(lrSum) / 2 + 0.5;
+                        const normDiff = lrDiff / 2 + 0.5;
+                        // Map normalized values to Y, U, and V channels
+                        tempY[j] = normSum;
+                        if (j < 1920) {
+                            tempU[j] = normDiff;
+                            tempU[j + 1920] = normDiff;
+                        } else {
+                            tempV[j] = normDiff;
+                            tempV[j - 1920] = normDiff;
+                        }
+                    }
+
+                    // Convert YUV to RGB and update canvas image data
+                    for (let j = 0; j < 3840; j++) {
+                        const y = tempY[j];
+                        const u = tempU[j];
+                        const v = tempV[j];
+
+                        // YUV to RGB conversion formula
+                        let r = y + 1.402 * (v - 0.5);
+                        let g = y - 0.344136 * (u - 0.5) - 0.714136 * (v - 0.5);
+                        let b = y + 1.772 * (u - 0.5);
+
+                        // Ensure the index is within bounds for image data
+                        const pixelIdx = (i + j) * 4;
+                        if (i + j > lChannel.length || pixelIdx >= data.length) break;
+
+                        // Assign RGB values to image data
+                        data[pixelIdx] = r * 255;
+                        data[pixelIdx + 1] = g * 255;
+                        data[pixelIdx + 2] = b * 255;
+                        data[pixelIdx + 3] = 255; // Fully opaque
+                    }
+                }
+
+                // Update canvas with processed image data
+                ctx.putImageData(imageData, 0, 0);
+
+                this.ptr = prevPos;
             }
         }
 
-        let player;
+
+        const player = new Player(imageData);
 
         // Convert audio to image
         audioToImageBtn.addEventListener('click', () => {
@@ -409,78 +523,7 @@
                     const buffer = event.target.result;
                     // Decode the audio buffer and process the data
                     audioContext.decodeAudioData(buffer, (decodedBuffer) => {
-
-                        // Get audio channels (left and right, or use left if mono)
-                        let lChannel = decodedBuffer.getChannelData(0);
-                        let rChannel = decodedBuffer.numberOfChannels >= 2 ? decodedBuffer.getChannelData(1) : lChannel;
-
-                        // Clear canvas and fill with gray background
-                        ctx.fillStyle = 'gray';
-                        ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-                        // Prepare image data for canvas manipulation
-                        let imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-                        let data = imgData.data;
-
-                        // Temporary buffers for Y, U, and V channels
-                        const tempY = new Float32Array(3840);
-                        const tempU = new Float32Array(3840);
-                        const tempV = new Float32Array(3840);
-
-                        // Process audio data in chunks of 3840 samples
-                        for (let i = 0; i < lChannel.length; i += 3840) {
-                            for (let j = 0; j < 3840; j++) {
-                                const idx = i + j;
-
-                                // Ensure the index is within bounds
-                                if (idx >= lChannel.length) break;
-
-                                const left = lChannel[idx];
-                                const right = rChannel[idx];
-
-                                // Compute the sum and difference of left and right channels
-                                const lrSum = (left + right) / 2;
-                                const lrDiff = (left - right) / 2;
-
-                                // Normalize values for visualization
-                                const normSum = Math.sqrt(Math.abs(lrSum)) * Math.sign(lrSum) / 2 + 0.5;
-                                const normDiff = lrDiff / 2 + 0.5;
-                                // Map normalized values to Y, U, and V channels
-                                tempY[j] = normSum;
-                                if (j < 1920) {
-                                    tempU[j] = normDiff;
-                                    tempU[j + 1920] = normDiff;
-                                } else {
-                                    tempV[j] = normDiff;
-                                    tempV[j - 1920] = normDiff;
-                                }
-                            }
-
-                            // Convert YUV to RGB and update canvas image data
-                            for (let j = 0; j < 3840; j++) {
-                                const y = tempY[j];
-                                const u = tempU[j];
-                                const v = tempV[j];
-
-                                // YUV to RGB conversion formula
-                                let r = y + 1.402 * (v - 0.5);
-                                let g = y - 0.344136 * (u - 0.5) - 0.714136 * (v - 0.5);
-                                let b = y + 1.772 * (u - 0.5);
-
-                                // Ensure the index is within bounds for image data
-                                const pixelIdx = (i + j) * 4;
-                                if (i + j > lChannel.length || pixelIdx >= data.length) break;
-
-                                // Assign RGB values to image data
-                                data[pixelIdx] = r * 255;
-                                data[pixelIdx + 1] = g * 255;
-                                data[pixelIdx + 2] = b * 255;
-                                data[pixelIdx + 3] = 255; // Fully opaque
-                            }
-                        }
-
-                        // Update canvas with processed image data
-                        ctx.putImageData(imgData, 0, 0);
+                        player.record(decodedBuffer)
                     });
 
                 };
@@ -495,7 +538,9 @@
                 reader.onload = (e) => {
                     let img = new Image();
                     img.onload = () => {
-                        ctx.drawImage(img, 0, 0, 1920, 1080);
+                        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                        let imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+                        imageData.data.set(imgData.data)
                     };
                     img.src = e.target.result;
                 };
@@ -504,16 +549,14 @@
         })
 
         // Convert image to audio
-        imageToAudioBtn.addEventListener('click', () => {
+        eraseBtn.addEventListener('click', () => {
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
             let imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-            player?.stop();
-            player = new Player();
-            player.setImageData(imgData)
-            player.start();
-            pauseBtn.textContent = '⏸';
+            imageData.data.set(imgData.data)
         });
 
         pauseBtn.addEventListener('click', e => {
+            player.start()
             player.pause = player.isPlaying;
             if (!player.isPlaying) pauseBtn.textContent = '▶';
             else pauseBtn.textContent = '⏸';
@@ -527,6 +570,11 @@
                 a.download = "tape.png";
                 a.click();
             });
+        })
+
+        canvas.addEventListener('click', e=>{
+            const p = e.offsetY/canvas.offsetHeight;
+            player.currentTime = p * player.duration;
         })
 
     </script>
