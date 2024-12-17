@@ -1889,7 +1889,7 @@
             console.log(keyFrames);
 
             const stream = canvas.captureStream();
-            const recorder = new MediaRecorder(stream, { mimeType: 'video/webm;codecs=h264' });
+            const recorder = new MediaRecorder(stream, { mimeType: 'video/webm;codecs=h264', videoBitsPerSecond: 5000000 });
             const data = [];
             recorder.ondataavailable = function (event) {
                 if (event.data && event.data.size) {
