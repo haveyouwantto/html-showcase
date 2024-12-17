@@ -68,6 +68,7 @@
             border-radius: 8px;
             width: 100%;
             box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+            cursor: pointer;
         }
 
         /* 标题和描述文字 */
@@ -569,6 +570,11 @@
                 a.download = "tape.png";
                 a.click();
             });
+        })
+
+        canvas.addEventListener('click', e=>{
+            const p = e.offsetY/canvas.offsetHeight;
+            player.currentTime = p * player.duration;
         })
 
     </script>
