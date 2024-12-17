@@ -1888,6 +1888,9 @@
             const keyFrames = await mandelbrot.renderFrames();
             console.log(keyFrames);
 
+            
+            mandelbrot.rendering = true;
+
             const stream = canvas.captureStream();
             const recorder = new MediaRecorder(stream, { mimeType: 'video/webm;codecs=h264', videoBitsPerSecond: 5000000 });
             const data = [];
@@ -1897,6 +1900,7 @@
                 }
             };
             recorder.onstop = () => {
+                mandelbrot.rendering = false;
                 const url = URL.createObjectURL(new Blob(data, { type: 'video/webm' }));
                 console.log('video url', url)
                 var a = document.createElement('a');
@@ -1938,8 +1942,6 @@
                 const centerX = canvas.width / 2;
                 const centerY = canvas.height / 2;
 
-                console.log(scale1)
-
                 ctx.drawImage(image1,
                     centerX - canvas.width * scale1 / 2,
                     centerY - canvas.height * scale1 / 2,
@@ -1954,6 +1956,8 @@
                     canvas.width * scale2,
                     canvas.width * scale2
                 );
+
+                more.innerText = indexFl;
 
                 // Increment index for the next frame
                 indexFl += 1 / 60;
