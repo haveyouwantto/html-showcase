@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="description" content="Infinite deep and fast Mandelbrot set explorer">
-    <!-- <meta name="viewport" content="width=device-width, initial-scale=1.0"> -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Mandelbrot Perturbation</title>
     <style>
         :root {
@@ -38,8 +38,8 @@
             background: repeating-linear-gradient(45deg, var(--theme-color), var(--theme-color) 8px, #000 8px, #000 16px);
             /* Adjust colors for dark mode */
             cursor: crosshair;
-            width: 800px;
-            height: 800px;
+            /* width: 800px;
+            height: 800px; */
         }
 
         button {
@@ -134,13 +134,33 @@
             display: flex;
             justify-content: space-between;
         }
+
+
+        @media (max-width: 600px) {
+            .container {
+                flex-direction: column;
+            }
+
+            #mandelbrot {
+                width: 100%;
+                height: auto;
+            }
+
+            .location {
+                margin-left: 0;
+            }
+
+            .shortcut {
+                justify-content: space-evenly;
+            }
+        }
     </style>
 </head>
 
 <body>
     <div class="container">
 
-        <canvas width="800" height="800" id="mandelbrot"></canvas>
+        <canvas id="mandelbrot" width="800" height="800"></canvas>
 
         <div class="location">
             Real:
@@ -1353,7 +1373,10 @@
                     if (e.button === 0 && !this.rendering) {
                         // Left click: decrease size
                         console.log(this.getDelta(e.offsetX, e.offsetY));
-                        this.click(e.offsetX, e.offsetY);
+                        this.click(
+                            e.offsetX / canvas.offsetWidth * canvas.width,
+                            e.offsetY / canvas.offsetHeight * canvas.height
+                        );
                         this.update();
                     }
                 });
