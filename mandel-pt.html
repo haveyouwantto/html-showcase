@@ -1343,6 +1343,7 @@
 
                 this.canvas = canvas;
                 this.context = canvas.getContext('2d');
+                this.context.imageSmoothingEnabled = false;
                 this.rendering = false;
                 this.iterMap = [...new Array(this.canvas.height)].map(e => [...new Array(this.canvas.width)].map(e => 0))
                 this.videoRendering = false;
@@ -1416,6 +1417,7 @@
                 Decimal.config({
                     precision: -size.exp + 10
                 })
+                this.deep = this.size.doubleValue() < 1e-300;
                 this.size = size;
             }
 
@@ -1457,14 +1459,13 @@
             getDelta(x, y, baseX, baseY) {
                 if (!baseX) baseX = this.canvas.width / 2;
                 if (!baseY) baseY = this.canvas.height / 2;
-                return new FloatExpComplex(
+                return this.deep ? new FloatExpComplex(
                     this.size.mul((x - baseX) / this.canvas.width),
                     this.size.mul((baseY - y) / this.canvas.height)
+                ) : new Complex(
+                    (x - baseX) / this.canvas.width * this.size,
+                    (baseY - y) / this.canvas.height * this.size
                 )
-                // return new Complex(
-                //     (x - baseX) / this.canvas.width * this.size,
-                //     (baseY - y) / this.canvas.height * this.size
-                // )
             }
 
 
@@ -1526,7 +1527,6 @@
                     approx: 0,
                     time: performance.now()
                 };
-                this.deep = this.size.doubleValue() < 1e-300;
 
                 reInput.value = this.center.re;
                 imInput.value = this.center.im;
@@ -1584,7 +1584,7 @@
 
                     if (this.deep) newIter = getPTBLAFE(delta, ref, this.blaTable, this.iterations, this.bailout)
                     else
-                        newIter = getPTBLA(delta.toComplex(), ref, this.blaTable, this.iterations, this.bailout);
+                        newIter = getPTBLA(delta, ref, this.blaTable, this.iterations, this.bailout);
 
                     this.stats.calc++;
 
@@ -1597,7 +1597,7 @@
                             for (let x = 0; x < this.canvas.width; x += 2) {
                                 computePixel(x, y, 2, 2);
                             }
-                            if (y % 100 == 0 && !this.videoRendering) {
+                            if (y % 100 == 0 && !this.videoRendering && this.deep) {
                                 this.showInfo();
                                 this.context.putImageData(this.image, 0, 0);
                                 await delay(1)
@@ -1625,7 +1625,7 @@
                                     computePixel(x, y, 1, 2);
                                 }
                             }
-                            if (y % 100 == 0 && !this.videoRendering) {
+                            if (y % 100 == 0 && !this.videoRendering && this.deep) {
                                 this.context.putImageData(this.image, 0, 0);
                                 this.showInfo();
                                 await delay(1)
@@ -1655,7 +1655,7 @@
                                 }
                             }
 
-                            if (y % 100 == 1 && !this.videoRendering) {
+                            if (y % 100 == 1 && !this.videoRendering && this.deep) {
                                 this.context.putImageData(this.image, 0, 0);
                                 this.showInfo();
                                 await delay(1)
@@ -1941,10 +1941,13 @@
                 a.download = 'file.webm';
                 a.href = url;
                 a.click();
+                
+                ctx.imageSmoothingEnabled = false;
             };
 
             let indexFl = 0;
             let ctx = canvas.getContext('2d')
+            ctx.imageSmoothingEnabled = true;
             const renderer = () => {
                 // Ensure `keyFrames` array is defined and has elements
                 if (!keyFrames || keyFrames.length < 2) {
