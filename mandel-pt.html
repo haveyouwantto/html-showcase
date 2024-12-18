@@ -1407,7 +1407,7 @@
             }
 
             zoomOut(size) {
-                this.deep = this.size.doubleValue() < 1e-300;
+                this.deep = this.size.exp < -300;
                 this.size = this.size.mul(size);
             }
 
@@ -1419,7 +1419,7 @@
                 Decimal.config({
                     precision: -size.exp + 10
                 })
-                this.deep = this.size.doubleValue() < 1e-300;
+                this.deep = this.size.exp < -300;
                 this.size = size;
             }
 
@@ -1530,6 +1530,8 @@
                     approx: 0,
                     time: performance.now()
                 };
+
+                this.deep = this.size.exp < -300;
 
                 reInput.value = this.center.re;
                 imInput.value = this.center.im;
@@ -1724,7 +1726,7 @@
                     img.src = url;
                     frames.push(img);
                     this.zoomOut(2);
-                    if (this.size.doubleValue() > 1e-20 && !refreshRef) {
+                    if (this.size.exp > -20 && !refreshRef) {
                         this.center = new DeepComplex(
                             new Decimal(this.center.re.toPrecision(30)),
                             new Decimal(this.center.im.toPrecision(30))
