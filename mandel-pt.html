@@ -1491,10 +1491,15 @@
                 const color = getColor(it, this.iterations);
 
                 let i = (y * this.canvas.width + x) << 2;
-                this.image.data[i] = color[0]
-                this.image.data[i + 1] = color[1]
-                this.image.data[i + 2] = color[2]
-                this.image.data[i + 3] = 255
+                for (let dy = 0; dy < h; dy++) {
+                    for (let dx = 0; dx < w; dx++) {
+                        let j = (dy * this.canvas.width + dx) << 2;
+                        this.image.data[i + j] = color[0]
+                        this.image.data[i + j + 1] = color[1]
+                        this.image.data[i + j + 2] = color[2]
+                        this.image.data[i + j + 3] = 255
+                    }
+                }
                 // this.context.fillStyle = `rgb(${color[0]}, ${color[1]}, ${color[2]})`
                 // this.context.fillRect(x, y, w, h)
             }
