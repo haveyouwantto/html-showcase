@@ -1340,6 +1340,7 @@
                 this.bailout = bailout * bailout;
 
                 this.size = new FloatExp(4);
+                this.deep = false;
 
                 this.canvas = canvas;
                 this.context = canvas.getContext('2d');
@@ -1406,6 +1407,7 @@
             }
 
             zoomOut(size) {
+                this.deep = this.size.doubleValue() < 1e-300;
                 this.size = this.size.mul(size);
             }
 
@@ -1445,6 +1447,7 @@
             home() {
                 this.goto(new DeepComplex(new Decimal(0), new Decimal(0)))
                 this.size = new FloatExp(4);
+                this.deep = false;
                 this.iterations = 256;
             }
 
@@ -1941,7 +1944,7 @@
                 a.download = 'file.webm';
                 a.href = url;
                 a.click();
-                
+
                 ctx.imageSmoothingEnabled = false;
             };
 
