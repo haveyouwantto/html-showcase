@@ -1343,6 +1343,7 @@
                 this.context = canvas.getContext('2d');
                 this.rendering = false;
                 this.iterMap = [...new Array(this.canvas.height)].map(e => [...new Array(this.canvas.width)].map(e => 0))
+                this.videoRendering = false;
 
                 canvas.addEventListener('mousedown', e => {
                     if (e.button === 0 && !this.rendering) {
@@ -1488,8 +1489,14 @@
                 this.iterMap[y][x] = it;
 
                 const color = getColor(it, this.iterations);
-                this.context.fillStyle = `rgb(${color[0]}, ${color[1]}, ${color[2]})`
-                this.context.fillRect(x, y, w, h)
+
+                let i = (y * this.canvas.width + x) << 2;
+                this.image.data[i] = color[0]
+                this.image.data[i + 1] = color[1]
+                this.image.data[i + 2] = color[2]
+                this.image.data[i + 3] = 255
+                // this.context.fillStyle = `rgb(${color[0]}, ${color[1]}, ${color[2]})`
+                // this.context.fillRect(x, y, w, h)
             }
 
             showInfo() {
@@ -1519,6 +1526,8 @@
                 zoomInput.value = new FloatExp(4).div(this.size).toString()
                 itInput.value = this.iterations;
 
+                this.image = this.context.getImageData(0, 0, this.canvas.width, this.canvas.height);
+
                 let base, ref, refComplex, coeff;
                 let refLen = 0;
 
@@ -1543,6 +1552,7 @@
                     this.refValid = true;
                 } else {
                     ref = this.ref;
+                    this.stats.ref = ref.length;
                 }
                 refLen = ref.length;
                 console.log("ref iter: " + ref.length)
@@ -1580,13 +1590,17 @@
                             for (let x = 0; x < this.canvas.width; x += 2) {
                                 computePixel(x, y, 2, 2);
                             }
-                            if (y % 100 == 0) {
+                            if (y % 100 == 0 && !this.videoRendering) {
                                 this.showInfo();
+                                this.context.putImageData(this.image, 0, 0);
                                 await delay(1)
                             }
                         }
-                        this.showInfo();
-                        await delay(10);
+                        if (!this.videoRendering) {
+                            this.context.putImageData(this.image, 0, 0);
+                            this.showInfo();
+                            await delay(10);
+                        }
                         r();
                     })
                 }
@@ -1604,13 +1618,17 @@
                                     computePixel(x, y, 1, 2);
                                 }
                             }
-                            if (y % 100 == 0) {
+                            if (y % 100 == 0 && !this.videoRendering) {
+                                this.context.putImageData(this.image, 0, 0);
                                 this.showInfo();
                                 await delay(1)
                             }
                         }
-                        this.showInfo();
-                        await delay(10);
+                        if (!this.videoRendering) {
+                            this.context.putImageData(this.image, 0, 0);
+                            this.showInfo();
+                            await delay(10);
+                        }
                         r();
                     })
                 }
@@ -1630,11 +1648,13 @@
                                 }
                             }
 
-                            if (y % 100 == 1) {
+                            if (y % 100 == 1 && !this.videoRendering) {
+                                this.context.putImageData(this.image, 0, 0);
                                 this.showInfo();
                                 await delay(1)
                             }
                         }
+                        this.context.putImageData(this.image, 0, 0);
                         this.showInfo();
                         await delay(10);
                         r();
@@ -1685,14 +1705,26 @@
 
             async renderFrames() {
                 let frames = [];
-                while (this.size.doubleValue() < 16) {
+                let refreshRef = false;
+                this.videoRendering = true;
+                while (this.size.doubleValue() < 32) {
                     await this.update();
                     let url = canvas.toDataURL('image/png');
                     let img = document.createElement('img');
                     img.src = url;
                     frames.push(img);
                     this.zoomOut(2);
+                    if (this.size.doubleValue() > 1e-20 && !refreshRef) {
+                        this.center = new DeepComplex(
+                            new Decimal(this.center.re.toPrecision(30)),
+                            new Decimal(this.center.im.toPrecision(30))
+                        )
+                        this.refValid = false;
+                        this.iterations = 256;
+                        refreshRef = true;
+                    }
                 }
+                this.videoRendering = false;
                 return frames.reverse();
             }
         }
@@ -1887,11 +1919,8 @@
             const keyFrames = await mandelbrot.renderFrames();
             console.log(keyFrames);
 
-            
-            mandelbrot.rendering = true;
-
             const stream = canvas.captureStream();
-            const recorder = new MediaRecorder(stream, { mimeType: 'video/webm;codecs=h264', videoBitsPerSecond: 5000000 });
+            const recorder = new MediaRecorder(stream, { mimeType: 'video/webm;codecs=h264', videoBitsPerSecond: 10000000 });
             const data = [];
             recorder.ondataavailable = function (event) {
                 if (event.data && event.data.size) {
@@ -1899,7 +1928,6 @@
                 }
             };
             recorder.onstop = () => {
-                mandelbrot.rendering = false;
                 const url = URL.createObjectURL(new Blob(data, { type: 'video/webm' }));
                 console.log('video url', url)
                 var a = document.createElement('a');
@@ -1956,7 +1984,7 @@
                     canvas.width * scale2
                 );
 
-                more.innerText = indexFl;
+                more.innerText = indexFl.toFixed(2);
 
                 // Increment index for the next frame
                 indexFl += 1 / 60;
