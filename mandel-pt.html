@@ -816,7 +816,7 @@
             }
             return orbit;
         }
-        
+
 
         /**
          * Calculates the number of iterations required for a complex number to exceed a given bailout value.
@@ -844,7 +844,7 @@
             }
             return it;
         }
-           
+
 
         /**
          * Generate BLA table
@@ -1072,11 +1072,11 @@
                 // Squared Euclidean distance (abs squared)
                 let valAbsSq = valRe * valRe + valIm * valIm;
                 if (valAbsSq > bailout) {
-                	let fracIter = Math.log(valAbsSq) / 2;
+                    let fracIter = Math.log(valAbsSq) / 2;
                     fracIter = Math.log(fracIter / Math.LN2) / Math.LN2;
                     iter += 1 - fracIter;
-                	return iter;
-                	}
+                    return iter;
+                }
 
                 let dzAbsSq = dzRe * dzRe + dzIm * dzIm;
                 if (valAbsSq < dzAbsSq || refIter == ref.length - 1) {
@@ -1117,7 +1117,12 @@
                 const Z2 = ref[refIter]
                 const val = Z2.add(dz);
                 const valAbs = val.abs();
-                if (valAbs.compareTo(bout) > 0) return iter;
+                if (valAbs.compareTo(bout) > 0) {
+                    let fracIter = Math.log(valAbs.doubleValue()) / 2;
+                    fracIter = Math.log(fracIter / Math.LN2) / Math.LN2;
+                    iter += 1 - fracIter;
+                    return iter;
+                };
                 if (valAbs.sub(dzNorm).compareTo(zero) < 0 || refIter == ref.length - 1) { // 检测是否需要变基
                     dz = val;
                     refIter = 0;
@@ -1496,7 +1501,7 @@
                                 let leftColor = this.getIter(x - 1, y);
                                 let rightColor = this.getIter(x + 1, y);
                                 if (Math.floor(leftColor) == Math.floor(rightColor) && leftColor > 0 && rightColor > 0) {
-                                    this.setIter(x, y, (leftColor+rightColor)/2);
+                                    this.setIter(x, y, (leftColor + rightColor) / 2);
                                     this.stats.guess++;
                                 } else {
                                     computePixel(x, y, 1, 2);
@@ -1525,7 +1530,7 @@
                                 let upColor = this.getIter(x, y - 1);
                                 let downColor = this.getIter(x, y + 1);
                                 if (Math.floor(upColor) == Math.floor(downColor) && upColor > 0 && downColor > 0) {
-                                    this.setIter(x, y, (upColor+downColor)/2);
+                                    this.setIter(x, y, (upColor + downColor) / 2);
                                     this.stats.guess++;
                                 } else {
                                     computePixel(x, y);
