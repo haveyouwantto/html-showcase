@@ -232,24 +232,7 @@
             }
 
             static getExpOfDouble(d) {
-                if (d < 0) d = -d; // Handling negative numbers
-                let low = 0,
-                    high = this.expTable.length - 1;
-
-                // Binary search
-                while (low <= high) {
-                    const mid = Math.floor((low + high) / 2);
-                    if (this.expTable[mid] === d) {
-                        return mid - 324; // Adjusting the result to match the original logic
-                    } else if (this.expTable[mid] < d) {
-                        low = mid + 1;
-                    } else {
-                        high = mid - 1;
-                    }
-                }
-
-                // Return the exponent of the closest lower value
-                return low - 325;
+                return Math.floor(Math.log(Math.abs(d))* 0.4342944819032518)
             }
 
             constructor(base, exp = 0) {
