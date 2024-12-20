@@ -232,24 +232,7 @@
             }
 
             static getExpOfDouble(d) {
-                if (d < 0) d = -d; // Handling negative numbers
-                let low = 0,
-                    high = this.expTable.length - 1;
-
-                // Binary search
-                while (low <= high) {
-                    const mid = Math.floor((low + high) / 2);
-                    if (this.expTable[mid] === d) {
-                        return mid - 324; // Adjusting the result to match the original logic
-                    } else if (this.expTable[mid] < d) {
-                        low = mid + 1;
-                    } else {
-                        high = mid - 1;
-                    }
-                }
-
-                // Return the exponent of the closest lower value
-                return low - 325;
+                return Math.floor(Math.log(Math.abs(d)) * 0.4342944819032518)
             }
 
             constructor(base, exp = 0) {
@@ -1238,10 +1221,10 @@
                     e.preventDefault();
                     if (!this.rendering)
                         if (e.deltaY < 0) {
-                            this.click(e.offsetX, e.offsetY);
+                            this.click(e.offsetX / canvas.offsetWidth * canvas.width, e.offsetY / canvas.offsetHeight * canvas.height);
                             this.update();
                         } else if (e.deltaY > 0) {
-                            this.zoomOut(4);
+                            this.zoomOut();
                             this.update();
                         }
                 });
@@ -1282,9 +1265,19 @@
                 );
             }
 
-            zoomOut(size) {
-                this.deep = this.size.exp < -300;
-                this.size = this.size.mul(size);
+            zoomOut() {
+                let newMap = [...new Array(this.canvas.height)].map(e => [...new Array(this.canvas.width)].map(e => 0))
+                for (let y = 0; y < this.canvas.height; y += 2) {
+                    for (let x = 0; x < this.canvas.width; x += 2) {
+                        newMap
+                        [this.canvas.height / 4 + y / 2]
+                        [this.canvas.width / 4 + x / 2]
+                            =
+                            this.iterMap[y][x];
+                    }
+                }
+                this.iterMap = newMap;
+                this.size = this.size.mul(2);
             }
 
             /**
@@ -1297,6 +1290,14 @@
                 })
                 this.deep = this.size.exp < -300;
                 this.size = size;
+                this.clear();
+            }
+
+            /**
+             * Clear iteration map
+             */
+            clear() {
+                this.iterMap.forEach(e => e.fill(0))
             }
 
             /**
@@ -1306,7 +1307,10 @@
             goto(c, clear = true) {
                 this.center = c;
                 this.refValid = false;
-                if (clear) this.context.clearRect(0, 0, this.canvas.width, this.canvas.height);
+                if (clear) {
+                    this.context.clearRect(0, 0, this.canvas.width, this.canvas.height);
+                    this.clear();
+                }
             }
 
             /**
@@ -1407,7 +1411,10 @@
                     time: performance.now()
                 };
 
+                let prevDeep = this.deep;
                 this.deep = this.size.exp < -300;
+                if (prevDeep && !this.deep) this.ref = this.ref.map(e => e.toComplex());
+                console.log(prevDeep, this.deep)
 
                 reInput.value = this.center.re;
                 imInput.value = this.center.im;
@@ -1488,6 +1495,11 @@
                     return new Promise(async (r, j) => {
                         for (let y = 0; y < this.canvas.height; y += 2) {
                             for (let x = 0; x < this.canvas.width; x += 2) {
+                                if (this.iterMap[y][x] != 0) {
+                                    this.setIter(x, y, this.iterMap[y][x], 2, 2)
+                                    continue
+                                }
+
                                 computePixel(x, y, 2, 2);
                             }
                             if (y % 100 == 0 && !this.videoRendering && this.deep) {
@@ -1509,6 +1521,10 @@
                     return new Promise(async (r, j) => {
                         for (let y = 0; y < this.canvas.height; y += 2) {
                             for (let x = 1; x < this.canvas.width; x += 2) {
+                                if (this.iterMap[y][x] != 0) {
+                                    this.setIter(x, y, this.iterMap[y][x], 1, 2)
+                                    continue
+                                }
                                 let leftColor = this.getIter(x - 1, y);
                                 let rightColor = this.getIter(x + 1, y);
                                 if (Math.floor(leftColor) == Math.floor(rightColor) && leftColor > 0 && rightColor > 0) {
@@ -1537,6 +1553,10 @@
                     return new Promise(async (r, j) => {
                         for (let y = 1; y < this.canvas.height; y += 2) {
                             for (let x = 0; x < this.canvas.width; x++) {
+                                if (this.iterMap[y][x] != 0) {
+                                    this.setIter(x, y, this.iterMap[y][x])
+                                    continue
+                                }
 
                                 let upColor = this.getIter(x, y - 1);
                                 let downColor = this.getIter(x, y + 1);
@@ -1613,7 +1633,7 @@
                     let img = document.createElement('img');
                     img.src = url;
                     frames.push(img);
-                    this.zoomOut(2);
+                    this.zoomOut();
                     if (this.size.exp > -20 && !refreshRef) {
                         this.center = new DeepComplex(
                             new Decimal(this.center.re.toPrecision(30)),
