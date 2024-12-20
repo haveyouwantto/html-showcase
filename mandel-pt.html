@@ -1071,7 +1071,12 @@
 
                 // Squared Euclidean distance (abs squared)
                 let valAbsSq = valRe * valRe + valIm * valIm;
-                if (valAbsSq > bailout) return iter;
+                if (valAbsSq > bailout) {
+                	let fracIter = Math.log(valAbsSq) / 2;
+                    fracIter = Math.log(fracIter / Math.LN2) / Math.LN2;
+                    iter += 1 - fracIter;
+                	return iter;
+                	}
 
                 let dzAbsSq = dzRe * dzRe + dzIm * dzIm;
                 if (valAbsSq < dzAbsSq || refIter == ref.length - 1) {
@@ -1490,8 +1495,8 @@
                             for (let x = 1; x < this.canvas.width; x += 2) {
                                 let leftColor = this.getIter(x - 1, y);
                                 let rightColor = this.getIter(x + 1, y);
-                                if (leftColor == rightColor && leftColor > 0 && rightColor > 0) {
-                                    this.setIter(x, y, leftColor);
+                                if (Math.floor(leftColor) == Math.floor(rightColor) && leftColor > 0 && rightColor > 0) {
+                                    this.setIter(x, y, (leftColor+rightColor)/2);
                                     this.stats.guess++;
                                 } else {
                                     computePixel(x, y, 1, 2);
@@ -1519,8 +1524,8 @@
 
                                 let upColor = this.getIter(x, y - 1);
                                 let downColor = this.getIter(x, y + 1);
-                                if (upColor == downColor && upColor > 0 && downColor > 0) {
-                                    this.setIter(x, y, upColor);
+                                if (Math.floor(upColor) == Math.floor(downColor) && upColor > 0 && downColor > 0) {
+                                    this.setIter(x, y, (upColor+downColor)/2);
                                     this.stats.guess++;
                                 } else {
                                     computePixel(x, y);
@@ -1669,7 +1674,7 @@
             new Decimal(0), new Decimal(0));
 
         let size = new FloatExp(4);
-        let bailout = 2;
+        let bailout = 16;
         let iterations = 256;
 
         location.hash.slice(1).split("&").forEach(e => {
