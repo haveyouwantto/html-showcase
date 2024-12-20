@@ -218,6 +218,8 @@
 
         class FloatExp {
             static expTable = [];
+            static LOG2_10 = Math.log2(10);
+            static LOG10_2 = Math.log10(2);
             static {
                 this.expTable = [];
                 for (let i = 0; i < 324 + 308; i++) {
@@ -410,6 +412,19 @@
                 return 0; // Equal
             }
 
+            log2Value() {
+                const log2Mantissa = Math.log2(this.base);
+                const log2Exponent = this.exp * FloatExp.LOG2_10;
+
+                const log2Result = log2Mantissa + log2Exponent;
+
+                return log2Result;
+            }
+
+            static fromLog2(val) {
+                const log10 = val * FloatExp.LOG10_2;
+                return new FloatExp(Math.pow(10, log10 - Math.trunc(log10)), Math.trunc(log10));
+            }
         }
 
         function parseFloatExp(string) {
@@ -1632,7 +1647,7 @@
                     let url = canvas.toDataURL('image/png');
                     let img = document.createElement('img');
                     img.src = url;
-                    frames.push(img);
+                    frames.push({ frame: img, scale: this.size });
                     this.zoomOut();
                     if (this.size.exp > -20 && !refreshRef) {
                         this.center = new DeepComplex(
@@ -1861,6 +1876,14 @@
             let indexFl = 0;
             let ctx = canvas.getContext('2d')
             ctx.imageSmoothingEnabled = true;
+
+            ctx.font = 'bold 26px Arial';
+            ctx.textAlign = 'left';
+            ctx.textBaseline = 'top';
+            ctx.fillStyle = 'white';
+            ctx.strokeStyle = 'black';
+            ctx.lineWidth = 1;
+
             const renderer = () => {
                 // Ensure `keyFrames` array is defined and has elements
                 if (!keyFrames || keyFrames.length < 2) {
@@ -1877,8 +1900,8 @@
                 }
 
                 // Get the two images for the transition
-                const image1 = keyFrames[i];
-                const image2 = keyFrames[i + 1];
+                const image1 = keyFrames[i].frame;
+                const image2 = keyFrames[i + 1].frame;
 
                 // Calculate scaling factors
                 const decimalPart = indexFl - i; // Fractional part of the index
@@ -1908,6 +1931,17 @@
                 );
 
                 more.innerText = indexFl.toFixed(2);
+
+                const scale = new FloatExp(4).div(keyFrames[0].scale);
+                const currScale = FloatExp.fromLog2(scale.log2Value() + indexFl);
+
+                let zoomText;
+                if (currScale.exp < 7) {
+                    zoomText = currScale.doubleValue().toFixed(2);
+                } else zoomText = `${currScale.base.toFixed(2)}E${currScale.exp}`
+
+                ctx.fillText(zoomText, 8, 8)
+                ctx.strokeText(zoomText, 8, 8)
 
                 // Increment index for the next frame
                 indexFl += 1 / 60;
