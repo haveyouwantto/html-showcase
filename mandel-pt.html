@@ -1932,8 +1932,8 @@
 
                 more.innerText = indexFl.toFixed(2);
 
-                const scale = new FloatExp(4).div(keyFrames[0].scale);
-                const currScale = FloatExp.fromLog2(scale.log2Value() + indexFl);
+                const scale = new FloatExp(4).div(keyFrames[i].scale);
+                const currScale = FloatExp.fromLog2(scale.log2Value() + decimalPart);
 
                 let zoomText;
                 if (currScale.exp < 7) {
