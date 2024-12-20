@@ -1024,12 +1024,8 @@
          * @param {number} bailout - The bailout value used for iteration termination.
          * @returns {number|null} - The escape time for the point or null if it doesn't escape.
          */
-        function getPTBLA(dc, ref, table, maxIter, bailout) {
-            let dzRe = 0,
-                dzIm = 0; // Real and imaginary parts of dz
+        function getPTBLA(dc, ref, table, maxIter, bailout, dzRe = 0, dzIm = 0, iter = -1, refIter = 0) {
 
-            let iter = -1;
-            let refIter = 0;
             let dcNorm = Math.max(Math.abs(dc.re), Math.abs(dc.im));
             while (iter < maxIter) {
                 let dzNorm = Math.max(Math.abs(dzRe), Math.abs(dzIm)); // Chebyshev norm
@@ -1112,7 +1108,10 @@
                     iter++;
                     refIter++;
                 }
-                if (refIter >= ref.length) return iter;
+                if (refIter >= ref.length) return { it: iter, e: true };
+                if (dz.re.exp > -300 && dz.im.exp > -300) {
+                    return { it: iter, e: false, z: dz.toComplex(), ref: refIter };
+                }
 
                 const Z2 = ref[refIter]
                 const val = Z2.add(dz);
@@ -1121,14 +1120,14 @@
                     let fracIter = Math.log(valAbs.doubleValue()) / 2;
                     fracIter = Math.log(fracIter / Math.LN2) / Math.LN2;
                     iter += 1 - fracIter;
-                    return iter;
+                    return { it: iter, e: true };
                 };
                 if (valAbs.sub(dzNorm).compareTo(zero) < 0 || refIter == ref.length - 1) { // 检测是否需要变基
                     dz = val;
                     refIter = 0;
                 }
             }
-            return iter;
+            return { it: iter, e: true };
         }
 
         /**
@@ -1417,7 +1416,7 @@
 
                 this.image = this.context.getImageData(0, 0, this.canvas.width, this.canvas.height);
 
-                let base, ref, refComplex, coeff;
+                let base, ref, refComplex, blaComplex;
                 let refLen = 0;
 
                 base = this.center;
@@ -1448,8 +1447,13 @@
 
                 console.log(performance.now() + " bla calculation")
 
-                if (this.deep)
+                if (this.deep) {
                     this.blaTable = createBLATableFE(ref, this.size);
+                    refComplex = ref.map(e => e.toComplex())
+                    blaComplex = this.blaTable.map(e => e.map(e2 => {
+                        return { A: e2.A.toComplex(), B: e2.B.toComplex(), radius: e2.radius.doubleValue() }
+                    }))
+                }
                 else
                     this.blaTable = createBLATable(ref, this.size.doubleValue())
 
@@ -1459,12 +1463,19 @@
 
                 console.log(performance.now() + " perturbation")
 
+
                 let computePixel = (x, y, w, h) => {
                     let newIter;
 
                     let delta = this.getDelta(x, y);
 
-                    if (this.deep) newIter = getPTBLAFE(delta, ref, this.blaTable, this.iterations, this.bailout)
+                    if (this.deep) {
+                        let result = getPTBLAFE(delta, ref, this.blaTable, this.iterations, this.bailout);
+                        if (result.e) newIter = result.it;
+                        else {
+                            newIter = getPTBLA(delta.toComplex(), refComplex, blaComplex, this.iterations, this.bailout, result.z.re, result.z.im, result.it, result.ref)
+                        }
+                    }
                     else
                         newIter = getPTBLA(delta, ref, this.blaTable, this.iterations, this.bailout);
 
