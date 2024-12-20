@@ -1046,7 +1046,6 @@
 
                     iter += result.second;
                     refIter += result.second;
-                    if (refIter >= ref.length) return iter;
                 } else {
                     const Z = ref[refIter];
 
@@ -1061,6 +1060,7 @@
                     refIter++;
                 }
 
+                if (refIter >= ref.length) return iter;
                 const Z2 = ref[refIter];
                 let valRe = Z2.re + dzRe;
                 let valIm = Z2.im + dzIm;
@@ -1109,7 +1109,7 @@
                     refIter++;
                 }
                 if (refIter >= ref.length) return { it: iter, e: true };
-                if (dz.re.exp > -300 && dz.im.exp > -300) {
+                if (dz.re.exp > -150 && dz.im.exp > -150) {
                     return { it: iter, e: false, z: dz.toComplex(), ref: refIter };
                 }
 
