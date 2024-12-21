@@ -218,6 +218,8 @@
 
         class FloatExp {
             static expTable = [];
+            static LOG2_10 = Math.log2(10);
+            static LOG10_2 = Math.log10(2);
             static {
                 this.expTable = [];
                 for (let i = 0; i < 324 + 308; i++) {
@@ -410,6 +412,19 @@
                 return 0; // Equal
             }
 
+            log2Value() {
+                const log2Mantissa = Math.log2(this.base);
+                const log2Exponent = this.exp * FloatExp.LOG2_10;
+
+                const log2Result = log2Mantissa + log2Exponent;
+
+                return log2Result;
+            }
+
+            static fromLog2(val) {
+                const log10 = val * FloatExp.LOG10_2;
+                return new FloatExp(Math.pow(10, log10 - Math.trunc(log10)), Math.trunc(log10));
+            }
         }
 
         function parseFloatExp(string) {
@@ -1007,12 +1022,8 @@
          * @param {number} bailout - The bailout value used for iteration termination.
          * @returns {number|null} - The escape time for the point or null if it doesn't escape.
          */
-        function getPTBLA(dc, ref, table, maxIter, bailout) {
-            let dzRe = 0,
-                dzIm = 0; // Real and imaginary parts of dz
+        function getPTBLA(dc, ref, table, maxIter, bailout, dzRe = 0, dzIm = 0, iter = -1, refIter = 0) {
 
-            let iter = -1;
-            let refIter = 0;
             let dcNorm = Math.max(Math.abs(dc.re), Math.abs(dc.im));
             while (iter < maxIter) {
                 let dzNorm = Math.max(Math.abs(dzRe), Math.abs(dzIm)); // Chebyshev norm
@@ -1033,7 +1044,6 @@
 
                     iter += result.second;
                     refIter += result.second;
-                    if (refIter >= ref.length) return iter;
                 } else {
                     const Z = ref[refIter];
 
@@ -1048,6 +1058,7 @@
                     refIter++;
                 }
 
+                if (refIter >= ref.length) return iter;
                 const Z2 = ref[refIter];
                 let valRe = Z2.re + dzRe;
                 let valIm = Z2.im + dzIm;
@@ -1095,7 +1106,10 @@
                     iter++;
                     refIter++;
                 }
-                if (refIter >= ref.length) return iter;
+                if (refIter >= ref.length) return { it: iter, e: true };
+                if (dz.re.exp > -150 && dz.im.exp > -150) {
+                    return { it: iter, e: false, z: dz.toComplex(), ref: refIter };
+                }
 
                 const Z2 = ref[refIter]
                 const val = Z2.add(dz);
@@ -1104,14 +1118,14 @@
                     let fracIter = Math.log(valAbs.doubleValue()) / 2;
                     fracIter = Math.log(fracIter / Math.LN2) / Math.LN2;
                     iter += 1 - fracIter;
-                    return iter;
+                    return { it: iter, e: true };
                 };
                 if (valAbs.sub(dzNorm).compareTo(zero) < 0 || refIter == ref.length - 1) { // 检测是否需要变基
                     dz = val;
                     refIter = 0;
                 }
             }
-            return iter;
+            return { it: iter, e: true };
         }
 
         /**
@@ -1424,7 +1438,7 @@
 
                 this.image = this.context.getImageData(0, 0, this.canvas.width, this.canvas.height);
 
-                let base, ref, refComplex, coeff;
+                let base, ref, refComplex, blaComplex;
                 let refLen = 0;
 
                 base = this.center;
@@ -1455,8 +1469,13 @@
 
                 console.log(performance.now() + " bla calculation")
 
-                if (this.deep)
+                if (this.deep) {
                     this.blaTable = createBLATableFE(ref, this.size);
+                    refComplex = ref.map(e => e.toComplex())
+                    blaComplex = this.blaTable.map(e => e.map(e2 => {
+                        return { A: e2.A.toComplex(), B: e2.B.toComplex(), radius: e2.radius.doubleValue() }
+                    }))
+                }
                 else
                     this.blaTable = createBLATable(ref, this.size.doubleValue())
 
@@ -1466,12 +1485,19 @@
 
                 console.log(performance.now() + " perturbation")
 
+
                 let computePixel = (x, y, w, h) => {
                     let newIter;
 
                     let delta = this.getDelta(x, y);
 
-                    if (this.deep) newIter = getPTBLAFE(delta, ref, this.blaTable, this.iterations, this.bailout)
+                    if (this.deep) {
+                        let result = getPTBLAFE(delta, ref, this.blaTable, this.iterations, this.bailout);
+                        if (result.e) newIter = result.it;
+                        else {
+                            newIter = getPTBLA(delta.toComplex(), refComplex, blaComplex, this.iterations, this.bailout, result.z.re, result.z.im, result.it, result.ref)
+                        }
+                    }
                     else
                         newIter = getPTBLA(delta, ref, this.blaTable, this.iterations, this.bailout);
 
@@ -1643,7 +1669,7 @@
                     let url = canvas.toDataURL('image/png');
                     let img = document.createElement('img');
                     img.src = url;
-                    frames.push(img);
+                    frames.push({ frame: img, scale: this.size });
                     this.zoomOut();
                     if (this.size.exp > -20 && !refreshRef) {
                         this.center = new DeepComplex(
@@ -1872,6 +1898,14 @@
             let indexFl = 0;
             let ctx = canvas.getContext('2d')
             ctx.imageSmoothingEnabled = true;
+
+            ctx.font = 'bold 26px Arial';
+            ctx.textAlign = 'left';
+            ctx.textBaseline = 'top';
+            ctx.fillStyle = 'white';
+            ctx.strokeStyle = 'black';
+            ctx.lineWidth = 1;
+
             const renderer = () => {
                 // Ensure `keyFrames` array is defined and has elements
                 if (!keyFrames || keyFrames.length < 2) {
@@ -1888,8 +1922,8 @@
                 }
 
                 // Get the two images for the transition
-                const image1 = keyFrames[i];
-                const image2 = keyFrames[i + 1];
+                const image1 = keyFrames[i].frame;
+                const image2 = keyFrames[i + 1].frame;
 
                 // Calculate scaling factors
                 const decimalPart = indexFl - i; // Fractional part of the index
@@ -1919,6 +1953,17 @@
                 );
 
                 more.innerText = indexFl.toFixed(2);
+
+                const scale = new FloatExp(4).div(keyFrames[i].scale);
+                const currScale = FloatExp.fromLog2(scale.log2Value() + decimalPart);
+
+                let zoomText;
+                if (currScale.exp < 7) {
+                    zoomText = currScale.doubleValue().toFixed(2);
+                } else zoomText = `${currScale.base.toFixed(2)}E${currScale.exp}`
+
+                ctx.fillText(zoomText, 8, 8)
+                ctx.strokeText(zoomText, 8, 8)
 
                 // Increment index for the next frame
                 indexFl += 1 / 60;
