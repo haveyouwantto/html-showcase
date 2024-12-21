@@ -1575,23 +1575,25 @@
                 await p3();
 
                 // Distance estimation
-                // for (let y = 0; y < this.canvas.height - 1; y++) {
-                //     for (let x = 0; x < this.canvas.width - 1; x++) {
-                //         let gradX = this.iterMap[y][x + 1] - this.iterMap[y][x];
-                //         let gradY = this.iterMap[y + 1][x] - this.iterMap[y][x];
-                //         let diff = Math.sqrt(gradX * gradX + gradY * gradY);
+                if (this.distanceEstimation) {
+                    for (let y = 0; y < this.canvas.height - 1; y++) {
+                        for (let x = 0; x < this.canvas.width - 1; x++) {
+                            let gradX = this.iterMap[y][x + 1] - this.iterMap[y][x];
+                            let gradY = this.iterMap[y + 1][x] - this.iterMap[y][x];
+                            let diff = Math.sqrt(gradX * gradX + gradY * gradY);
 
-                //         let j = (y * this.canvas.width + x) << 2;
+                            let j = (y * this.canvas.width + x) << 2;
 
-                //         let color = getColor(Math.log1p(diff) * 32 / colorStep, 10000);
+                            let color = getColor(Math.log1p(diff) * 32 / colorStep, 10000);
 
-                //         this.image.data[j] = color[0]
-                //         this.image.data[j + 1] = color[1]
-                //         this.image.data[j + 2] = color[2]
-                //         this.image.data[j + 3] = 255
-                //     }
-                // }
-                // this.context.putImageData(this.image, 0, 0)
+                            this.image.data[j] = color[0]
+                            this.image.data[j + 1] = color[1]
+                            this.image.data[j + 2] = color[2]
+                            this.image.data[j + 3] = 255
+                        }
+                    }
+                    this.context.putImageData(this.image, 0, 0)
+                }
 
                 console.log('done!')
                 this.rendering = false;
