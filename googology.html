@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Googology Formatter</title>
+    <style>
+        /* General reset */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        /* Body */
+        body {
+            font-family: 'Arial', sans-serif;
+            background-color: #121212;
+            color: #E0E0E0;
+            line-height: 1.6;
+            padding: 20px;
+            width: 50%;
+            margin: auto;
+        }
+
+        /* Main heading */
+        h1 {
+            font-size: 2.5rem;
+            color: #ff9800;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+
+        /* Section titles */
+        h2 {
+            font-size: 1.75rem;
+            color: #ff9800;
+            margin-top: 20px;
+            text-align: center;
+        }
+
+        /* Paragraph */
+        p {
+            font-size: 1rem;
+            margin-bottom: 10px;
+        }
+
+        /* Input styles */
+        input[type="number"],
+        input[type="text"] {
+            width: 100%;
+            padding: 10px;
+            background-color: #333;
+            border: 1px solid #444;
+            border-radius: 5px;
+            color: #E0E0E0;
+            font-size: 1rem;
+            margin-bottom: 20px;
+        }
+
+        input[type="number"]:focus,
+        input[type="text"]:focus {
+            border-color: #ff9800;
+            outline: none;
+        }
+
+        /* Button styles */
+        button {
+            padding: 10px 20px;
+            background-color: #ff9800;
+            border: none;
+            border-radius: 5px;
+            color: #121212;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: background-color 0.3s ease;
+        }
+
+        button:hover {
+            background-color: #ff5722;
+        }
+
+        /* Result area */
+        #result {
+            font-size: 1.2rem;
+            color: white;
+            text-align: center;
+            font-size: 26px;
+            padding: 10px;
+            background-color: #333;
+            border-radius: 5px;
+            margin-top: 10px;
+            word-wrap: break-word;
+            white-space: pre-wrap;
+            max-width: 100%;
+        }
+
+        /* Flexbox container for layout */
+        .container {
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            max-width: 600px;
+            margin: 0 auto;
+        }
+
+        /* Adding some space between sections */
+        section {
+            margin-bottom: 30px;
+        }
+
+
+        @media (max-width: 768px) {
+            body {
+                width: 100%;
+            }
+        }
+    </style>
+    <script>
+        function fromLog2(val) {
+            const log10 = val * Math.log10(2);
+            const fractionalPart = log10 - Math.trunc(log10);
+            const integerPart = Math.trunc(log10);
+            return { mant: Math.pow(10, fractionalPart), exp: integerPart };
+        }
+
+        function fromLog10(val) {
+            const fractionalPart = val - Math.trunc(val);
+            const integerPart = Math.trunc(val);
+            return { mant: Math.pow(10, fractionalPart), exp: integerPart };
+        }
+
+        function fromScientific(val) {
+            const parts = val.toLowerCase().split('e');
+            let mant = parseFloat(parts[0]);
+            let exp = parseInt(parts[1] ?? 0, 10);
+
+            // Normalize mantissa to be between 1 and 10
+            if (mant !== 0 && (mant < 1 || mant >= 10)) {
+                const scale = Math.floor(Math.log10(Math.abs(mant)));
+                mant = mant / Math.pow(10, scale);
+                exp += scale;
+            }
+
+            return { mant, exp };
+        }
+
+        function googologySuffix(n) {
+            const basics = ['n', 'm', 'b', 'tr', 'quadr', 'quint', 'sext', 'sept', 'oct', 'non']
+            const units = ['', 'un', 'duo', 'tre', 'quattuor', 'quin', 'sex', 'septen', 'octo', 'novem'];
+            const tens = ['', 'dec', 'vigint', 'trigint', 'quadragint', 'quinquagint', 'sexagint', 'septuagint',
+                'octogint', 'nonagint'];
+            const hundreds = ['', 'cent', 'ducent', 'trecent', 'quadringent', 'quingent', 'sescent', 'septingent',
+                'octingent', 'nongent'];
+
+            let unit;
+            if ((n % 1000) < 10) {
+                unit = basics[n % 1000];
+            }
+            else {
+                unit = units[n % 10] + tens[Math.floor(n / 10) % 10] + hundreds[Math.floor(n / 100) % 10];
+            }
+            if (n >= 1000) {
+                unit = googologySuffix(Math.floor(n / 1000)) + unit;
+            }
+            return unit + 'illi';
+        }
+
+        function getSuffix(ord) {
+            console.log(ord)
+            const suffixes = [
+                '', 'thousand'
+            ];
+
+            if (ord < 0) return '';
+            if (ord < suffixes.length) return suffixes[ord];
+            return googologySuffix(ord - 1) + 'on';
+        }
+
+        function toEnglishNotation(mant, exp) {
+            const significantDigits = mant * Math.pow(10, exp % 3);
+            const thousandsExponent = Math.floor(exp / 3);
+            const suffix = getSuffix(thousandsExponent);
+            const formattedNumber = significantDigits.toPrecision(3);
+            return `${formattedNumber} ${suffix}`;
+        }
+
+        function googologyFormatLog2(log2) {
+            const result = fromLog2(log2);
+            return toEnglishNotation(result.mant, result.exp);
+        }
+
+        function googologyFormatLog10(log10) {
+            const result = fromLog10(log10);
+            return toEnglishNotation(result.mant, result.exp);
+        }
+
+        function googologyFormatScientific(scientific) {
+            const result = fromScientific(scientific);
+            return toEnglishNotation(result.mant, result.exp);
+        }
+
+        function formatLog2() {
+            const log2Value = parseFloat(document.getElementById('log2Input').value);
+            const formattedValue = googologyFormatLog2(log2Value);
+            document.getElementById('result').innerText = formattedValue;
+        }
+
+        function formatLog10() {
+            const log10Value = parseFloat(document.getElementById('log10Input').value);
+            const formattedValue = googologyFormatLog10(log10Value);
+            document.getElementById('result').innerText = formattedValue;
+        }
+
+        function formatScientific() {
+            const scientificValue = document.getElementById('scientificInput').value;
+            const formattedValue = googologyFormatScientific(scientificValue);
+            document.getElementById('result').innerText = formattedValue;
+        }
+    </script>
+</head>
+
+<body>
+    <h1>Googology Formatter</h1>
+    <p>Enter a logarithm value (base 2):</p>
+    <input type="number" id="log2Input" step="0.01" placeholder="Enter log2 value">
+    <button onclick="formatLog2()">Format Log2</button>
+
+    <p>Enter a logarithm value (base 10):</p>
+    <input type="number" id="log10Input" step="0.01" placeholder="Enter log10 value">
+    <button onclick="formatLog10()">Format Log10</button>
+
+    <p>Enter a number in scientific notation:</p>
+    <input type="text" id="scientificInput" placeholder="Enter scientific notation (e.g., 1.23e5)">
+    <button onclick="formatScientific()">Format Scientific</button>
+
+    <h2>Formatted Value:</h2>
+    <p id="result"></p>
+</body>
+
+</html>
