@@ -149,7 +149,7 @@
             let builder = []
 
             if (hasSign) {
-                builder.push(str[0]);
+                builder.push(str[0] === '+' ? '' : '-');
                 i++;
             }
 
@@ -172,7 +172,7 @@
             }
             if (exp) {
                 let expCompressed = compressInteger(exp)
-                sign = (expCompressed[0] === '-') ? '' : '+';
+                sign = (expCompressed[0] === '-') ? '' : '_';
                 result += sign + expCompressed;
             }
 
@@ -180,13 +180,13 @@
         }
 
         function decompressInteger(str) {
-            let hasSign = str[0] === '+' || str[0] === '-';
+            let hasSign = str[0] === '_' || str[0] === '-';
 
             let i = 0;
             let builder = []
 
             if (hasSign) {
-                builder.push(str[0]);
+                builder.push(str[0] === '_'?'':'-');
                 i++;
             }
 
@@ -209,8 +209,8 @@
             let result = decompressInteger(dec)
             if (frac) {
                 let mant, exp, sign;
-                if (frac.includes('+')) {
-                    [mant, exp] = frac.split('+')
+                if (frac.includes('_')) {
+                    [mant, exp] = frac.split('_')
                     sign = ''
                 }
                 else if (frac.includes('-')) {
