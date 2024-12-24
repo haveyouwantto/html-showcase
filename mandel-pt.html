@@ -1624,10 +1624,10 @@
                 console.log('done!')
                 this.rendering = false;
                 this.showInfo();
-                location.hash = "#re=" + this.center.re +
-                    "&im=" + this.center.im +
-                    "&zoom=" + new FloatExp(4).div(this.size) +
-                    "&iter=" + this.iterations;
+                location.hash = "#rec=" + compressDecimal(this.center.re.toString()) +
+                    "&imc=" + compressDecimal(this.center.im.toString()) +
+                    "&zmc=" + compressDecimal(new FloatExp(4).div(this.size).toString()) +
+                    "&itc=" + compressDecimal(this.iterations.toString());
             }
 
             /**
@@ -1743,6 +1743,120 @@
             }
         }
 
+        const dict = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz123456789'
+        function b58Compress(n, pad = true) {
+            if (n == 0) return '0'
+            let b58 = [];
+            while (n > 0) {
+                b58.push(dict[n % 58]);
+                n = Math.floor(n / 58);
+            }
+            let result = b58.reverse().join("");
+            if (pad) result = result.padStart(4, 'A')
+            return result;
+        }
+
+        function b58Decompress(b58, pad = true) {
+            if (b58.includes('l') || b58.includes('I') || b58.includes('0') || b58.includes('O')) throw new SyntaxError("Invaild base58 string");
+            let n = 0;
+            let i = 0;
+            for (let i = 0; i < b58.length; i++) {
+                const char = b58[i];
+                n *= 58
+                n += dict.indexOf(char)
+            }
+            let result = n.toString()
+            if (pad) result = result.padStart(7, '0');
+            return result
+        }
+
+        function compressInteger(str) {
+            let hasSign = str[0] === '+' || str[0] === '-';
+
+            let i = 0;
+            let builder = []
+
+            if (hasSign) {
+                builder.push(str[0]);
+                i++;
+            }
+
+            while (i < str.length) {
+                let part = str.slice(i, i + 7);
+                let compressed = b58Compress(parseInt(part), part.length === 7)
+                builder.push(compressed);
+                i += 7;
+            }
+            return builder.join("")
+        }
+
+        function compressDecimal(str) {
+            let [mant, exp] = str.toLowerCase().split('e');
+            let [dec, frac] = mant.split(".");
+
+            let result = compressInteger(dec)
+            if (frac) {
+                result += "." + compressInteger(frac);
+            }
+            if (exp) {
+                let expCompressed = compressInteger(exp)
+                sign = (expCompressed[0] === '-') ? '' : '+';
+                result += sign + expCompressed;
+            }
+
+            return result
+        }
+
+        function decompressInteger(str) {
+            let hasSign = str[0] === '+' || str[0] === '-';
+
+            let i = 0;
+            let builder = []
+
+            if (hasSign) {
+                builder.push(str[0]);
+                i++;
+            }
+
+            while (i < str.length) {
+                if (str[i] === '0') {
+                    builder.push("0000000");
+                    i++;
+                } else {
+                    let part = str.slice(i, i + 4);
+                    let decompressed = b58Decompress(part, part.length === 4)
+                    builder.push(decompressed);
+                    i += 4;
+                }
+            }
+            return builder.join("")
+        }
+
+        function decompressDecimal(str) {
+            let [dec, frac] = str.split(".");
+            let result = decompressInteger(dec)
+            if (frac) {
+                let mant, exp, sign;
+                if (frac.includes('+')) {
+                    [mant, exp] = frac.split('+')
+                    sign = ''
+                }
+                else if (frac.includes('-')) {
+                    [mant, exp] = frac.split('-')
+                    sign = '-'
+                }
+                else mant = frac;
+
+                result += "." + decompressInteger(mant)
+
+                if (exp) {
+                    result += "e" + sign + decompressInteger(exp)
+                }
+            }
+
+            return result
+        }
+
         let c = new DeepComplex(
             new Decimal(0), new Decimal(0));
 
@@ -1753,6 +1867,18 @@
         location.hash.slice(1).split("&").forEach(e => {
             let kv = e.split("=", 2);
             switch (kv[0]) {
+                case "rec":
+                    c.re = new Decimal(decompressDecimal(kv[1]))
+                    break;
+                case "imc":
+                    c.im = new Decimal(decompressDecimal(kv[1]))
+                    break;
+                case "zmc":
+                    size = new FloatExp(4).div(parseFloatExp(decompressDecimal(kv[1])))
+                    break;
+                case "itc":
+                    iterations = parseInt(decompressDecimal(kv[1]))
+                    break;
                 case "re":
                     c.re = new Decimal(kv[1]);
                     break;
