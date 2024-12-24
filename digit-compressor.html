@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Base58 Compression Tool</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #1e1e2e;
+            color: #c9d1d9;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+        }
+
+        .container {
+            background: #282a36;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+            padding: 20px;
+            text-align: center;
+        }
+
+        .container h1 {
+            font-size: 24px;
+            margin-bottom: 20px;
+            color: #8be9fd;
+        }
+
+        .input-group {
+            margin-bottom: 20px;
+        }
+
+        .input-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: bold;
+            color: #f8f8f2;
+        }
+
+        .input-group textarea {
+            width: 45vw;
+            height: 25vh;
+            padding: 10px;
+            border: 1px solid #44475a;
+            border-radius: 4px;
+            font-size: 14px;
+            background-color: #44475a;
+            color: #f8f8f2;
+            resize: none;
+        }
+
+        .button-group {
+            display: flex;
+            justify-content: space-between;
+        }
+
+        button {
+            background: #6272a4;
+            color: #f8f8f2;
+            border: none;
+            border-radius: 4px;
+            padding: 10px 15px;
+            font-size: 14px;
+            cursor: pointer;
+            transition: background 0.3s;
+        }
+
+        button:hover {
+            background: #50fa7b;
+        }
+
+        button:disabled {
+            background: #44475a;
+            cursor: not-allowed;
+        }
+
+        @media (max-width: 600px) {
+            .input-group textarea  {
+                width: 80vw;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <h1>Base58 Compression Tool</h1>
+
+        <div class="input-group">
+            <label for="decimal-input">Input Decimal Number</label>
+            <textarea id="decimal-input" placeholder="Enter decimal number"></textarea>
+        </div>
+
+        <div class="button-group">
+            <button id="compress-button">V Compress</button>
+            <button id="decompress-button">^ Decompress</button>
+        </div>
+
+        <div class="input-group">
+            <label for="compressed-input">Input Compressed Number</label>
+            <textarea id="compressed-input" placeholder="Enter compressed number"></textarea>
+        </div>
+    </div>
+
+    <script>
+        const decimalInput = document.getElementById('decimal-input');
+        const compressedInput = document.getElementById('compressed-input');
+        const compressButton = document.getElementById('compress-button');
+        const decompressButton = document.getElementById('decompress-button');
+
+
+        const dict = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz123456789'
+        function b58Compress(n, pad = true) {
+            if (n == 0) return '0'
+            let b58 = [];
+            while (n > 0) {
+                b58.push(dict[n % 58]);
+                n = Math.floor(n / 58);
+            }
+            let result = b58.reverse().join("");
+            if (pad) result = result.padStart(4, 'A')
+            return result;
+        }
+
+        function b58Decompress(b58, pad = true) {
+            if (b58.includes('l') || b58.includes('I') || b58.includes('0') || b58.includes('O')) throw new SyntaxError("Invaild base58 string");
+            let n = 0;
+            let i = 0;
+            for (let i = 0; i < b58.length; i++) {
+                const char = b58[i];
+                n *= 58
+                n += dict.indexOf(char)
+            }
+            let result = n.toString()
+            if (pad) result = result.padStart(7, '0');
+            return result
+        }
+
+        function compressInteger(str) {
+            let hasSign = str[0] === '+' || str[0] === '-';
+
+            let i = 0;
+            let builder = []
+
+            if (hasSign) {
+                builder.push(str[0]);
+                i++;
+            }
+
+            while (i < str.length) {
+                let part = str.slice(i, i + 7);
+                let compressed = b58Compress(parseInt(part), part.length === 7)
+                builder.push(compressed);
+                i += 7;
+            }
+            return builder.join("")
+        }
+
+        function compressDecimal(str) {
+            let [mant, exp] = str.toLowerCase().split('e');
+            let [dec, frac] = mant.split(".");
+
+            let result = compressInteger(dec)
+            if (frac) {
+                result += "." + compressInteger(frac);
+            }
+            if (exp) {
+                let expCompressed = compressInteger(exp)
+                sign = (expCompressed[0] === '-') ? '' : '+';
+                result += sign + expCompressed;
+            }
+
+            return result
+        }
+
+        function decompressInteger(str) {
+            let hasSign = str[0] === '+' || str[0] === '-';
+
+            let i = 0;
+            let builder = []
+
+            if (hasSign) {
+                builder.push(str[0]);
+                i++;
+            }
+
+            while (i < str.length) {
+                if (str[i] === '0') {
+                    builder.push("0000000");
+                    i++;
+                } else {
+                    let part = str.slice(i, i + 4);
+                    let decompressed = b58Decompress(part, part.length === 4)
+                    builder.push(decompressed);
+                    i += 4;
+                }
+            }
+            return builder.join("")
+        }
+
+        function decompressDecimal(str) {
+            let [dec, frac] = str.split(".");
+            let result = decompressInteger(dec)
+            if (frac) {
+                let mant, exp, sign;
+                if (frac.includes('+')) {
+                    [mant, exp] = frac.split('+')
+                    sign = ''
+                }
+                else if (frac.includes('-')) {
+                    [mant, exp] = frac.split('-')
+                    sign = '-'
+                }
+                else mant = frac;
+
+                result += "." + decompressInteger(mant)
+
+                if (exp) {
+                    result += "e" + sign + decompressInteger(exp)
+                }
+            }
+
+            return result
+        }
+
+        compressButton.addEventListener('click', () => {
+            const decimal = decimalInput.value;
+            if (!decimal || isNaN(decimal)) {
+                compressedInput.value = "Invalid input";
+                return;
+            }
+            const compressed = compressDecimal(decimal);
+            compressedInput.value = compressed;
+        });
+
+        decompressButton.addEventListener('click', () => {
+            const compressed = compressedInput.value;
+            if (!compressed) {
+                decimalInput.value = "Invalid input";
+                return;
+            }
+            try {
+                const decompressed = decompressDecimal(compressed);
+                decimalInput.value = decompressed;
+            } catch (e) {
+                decimalInput.value = "Error";
+            }
+        });
+    </script>
+</body>
+
+</html>
