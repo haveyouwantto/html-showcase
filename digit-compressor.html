@@ -81,7 +81,7 @@
         }
 
         @media (max-width: 600px) {
-            .input-group textarea  {
+            .input-group textarea {
                 width: 80vw;
             }
         }
@@ -118,6 +118,15 @@
         const dict = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz123456789'
         function b58Compress(n, pad = true) {
             if (n == 0) return '0'
+
+            // Detect 7 same digits
+            let str = n.toString();
+            let same = str.split('').every((v, i, a) => v === a[0]) && str.length === 7;
+            if (same) {
+                let digit = str[0];
+                return "I" + digit;
+            }
+
             let b58 = [];
             while (n > 0) {
                 b58.push(dict[n % 58]);
@@ -129,13 +138,16 @@
         }
 
         function b58Decompress(b58, pad = true) {
-            if (b58.includes('l') || b58.includes('I') || b58.includes('0') || b58.includes('O')) throw new SyntaxError("Invaild base58 string");
             let n = 0;
             let i = 0;
             for (let i = 0; i < b58.length; i++) {
                 const char = b58[i];
                 n *= 58
-                n += dict.indexOf(char)
+                let index = dict.indexOf(char)
+                if (index === -1) {
+                    throw new Error("Invalid character")
+                }
+                n += index
             }
             let result = n.toString()
             if (pad) result = result.padStart(7, '0');
@@ -186,7 +198,7 @@
             let builder = []
 
             if (hasSign) {
-                builder.push(str[0] === '_'?'':'-');
+                builder.push(str[0] === '_' ? '' : '-');
                 i++;
             }
 
@@ -194,7 +206,12 @@
                 if (str[i] === '0') {
                     builder.push("0000000");
                     i++;
-                } else {
+                } else if (str[i] === 'I') {
+                    let digit = str[i + 1];
+                    builder.push(digit.repeat(7));
+                    i += 2;
+                }
+                else {
                     let part = str.slice(i, i + 4);
                     let decompressed = b58Decompress(part, part.length === 4)
                     builder.push(decompressed);
