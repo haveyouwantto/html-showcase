@@ -983,13 +983,13 @@
             if (i === 0 || i >= refLen || table.length === 0) {
                 return {
                     first: null,
-                    second: new FloatExp(0)
+                    second: 0
                 };
             }
 
             let result = {
                 first: null,
-                second: new FloatExp(0)
+                second: 0
             }; // { step, length }
             let index = i - 1,
                 length = 1;
@@ -1469,7 +1469,7 @@
 
                 console.log(performance.now() + " bla calculation")
 
-                if (this.deep) {
+                if (this.deep && !this.refValid) {
                     this.blaTable = createBLATableFE(ref, this.size);
                     refComplex = ref.map(e => e.toComplex())
                     blaComplex = this.blaTable.map(e => e.map(e2 => {
