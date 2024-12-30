@@ -147,25 +147,59 @@
             return { mant, exp };
         }
 
+        function removeLastVowel(s) {
+            const vowels = ['a', 'e', 'i', 'o', 'u'];
+            if (vowels.includes(s[s.length - 1])) {
+                return s.slice(0, s.length - 1); // Remove the last character if it's a vowel
+            }
+            return s; // Return the original string if the last character is not a vowel
+        }
+
         function googologySuffix(n) {
             const basics = ['n', 'm', 'b', 'tr', 'quadr', 'quint', 'sext', 'sept', 'oct', 'non']
-            const units = ['', 'un', 'duo', 'tre', 'quattuor', 'quin', 'sex', 'septen', 'octo', 'novem'];
-            const tens = ['', 'dec', 'vigint', 'trigint', 'quadragint', 'quinquagint', 'sexagint', 'septuagint',
-                'octogint', 'nonagint'];
-            const hundreds = ['', 'cent', 'ducent', 'trecent', 'quadringent', 'quingent', 'sescent', 'septingent',
-                'octingent', 'nongent'];
+            const units = ['', 'un', 'duo', 'tre', 'quattuor', 'quin', 'se', 'septe', 'octo', 'nove'];
+            const tens = ['', 'deci', 'viginti', 'triginta', 'quadraginta', 'quinquaginta', 'sexaginta', 'septuaginta',
+                'octoginta', 'nonaginta'];
+            const tensMarker = ['', 'n', 'ms', 'ns', 'ns', 'ns', 'n', 'n', 'mx', '']
+            const hundreds = ['', 'centi', 'ducenti', 'trecenti', 'quadringenti', 'quingenti', 'sescenti', 'septingenti',
+                'octingenti', 'nongenti'];
+            const hundredsMarker = ['', 'nx', 'n', 'ns', 'ns', 'ns', 'n', 'n', 'mx', '']
 
-            let unit;
+            let result;
             if ((n % 1000) < 10) {
-                unit = basics[n % 1000];
+                result = basics[n % 1000];
             }
             else {
-                unit = units[n % 10] + tens[Math.floor(n / 10) % 10] + hundreds[Math.floor(n / 100) % 10];
+                let unitOrd = n % 10;
+                let unit = units[unitOrd]
+                let ten = tens[Math.floor(n / 10) % 10];
+                let hundred = hundreds[Math.floor(n / 100) % 10];
+
+                let marker = ten === '' ? hundredsMarker[Math.floor(n / 100) % 10] : tensMarker[Math.floor(n / 10) % 10];
+
+                switch (unitOrd) {
+                    case 3:
+                        if (marker.includes('s')) unit += 's'
+                        break;
+                    case 6:
+                        if (marker.includes('s')) unit += 's'
+                        if (marker.includes('x')) unit += 'x'
+                        break;
+                    case 7:
+                    case 9:
+                        if (marker.includes('n')) unit += 'n'
+                        if (marker.includes('m')) unit += 'm'
+
+                    default:
+                        break;
+                }
+
+                result = unit + ten + hundred;
             }
             if (n >= 1000) {
-                unit = googologySuffix(Math.floor(n / 1000)) + unit;
+                result = googologySuffix(Math.floor(n / 1000)) + result;
             }
-            return unit + 'illi';
+            return removeLastVowel(result) + 'illi';
         }
 
         function getSuffix(ord) {
