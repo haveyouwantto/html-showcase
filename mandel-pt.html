@@ -1469,7 +1469,7 @@
 
                 console.log(performance.now() + " bla calculation")
 
-                if (this.deep && !this.refValid) {
+                if (this.deep) {
                     this.blaTable = createBLATableFE(ref, this.size);
                     refComplex = ref.map(e => e.toComplex())
                     blaComplex = this.blaTable.map(e => e.map(e2 => {
