@@ -528,6 +528,18 @@
             norm() {
                 return Math.max(Math.abs(this.re), Math.abs(this.im));
             }
+
+            div(other) {
+                if (typeof other === 'number') {
+                    return new Complex(this.re / other, this.im / other);
+                } else {
+                    const denominator = other.re ** 2 + other.im ** 2;
+                    return new Complex(
+                        (this.re * other.re + this.im * other.im) / denominator,
+                        (this.im * other.re - this.re * other.im) / denominator
+                    );
+                }
+            }
         }
 
         class DeepComplex {
@@ -766,22 +778,40 @@
                 z = new Complex(0, 0),
                 dzdc = new Complex(1, 0),
                 one = new Complex(1, 0);
+
+            let lpc = C.downCast(), lpz = new Complex(0, 0); // low precision
             const orbit = [new Complex(0, 0)];
-            for (let i = 0; i < iterations; i++) {
+
+            const waypoints = {};
+
+            for (let i = 1; i < iterations; i++) {
                 dzdc = z.add(z).mulMut(dzdc).addMut(one);
 
                 Z = Z.square().add(C);
+                lpz = lpz.mul(lpz).addMut(lpc)
 
                 z = Z.downCast();
                 orbit.push(z);
 
-                if (dzdc.norm() * radius * 2 > z.norm()) break;
+                const error = z.sub(lpz).norm();
+                console.log(error)
+                if (error > 1e-13) {
+                    lpz = z;
+                    waypoints[i] = z;
+                }
+
+                if (dzdc.norm() * radius * 2 > z.norm()) {
+                    const predCenter = z.div(dzdc);
+                    console.log(predCenter);
+                    break;
+                };
                 if (z.norm() > 16.0) break;
                 if (i % reportInterval == 0) {
                     yield i;
                     await delay(1);
                 };
             }
+            console.log(waypoints)
             return orbit;
         }
 
