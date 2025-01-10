@@ -216,6 +216,11 @@
         const sampleLoadBtn = document.getElementById('load-sample')
         const more = document.getElementById("more");
 
+
+        const buffer = new ArrayBuffer(8); // Create an 8-byte buffer
+        const floatView = new Float64Array(buffer); // Float64 view for the double
+        const int32View = new Int32Array(buffer); // Int32 view to access 64 bits as two 32-bit chunks
+
         class FloatExp {
             static expTable = [];
             static LOG2_10 = Math.log2(10);
@@ -234,7 +239,50 @@
             }
 
             static getExpOfDouble(d) {
-                return Math.floor(Math.log(Math.abs(d)) * 0.4342944819032518)
+                if (d === 0) {
+                    throw new Error("Exponent of zero is undefined.");
+                }
+
+                const LOG10_2 = Math.LOG10E; // log10(2)
+                const BIAS = 1023; // Double-precision bias
+                floatView[0] = d; // Store the double value
+
+                const highBits = int32View[1]; // Get the higher 32 bits
+                const lowBits = int32View[0]; // Get the lower 32 bits
+
+                const rawExp = (highBits >>> 20) & 0x7FF; // Extract the exponent bits (11 bits)
+
+                let actualExp;
+                if (rawExp === 0) {
+                    // Subnormal number
+                    let mantissaHigh = highBits & 0xFFFFF; // Extract the top 20 bits of mantissa
+                    const mantissaLow = lowBits; // Lower 32 bits of mantissa
+
+                    // Combine mantissa into a single value for leading zero count
+                    let leadingZeros = 0;
+                    if (mantissaHigh === 0) {
+                        leadingZeros += 32; // All high bits are zero, so count low bits
+                        let temp = mantissaLow;
+                        while (temp !== 0 && (temp & 0x80000000) === 0) {
+                            temp <<= 1;
+                            leadingZeros++;
+                        }
+                    } else {
+                        let temp = mantissaHigh;
+                        while ((temp & 0x80000) === 0) { // Adjust mask for 20 bits
+                            temp <<= 1;
+                            leadingZeros++;
+                        }
+                    }
+
+                    actualExp = -1022 - leadingZeros;
+                } else {
+                    // Normalized number
+                    actualExp = rawExp - BIAS;
+                }
+
+                // Convert base-2 exponent to base-10 exponent
+                return Math.floor(actualExp * LOG10_2);
             }
 
             constructor(base, exp = 0) {
@@ -254,8 +302,10 @@
                 }
                 if (this.base != 0 && (this.base > 10 || this.base < 1)) {
                     let exp = FloatExp.getExpOfDouble(this.base);
-                    this.exp += exp;
-                    this.base /= FloatExp.getExp(exp);
+                    if (exp != 0) {
+                        this.exp += exp;
+                        this.base /= FloatExp.getExp(exp);
+                    }
                 }
                 return this;
             }
@@ -1013,13 +1063,13 @@
             if (i === 0 || i >= refLen || table.length === 0) {
                 return {
                     first: null,
-                    second: new FloatExp(0)
+                    second: 0
                 };
             }
 
             let result = {
                 first: null,
-                second: new FloatExp(0)
+                second: 0
             }; // { step, length }
             let index = i - 1,
                 length = 1;
