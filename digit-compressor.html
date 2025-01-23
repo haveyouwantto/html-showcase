@@ -155,13 +155,13 @@
         }
 
         function compressInteger(str) {
-            let hasSign = str[0] === '+' || str[0] === '-';
+            let hasSign = str[0] === '_' || str[0] === '-';
 
             let i = 0;
             let builder = []
 
             if (hasSign) {
-                builder.push(str[0] === '+' ? '' : '-');
+                builder.push(str[0] === '_' ? '' : '-');
                 i++;
             }
 
@@ -222,28 +222,41 @@
         }
 
         function decompressDecimal(str) {
-            let [dec, frac] = str.split(".");
-            let result = decompressInteger(dec)
-            if (frac) {
-                let mant, exp, sign;
-                if (frac.includes('_')) {
-                    [mant, exp] = frac.split('_')
-                    sign = ''
-                }
-                else if (frac.includes('-')) {
-                    [mant, exp] = frac.split('-')
-                    sign = '-'
-                }
-                else mant = frac;
-
-                result += "." + decompressInteger(mant)
-
-                if (exp) {
-                    result += "e" + sign + decompressInteger(exp)
-                }
+            let mant, exp;
+            let result = '', sign = '';
+            str = str.trim();
+            if (str.startsWith("_")) {
+                mant = str.slice(1)
+                sign = ''
+            }
+            else if (str.startsWith("-")) {
+                mant = str.slice(1)
+                sign = '-'
+            }
+            else {
+                mant = str;
             }
 
-            return result
+            let expsign = '';
+            if (mant.includes('-')) {
+                [mant, exp] = mant.split('-')
+                expsign = '-'
+            }
+            else if (mant.includes('_')) {
+                [mant, exp] = mant.split('_')
+            }
+
+            let int, frac;
+            [int, frac] = mant.split('.')
+            result += sign + decompressInteger(int);
+
+            if (frac && frac != '') result += '.' + decompressInteger(frac);
+
+            if (exp && exp != '') {
+                result += "e" + expsign + decompressInteger(exp)
+            }
+
+            return result;
         }
 
         compressButton.addEventListener('click', () => {
@@ -266,6 +279,7 @@
                 const decompressed = decompressDecimal(compressed);
                 decimalInput.value = decompressed;
             } catch (e) {
+                console.error(e)
                 decimalInput.value = "Error";
             }
         });

@@ -578,6 +578,18 @@
             norm() {
                 return Math.max(Math.abs(this.re), Math.abs(this.im));
             }
+
+            div(other) {
+                if (typeof other === 'number') {
+                    return new Complex(this.re / other, this.im / other);
+                } else {
+                    const denominator = other.re ** 2 + other.im ** 2;
+                    return new Complex(
+                        (this.re * other.re + this.im * other.im) / denominator,
+                        (this.im * other.re - this.re * other.im) / denominator
+                    );
+                }
+            }
         }
 
         class DeepComplex {
@@ -816,22 +828,40 @@
                 z = new Complex(0, 0),
                 dzdc = new Complex(1, 0),
                 one = new Complex(1, 0);
+
+            let lpc = C.downCast(), lpz = new Complex(0, 0); // low precision
             const orbit = [new Complex(0, 0)];
-            for (let i = 0; i < iterations; i++) {
+
+            const waypoints = {};
+
+            for (let i = 1; i < iterations; i++) {
                 dzdc = z.add(z).mulMut(dzdc).addMut(one);
 
                 Z = Z.square().add(C);
+                lpz = lpz.mul(lpz).addMut(lpc)
 
                 z = Z.downCast();
                 orbit.push(z);
 
-                if (dzdc.norm() * radius * 2 > z.norm()) break;
+                const error = z.sub(lpz).norm();
+                console.log(error)
+                if (error > 1e-13) {
+                    lpz = z;
+                    waypoints[i] = z;
+                }
+
+                if (dzdc.norm() * radius * 2 > z.norm()) {
+                    const predCenter = z.div(dzdc);
+                    console.log(predCenter);
+                    break;
+                };
                 if (z.norm() > 16.0) break;
                 if (i % reportInterval == 0) {
                     yield i;
                     await delay(1);
                 };
             }
+            console.log(waypoints)
             return orbit;
         }
 
@@ -1900,28 +1930,41 @@
         }
 
         function decompressDecimal(str) {
-            let [dec, frac] = str.split(".");
-            let result = decompressInteger(dec)
-            if (frac) {
-                let mant, exp, sign;
-                if (frac.includes('_')) {
-                    [mant, exp] = frac.split('_')
-                    sign = ''
-                }
-                else if (frac.includes('-')) {
-                    [mant, exp] = frac.split('-')
-                    sign = '-'
-                }
-                else mant = frac;
-
-                result += "." + decompressInteger(mant)
-
-                if (exp) {
-                    result += "e" + sign + decompressInteger(exp)
-                }
+            let mant, exp;
+            let result = '', sign = '';
+            str = str.trim();
+            if (str.startsWith("_")) {
+                mant = str.slice(1)
+                sign = ''
+            }
+            else if (str.startsWith("-")) {
+                mant = str.slice(1)
+                sign = '-'
+            }
+            else {
+                mant = str;
             }
 
-            return result
+            let expsign = '';
+            if (mant.includes('-')) {
+                [mant, exp] = mant.split('-')
+                expsign = '-'
+            }
+            else if (mant.includes('_')) {
+                [mant, exp] = mant.split('_')
+            }
+
+            let int, frac;
+            [int, frac] = mant.split('.')
+            result += sign + decompressInteger(int);
+
+            if (frac && frac != '') result += '.' + decompressInteger(frac);
+
+            if (exp && exp != '') {
+                result += "e" + expsign + decompressInteger(exp)
+            }
+
+            return result;
         }
 
 
