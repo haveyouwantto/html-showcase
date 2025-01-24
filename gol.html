@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>自适应生命游戏</title>
+    <style>
+        :root {
+            --bg: #1a1a1a;
+            --fg: #e0e0e0;
+            --accent: #00ff88;
+            --border: rgba(255, 255, 255, 0.1);
+        }
+
+        body {
+            margin: 0;
+            background: var(--bg);
+            color: var(--fg);
+            font-family: system-ui, sans-serif;
+            overflow: hidden;
+            touch-action: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        canvas {
+            image-rendering: crisp-edges;
+            image-rendering: pixelated;
+            cursor: crosshair;
+        }
+
+        .controls {
+            position: fixed;
+            top: 12px;
+            left: 12px;
+            background: rgba(0, 0, 0, 0.9);
+            padding: 8px;
+            border-radius: 10px;
+            backdrop-filter: blur(8px);
+            border: 1px solid var(--border);
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+            display: flex;
+            gap: 6px;
+            z-index: 2;
+        }
+
+        button {
+            padding: 10px 16px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid var(--border);
+            color: var(--fg);
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-size: 14px;
+            line-height: 1;
+        }
+
+        button#modeBtn {
+            bottom: 0;
+            right: 0;
+            position: fixed;
+            margin: 12px;
+        }
+
+        button:hover {
+            background: var(--accent);
+            color: #000;
+            transform: scale(1.05);
+        }
+
+        .stats {
+            position: fixed;
+            bottom: 12px;
+            left: 12px;
+            font-size: 13px;
+            background: rgba(0, 0, 0, 0.8);
+            padding: 8px 12px;
+            border-radius: 8px;
+            backdrop-filter: blur(4px);
+        }
+
+        .mode-switch {
+            position: fixed;
+            top: 12px;
+            right: 12px;
+            display: flex;
+            gap: 6px;
+        }
+
+        @media (max-width: 600px) {
+            button {
+                padding: 12px 18px;
+                font-size: 16px;
+            }
+
+            .controls {
+                top: 8px;
+                left: 8px;
+                padding: 6px;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="controls">
+        <button onclick="toggleGame()" id="toggleBtn">▶️ 开始</button>
+        <button onclick="setAcorn()">🌱 预设</button>
+        <button onclick="clearBoard()">❌ 清空</button>
+    </div>
+    <div class="mode-switch">
+        <button onclick="toggleMode()" id="modeBtn">✏️ 绘制</button>
+    </div>
+    <div class="stats" id="stats">加载中...</div>
+    <canvas id="gameCanvas"></canvas>
+
+    <script>
+        'use strict';
+
+        // 核心配置
+        const CELL_PHYSICAL_SIZE = 4;  // 每个单元格的物理像素大小
+        const BASE_FRAME_RATE = 100;   // 基础刷新率（毫秒）
+        let isRunning = false;         // 运行状态
+        let generation = 0;            // 当前代数
+        let liveCells = new Set();     // 存活细胞集合
+        let gameLoop = null;           // 游戏循环句柄
+        let isDrawing = true;          // 当前模式（绘制/擦除）
+        let lastDrawTime = 0;          // 最后绘制时间（用于节流）
+
+        // Canvas相关
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        let imageData;                 // 全局图像数据
+        let cols, rows;                // 网格尺寸
+        const DPR = window.devicePixelRatio || 1;
+
+        // 初始化自适应布局
+        function initSize() {
+            const cssWidth = window.innerWidth;
+            const cssHeight = window.innerHeight;
+
+            // 计算逻辑网格尺寸
+            cols = Math.floor(cssWidth * DPR / CELL_PHYSICAL_SIZE);
+            rows = Math.floor(cssHeight * DPR / CELL_PHYSICAL_SIZE);
+
+            // 设置Canvas尺寸
+            canvas.width = cols * CELL_PHYSICAL_SIZE;
+            canvas.height = rows * CELL_PHYSICAL_SIZE;
+            canvas.style.width = `${cssWidth}px`;
+            canvas.style.height = `${cssHeight}px`;
+
+            // 初始化图像数据
+            initImageData();
+        }
+
+        // 初始化图像数据
+        function initImageData() {
+            imageData = ctx.createImageData(canvas.width, canvas.height);
+            const data = new Uint32Array(imageData.data.buffer);
+            data.fill(0xFF1A1A1A); // 填充深色背景
+            ctx.putImageData(imageData, 0, 0);
+        }
+
+        // 坐标转换函数
+        const key = (x, y) => `${x}|${y}`;
+        const parseKey = k => k.split('|').map(Number);
+        const inBounds = (x, y) => x >= 0 && x < cols && y >= 0 && y < rows;
+
+        // 增量绘制优化
+        function drawChanges(prev, next) {
+            const data = new Uint32Array(imageData.data.buffer);
+            const colorLive = 0xFF00FF88; // 荧光绿
+
+            // 移除消失的细胞
+            prev.forEach(cell => {
+                if (!next.has(cell)) {
+                    const [x, y] = parseKey(cell);
+                    updatePixelBlock(x, y, 0xFF1A1A1A, data);
+                }
+            });
+
+            // 添加新细胞
+            next.forEach(cell => {
+                if (!prev.has(cell)) {
+                    const [x, y] = parseKey(cell);
+                    updatePixelBlock(x, y, colorLive, data);
+                }
+            });
+
+            ctx.putImageData(imageData, 0, 0);
+        }
+
+        // 更新像素块（优化绘制核心）
+        function updatePixelBlock(x, y, color, data) {
+            const px = x * CELL_PHYSICAL_SIZE;
+            const py = y * CELL_PHYSICAL_SIZE;
+
+            for (let dx = 0; dx < CELL_PHYSICAL_SIZE; dx++) {
+                for (let dy = 0; dy < CELL_PHYSICAL_SIZE; dy++) {
+                    const idx = (py + dy) * canvas.width + (px + dx);
+                    data[idx] = color;
+                }
+            }
+        }
+
+        // 新一代计算（优化算法）
+        function nextGeneration() {
+            const candidates = new Map();
+
+            // 收集候选细胞
+            liveCells.forEach(cell => {
+                const [x, y] = parseKey(cell);
+                for (let dx = -1; dx <= 1; dx++) {
+                    for (let dy = -1; dy <= 1; dy++) {
+                        const nx = x + dx, ny = y + dy;
+                        if (inBounds(nx, ny)) {
+                            const k = key(nx, ny);
+                            candidates.set(k, (candidates.get(k) || 0) + (dx | dy ? 1 : 0));
+                        }
+                    }
+                }
+            });
+
+            // 应用规则
+            const newLive = new Set();
+            candidates.forEach((count, k) => {
+                if (count === 3 || (count === 2 && liveCells.has(k))) {
+                    newLive.add(k);
+                }
+            });
+
+            // 增量更新
+            drawChanges(liveCells, newLive);
+            liveCells = newLive;
+            generation++;
+            updateStats();
+        }
+
+        // 用户交互处理
+        function handleInput(x, y) {
+            if (!inBounds(x, y)) return;
+
+            const k = key(x, y);
+            const now = Date.now();
+
+            // 节流处理（移动端优化）
+            if (now - lastDrawTime < 16) return;
+            lastDrawTime = now;
+
+            const shouldLive = isDrawing;
+            const wasAlive = liveCells.has(k);
+
+            if (shouldLive !== wasAlive) {
+                shouldLive ? liveCells.add(k) : liveCells.delete(k);
+                drawChanges(new Set(wasAlive ? [k] : []), new Set(shouldLive ? [k] : []));
+                updateStats();
+            }
+        }
+
+        // 输入事件绑定
+        function setupInput() {
+            // 通用坐标转换
+            const getCellCoords = (clientX, clientY) => {
+                const rect = canvas.getBoundingClientRect();
+                return [
+                    Math.floor((clientX - rect.left) * cols / rect.width),
+                    Math.floor((clientY - rect.top) * rows / rect.height)
+                ];
+            };
+
+            // 鼠标事件
+            canvas.addEventListener('mousedown', e => {
+                e.preventDefault();
+                const [x, y] = getCellCoords(e.clientX, e.clientY);
+                handleInput(x, y);
+
+                const moveHandler = e => {
+                    const [x, y] = getCellCoords(e.clientX, e.clientY);
+                    handleInput(x, y);
+                };
+
+                const upHandler = () => {
+                    canvas.removeEventListener('mousemove', moveHandler);
+                    canvas.removeEventListener('mouseup', upHandler);
+                };
+
+                canvas.addEventListener('mousemove', moveHandler);
+                canvas.addEventListener('mouseup', upHandler);
+            });
+
+            // 触摸事件（移动端优化）
+            canvas.addEventListener('touchstart', e => {
+                e.preventDefault();
+                const touch = e.touches[0];
+                const [x, y] = getCellCoords(touch.clientX, touch.clientY);
+                handleInput(x, y);
+            });
+
+            canvas.addEventListener('touchmove', e => {
+                e.preventDefault();
+                const touch = e.touches[0];
+                const [x, y] = getCellCoords(touch.clientX, touch.clientY);
+                handleInput(x, y);
+            });
+
+            // 阻止上下文菜单
+            canvas.addEventListener('contextmenu', e => e.preventDefault());
+        }
+
+        // 控制功能
+        function toggleGame() {
+            isRunning = !isRunning;
+            document.getElementById('toggleBtn').textContent = isRunning ? '⏸ 暂停' : '▶️ 开始';
+            if (isRunning) {
+                gameLoop = setInterval(nextGeneration, BASE_FRAME_RATE);
+            } else {
+                clearInterval(gameLoop);
+            }
+        }
+
+        function toggleMode() {
+            isDrawing = !isDrawing;
+            document.getElementById('modeBtn').textContent = isDrawing ? '✏️ 绘制' : '🧹 擦除';
+        }
+
+        function clearBoard() {
+            liveCells.clear();
+            generation = 0;
+            initImageData();
+            updateStats();
+        }
+
+        // 预设模式
+        function setAcorn() {
+            clearBoard();
+            const cx = Math.floor(cols / 2) + 10;
+            const cy = Math.floor(rows / 2);
+
+            // Acorn 模式坐标
+            const pattern = [
+                [0, 0], [1, 0], [1, 2],
+                [3, 1], [4, 0], [5, 0], [6, 0]
+            ];
+
+            pattern.forEach(([dx, dy]) => {
+                const x = cx + dx;
+                const y = cy + dy;
+                if (inBounds(x, y)) liveCells.add(key(x, y));
+            });
+
+            drawChanges(new Set(), liveCells);
+        }
+
+        // 统计信息更新
+        function updateStats() {
+            const stats = document.getElementById('stats');
+            stats.textContent = `代数: ${generation} | 活细胞: ${liveCells.size} | 网格: ${cols}x${rows}`;
+        }
+
+        // 窗口自适应
+        window.addEventListener('resize', () => {
+            clearInterval(gameLoop);
+            isRunning = false;
+            initSize();
+            clearBoard();
+        });
+
+        // 初始化
+        initSize();
+        setupInput();
+        setAcorn();
+    </script>
+</body>
+
+</html>
