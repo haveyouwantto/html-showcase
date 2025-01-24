@@ -424,7 +424,7 @@
 
 
                 const agc = ctx.createScriptProcessor(2048, 1, 1);
-                agc.lastGain = 1;
+                let lastGain = 1;
 
                 agc.onaudioprocess = event => {
                     const inputBuffer = event.inputBuffer;
@@ -441,14 +441,13 @@
                         }
                         const rms = Math.sqrt(sum / inputBuffer.length);
 
-
                         // 计算增益
                         const targetRMS = 0.25;
                         let gain = targetRMS / rms;
 
                         // 平滑增益
                         const alpha = 0.1;
-                        gain = agc.lastGain * (1 - alpha) + gain * alpha;
+                        gain = lastGain * (1 - alpha) + gain * alpha;
 
                         signalStrength.innerText = `信号强度: ${(Math.log10(rms) * 10).toFixed(1)} dB ${gain}`;
 
@@ -462,7 +461,7 @@
                                 outputData[sample] = 1;
                             }
                         }
-                        agc.lastGain = gain;
+                        lastGain = gain;
                     }
                 };
 
