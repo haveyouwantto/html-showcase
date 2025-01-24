@@ -465,12 +465,7 @@
                     }
                 };
 
-                // const agc = ctx.createDynamicsCompressor()
-                // agc.release.value = 1;
-                // agc.ratio.value = 6;
-                // agc.knee.value = 20;
-                // agc.threshold.value = -65;
-                // window.agc = agc;
+                const comp = ctx.createDynamicsCompressor()
 
                 const muteGain = ctx.createGain()
                 muteGain.gain.value = 1;
@@ -495,7 +490,8 @@
                 mixer.connect(lowpass);
                 lowpass.connect(gain)
                 gain.connect(agc)
-                agc.connect(muteGain)
+                agc.connect(comp)
+                comp.connect(muteGain)
                 muteGain.connect(ctx.destination)
                 analyser2 = ctx.createAnalyser()
                 muteGain.connect(analyser2);
