@@ -92,7 +92,7 @@
             /* Highlight input on focus */
         }
 
-        #spectrum {
+        #spectrum, #waveform {
             min-width: 300px;
             width: 80%;
             height: 250px;
@@ -129,7 +129,8 @@
         <input type="number" min="1" id="channelNumber" value="1"><br>
         频道范围：1 ~ <span id="maxChannelCount"></span>
     </div>
-    <canvas id="spectrum"></canvas>
+    <canvas id="spectrum"></canvas><br>
+    <canvas id="waveform"></canvas>
     <script>
         const ctx = new AudioContext({ latencyHint: "balanced" });
         const startFreq = 15000;
@@ -198,9 +199,12 @@
         const dpr = window.devicePixelRatio;
         const canvas = document.getElementById('spectrum')
         const canvasCtx = canvas.getContext('2d')
+        const waveform = document.getElementById('waveform')
+        const waveformCtx = waveform.getContext('2d')
 
 
         const analyser = ctx.createAnalyser()
+        let analyser2;
 
         let dataArray = new Float32Array(analyser.fftSize);
 
@@ -210,6 +214,8 @@
             let { width: cssWidth, height: cssHeight } = canvas.getBoundingClientRect();
             canvas.width = dpr * cssWidth;
             canvas.height = dpr * cssHeight;
+            waveform.width = dpr * cssWidth;
+            waveform.height = dpr * cssHeight;
             analyser.fftSize = determinateFFTSize(cssWidth);
             dataArray = new Float32Array(analyser.fftSize)
         }
@@ -256,6 +262,27 @@
 
             canvasCtx.fillStyle = "#00000050";
             canvasCtx.fillRect(0, 0, lowerX, canvas.height)
+
+            // draw waveform
+            analyser2.getFloatTimeDomainData(dataArray);
+            waveformCtx.fillStyle = "#333333";
+            waveformCtx.fillRect(0, 0, waveform.width, waveform.height);
+            waveformCtx.lineWidth = 1;
+            waveformCtx.strokeStyle = "#e0e0e0";
+            waveformCtx.beginPath();
+            for (let i = 0; i < analyser2.fftSize; i++) {
+                const v = (dataArray[i] + 1) / 2 * waveform.height;
+                const x = i / analyser2.fftSize * waveform.width * 2
+                const y = v;
+
+                if (i === 0) {
+                    waveformCtx.moveTo(x, y);
+                } else {
+                    waveformCtx.lineTo(x, y);
+                }
+            }
+            waveformCtx.stroke();
+
         }
 
         window.onresize = resizeCanvas;
@@ -315,6 +342,7 @@
             gain.connect(analyser)
             _osc = localOscillator;
             resizeCanvas()
+            analyser2 = analyser;
             requestAnimationFrame(draw)
 
             canvas.addEventListener('click', e => {
@@ -411,6 +439,8 @@
                 gain.connect(agc)
                 agc.connect(muteGain)
                 muteGain.connect(ctx.destination)
+                analyser2 = ctx.createAnalyser()
+                muteGain.connect(analyser2);
 
                 localOscillator.start()
 
