@@ -889,7 +889,7 @@
                     // 如果当前是暂停状态，自动开始播放
                     if (paused) pauseBtn.click();
                 } catch (error) {
-                    alert("Error decoding QFP:", error); // 解码错误提示
+                    alert("Error decoding QFP:" + error); // 解码错误提示
                     throw error;
                 }
             };
