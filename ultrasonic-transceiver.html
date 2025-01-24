@@ -441,7 +441,6 @@
                         }
                         const rms = Math.sqrt(sum / inputBuffer.length);
 
-                        signalStrength.innerText = `信号强度: ${(Math.log10(rms) * 10).toFixed(1)} dB`;
 
                         // 计算增益
                         const targetRMS = 0.25;
@@ -450,6 +449,8 @@
                         // 平滑增益
                         const alpha = 0.1;
                         gain = agc.lastGain * (1 - alpha) + gain * alpha;
+
+                        signalStrength.innerText = `信号强度: ${(Math.log10(rms) * 10).toFixed(1)} dB ${gain}`;
 
                         // 应用增益
                         for (let sample = 0; sample < inputBuffer.length; sample++) {
