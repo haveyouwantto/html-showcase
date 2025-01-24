@@ -444,12 +444,12 @@
                         // 计算增益
                         const targetRMS = 0.25;
                         let gain = targetRMS / rms;
+                        
 
                         // 平滑增益
-                        const alpha = 0.1;
-                        gain = lastGain * (1 - alpha) + gain * alpha;
+                        gain = gain * 0.1 + lastGain * 0.9;
+                        signalStrength.innerText = `信号强度: ${(Math.log10(rms) * 10).toFixed(1)} dB`;
 
-                        signalStrength.innerText = `信号强度: ${(Math.log10(rms) * 10).toFixed(1)} dB ${gain}`;
 
                         // 应用增益
                         for (let sample = 0; sample < inputBuffer.length; sample++) {
@@ -458,9 +458,9 @@
                             if (outputData[sample] > 1 || outputData[sample] < -1) {
                                 // 调整gain
                                 gain *= 0.75;
-                                outputData[sample] = 1;
                             }
                         }
+                        if (!isFinite(gain)) gain = 1;
                         lastGain = gain;
                     }
                 };
