@@ -339,7 +339,7 @@
                 }
                 const rms = Math.sqrt(sum / filter.buffer.length);
                 const gainValue = 1 / rms;
-                gain.gain.value = gainValue * 1.4142135;
+                gain.gain.value = gainValue;
                 console.log('gain', gain.gain.value)
             }
             setFrequency(startFreq + bandwidth * (channelSelection.value - 1), bandwidth)
