@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html>
+
 <head>
     <title>波动模拟玩具</title>
     <meta charset="utf-8">
@@ -10,157 +11,251 @@
             width: 100%;
             height: auto;
         }
+
         body {
             display: flex;
             flex-direction: column;
             justify-content: center;
             align-items: center;
             background: #1a1a1a;
-            margin: 20px;
             color: white;
+            max-width: 50%;
+            margin: auto;
+        }
+
+        .controls {
+            margin: 10px;
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 10px;
+        }
+
+        .parameters {
+            display: flex;
+            flex-direction: column;
+        }
+
+        button {
+            padding: 8px;
+            cursor: pointer;
+            background: #333;
+            border: 1px solid #666;
+            color: white;
+        }
+
+        button.active {
+            background: #4CAF50;
+            border-color: #45a049;
+        }
+
+        @media (max-width: 600px) {
+            body {
+                max-width: 90%;
+            }
         }
     </style>
 </head>
+
 <body>
-    
     <canvas id="waveCanvas"></canvas>
-    振幅：<input type="number" id="amplitude" min="0.01" max="100" step="0.1" value="10">
-    频率：<input type="number" id="frequency" min="0" max="10" step="0.1" value="5">
+
+    <div class="controls">
+        <button id="btnWave" class="active">🌊 波动模式</button>
+        <button id="btnObstacle">🧱 绘制障碍</button>
+        <button id="btnErase">🧹 擦除障碍</button>
+    </div>
+
+    <div class="parameters">
+        振幅：<input type="number" id="amplitude" min="0.01" max="100" step="0.1" value="10">
+        频率：<input type="number" id="frequency" min="0" max="10" step="0.1" value="5">
+        笔刷大小：<input type="range" id="brushSize" min="1" max="20" value="3"> <span id="brushSizeValue">3</span>
+    </div>
 
     <script>
         // 初始化参数
-        const N = 512;          // 网格尺寸
-        const cellSize = 1;     // 像素大小
+        const N = 512;           // 网格尺寸
+        const cellSize = 1;      // 像素大小
         const damping = 0.005;   // 阻尼系数
-        const waveSpeed = 0.5;  // 波速
-        
+        const waveSpeed = 0.5;   // 波速
+
         // 获取Canvas上下文
         const canvas = document.getElementById('waveCanvas');
         const ctx = canvas.getContext('2d');
-        
+
         // 设置Canvas尺寸
         canvas.width = N;
         canvas.height = N;
-        
-        // 初始化波场（三重缓冲）
+
+        // 初始化波场和障碍物
         let buffers = [
             new Float32Array(N * N),
             new Float32Array(N * N),
             new Float32Array(N * N)
         ];
+        let obstacles = new Uint8Array(N * N); // 障碍物标记
         let current = 0;
-        
+
         // 创建ImageData用于快速绘制
         const imageData = ctx.createImageData(N, N);
         const data = imageData.data;
-        
-        // 鼠标交互相关变量
+
+        // 交互相关变量
         let mousePos = null;
         let isDrawing = false;
+        let currentMode = 'wave'; // wave/obstacle/erase
+        let brushSize = 3;
 
-        // 获取波参数
+        // 获取UI元素
         const frequency = document.getElementById('frequency');
         const amplitude = document.getElementById('amplitude');
-        
-        // 波动方程更新函数
+        const brushSizeInput = document.getElementById('brushSize');
+
+        // 模式切换按钮
+        document.querySelectorAll('button').forEach(btn => {
+            btn.addEventListener('click', () => {
+                document.querySelectorAll('button').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                currentMode = btn.id.replace('btn', '').toLowerCase();
+            });
+        });
+
+        // 笔刷大小控制
+        brushSizeInput.addEventListener('input', () => {
+            brushSize = parseInt(brushSizeInput.value);
+            document.getElementById('brushSizeValue').textContent = brushSize;
+        });
+
+        // 波动方程更新
         function updateWave() {
             const prev = (current + 2) % 3;
             const curr = current;
             const next = (current + 1) % 3;
-            
-            for(let y = 1; y < N-1; y++) {
-                for(let x = 1; x < N-1; x++) {
+
+            // 清除障碍物位置的波动
+            for (let i = 0; i < N * N; i++) {
+                if (obstacles[i]) buffers[prev][i] = buffers[curr][i] = buffers[next][i] = 0;
+            }
+
+            // 更新波动方程
+            for (let y = 1; y < N - 1; y++) {
+                for (let x = 1; x < N - 1; x++) {
                     const idx = y * N + x;
-                    
-                    // 计算拉普拉斯算子
-                    const laplacian = 
-                        buffers[curr][idx-1] + 
-                        buffers[curr][idx+1] + 
-                        buffers[curr][idx-N] + 
-                        buffers[curr][idx+N] -
+                    if (obstacles[idx]) continue;
+
+                    const laplacian =
+                        buffers[curr][idx - 1] +
+                        buffers[curr][idx + 1] +
+                        buffers[curr][idx - N] +
+                        buffers[curr][idx + N] -
                         4 * buffers[curr][idx];
-                    
-                    // 更新波动方程
+
                     buffers[next][idx] = (
-                        buffers[curr][idx] * 2 - 
-                        buffers[prev][idx] + 
+                        buffers[curr][idx] * 2 -
+                        buffers[prev][idx] +
                         laplacian * waveSpeed
                     ) * (1 - damping);
                 }
             }
-            
             current = next;
         }
-        
+
         // 渲染函数
         function render() {
-            for(let i = 0; i < N*N; i++) {
-                const val = Math.min(Math.abs(buffers[current][i]) * 255, 255);
+            for (let i = 0; i < N * N; i++) {
                 const idx = i * 4;
-                data[idx] = val;        // R
-                data[idx+1] = val;      // G 
-                data[idx+2] = val;      // B
-                data[idx+3] = 255;      // Alpha
+                if (obstacles[i]) {
+                    data[idx] = 200;    // R
+                    data[idx + 1] = 50;   // G
+                    data[idx + 2] = 50;   // B
+                } else {
+                    const val = Math.min(Math.abs(buffers[current][i]) * 255, 255);
+                    data[idx] = val;    // R
+                    data[idx + 1] = val;  // G
+                    data[idx + 2] = val;  // B
+                }
+                data[idx + 3] = 255;      // A
             }
-            
             ctx.putImageData(imageData, 0, 0);
         }
-        
-        // 添加鼠标激励
-        function addDisturbance(x, y) {
-            if(x < 0 || x >= N || y < 0 || y >= N) return;
-            
-            const idx = y * N + x;
-            const t = performance.now() / 1000;
-            buffers[current][idx] = Math.sin(2 * Math.PI * frequency.value * t) * amplitude.value;
-            buffers[(current+2)%3][idx] = 1.0;
+
+        // 添加障碍物/擦除
+        function modifyObstacles(x, y, isAdd) {
+            const r = brushSize;
+            for (let xx = -r; xx <= r; xx++) {
+                for (let yy = -r; yy <= r; yy++) {
+                    const nx = x + xx;
+                    const ny = y + yy;
+                    if (nx < 0 || nx >= N || ny < 0 || ny >= N) continue;
+                    const idx = ny * N + nx;
+                    obstacles[idx] = isAdd ? 1 : 0;
+                }
+            }
         }
-        
-        // 事件监听
-        canvas.addEventListener('mousemove', (e) => {
+
+        // 事件处理
+        function updateMousePos(e) {
             const rect = canvas.getBoundingClientRect();
-            const x = Math.floor((e.offsetX / canvas.offsetWidth * canvas.width));
-            const y = Math.floor((e.offsetY / canvas.offsetHeight * canvas.height));
+            const scaleX = canvas.width / canvas.offsetWidth;
+            const scaleY = canvas.height / canvas.offsetHeight;
+            const x = Math.floor((e.clientX - rect.left) * scaleX);
+            const y = Math.floor((e.clientY - rect.top) * scaleY);
             mousePos = [x, y];
+        }
+
+        canvas.addEventListener('mousedown', (e) => {
+            isDrawing = true;
+            updateMousePos(e);
         });
-        
-        canvas.addEventListener('mousedown', () => { isDrawing = true; });
-        canvas.addEventListener('mouseup', () => { isDrawing = false; });
-        canvas.addEventListener('mouseleave', () => { mousePos = null; });
+
+        canvas.addEventListener('mousemove', (e) => {
+            updateMousePos(e);
+            if (!isDrawing) return;
+        });
+
+        canvas.addEventListener('mouseup', () => isDrawing = false);
+        canvas.addEventListener('mouseleave', () => isDrawing = false);
+
+        // 触摸事件处理
         canvas.addEventListener('touchstart', (e) => {
             e.preventDefault();
             isDrawing = true;
-            const touch = e.touches[0];
-            const rect = canvas.getBoundingClientRect();
-            const x = Math.floor((touch.clientX - rect.left) / rect.width * canvas.width);
-            const y = Math.floor((touch.clientY - rect.top) / rect.height * canvas.height);
-            mousePos = [x, y];
-        });
+            updateMousePos(e.touches[0]);
+        }, { passive: false });
+
         canvas.addEventListener('touchmove', (e) => {
             e.preventDefault();
-            const touch = e.touches[0];
-            const rect = canvas.getBoundingClientRect();
-            const x = Math.floor((touch.clientX - rect.left) / rect.width * canvas.width);
-            const y = Math.floor((touch.clientY - rect.top) / rect.height * canvas.height);
-            mousePos = [x, y];
-        });
-        canvas.addEventListener('touchend', () => { isDrawing = false; mousePos = null; });
-        
+            updateMousePos(e.touches[0]);
+            if (!isDrawing) return;
+
+        }, { passive: false });
+
+        canvas.addEventListener('touchend', () => isDrawing = false);
+
+        // 波动激励
+        function addDisturbance(x, y) {
+            if (x < 0 || x >= N || y < 0 || y >= N) return;
+            const idx = y * N + x;
+            const t = performance.now() / 1000;
+            buffers[current][idx] = Math.sin(2 * Math.PI * frequency.value * t) * amplitude.value;
+        }
+
         // 动画循环
         function animate() {
             requestAnimationFrame(animate);
-            
-            // 添加鼠标激励
-            if(isDrawing && mousePos) {
-                addDisturbance(mousePos[0], mousePos[1]);
-            }
-            
+            if (isDrawing) touch();
             updateWave();
             render();
         }
-        
-        // 启动动画
+
+        function touch() {
+            if (currentMode === 'wave') {
+                addDisturbance(mousePos[0], mousePos[1]);
+            } else {
+                modifyObstacles(mousePos[0], mousePos[1], currentMode === 'obstacle');
+            }
+        }
         animate();
     </script>
 </body>
+
 </html>
