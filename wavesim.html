@@ -95,7 +95,7 @@
         // 渲染函数
         function render() {
             for(let i = 0; i < N*N; i++) {
-                const val = Math.abs(buffers[current][i]) * 255;
+                const val = Math.min(Math.abs(buffers[current][i]) * 255, 255);
                 const idx = i * 4;
                 data[idx] = val;        // R
                 data[idx+1] = val;      // G 
