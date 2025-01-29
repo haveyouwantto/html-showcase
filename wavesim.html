@@ -6,7 +6,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <style>
-        canvas {
+        #waveCanvas {
             cursor: crosshair;
             width: 100vh;
             height: auto;
@@ -14,12 +14,19 @@
 
         body {
             display: flex;
+            flex-direction: column;
             justify-content: center;
             align-items: center;
             background: #1a1a1a;
             color: white;
             max-width: 75%;
             margin: auto;
+        }
+
+        .main {
+
+            display: flex;
+            align-items: center;
         }
 
         .tools {
@@ -40,6 +47,11 @@
             flex-direction: column;
         }
 
+        .param-div {
+            display: flex;
+            flex-direction: column;
+        }
+
         button {
             padding: 8px;
             cursor: pointer;
@@ -51,6 +63,33 @@
         button.active {
             background: #4CAF50;
             border-color: #45a049;
+        }
+
+        .canvas-container {
+            position: relative;
+            margin: 10px;
+        }
+
+        .transceiver-marker {
+            position: absolute;
+            pointer-events: none;
+            font-size: 24px;
+            transform: translate(-50%, -50%);
+        }
+
+        #deviceList {
+            max-height: 300px;
+            overflow-y: auto;
+            padding: 10px;
+            border: 1px solid #444;
+            display: flex;
+            flex-wrap: wrap;
+        }
+
+        .device-item {
+            margin: 5px;
+            padding: 8px;
+            background: #222;
         }
 
         @media (max-width: 700px) {
@@ -71,24 +110,146 @@
 </head>
 
 <body>
-    <canvas id="waveCanvas"></canvas>
-
-    <div class="tools">
-        <div class="controls">
-            <button id="btnWave" class="active">🌊 波动模式</button>
-            <button id="btnObstacle">🧱 绘制障碍</button>
-            <button id="btnErase">🧹 擦除障碍</button>
+    <div class="main">
+        <div class="canvas-container">
+            <canvas id="waveCanvas"></canvas>
         </div>
 
-        <div class="parameters">
-            阻尼：<input type="number" id="damping" min="0" max="0.1" step="0.001" value="0.005">
-            振幅：<input type="number" id="amplitude" min="0.01" max="100" step="0.1" value="10">
-            频率：<input type="number" id="frequency" min="0" max="15" step="0.1" value="5">
-            笔刷大小：<input type="range" id="brushSize" min="1" max="20" value="3"> <span id="brushSizeValue">3</span>
+
+        <div class="tools">
+            <div class="controls">
+                <button id="btnWave" class="active">🌊 波动模式</button>
+                <button id="btnObstacle">🧱 绘制障碍</button>
+                <button id="btnErase">🧹 擦除障碍</button>
+            </div>
+
+            <div class="parameters">
+                阻尼：<input type="number" id="damping" min="0" max="0.1" step="0.001" value="0.005">
+                振幅：<input type="number" id="amplitude" min="0.01" max="100" step="0.1" value="10">
+                频率：<input type="number" id="frequency" min="0" max="15" step="0.1" value="5">
+                笔刷大小：<input type="range" id="brushSize" min="1" max="20" value="3"> <span id="brushSizeValue">3</span>
+            </div>
+
+            <div>
+                <button onclick="addTransmitter()">➕ 添加发射器</button>
+                <button onclick="addReceiver()">➕ 添加接收器</button>
+            </div>
         </div>
     </div>
+    <div id="deviceList"></div>
 
     <script>
+        class Transceiver {
+            static idCounter = 0
+
+            constructor(type, x, y) {
+                this.id = `dev_${Transceiver.idCounter++}`
+                this.type = type
+                this.x = Math.round(x)
+                this.y = Math.round(y)
+                this.marker = this.createMarker()
+            }
+
+            createMarker() {
+                const marker = document.createElement('span')
+                marker.className = 'transceiver-marker'
+                marker.textContent = this.type === 'transmitter' ? '📡' : '📻'
+                marker.style.left = `${this.x / canvas.width * 100}%`
+                marker.style.top = `${this.y / canvas.height * 100}%`
+                document.querySelector('.canvas-container').appendChild(marker)
+                return marker
+            }
+
+            updatePosition(x, y) {
+                this.x = x
+                this.y = y
+                this.marker.style.left = `${x}px`
+                this.marker.style.top = `${y}px`
+            }
+
+            remove() {
+                this.marker.remove()
+            }
+        }
+
+        class Transmitter extends Transceiver {
+            constructor(x, y) {
+                super('transmitter', x, y)
+                this.frequency = 5
+                this.amplitude = 10
+                this.phase = 0
+                this.enabled = true
+            }
+
+            applyEffect(buffer, tick) {
+                if (!this.enabled) return
+                const idx = this.y * N + this.x;
+                const value = Math.sin(2 * Math.PI * this.frequency * (tick / 60) + this.phase) * this.amplitude
+                buffer[idx] += value
+            }
+        }
+
+        class Receiver extends Transceiver {
+            constructor(x, y) {
+                super('receiver', x, y)
+                this.sampleRate = 3600
+                this.buffer = new Float32Array(65536)
+                this.writePointer = 0
+                this.lastSampleTime = 0
+                this.paused = false
+            }
+
+            recordSample(waveValue) {
+                if (this.paused) return
+                if (this.writePointer >= this.buffer.length) return
+                this.buffer[this.writePointer++] = waveValue
+            }
+
+            exportWAV() {
+                const exportLength = this.writePointer;
+                const wavBuffer = new ArrayBuffer(44 + exportLength * 4);
+                const view = new DataView(wavBuffer);
+
+                // WAV 头部
+                writeString(view, 0, 'RIFF');
+                view.setUint32(4, 36 + exportLength * 4, true);
+                writeString(view, 8, 'WAVE');
+                writeString(view, 12, 'fmt ');
+                view.setUint32(16, 16, true);
+                view.setUint16(20, 3, true); // PCM float
+                view.setUint16(22, 1, true);
+                view.setUint32(24, this.sampleRate, true);
+                view.setUint32(28, this.sampleRate * 4, true); // byte rate
+                view.setUint16(32, 4, true); // block align
+                view.setUint16(34, 32, true); // bits per sample
+                writeString(view, 36, 'data');
+                view.setUint32(40, exportLength * 4, true);
+
+                // PCM数据 (float32)
+                let offset = 44;
+                for (let i = 0; i < exportLength; i++) {
+                    view.setFloat32(offset, this.buffer[i], true);
+                    offset += 4;
+                }
+
+                const blob = new Blob([view], { type: 'audio/wav' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `recording_${this.id}.wav`;
+                a.click();
+            }
+
+            setPaused(paused) {
+                this.paused = paused
+            }
+
+            setSamplerate(sr) {
+                this.sampleRate = sr;
+            }
+        }
+
+
         // 初始化参数
         const N = 512;           // 网格尺寸
         const cellSize = 1;      // 像素大小
@@ -122,6 +283,11 @@
         let isDrawing = false;
         let currentMode = 'wave'; // wave/obstacle/erase
         let brushSize = 3;
+
+        // 添加发射器
+        let transceivers = []
+        let isPlacingDevice = false
+        let currentDeviceType = null
 
         // 获取UI元素
         const frequency = document.getElementById('frequency');
@@ -192,6 +358,16 @@
                     ) * (1 - damping);
                 }
             }
+
+            transceivers.forEach(dev => {
+                if (dev instanceof Transmitter) {
+                    dev.applyEffect(buffers[current], tick)
+                } else if (dev instanceof Receiver) {
+                    const idx = dev.y * N + dev.x;
+                    dev.recordSample(buffers[current][idx])
+                }
+            })
+
             tick++;
             current = next;
         }
@@ -235,6 +411,193 @@
                 }
             }
         }
+
+
+        // 添加设备控制
+        function addTransmitter() { currentDeviceType = 'transmitter'; isPlacingDevice = true }
+        function addReceiver() { currentDeviceType = 'receiver'; isPlacingDevice = true }
+
+
+        canvas.addEventListener('click', (e) => {
+            if (!isPlacingDevice) return
+
+            const rect = canvas.getBoundingClientRect()
+            const x = (e.clientX - rect.left) * (N / rect.width)
+            const y = (e.clientY - rect.top) * (N / rect.height)
+
+            const dev = currentDeviceType === 'transmitter'
+                ? new Transmitter(x, y)
+                : new Receiver(x, y)
+
+            transceivers.push(dev)
+            updateDeviceList()
+            isPlacingDevice = false
+        })
+
+
+        function updateDeviceList() {
+            const list = document.getElementById('deviceList')
+            list.innerHTML = '';
+            transceivers.forEach(dev => {
+                const item = document.createElement('div')
+                item.className = 'device-item'
+
+                // 添加设备名称
+                const name = document.createElement('div')
+                name.textContent = dev.type === 'transmitter' ? '发射器' : '接收器'
+                item.appendChild(name)
+
+                // 添加id
+                const id = document.createElement('div')
+                id.textContent = "ID: " + dev.id
+                item.appendChild(id)
+
+                // 添加坐标
+                const pos = document.createElement('div')
+                pos.textContent = `(${dev.x.toFixed(0)}, ${dev.y.toFixed(0)})`
+                item.appendChild(pos)
+
+                // 添加功能
+                if (dev instanceof Transmitter) {
+
+                    // 添加参数控制
+                    const paramDiv = document.createElement('div')
+                    paramDiv.className = 'param-div'
+
+                    const freqLabel = document.createElement('label')
+                    freqLabel.textContent = '频率:'
+                    paramDiv.appendChild(freqLabel)
+                    const freqInput = document.createElement('input')
+                    freqInput.type = 'number'
+                    freqInput.value = dev.frequency
+                    freqInput.addEventListener('change', () => dev.frequency = parseFloat(freqInput.value))
+                    paramDiv.appendChild(freqInput)
+
+                    const ampLabel = document.createElement('label')
+                    ampLabel.textContent = '振幅:'
+                    paramDiv.appendChild(ampLabel)
+                    const ampInput = document.createElement('input')
+                    ampInput.type = 'number'
+                    ampInput.value = dev.amplitude
+                    ampInput.addEventListener('change', () => dev.amplitude = parseFloat(ampInput.value))
+                    paramDiv.appendChild(ampInput)
+
+                    const phaseLabel = document.createElement('label')
+                    phaseLabel.textContent = '相位:'
+                    paramDiv.appendChild(phaseLabel)
+                    const phaseInput = document.createElement('input')
+                    phaseInput.type = 'number'
+                    phaseInput.value = dev.phase
+                    phaseInput.addEventListener('change', () => dev.phase = parseFloat(phaseInput.value))
+                    paramDiv.appendChild(phaseInput)
+
+                    item.appendChild(paramDiv)
+
+
+                    const toggleBtn = document.createElement('button')
+                    toggleBtn.textContent = dev.enabled ? '暂停' : '播放'
+                    toggleBtn.addEventListener('click', () => {
+                        dev.enabled = !dev.enabled
+                        toggleBtn.textContent = dev.enabled ? '暂停' : '播放'
+                    })
+                    item.appendChild(toggleBtn)
+                } else
+                    if (dev instanceof Receiver) {
+                        // 添加已录时长显示
+                        const duration = document.createElement('div')
+                        item.appendChild(duration)
+
+                        // 添加参数编辑
+                        const paramDiv = document.createElement('div')
+                        paramDiv.className = 'param-div';
+
+                        const srLabel = document.createElement('label');
+                        srLabel.innerText = '采样率：'
+                        paramDiv.appendChild(srLabel)
+
+                        const srInput = document.createElement('input')
+                        srInput.max = 48000;
+                        srInput.min = 1000;
+                        srInput.value = 3600;
+                        srInput.addEventListener('change', e => {
+                            dev.sampleRate = srInput.value;
+                        })
+                        paramDiv.appendChild(srInput);
+                        item.appendChild(paramDiv)
+
+                        const receiverCanvas = document.createElement('canvas');
+                        receiverCanvas.width = 100;
+                        receiverCanvas.height = 75;
+                        const receiverCtx = receiverCanvas.getContext('2d')
+                        receiverCtx.strokeStyle = 'white';
+                        item.appendChild(receiverCanvas);
+
+                        const rmsDisplay = document.createElement('div');
+                        item.appendChild(rmsDisplay);
+
+                        // 添加暂停按钮
+                        const toggleBtn = document.createElement('button')
+                        toggleBtn.textContent = '暂停'
+                        toggleBtn.addEventListener('click', () => {
+                            dev.setPaused(toggleBtn.textContent === '暂停')
+                            toggleBtn.textContent = toggleBtn.textContent === '暂停' ? '继续' : '暂停'
+                        })
+                        item.appendChild(toggleBtn)
+
+                        const exportBtn = document.createElement('button')
+                        exportBtn.textContent = '导出录音'
+                        exportBtn.addEventListener('click', () => dev.exportWAV())
+                        item.appendChild(exportBtn)
+
+
+                        setInterval(() => {
+                            const durationSec = dev.writePointer / dev.sampleRate
+                            duration.textContent = `已录制: ${durationSec.toFixed(2)}s`
+
+                            let samples = dev.buffer.slice(dev.writePointer - 100, dev.writePointer);
+
+                            receiverCtx.clearRect(0, 0, receiverCanvas.width, receiverCanvas.height)
+                            receiverCtx.beginPath()
+                            receiverCtx.moveTo(0, 37.5)
+
+                            let rms = 0;
+                            for (let x = 0; x < samples.length; x++) {
+                                let sample = samples[x]
+                                receiverCtx.lineTo(x, sample * 37.5 + 37.5)
+                                rms += sample * sample;
+                            }
+                            rms /= samples.length;
+                            rms = Math.sqrt(rms);
+                            rmsDisplay.innerText = `RMS: ${(Math.log(rms)*10).toFixed(1)} dB`
+                            receiverCtx.stroke();
+                        }, 1000)
+                    }
+
+                // 添加删除按钮
+                const removeBtn = document.createElement('button')
+                removeBtn.textContent = '❌'
+                removeBtn.addEventListener('click', () => removeDevice(dev.id))
+                item.appendChild(removeBtn)
+
+                list.appendChild(item)
+            })
+        }
+
+
+        function removeDevice(id) {
+            const index = transceivers.findIndex(d => d.id === id)
+            transceivers[index].remove()
+            transceivers.splice(index, 1)
+            updateDeviceList()
+        }
+
+        // 辅助函数
+        function writeString(view, offset, string) {
+            for (let i = 0; i < string.length; i++) {
+                view.setUint8(offset + i, string.charCodeAt(i))
+            }
+        }
+
 
         // 事件处理
         function updateMousePos(e) {
