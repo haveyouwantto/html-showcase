@@ -464,6 +464,9 @@
                     paramDiv.appendChild(freqLabel)
                     const freqInput = document.createElement('input')
                     freqInput.type = 'number'
+                    freqInput.max = 15
+                    freqInput.min = 0.1
+                    freqInput.step = 0.1
                     freqInput.value = dev.frequency
                     freqInput.addEventListener('change', () => dev.frequency = parseFloat(freqInput.value))
                     paramDiv.appendChild(freqInput)
@@ -473,6 +476,9 @@
                     paramDiv.appendChild(ampLabel)
                     const ampInput = document.createElement('input')
                     ampInput.type = 'number'
+                    ampInput.max = 100
+                    ampInput.min = 0.1
+                    ampInput.step = 0.1
                     ampInput.value = dev.amplitude
                     ampInput.addEventListener('change', () => dev.amplitude = parseFloat(ampInput.value))
                     paramDiv.appendChild(ampInput)
@@ -482,6 +488,9 @@
                     paramDiv.appendChild(phaseLabel)
                     const phaseInput = document.createElement('input')
                     phaseInput.type = 'number'
+                    ampInput.max = 3.141
+                    ampInput.min = 0
+                    ampInput.step = 0.01
                     phaseInput.value = dev.phase
                     phaseInput.addEventListener('change', () => dev.phase = parseFloat(phaseInput.value))
                     paramDiv.appendChild(phaseInput)
