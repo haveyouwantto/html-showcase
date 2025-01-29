@@ -8,26 +8,31 @@
     <style>
         canvas {
             cursor: crosshair;
-            width: 100%;
+            width: 100vh;
             height: auto;
         }
 
         body {
             display: flex;
-            flex-direction: column;
             justify-content: center;
             align-items: center;
             background: #1a1a1a;
             color: white;
-            max-width: 50%;
+            max-width: 75%;
             margin: auto;
         }
 
+        .tools {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            margin-left: 16px;
+        }
+
         .controls {
-            margin: 10px;
-            display: grid;
-            grid-template-columns: repeat(3, 1fr);
+            display: flex;
             gap: 10px;
+            flex-direction: column;
         }
 
         .parameters {
@@ -48,9 +53,18 @@
             border-color: #45a049;
         }
 
-        @media (max-width: 600px) {
+        @media (max-width: 700px) {
+            canvas {
+                width: 100%;
+            }
+
             body {
                 max-width: 90%;
+                flex-direction: column;
+            }
+
+            .controls {
+                flex-direction: row;
             }
         }
     </style>
@@ -59,16 +73,18 @@
 <body>
     <canvas id="waveCanvas"></canvas>
 
-    <div class="controls">
-        <button id="btnWave" class="active">🌊 波动模式</button>
-        <button id="btnObstacle">🧱 绘制障碍</button>
-        <button id="btnErase">🧹 擦除障碍</button>
-    </div>
+    <div class="tools">
+        <div class="controls">
+            <button id="btnWave" class="active">🌊 波动模式</button>
+            <button id="btnObstacle">🧱 绘制障碍</button>
+            <button id="btnErase">🧹 擦除障碍</button>
+        </div>
 
-    <div class="parameters">
-        振幅：<input type="number" id="amplitude" min="0.01" max="100" step="0.1" value="10">
-        频率：<input type="number" id="frequency" min="0" max="10" step="0.1" value="5">
-        笔刷大小：<input type="range" id="brushSize" min="1" max="20" value="3"> <span id="brushSizeValue">3</span>
+        <div class="parameters">
+            振幅：<input type="number" id="amplitude" min="0.01" max="100" step="0.1" value="10">
+            频率：<input type="number" id="frequency" min="0" max="10" step="0.1" value="5">
+            笔刷大小：<input type="range" id="brushSize" min="1" max="20" value="3"> <span id="brushSizeValue">3</span>
+        </div>
     </div>
 
     <script>
