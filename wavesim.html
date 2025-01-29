@@ -131,8 +131,8 @@
             </div>
 
             <div>
-                <button onclick="addTransmitter()">➕ 添加发射器</button>
-                <button onclick="addReceiver()">➕ 添加接收器</button>
+                <button id="btnTrans">➕ 添加发射器</button>
+                <button id="btnRecv">➕ 添加接收器</button>
             </div>
         </div>
     </div>
@@ -281,13 +281,11 @@
         // 交互相关变量
         let mousePos = null;
         let isDrawing = false;
-        let currentMode = 'wave'; // wave/obstacle/erase
+        let currentMode = 'wave'; // wave/obstacle/erase/trans/recv
         let brushSize = 3;
 
         // 添加发射器
         let transceivers = []
-        let isPlacingDevice = false
-        let currentDeviceType = null
 
         // 获取UI元素
         const frequency = document.getElementById('frequency');
@@ -413,25 +411,22 @@
         }
 
 
-        // 添加设备控制
-        function addTransmitter() { currentDeviceType = 'transmitter'; isPlacingDevice = true }
-        function addReceiver() { currentDeviceType = 'receiver'; isPlacingDevice = true }
-
-
         canvas.addEventListener('click', (e) => {
-            if (!isPlacingDevice) return
+            if (currentMode != 'trans' && currentMode != 'recv') return
 
             const rect = canvas.getBoundingClientRect()
             const x = (e.clientX - rect.left) * (N / rect.width)
             const y = (e.clientY - rect.top) * (N / rect.height)
 
-            const dev = currentDeviceType === 'transmitter'
+            const dev = currentMode === 'trans'
                 ? new Transmitter(x, y)
                 : new Receiver(x, y)
 
             transceivers.push(dev)
             updateDeviceList()
-            isPlacingDevice = false
+            currentMode = '';
+
+            document.querySelectorAll('button').forEach(b => b.classList.remove('active'));
         })
 
 
@@ -568,7 +563,7 @@
                             }
                             rms /= samples.length;
                             rms = Math.sqrt(rms);
-                            rmsDisplay.innerText = `RMS: ${(Math.log(rms)*10).toFixed(1)} dB`
+                            rmsDisplay.innerText = `RMS: ${(Math.log(rms) * 10).toFixed(1)} dB`
                             receiverCtx.stroke();
                         }, 1000)
                     }
