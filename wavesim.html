@@ -169,9 +169,16 @@
                     data[idx + 2] = 50;   // B
                 } else {
                     const val = Math.min(Math.abs(buffers[current][i]) * 255, 255);
-                    data[idx] = val;    // R
-                    data[idx + 1] = val;  // G
-                    data[idx + 2] = val;  // B
+                    if (buffers[current][i] > 0) {
+                        data[idx] = val;    // R
+                        data[idx + 1] = 0;  // G
+                        data[idx + 2] = 0;  // B
+                    } else {
+
+                        data[idx] = 0;    // R
+                        data[idx + 1] = 0;  // G
+                        data[idx + 2] = val;  // B
+                    }
                 }
                 data[idx + 3] = 255;      // A
             }
