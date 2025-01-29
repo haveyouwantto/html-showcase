@@ -131,8 +131,8 @@
             </div>
 
             <div>
-                <button id="btnTrans">➕ 添加发射器</button>
-                <button id="btnRecv">➕ 添加接收器</button>
+                <button id="btnTrans">📡 添加发射器</button>
+                <button id="btnRecv">📻 添加接收器</button>
             </div>
         </div>
     </div>
@@ -439,7 +439,7 @@
 
                 // 添加设备名称
                 const name = document.createElement('div')
-                name.textContent = dev.type === 'transmitter' ? '发射器' : '接收器'
+                name.textContent = dev.type === 'transmitter' ? '📡发射器' : '📻接收器'
                 item.appendChild(name)
 
                 // 添加id
@@ -499,10 +499,10 @@
 
 
                     const toggleBtn = document.createElement('button')
-                    toggleBtn.textContent = dev.enabled ? '暂停' : '播放'
+                    toggleBtn.textContent = dev.enabled ? '⏸️' : '▶️'
                     toggleBtn.addEventListener('click', () => {
                         dev.enabled = !dev.enabled
-                        toggleBtn.textContent = dev.enabled ? '暂停' : '播放'
+                        toggleBtn.textContent = dev.enabled ? '⏸️' : '▶️'
                     })
                     item.appendChild(toggleBtn)
                 } else
@@ -541,15 +541,15 @@
 
                         // 添加暂停按钮
                         const toggleBtn = document.createElement('button')
-                        toggleBtn.textContent = '暂停'
+                        toggleBtn.textContent = '⏸️'
                         toggleBtn.addEventListener('click', () => {
-                            dev.setPaused(toggleBtn.textContent === '暂停')
-                            toggleBtn.textContent = toggleBtn.textContent === '暂停' ? '继续' : '暂停'
+                            dev.setPaused(toggleBtn.textContent === '⏸️')
+                            toggleBtn.textContent = toggleBtn.textContent === '⏸️' ? '▶️' : '⏸️'
                         })
                         item.appendChild(toggleBtn)
 
                         const exportBtn = document.createElement('button')
-                        exportBtn.textContent = '导出录音'
+                        exportBtn.textContent = '📤'
                         exportBtn.addEventListener('click', () => dev.exportWAV())
                         item.appendChild(exportBtn)
 
