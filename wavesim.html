@@ -8,8 +8,8 @@
     <style>
         #waveCanvas {
             cursor: crosshair;
-            width: 100vh;
             height: auto;
+            width: 100vh;
         }
 
         body {
@@ -24,7 +24,6 @@
         }
 
         .main {
-
             display: flex;
             align-items: center;
         }
@@ -92,18 +91,30 @@
             background: #222;
         }
 
+        .transceivers {
+            gap: 10px;
+            display: grid;
+        }
+
         @media (max-width: 700px) {
             canvas {
                 width: 100%;
             }
 
             body {
-                max-width: 90%;
+                max-width: 100%;
+            }
+
+            .main {
                 flex-direction: column;
             }
 
             .controls {
                 flex-direction: row;
+            }
+
+            #waveCanvas {
+                width: 100%;
             }
         }
     </style>
@@ -130,7 +141,7 @@
                 笔刷大小：<input type="range" id="brushSize" min="1" max="20" value="3"> <span id="brushSizeValue">3</span>
             </div>
 
-            <div>
+            <div class="transceivers">
                 <button id="btnTrans">📡 添加发射器</button>
                 <button id="btnRecv">📻 添加接收器</button>
             </div>
@@ -410,7 +421,6 @@
             }
         }
 
-
         canvas.addEventListener('click', (e) => {
             if (currentMode != 'trans' && currentMode != 'recv') return
 
@@ -428,7 +438,6 @@
 
             document.querySelectorAll('button').forEach(b => b.classList.remove('active'));
         })
-
 
         function updateDeviceList() {
             const list = document.getElementById('deviceList')
@@ -628,7 +637,7 @@
 
         // 触摸事件处理
         canvas.addEventListener('touchstart', (e) => {
-            e.preventDefault();
+            // e.preventDefault();
             isDrawing = true;
             updateMousePos(e.touches[0]);
         }, { passive: false });
