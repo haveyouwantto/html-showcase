@@ -81,8 +81,9 @@
         </div>
 
         <div class="parameters">
+            阻尼：<input type="number" id="damping" min="0" max="0.1" step="0.001" value="0.005">
             振幅：<input type="number" id="amplitude" min="0.01" max="100" step="0.1" value="10">
-            频率：<input type="number" id="frequency" min="0" max="10" step="0.1" value="5">
+            频率：<input type="number" id="frequency" min="0" max="15" step="0.1" value="5">
             笔刷大小：<input type="range" id="brushSize" min="1" max="20" value="3"> <span id="brushSizeValue">3</span>
         </div>
     </div>
@@ -91,7 +92,7 @@
         // 初始化参数
         const N = 512;           // 网格尺寸
         const cellSize = 1;      // 像素大小
-        const damping = 0.005;   // 阻尼系数
+        let damping = 0.005;   // 阻尼系数
         const waveSpeed = 0.5;   // 波速
 
         // 获取Canvas上下文
@@ -126,6 +127,7 @@
         const frequency = document.getElementById('frequency');
         const amplitude = document.getElementById('amplitude');
         const brushSizeInput = document.getElementById('brushSize');
+        const dampingInput = document.getElementById('damping');
 
         // 模式切换按钮
         document.querySelectorAll('button').forEach(btn => {
@@ -134,6 +136,11 @@
                 btn.classList.add('active');
                 currentMode = btn.id.replace('btn', '').toLowerCase();
             });
+        });
+
+        // 阻尼系数控制
+        dampingInput.addEventListener('change', () => {
+            damping = parseFloat(dampingInput.value);
         });
 
         // 笔刷大小控制
