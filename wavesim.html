@@ -94,6 +94,7 @@
         ];
         let obstacles = new Uint8Array(N * N); // 障碍物标记
         let current = 0;
+        let tick = 0;
 
         // 创建ImageData用于快速绘制
         const imageData = ctx.createImageData(N, N);
@@ -136,12 +137,13 @@
                 if (obstacles[i]) buffers[prev][i] = buffers[curr][i] = buffers[next][i] = 0;
             }
 
-            // 更新波动方程
+            // 修改后的拉普拉斯算子计算（包含对角线项）
             for (let y = 1; y < N - 1; y++) {
                 for (let x = 1; x < N - 1; x++) {
                     const idx = y * N + x;
                     if (obstacles[idx]) continue;
 
+                    // 标准拉普拉斯项
                     const laplacian =
                         buffers[curr][idx - 1] +
                         buffers[curr][idx + 1] +
@@ -149,13 +151,25 @@
                         buffers[curr][idx + N] -
                         4 * buffers[curr][idx];
 
+                    // 新增对角线项（各向同性修正）
+                    const diagLaplacian =
+                        buffers[curr][idx - N - 1] +
+                        buffers[curr][idx - N + 1] +
+                        buffers[curr][idx + N - 1] +
+                        buffers[curr][idx + N + 1] -
+                        4 * buffers[curr][idx];
+
+                    // 混合拉普拉斯算子
+                    const blendedLaplacian = 0.8 * laplacian + 0.2 * diagLaplacian;
+
+                    // 修改后的更新方程
                     buffers[next][idx] = (
                         buffers[curr][idx] * 2 -
-                        buffers[prev][idx] +
-                        laplacian * waveSpeed
+                        buffers[prev][idx] + blendedLaplacian * waveSpeed
                     ) * (1 - damping);
                 }
             }
+            tick++;
             current = next;
         }
 
@@ -171,12 +185,12 @@
                     const val = Math.min(Math.abs(buffers[current][i]) * 255, 255);
                     if (buffers[current][i] > 0) {
                         data[idx] = val;    // R
-                        data[idx + 1] = 0;  // G
+                        data[idx + 1] = val / 2;  // G
                         data[idx + 2] = 0;  // B
                     } else {
 
                         data[idx] = 0;    // R
-                        data[idx + 1] = 0;  // G
+                        data[idx + 1] = val / 2;  // G
                         data[idx + 2] = val;  // B
                     }
                 }
@@ -242,8 +256,8 @@
         function addDisturbance(x, y) {
             if (x < 0 || x >= N || y < 0 || y >= N) return;
             const idx = y * N + x;
-            const t = performance.now() / 1000;
-            buffers[current][idx] = Math.sin(2 * Math.PI * frequency.value * t) * amplitude.value;
+            const t = tick / 60;
+            buffers[current][idx] += Math.sin(2 * Math.PI * frequency.value * t) * amplitude.value;
         }
 
         // 动画循环
