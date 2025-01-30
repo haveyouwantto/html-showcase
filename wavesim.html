@@ -196,6 +196,7 @@
 
             remove() {
                 this.marker.remove()
+                this.panel.remove()
             }
 
             createControlPanel() {
@@ -516,7 +517,7 @@
         let brushSize = 3;
 
         // 添加发射器
-        let transceivers = []
+        let transceivers = new Set();
 
         // 获取UI元素
         const frequency = document.getElementById('frequency');
@@ -658,7 +659,7 @@
                 ? new Transmitter(x, y)
                 : new Receiver(x, y)
 
-            transceivers.push(dev)
+            transceivers.add(dev)
             deviceList.appendChild(dev.panel)
             updateDeviceList()
             currentMode = '';
@@ -672,10 +673,14 @@
 
 
         function removeDevice(id) {
-            const index = transceivers.findIndex(d => d.id === id)
-            transceivers[index].remove()
-            transceivers.splice(index, 1)
-            updateDeviceList()
+            for (const dev of transceivers) {
+                if (dev.id === id) {
+                    dev.remove();
+                    transceivers.delete(dev)
+                    updateDeviceList()
+                    return
+                }
+            }
         }
 
         // 导入障碍图
