@@ -146,6 +146,13 @@
                 振幅：<input type="number" id="amplitude" min="0.01" max="100" step="0.1" value="10">
                 频率：<input type="number" id="frequency" min="0" max="15" step="0.1" value="5">
                 笔刷大小：<input type="range" id="brushSize" min="1" max="20" value="3"> <span id="brushSizeValue">3</span>
+                波形：<select id="waveType">
+                    <option value="sine">正弦波</option>
+                    <option value="square">方波</option>
+                    <option value="sawtooth">锯齿波</option>
+                    <option value="triangle">三角波</option>
+                    <option value="noise">噪声</option>
+                </select>
             </div>
 
             <div class="transceivers">
@@ -197,12 +204,13 @@
                 this.amplitude = 10
                 this.phase = 0
                 this.enabled = true
+                this.waveType = 'sine'
             }
 
             applyEffect(buffer, tick) {
                 if (!this.enabled) return
                 const idx = this.y * N + this.x;
-                const value = Math.sin(2 * Math.PI * this.frequency * (tick / 60) + this.phase) * this.amplitude
+                const value = generateWave(this.waveType, this.frequency, this.phase, this.amplitude, tick / 60)
                 buffer[idx] += value
             }
         }
@@ -310,6 +318,7 @@
         const amplitude = document.getElementById('amplitude');
         const brushSizeInput = document.getElementById('brushSize');
         const dampingInput = document.getElementById('damping');
+        const waveType = document.getElementById('waveType');
 
         // 模式切换按钮
         document.querySelectorAll('.toggle').forEach(btn => {
@@ -517,6 +526,22 @@
 
                     item.appendChild(paramDiv)
 
+                    const waveTypeLabel = document.createElement('label')
+                    waveTypeLabel.textContent = '波形:'
+                    item.appendChild(waveTypeLabel)
+                    const waveTypeSelect = document.createElement('select')
+                    waveTypeSelect.addEventListener('change', () => dev.waveType = waveTypeSelect.value)
+                    const waveTypes = ['sine', 'square', 'sawtooth', 'triangle', 'noise']
+                    waveTypes.forEach(type => {
+                        const option = document.createElement('option')
+                        option.value = type
+                        option.textContent = type
+                        waveTypeSelect.appendChild(option)
+                    })
+                    waveTypeSelect.value = dev.waveType
+                    waveTypeSelect.addEventListener('change', () => dev.waveType = waveTypeSelect.value)
+                    item.appendChild(waveTypeSelect)
+
 
                     const toggleBtn = document.createElement('button')
                     toggleBtn.textContent = dev.enabled ? '⏸️' : '▶️'
@@ -685,6 +710,31 @@
             }
         }
 
+        // 生成波形
+
+        /** * 生成波形
+            * @param {string} type 波形类型
+            * @param {number} f 频率
+            * @param {number} p 相位
+            * @param {number} a 振幅
+            * @param {number} t 时间
+            * @returns {number} 波形值
+         */
+        function generateWave(type, f, p, a, t) {
+            switch (type) {
+                case 'sine':
+                    return Math.sin(2 * Math.PI * f * t + p) * a;
+                case 'square':
+                    return Math.sign(Math.sin(2 * Math.PI * f * t + p)) * a;
+                case 'sawtooth':
+                    return (2 * (f * t + p) % 2 - 1) * a;
+                case 'triangle':
+                    return Math.abs((2 * (f * t + p) % 2 - 1)) * a;
+                case 'noise':
+                    return (Math.random() * 2 - 1) * a;
+            }
+        }
+
 
         // 事件处理
         function updateMousePos(e) {
@@ -730,7 +780,7 @@
             if (x < 0 || x >= N || y < 0 || y >= N) return;
             const idx = y * N + x;
             const t = tick / 60;
-            buffers[current][idx] += Math.sin(2 * Math.PI * frequency.value * t) * amplitude.value;
+            buffers[current][idx] += generateWave(waveType.value, frequency.value, 0, amplitude.value, t) //Math.sin(2 * Math.PI * frequency.value * t) * amplitude.value;
         }
 
         // 动画循环
