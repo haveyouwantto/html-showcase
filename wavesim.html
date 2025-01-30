@@ -736,7 +736,7 @@
                         4 * buffers[curr][idx];
 
                     // 混合拉普拉斯算子
-                    const blendedLaplacian = 0.8 * laplacian + 0.2 * diagLaplacian;
+                    const blendedLaplacian = 0.7071 * laplacian + 0.2929 * diagLaplacian;
 
                     // 修改后的更新方程
                     buffers[next][idx] = (
