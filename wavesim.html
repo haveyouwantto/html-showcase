@@ -173,6 +173,8 @@
                 this.x = Math.round(x)
                 this.y = Math.round(y)
                 this.marker = this.createMarker()
+                this.panel = this.createControlPanel()
+                this.initializePanel();
             }
 
             createMarker() {
@@ -195,6 +197,36 @@
             remove() {
                 this.marker.remove()
             }
+
+            createControlPanel() {
+                const panel = document.createElement('div')
+                panel.className = 'device-item'
+
+                // 添加设备名称
+                const name = document.createElement('div')
+                name.textContent = this.type === 'transmitter' ? '🔊发射器' : '🎤接收器'
+                panel.appendChild(name)
+
+                // 添加id
+                const id = document.createElement('div')
+                id.textContent = "ID: " + this.id
+                panel.appendChild(id)
+
+                // 添加坐标
+                const pos = document.createElement('div')
+                pos.textContent = `(${this.x.toFixed(0)}, ${this.y.toFixed(0)})`
+                panel.appendChild(pos)
+
+                return panel;
+            }
+
+            initializePanel() {
+
+            }
+
+            updatePanel() {
+
+            }
         }
 
         class Transmitter extends Transceiver {
@@ -212,6 +244,93 @@
                 const idx = this.y * N + this.x;
                 const value = generateWave(this.waveType, this.frequency, this.phase, this.amplitude, tick / 60)
                 buffer[idx] += value
+            }
+
+            initializePanel() {
+                // 添加参数控制
+                const paramDiv = document.createElement('div')
+                paramDiv.className = 'param-div'
+
+                const freqLabel = document.createElement('label')
+                freqLabel.textContent = '频率:'
+                paramDiv.appendChild(freqLabel)
+                const freqInput = document.createElement('input')
+                freqInput.type = 'number'
+                freqInput.max = 15
+                freqInput.min = 0.1
+                freqInput.step = 0.1
+                freqInput.value = this.frequency
+                freqInput.addEventListener('change', () => this.frequency = parseFloat(freqInput.value))
+                paramDiv.appendChild(freqInput)
+                this.freqInput = freqInput
+
+                const ampLabel = document.createElement('label')
+                ampLabel.textContent = '振幅:'
+                paramDiv.appendChild(ampLabel)
+                const ampInput = document.createElement('input')
+                ampInput.type = 'number'
+                ampInput.max = 100
+                ampInput.min = 0.1
+                ampInput.step = 0.1
+                ampInput.value = this.amplitude
+                ampInput.addEventListener('change', () => this.amplitude = parseFloat(ampInput.value))
+                paramDiv.appendChild(ampInput)
+                this.ampInput = ampInput
+
+                const phaseLabel = document.createElement('label')
+                phaseLabel.textContent = '相位:'
+                paramDiv.appendChild(phaseLabel)
+                const phaseInput = document.createElement('input')
+                phaseInput.type = 'number'
+                phaseInput.max = 3.141
+                phaseInput.min = -3.141
+                phaseInput.step = 0.01
+                phaseInput.value = this.phase
+                phaseInput.addEventListener('change', () => this.phase = parseFloat(phaseInput.value))
+                paramDiv.appendChild(phaseInput)
+                this.phaseInput = phaseInput
+
+                this.panel.appendChild(paramDiv)
+
+                const waveTypeLabel = document.createElement('label')
+                waveTypeLabel.textContent = '波形:'
+                this.panel.appendChild(waveTypeLabel)
+                const waveTypeSelect = document.createElement('select')
+                waveTypeSelect.addEventListener('change', () => this.waveType = waveTypeSelect.value)
+                const waveTypes = ['sine', 'square', 'sawtooth', 'triangle', 'noise']
+                waveTypes.forEach(type => {
+                    const option = document.createElement('option')
+                    option.value = type
+                    option.textContent = type
+                    waveTypeSelect.appendChild(option)
+                })
+                waveTypeSelect.value = this.waveType
+                waveTypeSelect.addEventListener('change', () => this.waveType = waveTypeSelect.value)
+                this.panel.appendChild(waveTypeSelect)
+                this.waveTypeSelect = waveTypeSelect
+
+
+                const toggleBtn = document.createElement('button')
+                toggleBtn.textContent = this.enabled ? '⏸️' : '▶️'
+                toggleBtn.addEventListener('click', () => {
+                    this.enabled = !this.enabled
+                    toggleBtn.textContent = this.enabled ? '⏸️' : '▶️'
+                })
+                this.panel.appendChild(toggleBtn)
+
+
+                // 添加删除按钮
+                const removeBtn = document.createElement('button')
+                removeBtn.textContent = '❌'
+                removeBtn.addEventListener('click', () => removeDevice(this.id))
+                this.panel.appendChild(removeBtn)
+            }
+
+            updatePanel() {
+                this.freqInput.value = this.frequency
+                this.ampInput.value = this.amplitude
+                this.phaseInput.value = this.phase
+                this.waveTypeSelect.value = this.waveType
             }
         }
 
@@ -273,6 +392,92 @@
             setSamplerate(sr) {
                 this.sampleRate = sr;
             }
+
+            initializePanel() {
+                // 添加参数编辑
+                const paramDiv = document.createElement('div')
+                paramDiv.className = 'param-div';
+
+                const srLabel = document.createElement('label');
+                srLabel.innerText = '采样率：'
+                paramDiv.appendChild(srLabel)
+
+                const srInput = document.createElement('input')
+                srInput.max = 48000;
+                srInput.min = 1000;
+                srInput.value = 3600;
+                srInput.addEventListener('change', e => {
+                    this.sampleRate = srInput.value;
+                })
+                paramDiv.appendChild(srInput);
+                this.panel.appendChild(paramDiv)
+                this.srInput = srInput
+
+                // 添加已录时长显示
+                const duration = document.createElement('div')
+                this.panel.appendChild(duration)
+                this.durationDisplay = duration
+
+                // 添加波形显示
+                const receiverCanvas = document.createElement('canvas');
+                receiverCanvas.width = 100;
+                receiverCanvas.height = 75;
+                const receiverCtx = receiverCanvas.getContext('2d')
+                receiverCtx.strokeStyle = 'white';
+                this.panel.appendChild(receiverCanvas);
+                this.receiverCtx = receiverCtx;
+                this.receiverCanvas = receiverCanvas;
+
+                const rmsDisplay = document.createElement('div');
+                this.panel.appendChild(rmsDisplay);
+                this.rmsDisplay = rmsDisplay;
+
+                // 添加暂停按钮
+                const toggleBtn = document.createElement('button')
+                toggleBtn.textContent = '⏸️'
+                toggleBtn.addEventListener('click', () => {
+                    this.setPaused(toggleBtn.textContent === '⏸️')
+                    toggleBtn.textContent = toggleBtn.textContent === '⏸️' ? '▶️' : '⏸️'
+                })
+                this.panel.appendChild(toggleBtn)
+
+                const exportBtn = document.createElement('button')
+                exportBtn.textContent = '📤'
+                exportBtn.addEventListener('click', () => this.exportWAV())
+                this.panel.appendChild(exportBtn)
+
+                // 添加删除按钮
+                const removeBtn = document.createElement('button')
+                removeBtn.textContent = '❌'
+                removeBtn.addEventListener('click', () => removeDevice(this.id))
+                this.panel.appendChild(removeBtn)
+            }
+
+            updatePanel() {
+                this.srInput.value = this.sampleRate
+            }
+
+            repaint() {
+                const durationSec = this.writePointer / this.sampleRate
+                this.durationDisplay.textContent = `已录制: ${durationSec.toFixed(3)}s`
+
+                let samples = this.buffer.slice(this.writePointer - 100, this.writePointer);
+
+                this.receiverCtx.clearRect(0, 0, this.receiverCanvas.width, this.receiverCanvas.height)
+                this.receiverCtx.beginPath()
+                this.receiverCtx.moveTo(0, 37.5)
+
+                let rms = 0;
+                for (let x = 0; x < samples.length; x++) {
+                    let sample = samples[x]
+                    this.receiverCtx.lineTo(x, sample * 37.5 + 37.5)
+                    rms += sample * sample;
+                }
+                rms /= samples.length;
+                rms = Math.sqrt(rms);
+                this.rmsDisplay.innerText = `RMS: ${(Math.log(rms) * 10).toFixed(1)} dB`
+                this.receiverCtx.stroke();
+            }
         }
 
 
@@ -319,6 +524,7 @@
         const brushSizeInput = document.getElementById('brushSize');
         const dampingInput = document.getElementById('damping');
         const waveType = document.getElementById('waveType');
+        const deviceList = document.getElementById('deviceList')
 
         // 模式切换按钮
         document.querySelectorAll('.toggle').forEach(btn => {
@@ -453,6 +659,7 @@
                 : new Receiver(x, y)
 
             transceivers.push(dev)
+            deviceList.appendChild(dev.panel)
             updateDeviceList()
             currentMode = '';
 
@@ -460,176 +667,7 @@
         })
 
         function updateDeviceList() {
-            const list = document.getElementById('deviceList')
-            list.innerHTML = '';
-            transceivers.forEach(dev => {
-                const item = document.createElement('div')
-                item.className = 'device-item'
-
-                // 添加设备名称
-                const name = document.createElement('div')
-                name.textContent = dev.type === 'transmitter' ? '🔊发射器' : '🎤接收器'
-                item.appendChild(name)
-
-                // 添加id
-                const id = document.createElement('div')
-                id.textContent = "ID: " + dev.id
-                item.appendChild(id)
-
-                // 添加坐标
-                const pos = document.createElement('div')
-                pos.textContent = `(${dev.x.toFixed(0)}, ${dev.y.toFixed(0)})`
-                item.appendChild(pos)
-
-                // 添加功能
-                if (dev instanceof Transmitter) {
-
-                    // 添加参数控制
-                    const paramDiv = document.createElement('div')
-                    paramDiv.className = 'param-div'
-
-                    const freqLabel = document.createElement('label')
-                    freqLabel.textContent = '频率:'
-                    paramDiv.appendChild(freqLabel)
-                    const freqInput = document.createElement('input')
-                    freqInput.type = 'number'
-                    freqInput.max = 15
-                    freqInput.min = 0.1
-                    freqInput.step = 0.1
-                    freqInput.value = dev.frequency
-                    freqInput.addEventListener('change', () => dev.frequency = parseFloat(freqInput.value))
-                    paramDiv.appendChild(freqInput)
-
-                    const ampLabel = document.createElement('label')
-                    ampLabel.textContent = '振幅:'
-                    paramDiv.appendChild(ampLabel)
-                    const ampInput = document.createElement('input')
-                    ampInput.type = 'number'
-                    ampInput.max = 100
-                    ampInput.min = 0.1
-                    ampInput.step = 0.1
-                    ampInput.value = dev.amplitude
-                    ampInput.addEventListener('change', () => dev.amplitude = parseFloat(ampInput.value))
-                    paramDiv.appendChild(ampInput)
-
-                    const phaseLabel = document.createElement('label')
-                    phaseLabel.textContent = '相位:'
-                    paramDiv.appendChild(phaseLabel)
-                    const phaseInput = document.createElement('input')
-                    phaseInput.type = 'number'
-                    ampInput.max = 3.141
-                    ampInput.min = 0
-                    ampInput.step = 0.01
-                    phaseInput.value = dev.phase
-                    phaseInput.addEventListener('change', () => dev.phase = parseFloat(phaseInput.value))
-                    paramDiv.appendChild(phaseInput)
-
-                    item.appendChild(paramDiv)
-
-                    const waveTypeLabel = document.createElement('label')
-                    waveTypeLabel.textContent = '波形:'
-                    item.appendChild(waveTypeLabel)
-                    const waveTypeSelect = document.createElement('select')
-                    waveTypeSelect.addEventListener('change', () => dev.waveType = waveTypeSelect.value)
-                    const waveTypes = ['sine', 'square', 'sawtooth', 'triangle', 'noise']
-                    waveTypes.forEach(type => {
-                        const option = document.createElement('option')
-                        option.value = type
-                        option.textContent = type
-                        waveTypeSelect.appendChild(option)
-                    })
-                    waveTypeSelect.value = dev.waveType
-                    waveTypeSelect.addEventListener('change', () => dev.waveType = waveTypeSelect.value)
-                    item.appendChild(waveTypeSelect)
-
-
-                    const toggleBtn = document.createElement('button')
-                    toggleBtn.textContent = dev.enabled ? '⏸️' : '▶️'
-                    toggleBtn.addEventListener('click', () => {
-                        dev.enabled = !dev.enabled
-                        toggleBtn.textContent = dev.enabled ? '⏸️' : '▶️'
-                    })
-                    item.appendChild(toggleBtn)
-                } else
-                    if (dev instanceof Receiver) {
-                        // 添加已录时长显示
-                        const duration = document.createElement('div')
-                        item.appendChild(duration)
-
-                        // 添加参数编辑
-                        const paramDiv = document.createElement('div')
-                        paramDiv.className = 'param-div';
-
-                        const srLabel = document.createElement('label');
-                        srLabel.innerText = '采样率：'
-                        paramDiv.appendChild(srLabel)
-
-                        const srInput = document.createElement('input')
-                        srInput.max = 48000;
-                        srInput.min = 1000;
-                        srInput.value = 3600;
-                        srInput.addEventListener('change', e => {
-                            dev.sampleRate = srInput.value;
-                        })
-                        paramDiv.appendChild(srInput);
-                        item.appendChild(paramDiv)
-
-                        const receiverCanvas = document.createElement('canvas');
-                        receiverCanvas.width = 100;
-                        receiverCanvas.height = 75;
-                        const receiverCtx = receiverCanvas.getContext('2d')
-                        receiverCtx.strokeStyle = 'white';
-                        item.appendChild(receiverCanvas);
-
-                        const rmsDisplay = document.createElement('div');
-                        item.appendChild(rmsDisplay);
-
-                        // 添加暂停按钮
-                        const toggleBtn = document.createElement('button')
-                        toggleBtn.textContent = '⏸️'
-                        toggleBtn.addEventListener('click', () => {
-                            dev.setPaused(toggleBtn.textContent === '⏸️')
-                            toggleBtn.textContent = toggleBtn.textContent === '⏸️' ? '▶️' : '⏸️'
-                        })
-                        item.appendChild(toggleBtn)
-
-                        const exportBtn = document.createElement('button')
-                        exportBtn.textContent = '📤'
-                        exportBtn.addEventListener('click', () => dev.exportWAV())
-                        item.appendChild(exportBtn)
-
-
-                        setInterval(() => {
-                            const durationSec = dev.writePointer / dev.sampleRate
-                            duration.textContent = `已录制: ${durationSec.toFixed(2)}s`
-
-                            let samples = dev.buffer.slice(dev.writePointer - 100, dev.writePointer);
-
-                            receiverCtx.clearRect(0, 0, receiverCanvas.width, receiverCanvas.height)
-                            receiverCtx.beginPath()
-                            receiverCtx.moveTo(0, 37.5)
-
-                            let rms = 0;
-                            for (let x = 0; x < samples.length; x++) {
-                                let sample = samples[x]
-                                receiverCtx.lineTo(x, sample * 37.5 + 37.5)
-                                rms += sample * sample;
-                            }
-                            rms /= samples.length;
-                            rms = Math.sqrt(rms);
-                            rmsDisplay.innerText = `RMS: ${(Math.log(rms) * 10).toFixed(1)} dB`
-                            receiverCtx.stroke();
-                        }, 1000)
-                    }
-
-                // 添加删除按钮
-                const removeBtn = document.createElement('button')
-                removeBtn.textContent = '❌'
-                removeBtn.addEventListener('click', () => removeDevice(dev.id))
-                item.appendChild(removeBtn)
-
-                list.appendChild(item)
-            })
+            transceivers.forEach(dev => dev.updatePanel())
         }
 
 
@@ -789,6 +827,11 @@
             if (isDrawing) touch();
             updateWave();
             render();
+            for (const dev of transceivers) {
+                if (dev instanceof Receiver) {
+                    dev.repaint()
+                }
+            }
         }
 
         function touch() {
