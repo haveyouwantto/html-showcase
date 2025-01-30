@@ -102,6 +102,42 @@
             margin: 8px;
         }
 
+        
+        select {
+            background-color: #333;
+            /* Dark background color for select dropdown */
+            color: #fff;
+            /* Light text color for select options */
+            padding: 8px;
+            border: 1px solid #666;
+            /* Dark border color */
+            border-radius: 4px;
+            appearance: none;
+            /* Remove default appearance */
+            transition: background-color 0.3s;
+        }
+
+        select:hover,
+        select:focus {
+            background-color: #444;
+            /* Change background color on hover/focus */
+        }
+
+        input[type="number"] {
+            background-color: #333;
+            /* Dark background color for input */
+            color: #fff;
+            /* Light text color for input */
+            padding: 8px;
+            border: 1px solid #666;
+            /* Dark border color */
+            border-radius: 4px;
+            appearance: none;
+            /* Remove default appearance */
+            transition: background-color 0.3s;
+        }
+
+
         @media (max-width: 700px) {
             canvas {
                 width: 100%;
@@ -357,7 +393,7 @@
                 this.panel.appendChild(this.slider)
 
                 this.panel.appendChild(document.createElement('br'))
-                
+
                 const sampleRateLabel = document.createElement('label')
                 sampleRateLabel.textContent = '采样率:'
                 this.panel.appendChild(sampleRateLabel)
