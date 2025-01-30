@@ -340,7 +340,7 @@
             constructor(x, y) {
                 super('receiver', x, y)
                 this.sampleRate = 3600
-                this.buffer = new Float32Array(65536)
+                this.buffer = new Float32Array(262144)
                 this.writePointer = 0
                 this.lastSampleTime = 0
                 this.paused = false
