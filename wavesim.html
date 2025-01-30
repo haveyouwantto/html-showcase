@@ -447,6 +447,11 @@
                 exportBtn.addEventListener('click', () => this.exportWAV())
                 this.panel.appendChild(exportBtn)
 
+                const eraseBtn = document.createElement('button')
+                eraseBtn.textContent = '🧹'
+                eraseBtn.addEventListener('click', () => this.erase())
+                this.panel.appendChild(eraseBtn)
+
                 // 添加删除按钮
                 const removeBtn = document.createElement('button')
                 removeBtn.textContent = '❌'
@@ -478,6 +483,11 @@
                 rms = Math.sqrt(rms);
                 this.rmsDisplay.innerText = `RMS: ${(Math.log(rms) * 10).toFixed(1)} dB`
                 this.receiverCtx.stroke();
+            }
+
+            erase() {
+                this.buffer.fill(0)
+                this.writePointer = 0
             }
         }
 
