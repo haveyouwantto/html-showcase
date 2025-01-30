@@ -72,9 +72,12 @@
         .transceiver-marker {
             position: absolute;
             pointer-events: none;
-            font-size: 24px;
+            font-size: 1rem;
             transform: translate(-50%, -50%);
             user-select: none;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
         }
 
         #deviceList {
@@ -94,7 +97,9 @@
 
         .transceivers {
             gap: 10px;
-            display: grid;
+            display: flex;
+            flex-direction: column;
+            margin: 8px;
         }
 
         @media (max-width: 700px) {
@@ -111,6 +116,12 @@
             }
 
             .controls {
+                flex-direction: row;
+                flex-wrap: wrap;
+                justify-content: center;
+            }
+
+            .transceivers {
                 flex-direction: row;
             }
 
@@ -173,7 +184,7 @@
             static idCounter = 0
 
             constructor(type, x, y) {
-                this.id = `dev_${Transceiver.idCounter++}`
+                this.id = `${type === 'transmitter' ? 'tx' : 'rx'}${Transceiver.idCounter++}`
                 this.type = type
                 this.x = Math.round(x)
                 this.y = Math.round(y)
@@ -189,6 +200,12 @@
                 marker.style.left = `${this.x / canvas.width * 100}%`
                 marker.style.top = `${this.y / canvas.height * 100}%`
                 document.querySelector('.canvas-container').appendChild(marker)
+
+                const devLabel = document.createElement('div')
+                devLabel.textContent = this.id;
+                devLabel.style.color = 'white'
+                devLabel.style.fontSize = '12px'
+                marker.appendChild(devLabel)
                 return marker
             }
 
