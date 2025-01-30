@@ -260,13 +260,23 @@
                 this.phase = 0
                 this.enabled = true
                 this.waveType = 'sine'
+                this.audioBuffer = null
+                this.audioPtr = 0
+                this.sampleRate = 8000
             }
 
             applyEffect(buffer, tick) {
                 if (!this.enabled) return
-                const idx = this.y * N + this.x;
-                const value = generateWave(this.waveType, this.frequency, this.phase, this.amplitude, tick / 60)
-                buffer[idx] += value
+                if (this.waveType === 'audio') {
+                    if (!this.audioBuffer) return
+                    const idx = this.y * N + this.x;
+                    buffer[idx] += this.audioBuffer.getChannelData(0)[this.audioPtr] * this.amplitude
+                    this.audioPtr = (this.audioPtr + 1) % this.audioBuffer.length
+                } else {
+                    const idx = this.y * N + this.x;
+                    const value = generateWave(this.waveType, this.frequency, this.phase, this.amplitude, tick / 60)
+                    buffer[idx] += value
+                }
             }
 
             initializePanel() {
@@ -332,6 +342,63 @@
                 this.panel.appendChild(waveTypeSelect)
                 this.waveTypeSelect = waveTypeSelect
 
+                // 添加音频上传
+                this.playbackTime = document.createElement('div')
+                this.panel.appendChild(this.playbackTime)
+
+                this.slider = document.createElement('input')
+                this.slider.type = 'range'
+                this.slider.min = 0
+                this.slider.max = 100
+                this.slider.value = 0
+                this.slider.addEventListener('input', e => {
+                    this.audioPtr = Math.floor(this.audioBuffer.length * e.target.value / 100)
+                })
+                this.panel.appendChild(this.slider)
+
+                this.panel.appendChild(document.createElement('br'))
+                
+                const sampleRateLabel = document.createElement('label')
+                sampleRateLabel.textContent = '采样率:'
+                this.panel.appendChild(sampleRateLabel)
+                const sampleRateInput = document.createElement('input')
+                sampleRateInput.type = 'number'
+                sampleRateInput.max = 48000
+                sampleRateInput.min = 1000
+                sampleRateInput.value = 8000
+                sampleRateInput.addEventListener('change', e => {
+                    this.sampleRate = parseInt(e.target.value)
+                })
+                this.panel.appendChild(sampleRateInput)
+                this.sampleRateInput = sampleRateInput
+
+
+                const audioUpload = document.createElement('input')
+                audioUpload.type = 'file'
+                audioUpload.accept = 'audio/*'
+                audioUpload.hidden = true
+                audioUpload.addEventListener('change', e => {
+                    const file = e.target.files[0]
+                    if (file) {
+                        const reader = new FileReader()
+                        reader.onload = e => {
+                            const audioCtx = new AudioContext({ sampleRate: this.sampleRate })
+                            audioCtx.decodeAudioData(e.target.result).then(buffer => {
+                                this.audioBuffer = buffer
+                                this.waveType = 'audio'
+                            })
+                        }
+                        reader.readAsArrayBuffer(file)
+                    }
+                })
+                this.panel.appendChild(audioUpload)
+
+                this.panel.appendChild(document.createElement('br'))
+
+                const uploadBtn = document.createElement('button')
+                uploadBtn.textContent = '🎵'
+                uploadBtn.addEventListener('click', () => audioUpload.click())
+                this.panel.appendChild(uploadBtn)
 
                 const toggleBtn = document.createElement('button')
                 toggleBtn.textContent = this.enabled ? '▶️' : '⏸️'
@@ -354,6 +421,14 @@
                 this.ampInput.value = this.amplitude
                 this.phaseInput.value = this.phase
                 this.waveTypeSelect.value = this.waveType
+                this.sampleRateInput.value = this.sampleRate
+            }
+
+            repaint() {
+                if (this.audioBuffer) {
+                    this.playbackTime.textContent = `播放进度: ${(this.audioPtr / this.sampleRate).toFixed(3)}s / ${(this.audioBuffer.length / this.sampleRate).toFixed(3)}s`
+                    this.slider.value = this.audioPtr / this.audioBuffer.length * 100
+                }
             }
         }
 
@@ -883,9 +958,7 @@
             updateWave();
             render();
             for (const dev of transceivers) {
-                if (dev instanceof Receiver) {
-                    dev.repaint()
-                }
+                dev.repaint()
             }
         }
 
