@@ -431,10 +431,6 @@
 
                 this.panel.appendChild(document.createElement('br'))
 
-                const uploadBtn = document.createElement('button')
-                uploadBtn.textContent = '🎵'
-                uploadBtn.addEventListener('click', () => audioUpload.click())
-                this.panel.appendChild(uploadBtn)
 
                 const toggleBtn = document.createElement('button')
                 toggleBtn.textContent = this.enabled ? '▶️' : '⏸️'
@@ -444,6 +440,10 @@
                 })
                 this.panel.appendChild(toggleBtn)
 
+                const uploadBtn = document.createElement('button')
+                uploadBtn.textContent = '🎵'
+                uploadBtn.addEventListener('click', () => audioUpload.click())
+                this.panel.appendChild(uploadBtn)
 
                 // 添加删除按钮
                 const removeBtn = document.createElement('button')
