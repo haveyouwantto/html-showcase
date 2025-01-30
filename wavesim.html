@@ -129,9 +129,16 @@
 
         <div class="tools">
             <div class="controls">
-                <button id="btnWave" class="active">🌊 波动模式</button>
-                <button id="btnObstacle">🧱 绘制障碍</button>
-                <button id="btnErase">🧹 擦除障碍</button>
+                <button id="btnWave" class="toggle active">🌊 波动模式</button>
+                <button id="btnObstacle" class="toggle">🧱 绘制障碍</button>
+                <button id="btnErase" class="toggle">🧹 擦除障碍</button>
+
+                <div>
+                    <input type="file" id="importImage" accept="image/*" hidden>
+                    <button onclick="document.getElementById('importImage').click()">🖼️ 导入障碍图</button>
+                </div>
+
+                <button id="btnClear">❌ 清空画面</button>
             </div>
 
             <div class="parameters">
@@ -142,8 +149,8 @@
             </div>
 
             <div class="transceivers">
-                <button id="btnTrans">📡 添加发射器</button>
-                <button id="btnRecv">📻 添加接收器</button>
+                <button id="btnTrans" class="toggle">🔊 添加发射器</button>
+                <button id="btnRecv" class="toggle">🎤 添加接收器</button>
             </div>
         </div>
     </div>
@@ -164,7 +171,7 @@
             createMarker() {
                 const marker = document.createElement('span')
                 marker.className = 'transceiver-marker'
-                marker.textContent = this.type === 'transmitter' ? '📡' : '📻'
+                marker.textContent = this.type === 'transmitter' ? '🔊' : '🎤'
                 marker.style.left = `${this.x / canvas.width * 100}%`
                 marker.style.top = `${this.y / canvas.height * 100}%`
                 document.querySelector('.canvas-container').appendChild(marker)
@@ -305,7 +312,7 @@
         const dampingInput = document.getElementById('damping');
 
         // 模式切换按钮
-        document.querySelectorAll('button').forEach(btn => {
+        document.querySelectorAll('.toggle').forEach(btn => {
             btn.addEventListener('click', () => {
                 document.querySelectorAll('button').forEach(b => b.classList.remove('active'));
                 btn.classList.add('active');
@@ -390,7 +397,7 @@
                     data[idx + 1] = 50;   // G
                     data[idx + 2] = 50;   // B
                 } else {
-                    const val = Math.min(Math.abs(buffers[current][i]) * 255, 255);
+                    const val = clamp(Math.abs(buffers[current][i]), 0, 1) * 255;
                     if (buffers[current][i] > 0) {
                         data[idx] = val;    // R
                         data[idx + 1] = val / 2;  // G
@@ -421,6 +428,10 @@
             }
         }
 
+        function clamp(value, min, max) {
+            return Math.min(Math.max(value, min), max);
+        }
+
         canvas.addEventListener('click', (e) => {
             if (currentMode != 'trans' && currentMode != 'recv') return
 
@@ -448,7 +459,7 @@
 
                 // 添加设备名称
                 const name = document.createElement('div')
-                name.textContent = dev.type === 'transmitter' ? '📡发射器' : '📻接收器'
+                name.textContent = dev.type === 'transmitter' ? '🔊发射器' : '🎤接收器'
                 item.appendChild(name)
 
                 // 添加id
@@ -603,6 +614,69 @@
             transceivers.splice(index, 1)
             updateDeviceList()
         }
+
+        // 导入障碍图
+        // 添加图像处理函数
+        function handleImageUpload(file) {
+            const reader = new FileReader();
+            reader.onload = function (e) {
+                const img = new Image();
+                img.onload = function () {
+                    processImage(img);
+                };
+                img.src = e.target.result;
+            };
+            reader.readAsDataURL(file);
+        }
+
+        function processImage(img) {
+            // 创建临时Canvas进行预处理
+            const tempCanvas = document.createElement('canvas');
+            const tempCtx = tempCanvas.getContext('2d');
+
+            // 设置尺寸为512x512
+            tempCanvas.width = N;
+            tempCanvas.height = N;
+
+            // 绘制并缩放图像
+            tempCtx.drawImage(img, 0, 0, N, N);
+
+            // 获取图像数据
+            const imageData = tempCtx.getImageData(0, 0, N, N);
+            const pixels = imageData.data;
+
+            // 二值化处理并更新障碍物
+            for (let i = 0; i < N * N; i++) {
+                const r = pixels[i * 4];
+                const g = pixels[i * 4 + 1];
+                const b = pixels[i * 4 + 2];
+
+                // 计算亮度（YUV/YIQ模型）
+                const brightness = r * 0.299 + g * 0.587 + b * 0.114;
+                obstacles[i] = brightness > 128 ? 1 : 0; // 阈值128
+            }
+
+            // 触发重绘
+            render();
+        }
+
+        function clear() {
+            for (const buffer of buffers) {
+                buffer.fill(0);
+            }
+            obstacles.fill(0);
+            for (const dev of transceivers) {
+                removeDevice(dev.id)
+            }
+        }
+
+        document.getElementById('btnClear').addEventListener('click', clear);
+
+        // 绑定文件输入事件
+        document.getElementById('importImage').addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (file) handleImageUpload(file);
+        });
 
         // 辅助函数
         function writeString(view, offset, string) {
