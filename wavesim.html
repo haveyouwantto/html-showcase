@@ -397,7 +397,7 @@
                     data[idx + 1] = 50;   // G
                     data[idx + 2] = 50;   // B
                 } else {
-                    const val = clamp(Math.abs(buffers[current][i]), 0, 1) * 255;
+                    const val = clamp(Math.sqrt(Math.abs(buffers[current][i])), 0, 1) * 255;
                     if (buffers[current][i] > 0) {
                         data[idx] = val;    // R
                         data[idx + 1] = val / 2;  // G
