@@ -471,7 +471,7 @@
         class Receiver extends Transceiver {
             constructor(x, y) {
                 super('receiver', x, y)
-                this.sampleRate = 3600
+                this.sampleRate = 8000
                 this.buffer = new Float32Array(262144)
                 this.writePointer = 0
                 this.lastSampleTime = 0
@@ -539,7 +539,7 @@
                 const srInput = document.createElement('input')
                 srInput.max = 48000;
                 srInput.min = 1000;
-                srInput.value = 3600;
+                srInput.value = 8000;
                 srInput.addEventListener('change', e => {
                     this.sampleRate = srInput.value;
                 })
