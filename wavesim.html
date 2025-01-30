@@ -147,6 +147,10 @@
                 振幅：<input type="number" id="amplitude" min="0.01" max="100" step="0.1" value="10">
                 频率：<input type="number" id="frequency" min="0" max="15" step="0.1" value="5">
                 笔刷大小：<input type="range" id="brushSize" min="1" max="20" value="3"> <span id="brushSizeValue">3</span>
+                笔刷材料：<select id="material">
+                    <option value="1">墙体</option>
+                    <option value="2">透镜</option>
+                </select>
                 波形：<select id="waveType">
                     <option value="sine">正弦波</option>
                     <option value="square">方波</option>
@@ -492,11 +496,26 @@
             }
         }
 
+        const materialDefs = {
+            1: { // 墙体
+                'name': 'wall',
+                'color': [200, 50, 50],
+                'damping': 1.0,
+                'waveSpeed': 0.5
+            },
+            2: { // 透镜
+                'name': 'lens',
+                'color': [50, 100, 100],
+                'damping': 0.0,
+                'waveSpeed': 0.25,
+            }
+        }
+
 
         // 初始化参数
         const N = 512;           // 网格尺寸
         const cellSize = 1;      // 像素大小
-        let damping = 0.005;   // 阻尼系数
+        let airDamping = 0.005;   // 阻尼系数
         const waveSpeed = 0.5;   // 波速
 
         // 获取Canvas上下文
@@ -537,6 +556,7 @@
         const dampingInput = document.getElementById('damping');
         const waveType = document.getElementById('waveType');
         const deviceList = document.getElementById('deviceList')
+        const materialSelect = document.getElementById('material')
 
         // 模式切换按钮
         document.querySelectorAll('.toggle').forEach(btn => {
@@ -549,7 +569,7 @@
 
         // 阻尼系数控制
         dampingInput.addEventListener('change', () => {
-            damping = parseFloat(dampingInput.value);
+            airDamping = parseFloat(dampingInput.value);
         });
 
         // 笔刷大小控制
@@ -564,16 +584,11 @@
             const curr = current;
             const next = (current + 1) % 3;
 
-            // 清除障碍物位置的波动
-            for (let i = 0; i < N * N; i++) {
-                if (obstacles[i]) buffers[prev][i] = buffers[curr][i] = buffers[next][i] = 0;
-            }
-
             // 修改后的拉普拉斯算子计算（包含对角线项）
             for (let y = 1; y < N - 1; y++) {
                 for (let x = 1; x < N - 1; x++) {
                     const idx = y * N + x;
-                    if (obstacles[idx]) continue;
+                    const waveSpeedF = materialDefs[obstacles[idx]]?.waveSpeed || waveSpeed;
 
                     // 标准拉普拉斯项
                     const laplacian =
@@ -597,8 +612,13 @@
                     // 修改后的更新方程
                     buffers[next][idx] = (
                         buffers[curr][idx] * 2 -
-                        buffers[prev][idx] + blendedLaplacian * waveSpeed
-                    ) * (1 - damping);
+                        buffers[prev][idx] + blendedLaplacian * waveSpeedF
+                    ) * (1 - airDamping);
+
+                    if (obstacles[idx]) {
+                        buffers[next][idx] *= (1 - materialDefs[obstacles[idx]].damping);
+                        continue;
+                    }
                 }
             }
 
@@ -619,23 +639,25 @@
         function render() {
             for (let i = 0; i < N * N; i++) {
                 const idx = i * 4;
-                if (obstacles[i]) {
-                    data[idx] = 200;    // R
-                    data[idx + 1] = 50;   // G
-                    data[idx + 2] = 50;   // B
-                } else {
-                    const val = clamp(Math.sqrt(Math.abs(buffers[current][i])), 0, 1) * 255;
-                    if (buffers[current][i] > 0) {
-                        data[idx] = val;    // R
-                        data[idx + 1] = val / 2;  // G
-                        data[idx + 2] = 0;  // B
-                    } else {
 
-                        data[idx] = 0;    // R
-                        data[idx + 1] = val / 2;  // G
-                        data[idx + 2] = val;  // B
-                    }
+                const val = clamp(Math.sqrt(Math.abs(buffers[current][i])), 0, 1) * 255;
+                if (buffers[current][i] > 0) {
+                    data[idx] = val;    // R
+                    data[idx + 1] = val / 2;  // G
+                    data[idx + 2] = 0;  // B
+                } else {
+                    data[idx] = 0;    // R
+                    data[idx + 1] = val / 2;  // G
+                    data[idx + 2] = val;  // B
                 }
+
+                if (obstacles[i]) {
+                    let material = materialDefs[obstacles[i]];
+                    data[idx] += material.color[0];    // R
+                    data[idx + 1] += material.color[1];   // G
+                    data[idx + 2] += material.color[2];   // B
+                }
+
                 data[idx + 3] = 255;      // A
             }
             ctx.putImageData(imageData, 0, 0);
@@ -650,7 +672,7 @@
                     const ny = y + yy;
                     if (nx < 0 || nx >= N || ny < 0 || ny >= N) continue;
                     const idx = ny * N + nx;
-                    obstacles[idx] = isAdd ? 1 : 0;
+                    obstacles[idx] = isAdd ? materialSelect.value : 0;
                 }
             }
         }
