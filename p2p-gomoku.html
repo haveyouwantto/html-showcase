@@ -403,6 +403,7 @@
             gameActive = false;
             document.getElementById('status').textContent = message;
             document.getElementById('board').classList.add('waiting');
+            alert(message);
 
             if (isDisconnect) {
                 const overlay = document.getElementById('waitingOverlay');
