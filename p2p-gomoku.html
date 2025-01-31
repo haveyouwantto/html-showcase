@@ -1,0 +1,453 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>P2P五子棋</title>
+    <style>
+        :root {
+            --primary-blue: #1a73e8;
+            --accent-yellow: #fdd835;
+            --dark-blue: #0d47a1;
+            --light-gray: #f5f5f5;
+        }
+
+        body {
+            margin: 0;
+            padding: 20px;
+            background: var(--primary-blue);
+            font-family: 'Arial', sans-serif;
+            color: white;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        #controls {
+            margin: 20px 0;
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        button {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 25px;
+            background: var(--accent-yellow);
+            color: var(--dark-blue);
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s;
+            box-shadow: 0 3px 6px rgba(0,0,0,0.16);
+        }
+
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+        }
+
+        button:disabled {
+            background: #ccc;
+            color: #666;
+            cursor: not-allowed;
+        }
+
+        input {
+            padding: 12px;
+            border: 2px solid var(--accent-yellow);
+            border-radius: 25px;
+            min-width: 250px;
+        }
+
+        .board-container {
+            position: relative;
+            margin: 20px 0;
+        }
+
+        .board {
+            display: grid;
+            grid-template-columns: repeat(15, 40px);
+            grid-template-rows: repeat(15, 40px);
+            gap: 1px;
+            background: #dbc48f;
+            position: relative;
+            transition: opacity 0.3s;
+        }
+
+        .board.waiting {
+            opacity: 0.5;
+            pointer-events: none;
+        }
+
+        .waiting-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0,0,0,0.5);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            color: white;
+            font-size: 24px;
+            font-weight: bold;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+        }
+
+        .waiting-overlay.active {
+            display: flex;
+        }
+
+        .cell {
+            width: 40px;
+            height: 40px;
+            background: #f0d9b5;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            cursor: pointer;
+            position: relative;
+        }
+
+        .cell::after {
+            content: '';
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            position: absolute;
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+
+        .cell.black::after {
+            background: #2c2c2c;
+            opacity: 1;
+        }
+
+        .cell.white::after {
+            background: #f0f0f0;
+            opacity: 1;
+            box-shadow: 0 0 3px rgba(0,0,0,0.3);
+        }
+
+        #status {
+            font-size: 18px;
+            margin: 15px 0;
+            text-align: center;
+        }
+
+        .player-role {
+            font-size: 20px;
+            font-weight: bold;
+            margin: 10px 0;
+            color: var(--accent-yellow);
+        }
+    </style>
+</head>
+<body>
+    <h1>P2P五子棋</h1>
+    <div id="controls">
+        <button id="createGame">创建游戏</button>
+        <input type="text" id="peerId" placeholder="输入对方ID或链接">
+        <button id="joinGame">加入游戏</button>
+    </div>
+    <div class="player-role" id="playerRole"></div>
+    <div id="status">等待连接...</div>
+    
+    <div class="board-container">
+        <div class="board" id="board"></div>
+        <div class="waiting-overlay" id="waitingOverlay">等待对方落子...</div>
+    </div>
+
+    <script src="https://unpkg.com/peerjs@1.4.7/dist/peerjs.min.js"></script>
+    <script>
+        let peer;
+        let conn;
+        let isHost = false;
+        let currentPlayer = 'black';
+        let board = Array(15).fill().map(() => Array(15).fill(null));
+        let gameActive = false;
+        let reconnectAttempts = 0;
+        const MAX_RECONNECT_ATTEMPTS = 3;
+
+        // 初始化棋盘
+        function initBoard() {
+            const boardEl = document.getElementById('board');
+            boardEl.innerHTML = '';
+            
+            for (let y = 0; y < 15; y++) {
+                for (let x = 0; x < 15; x++) {
+                    const cell = document.createElement('div');
+                    cell.className = 'cell';
+                    cell.dataset.x = x;
+                    cell.dataset.y = y;
+                    cell.addEventListener('click', handleMove);
+                    boardEl.appendChild(cell);
+                }
+            }
+            updateTurnUI();
+        }
+
+        // 处理落子
+        function handleMove(e) {
+            if (!canMakeMove()) return;
+
+            const x = +e.target.dataset.x;
+            const y = +e.target.dataset.y;
+            
+            if (board[y][x]) return;
+            
+            placeStone(x, y, currentPlayer);
+            const nextPlayer = currentPlayer === 'black' ? 'white' : 'black';
+            
+            conn.send({ 
+                type: 'move', 
+                x, 
+                y, 
+                color: currentPlayer,
+                nextPlayer: nextPlayer
+            });
+            
+            if (checkWin(x, y)) {
+                endGame(`${currentPlayer === 'black' ? '黑' : '白'}方胜利！`);
+                return;
+            }
+            
+            currentPlayer = nextPlayer;
+            updateTurnUI();
+        }
+
+        function canMakeMove() {
+            return gameActive && 
+                   ((currentPlayer === 'black' && isHost) || 
+                   (currentPlayer === 'white' && !isHost));
+        }
+
+        // 更新界面状态
+        function updateTurnUI() {
+            const boardEl = document.getElementById('board');
+            const waitingOverlay = document.getElementById('waitingOverlay');
+            
+            if (canMakeMove()) {
+                boardEl.classList.remove('waiting');
+                waitingOverlay.classList.remove('active');
+            } else {
+                boardEl.classList.add('waiting');
+                waitingOverlay.classList.add('active');
+            }
+            
+            document.getElementById('status').textContent = 
+                `${currentPlayer === 'black' ? '黑' : '白'}方回合`;
+        }
+
+        // 放置棋子
+        function placeStone(x, y, color) {
+            board[y][x] = color;
+            const cell = document.querySelector(`.cell[data-x="${x}"][data-y="${y}"]`);
+            cell.classList.add(color);
+        }
+
+        function setButtonDisabled(disabled) {
+            document.getElementById('createGame').disabled = disabled;
+            document.getElementById('joinGame').disabled = disabled;
+        }
+
+        // 游戏控制
+        function hostGame() {
+            setButtonDisabled(true);
+            // 清理旧连接
+            if (peer && !peer.destroyed) {
+                peer.destroy();
+            }
+            isHost = true;
+            peer = new Peer({
+                host: '0.peerjs.com',
+                port: 443,
+                secure: true,
+                path: '/'
+            });
+
+            peer.on('open', id => {
+                const gameUrl = `${location.href.split('#')[0]}#${id}`;
+                navigator.clipboard.writeText(gameUrl);
+                document.getElementById('playerRole').textContent = '你是黑方';
+                document.getElementById('status').innerHTML = `
+                    游戏链接已创建！<br>
+                    已自动复制到剪贴板：<br>
+                    <a href="${gameUrl}" style="color:var(--accent-yellow)">${gameUrl}</a>
+                `;
+
+                peer.on('connection', connection => {
+                    conn = connection;
+                    setupConnection();
+                    startGame();
+                });
+            });
+        }
+
+        function joinGame() {
+            setButtonDisabled(true);
+            // 清理旧连接
+            if (peer && !peer.destroyed) {
+                peer.destroy();
+            }
+            let peerId = document.getElementById('peerId').value;
+            if (peerId.includes('#')) peerId = peerId.split('#').pop();
+            
+            peer = new Peer({
+                host: '0.peerjs.com',
+                port: 443,
+                secure: true,
+                path: '/'
+            });
+
+            peer.on('open', () => {
+                document.getElementById('playerRole').textContent = '你是白方';
+                conn = peer.connect(peerId);
+                setupConnection();
+            });
+        }
+
+        function setupConnection() {
+            // 连接关闭处理
+            conn.on('close', () => {
+                if (gameActive) {
+                    endGame('对方已断开连接', true);
+                }
+            });
+
+            // 连接错误处理
+            conn.on('error', (err) => {
+                console.error('连接错误:', err);
+                if (gameActive && reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
+                    reconnectAttempts++;
+                    setTimeout(() => reconnect(), 2000);
+                } else {
+                    endGame('连接已断开', true);
+                }
+            });
+
+            conn.on('open', () => {
+                startGame();
+                currentPlayer = 'black';
+                updateTurnUI();
+            });
+
+            conn.on('data', data => {
+                if (data.type === 'move') {
+                    placeStone(data.x, data.y, data.color);
+                    currentPlayer = data.nextPlayer;
+                    
+                    if (checkWin(data.x, data.y)) {
+                        endGame(`${data.color === 'black' ? '黑' : '白'}方胜利！`);
+                        return;
+                    }
+                    
+                    updateTurnUI();
+                }
+            });
+        }
+
+         // 新增重新连接方法
+         function reconnect() {
+            if (!peer || peer.disconnected) {
+                peer = new Peer({
+                    host: '0.peerjs.com',
+                    port: 443,
+                    secure: true,
+                    path: '/'
+                });
+            }
+            
+            document.getElementById('status').textContent = `正在尝试重新连接 (${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})`;
+            conn = peer.connect(conn.peer);
+            setupConnection();
+        }
+
+        function startGame() {
+            gameActive = true;
+            initBoard();
+            document.getElementById('status').textContent = '游戏开始！';
+        }
+
+        function endGame(message) {
+            gameActive = false;
+            document.getElementById('status').textContent = message;
+            document.getElementById('board').classList.add('waiting');
+            
+            if (isDisconnect) {
+                const overlay = document.getElementById('waitingOverlay');
+                overlay.textContent = '连接已断开';
+                overlay.classList.add('active');
+                
+                // 添加重新连接按钮
+                if (reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
+                    const reconnectBtn = document.createElement('button');
+                    reconnectBtn.textContent = '重新连接';
+                    reconnectBtn.onclick = reconnect;
+                    document.getElementById('controls').appendChild(reconnectBtn);
+                }
+            }
+            setButtonDisabled(false);
+        }
+
+        // 监听页面关闭事件
+        window.addEventListener('beforeunload', () => {
+            if (peer && !peer.destroyed) {
+                peer.destroy();
+            }
+        });
+
+
+        // 胜利检测
+        function checkWin(x, y) {
+            const color = board[y][x];
+            const directions = [
+                [[1, 0], [-1, 0]],   // 水平
+                [[0, 1], [0, -1]],   // 垂直
+                [[1, 1], [-1, -1]],  // 主对角线
+                [[1, -1], [-1, 1]]   // 副对角线
+            ];
+
+            return directions.some(([plus, minus]) => {
+                let count = 1;
+                
+                count += countDirection(x, y, plus[0], plus[1], color);
+                count += countDirection(x, y, minus[0], minus[1], color);
+                
+                return count >= 5;
+            });
+        }
+
+        function countDirection(x, y, dx, dy, color) {
+            let count = 0;
+            let i = x + dx;
+            let j = y + dy;
+            
+            while (i >= 0 && i < 15 && j >= 0 && j < 15 && board[j][i] === color) {
+                count++;
+                i += dx;
+                j += dy;
+            }
+            return count;
+        }
+
+        // 自动加入逻辑
+        window.addEventListener('load', () => {
+            initBoard();
+            if (window.location.hash) {
+                const hash = window.location.hash.substring(1);
+                document.getElementById('peerId').value = hash;
+                joinGame()
+            }
+        });
+
+        const createGameBtn = document.getElementById('createGame');
+        const joinGameBtn = document.getElementById('joinGame');
+        createGameBtn.addEventListener('click', hostGame);
+        joinGameBtn.addEventListener('click', joinGame);
+    </script>
+</body>
+</html>
