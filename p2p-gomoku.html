@@ -224,7 +224,7 @@
 
     <div class="board-container">
         <div class="board" id="board"></div>
-        <div class="waiting-overlay" id="waitingOverlay"></div>
+        <div class="waiting-overlay active" id="waitingOverlay"></div>
     </div>
 
     <script src="https://unpkg.com/peerjs@1.4.7/dist/peerjs.min.js"></script>
@@ -312,6 +312,7 @@
 
         // 更新界面状态
         function updateTurnUI() {
+            if (!gameActive) return;
             const boardEl = document.getElementById('board');
             const waitingOverlay = document.getElementById('waitingOverlay');
 
