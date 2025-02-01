@@ -111,7 +111,7 @@
             left: 0;
             right: 0;
             bottom: 0;
-            background: rgba(0, 0, 0, 0.5);
+            background: rgba(0, 0, 0, 0.3);
             display: none;
             justify-content: center;
             align-items: center;
@@ -173,6 +173,13 @@
             text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
         }
 
+        #gameUrl {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
+        }
+
         @media screen and (max-width: 700px) {
             .board {
                 grid-template-columns: repeat(15, 5vw);
@@ -200,11 +207,24 @@
         <button id="joinGame">加入游戏</button>
     </div>
     <div class="player-role" id="playerRole">游戏未开始</div>
-    <div id="status">等待连接...</div>
+    <!-- <div id="status">等待连接...</div> -->
+    <div id="gameUrl" style="display: none;">
+        <div>游戏链接已创建！<br>
+            已自动复制到剪贴板：<br>
+        </div>
+        <div style="
+        display: flex;
+        flex-direction: row;
+        align-items: center;
+        ">
+            <input type="text" id="gameUrlText" value="" readonly>
+            <button id="copyUrl" style="min-width: max-content;">复制</button>
+        </div>
+    </div>
 
     <div class="board-container">
         <div class="board" id="board"></div>
-        <div class="waiting-overlay" id="waitingOverlay">等待对方落子...</div>
+        <div class="waiting-overlay" id="waitingOverlay"></div>
     </div>
 
     <script src="https://unpkg.com/peerjs@1.4.7/dist/peerjs.min.js"></script>
@@ -220,6 +240,8 @@
         let gameActive = false;
         let playerRole = null;
         let clientId = Math.random().toString(36).substr(2, 9);
+
+        let statusText = document.getElementById('waitingOverlay');
 
         // 角色协商
         function negotiateRole(remoteId) {
@@ -301,7 +323,7 @@
                 waitingOverlay.classList.add('active');
             }
 
-            document.getElementById('status').textContent =
+            statusText.textContent =
                 `${currentPlayer === 'black' ? '黑' : '白'}方回合`;
         }
 
@@ -332,20 +354,25 @@
                 path: '/'
             });
 
+            statusText.textContent = '正在创建游戏...';
+
             peer.on('open', id => {
                 const gameUrl = `${location.href.split('?')[0]}?${id}`;
                 navigator.clipboard.writeText(gameUrl);
                 document.getElementById('playerRole').textContent = '你是黑方';
-                document.getElementById('status').innerHTML = `
-                    游戏链接已创建！<br>
-                    已自动复制到剪贴板：<br>
-                    <a href="${gameUrl}" style="color:var(--accent-yellow)">${gameUrl}</a>
-                `;
+                document.getElementById('gameUrl').style.display = 'flex';
+                document.getElementById('gameUrlText').value = gameUrl;
+                statusText.textContent = '等待玩家加入...'
 
                 peer.on('connection', connection => {
                     conn = connection;
                     setupConnection();
                 });
+            });
+
+            peer.on('error', err => {
+                console.error('连接错误:', err);
+                endGame('连接错误', true);
             });
         }
 
@@ -365,14 +392,20 @@
                 path: '/'
             });
 
+            statusText.textContent = '正在连接...';
+
             peer.on('open', () => {
                 conn = peer.connect(peerId);
                 setupConnection();
             });
+
+            peer.on('error', err => {
+                console.error('连接错误:', err);
+                endGame('连接错误', true);
+            });
         }
 
         function setupConnection() {
-            console.log('连接已建立');
             // 连接关闭处理
             conn.on('close', () => {
                 if (gameActive) {
@@ -387,11 +420,12 @@
                     reconnectAttempts++;
                     setTimeout(() => reconnect(), 2000);
                 } else {
-                    endGame('连接已断开', true);
+                    endGame('连接错误', true);
                 }
             });
 
             conn.on('open', () => {
+                console.log('连接已建立');
                 conn.send({ type: 'handshake', clientId });
             });
 
@@ -440,36 +474,23 @@
                 });
             }
 
-            document.getElementById('status').textContent = `正在尝试重新连接 (${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})`;
+            statusText.textContent = `正在尝试重新连接 (${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})`;
             conn = peer.connect(conn.peer);
             setupConnection();
         }
 
         function startGame() {
             gameActive = true;
+            document.getElementById('gameUrl').style.display = 'none'
             initBoard();
-            document.getElementById('status').textContent = '游戏开始！';
+            statusText.textContent = '游戏开始！';
         }
 
-        function endGame(message) {
+        function endGame(message, isDisconnect = false) {
             gameActive = false;
-            document.getElementById('status').textContent = message;
+            statusText.textContent = message;
+            document.getElementById('waitingOverlay').classList.add('active')
             document.getElementById('board').classList.add('waiting');
-            alert(message);
-
-            if (isDisconnect) {
-                const overlay = document.getElementById('waitingOverlay');
-                overlay.textContent = '连接已断开';
-                overlay.classList.add('active');
-
-                // 添加重新连接按钮
-                if (reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
-                    const reconnectBtn = document.createElement('button');
-                    reconnectBtn.textContent = '重新连接';
-                    reconnectBtn.onclick = reconnect;
-                    document.getElementById('controls').appendChild(reconnectBtn);
-                }
-            }
             setButtonDisabled(false);
         }
 
@@ -522,6 +543,15 @@
                 document.getElementById('peerId').value = search;
                 joinGame()
             }
+        });
+
+        // 复制游戏链接
+        const copyUrlBtn = document.getElementById('copyUrl');
+        copyUrlBtn.addEventListener('click', () => {
+            const gameUrlText = document.getElementById('gameUrlText');
+            gameUrlText.select();
+            document.execCommand('copy');
+            alert('链接已复制到剪贴板！');
         });
 
         const createGameBtn = document.getElementById('createGame');
