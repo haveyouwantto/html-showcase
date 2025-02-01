@@ -3,6 +3,8 @@
 
 <head>
     <title>P2P五子棋</title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <style>
         :root {
             --primary-blue: #1a73e8;
@@ -94,7 +96,6 @@
             position: relative;
             transition: opacity 0.3s;
             border-radius: 12px;
-            border: 16px solid #e3c276;
             overflow: hidden;
             box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
         }
@@ -169,6 +170,19 @@
             font-weight: bold;
             margin: 10px 0;
             color: var(--accent-yellow);
+        }
+
+        @media screen and (max-width: 700px) {
+            .board {
+                grid-template-columns: repeat(15, 5vw);
+                grid-template-rows: repeat(15, 5vw);
+            }
+
+            .cell {
+                width: 5vw;
+                height: 5vw;
+            }
+            
         }
     </style>
 </head>
