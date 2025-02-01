@@ -183,7 +183,7 @@
                 width: 5vw;
                 height: 5vw;
             }
-            
+
             .cell::after {
                 width: 4vw;
                 height: 4vw;
@@ -209,14 +209,33 @@
 
     <script src="https://unpkg.com/peerjs@1.4.7/dist/peerjs.min.js"></script>
     <script>
-        let peer;
-        let conn;
         let isHost = false;
-        let currentPlayer = 'black';
-        let board = Array(15).fill().map(() => Array(15).fill(null));
-        let gameActive = false;
         let reconnectAttempts = 0;
         const MAX_RECONNECT_ATTEMPTS = 3;
+
+        let peer;
+        let conn;
+        let currentPlayer = null;
+        let board = Array(15).fill().map(() => Array(15).fill(null));;
+        let gameActive = false;
+        let playerRole = null;
+        let clientId = Math.random().toString(36).substr(2, 9);
+
+        // 角色协商
+        function negotiateRole(remoteId) {
+            const localHash = parseInt(clientId, 36) % 1000;
+            const remoteHash = parseInt(remoteId, 36) % 1000;
+
+            playerRole = localHash > remoteHash ? 'black' : 'white';
+            document.getElementById('playerRole').textContent = `你是${playerRole === 'black' ? '黑' : '白'}方`;
+
+            // 发送角色确认
+            conn.send({
+                type: 'role',
+                role: playerRole,
+                clientId
+            });
+        }
 
         // 初始化棋盘
         function initBoard() {
@@ -266,9 +285,7 @@
         }
 
         function canMakeMove() {
-            return gameActive &&
-                ((currentPlayer === 'black' && isHost) ||
-                    (currentPlayer === 'white' && !isHost));
+            return gameActive && currentPlayer === playerRole;
         }
 
         // 更新界面状态
@@ -316,7 +333,7 @@
             });
 
             peer.on('open', id => {
-                const gameUrl = `${location.href.split('#')[0]}#${id}`;
+                const gameUrl = `${location.href.split('?')[0]}?${id}`;
                 navigator.clipboard.writeText(gameUrl);
                 document.getElementById('playerRole').textContent = '你是黑方';
                 document.getElementById('status').innerHTML = `
@@ -328,7 +345,6 @@
                 peer.on('connection', connection => {
                     conn = connection;
                     setupConnection();
-                    startGame();
                 });
             });
         }
@@ -340,7 +356,7 @@
                 peer.destroy();
             }
             let peerId = document.getElementById('peerId').value;
-            if (peerId.includes('#')) peerId = peerId.split('#').pop();
+            if (peerId.includes('?')) peerId = peerId.split('?').pop();
 
             peer = new Peer({
                 host: '0.peerjs.com',
@@ -350,13 +366,13 @@
             });
 
             peer.on('open', () => {
-                document.getElementById('playerRole').textContent = '你是白方';
                 conn = peer.connect(peerId);
                 setupConnection();
             });
         }
 
         function setupConnection() {
+            console.log('连接已建立');
             // 连接关闭处理
             conn.on('close', () => {
                 if (gameActive) {
@@ -376,22 +392,39 @@
             });
 
             conn.on('open', () => {
-                startGame();
-                currentPlayer = 'black';
-                updateTurnUI();
+                conn.send({ type: 'handshake', clientId });
             });
 
             conn.on('data', data => {
-                if (data.type === 'move') {
-                    placeStone(data.x, data.y, data.color);
-                    currentPlayer = data.nextPlayer;
+                console.log(data)
 
-                    if (checkWin(data.x, data.y)) {
-                        endGame(`${data.color === 'black' ? '黑' : '白'}方胜利！`);
-                        return;
-                    }
+                switch (data.type) {
+                    case 'handshake':
+                        negotiateRole(data.clientId);
+                        break;
+                    case 'role':
+                        if (!playerRole) {
+                            playerRole = data.role === 'black' ? 'white' : 'black';
+                            document.getElementById('playerRole').textContent = `你是${playerRole === 'black' ? '黑' : '白'}方`;
+                        }
+                        currentPlayer = 'black';
+                        startGame();
+                        updateTurnUI();
+                        break;
+                    case 'reset':
+                        currentPlayer = 'black';
+                        updateTurnUI();
+                        break;
+                    case 'move':
+                        placeStone(data.x, data.y, data.color);
+                        currentPlayer = data.nextPlayer;
 
-                    updateTurnUI();
+                        if (checkWin(data.x, data.y)) {
+                            endGame(`${data.color === 'black' ? '黑' : '白'}方胜利！`);
+                            return;
+                        }
+                        updateTurnUI();
+                        break;
                 }
             });
         }
@@ -484,9 +517,9 @@
         // 自动加入逻辑
         window.addEventListener('load', () => {
             initBoard();
-            if (window.location.hash) {
-                const hash = window.location.hash.substring(1);
-                document.getElementById('peerId').value = hash;
+            if (window.location.search) {
+                const search = window.location.search.substring(1);
+                document.getElementById('peerId').value = search;
                 joinGame()
             }
         });
