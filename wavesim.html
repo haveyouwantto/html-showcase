@@ -630,7 +630,7 @@
                 'name': 'wall',
                 'color': [200, 50, 50],
                 'damping': 1.0,
-                'waveSpeed': 0.5
+                'waveSpeed': 0.625
             },
             2: { // 透镜
                 'name': 'lens',
@@ -643,9 +643,8 @@
 
         // 初始化参数
         const N = 512;           // 网格尺寸
-        const cellSize = 1;      // 像素大小
         let airDamping = 0.005;   // 阻尼系数
-        const waveSpeed = 0.5;   // 波速
+        const waveSpeed = 0.625;   // 波速
 
         // 获取Canvas上下文
         const canvas = document.getElementById('waveCanvas');
