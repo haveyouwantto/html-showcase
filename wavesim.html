@@ -102,7 +102,7 @@
             margin: 8px;
         }
 
-        
+
         select {
             background-color: #333;
             /* Dark background color for select dropdown */
@@ -750,6 +750,8 @@
                 }
             }
 
+            applyNeumannBoundary(buffers[next]);
+
             transceivers.forEach(dev => {
                 if (dev instanceof Transmitter) {
                     dev.applyEffect(buffers[current], tick)
@@ -761,6 +763,19 @@
 
             tick++;
             current = next;
+        }
+
+        function applyNeumannBoundary(buffer) {
+            // 上下边界：复制内侧第二行/倒数第二行的值
+            for (let x = 0; x < N; x++) {
+                buffer[x] = buffer[N + x];                      // 上边界（第0行复制第1行）
+                buffer[(N - 1) * N + x] = buffer[(N - 2) * N + x]; // 下边界（最后一行复制倒数第二行）
+            }
+            // 左右边界：复制内侧第二列/倒数第二列的值
+            for (let y = 0; y < N; y++) {
+                buffer[y * N] = buffer[y * N + 1];              // 左边界（第0列复制第1列）
+                buffer[y * N + N - 1] = buffer[y * N + N - 2];    // 右边界（最后一列复制倒数第二列）
+            }
         }
 
         // 渲染函数
@@ -1006,7 +1021,7 @@
             }
         }
         animate();
-        
+
         function acquireWakelock() {
             if ('wakeLock' in navigator) {
                 try {
