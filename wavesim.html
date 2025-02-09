@@ -470,16 +470,28 @@
             constructor(x, y) {
                 super('receiver', x, y)
                 this.sampleRate = 8000
-                this.buffer = new Float32Array(262144)
+                this.buffer = new Float32Array(4096)
                 this.writePointer = 0
                 this.lastSampleTime = 0
                 this.paused = false
+                this.maxBufferSize = 64 * 1024 * 1024 / Float32Array.BYTES_PER_ELEMENT;
             }
 
             recordSample(waveValue) {
-                if (this.paused) return
-                if (this.writePointer >= this.buffer.length) return
-                this.buffer[this.writePointer++] = waveValue
+                if (this.paused) return;
+                if (this.writePointer >= this.maxBufferSize) return;
+                else if (this.writePointer >= this.buffer.length) {
+                    // 自动扩容
+                    this.expandBuffer();
+                }
+                this.buffer[this.writePointer++] = waveValue;
+            }
+
+            expandBuffer() {
+                const newBuffer = new Float32Array(this.buffer.length * 2);
+                newBuffer.set(this.buffer)
+                this.buffer = newBuffer;
+                console.log('Buffer expanded to ' + this.buffer.length);
             }
 
             exportWAV() {
