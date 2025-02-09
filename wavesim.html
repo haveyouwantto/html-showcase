@@ -475,16 +475,28 @@
             constructor(x, y) {
                 super('receiver', x, y)
                 this.sampleRate = 8000
-                this.buffer = new Float32Array(262144)
+                this.buffer = new Float32Array(4096)
                 this.writePointer = 0
                 this.lastSampleTime = 0
                 this.paused = false
+                this.maxBufferSize = 64 * 1024 * 1024 / Float32Array.BYTES_PER_ELEMENT;
             }
 
             recordSample(waveValue) {
-                if (this.paused) return
-                if (this.writePointer >= this.buffer.length) return
-                this.buffer[this.writePointer++] = waveValue
+                if (this.paused) return;
+                if (this.writePointer >= this.maxBufferSize) return;
+                else if (this.writePointer >= this.buffer.length) {
+                    // 自动扩容
+                    this.expandBuffer();
+                }
+                this.buffer[this.writePointer++] = waveValue;
+            }
+
+            expandBuffer() {
+                const newBuffer = new Float32Array(this.buffer.length * 2);
+                newBuffer.set(this.buffer)
+                this.buffer = newBuffer;
+                console.log('Buffer expanded to ' + this.buffer.length);
             }
 
             exportWAV() {
@@ -558,8 +570,9 @@
 
                 // 添加波形显示
                 const receiverCanvas = document.createElement('canvas');
-                receiverCanvas.width = 100;
-                receiverCanvas.height = 75;
+                receiverCanvas.style.width = '150px'
+                receiverCanvas.style.height = '112.5px'
+                receiverCanvas.style.border = '1px solid #ffffff40'
                 const receiverCtx = receiverCanvas.getContext('2d')
                 receiverCtx.strokeStyle = 'white';
                 this.panel.appendChild(receiverCanvas);
@@ -569,6 +582,17 @@
                 const rmsDisplay = document.createElement('div');
                 this.panel.appendChild(rmsDisplay);
                 this.rmsDisplay = rmsDisplay;
+
+                const resizeObserver = new ResizeObserver(entries => {
+                    for (let entry of entries) {
+                        if (entry.target === receiverCanvas) {
+                            receiverCanvas.width = receiverCanvas.clientWidth * window.devicePixelRatio;
+                            receiverCanvas.height = receiverCanvas.clientHeight * window.devicePixelRatio;
+                            receiverCtx.strokeStyle = 'white';
+                        }
+                    }
+                });
+                resizeObserver.observe(receiverCanvas)
 
                 // 添加暂停按钮
                 const toggleBtn = document.createElement('button')
@@ -606,14 +630,17 @@
 
                 let samples = this.buffer.slice(this.writePointer - 100, this.writePointer);
 
+                let half = this.receiverCanvas.height / 2;
+                let step = this.receiverCanvas.width / samples.length;
+
                 this.receiverCtx.clearRect(0, 0, this.receiverCanvas.width, this.receiverCanvas.height)
                 this.receiverCtx.beginPath()
-                this.receiverCtx.moveTo(0, 37.5)
+                this.receiverCtx.moveTo(0, samples[0] * half + half)
 
                 let rms = 0;
                 for (let x = 0; x < samples.length; x++) {
                     let sample = samples[x]
-                    this.receiverCtx.lineTo(x, sample * 37.5 + 37.5)
+                    this.receiverCtx.lineTo(x * step, sample * half + half)
                     rms += sample * sample;
                 }
                 rms /= samples.length;
