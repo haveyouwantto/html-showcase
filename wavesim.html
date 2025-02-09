@@ -203,6 +203,10 @@
                     <option value="triangle">三角波</option>
                     <option value="noise">噪声</option>
                 </select>
+                渲染模式：<select id="renderMode">
+                    <option value="normal">正常</option>
+                    <option value="water">水池</option>
+                </select>
             </div>
 
             <div class="transceivers">
@@ -672,6 +676,7 @@
         let isDrawing = false;
         let currentMode = 'wave'; // wave/obstacle/erase/trans/recv
         let brushSize = 3;
+        let renderMode = 'normal';
 
         // 添加发射器
         let transceivers = new Set();
@@ -763,7 +768,18 @@
         }
 
         // 渲染函数
-        function render() {
+        function render(){
+            switch (renderMode) {
+                case 'water':
+                    renderWater()
+                    break;
+                default:
+                    renderNormal();
+                    break;
+            }
+        }
+
+        function renderNormal() {
             for (let i = 0; i < N * N; i++) {
                 const idx = i << 2;
 
@@ -789,6 +805,68 @@
             }
             ctx.putImageData(imageData, 0, 0);
         }
+
+        function renderWater() {
+            // 基础水蓝色
+            const baseR = 0x13, baseG = 0x99, baseB = 0xde;
+            // 光照方向：45°（单位向量）
+            const lightAngle = Math.PI / 4;
+            const Lx = Math.cos(lightAngle);
+            const Ly = Math.sin(lightAngle);
+            // 调节亮度变化的系数，根据实际波动幅度调整
+            const shadingCoefficient = 1;
+
+            // 对每个像素计算渲染颜色
+            for (let y = 0; y < N; y++) {
+                for (let x = 0; x < N; x++) {
+                    const i = y * N + x;
+
+                    if (obstacles[i]) {
+                        let material = materialDefs[obstacles[i]];
+                        const idx = i << 2;
+                        data[idx] = material.color[0];    // R
+                        data[idx + 1] = material.color[1];   // G
+                        data[idx + 2] = material.color[2];   // B
+                        data[idx + 3] = 255;  // 不透明
+                    } else {
+                        let dx = 0, dy = 0;
+
+                        // 对内部像素使用中央差分（边界上简单取0梯度）
+                        if (x > 0 && x < N - 1) {
+                            dx = (buffers[current][i + 1] - buffers[current][i - 1]) * 0.5;
+                        }
+                        if (y > 0 && y < N - 1) {
+                            dy = (buffers[current][i + N] - buffers[current][i - N]) * 0.5;
+                        }
+                        // 梯度模长
+                        const gradMag = Math.sqrt(dx * dx + dy * dy);
+
+                        // 计算亮度系数
+                        let brightnessFactor = 1; // 默认无梯度时系数为1
+                        if (gradMag > 0) {
+                            // 计算梯度向量与光方向的余弦值
+                            const cosAngle = (dx * Lx + dy * Ly) / gradMag;
+                            brightnessFactor = 1 + shadingCoefficient * gradMag * cosAngle;
+                        }
+
+                        // 根据亮度系数调整基础色
+                        const R = clamp(Math.floor(baseR * brightnessFactor), 0, 255);
+                        const G = clamp(Math.floor(baseG * brightnessFactor), 0, 255);
+                        const B = clamp(Math.floor(baseB * brightnessFactor), 0, 255);
+
+                        // 写入 imageData 数组
+                        const idx = (i << 2);
+                        data[idx] = R;        // R通道
+                        data[idx + 1] = G;    // G通道
+                        data[idx + 2] = B;    // B通道
+                        data[idx + 3] = 255;  // 不透明
+
+                    }
+                }
+            }
+            ctx.putImageData(imageData, 0, 0);
+        }
+
 
         // 添加障碍物/擦除
         function modifyObstacles(x, y, isAdd) {
@@ -977,6 +1055,12 @@
         }, { passive: false });
 
         canvas.addEventListener('touchend', () => isDrawing = false);
+
+        const renderSelect = document.getElementById('renderMode');
+        
+        renderSelect.addEventListener('change', e=>{
+            renderMode = renderSelect.value;
+        })
 
         // 波动激励
         function addDisturbance(x, y) {
