@@ -184,6 +184,7 @@
                     <button onclick="document.getElementById('importImage').click()">🖼️ 导入障碍图</button>
                 </div>
 
+                <button id="btnStop">🛑 停波</button>
                 <button id="btnClear">❌ 清空画面</button>
             </div>
 
@@ -768,7 +769,7 @@
         }
 
         // 渲染函数
-        function render(){
+        function render() {
             switch (renderMode) {
                 case 'water':
                     renderWater()
@@ -976,6 +977,12 @@
             }
         }
 
+        document.getElementById('btnStop').addEventListener('click', () => {
+            for (const buffer of buffers) {
+                buffer.fill(0);
+            }
+        });
+
         document.getElementById('btnClear').addEventListener('click', clear);
 
         // 绑定文件输入事件
@@ -1057,8 +1064,8 @@
         canvas.addEventListener('touchend', () => isDrawing = false);
 
         const renderSelect = document.getElementById('renderMode');
-        
-        renderSelect.addEventListener('change', e=>{
+
+        renderSelect.addEventListener('change', e => {
             renderMode = renderSelect.value;
         })
 
