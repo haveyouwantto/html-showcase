@@ -623,20 +623,21 @@
             }
         }
 
-        const materialDefs = {
-            1: { // 墙体
+        const materialDefs = [
+            {},
+            { // 墙体
                 'name': 'wall',
                 'color': [200, 50, 50],
                 'damping': 1.0,
                 'waveSpeed': 0.625
             },
-            2: { // 透镜
+            { // 透镜
                 'name': 'lens',
                 'color': [50, 100, 100],
                 'damping': 0.0,
                 'waveSpeed': 0.25,
             }
-        }
+        ]
 
 
         // 初始化参数
@@ -748,8 +749,6 @@
                 }
             }
 
-            applyNeumannBoundary(buffers[next]);
-
             transceivers.forEach(dev => {
                 if (dev instanceof Transmitter) {
                     dev.applyEffect(buffers[current], tick)
@@ -763,32 +762,19 @@
             current = next;
         }
 
-        function applyNeumannBoundary(buffer) {
-            // 上下边界：复制内侧第二行/倒数第二行的值
-            for (let x = 0; x < N; x++) {
-                buffer[x] = buffer[N + x];                      // 上边界（第0行复制第1行）
-                buffer[(N - 1) * N + x] = buffer[(N - 2) * N + x]; // 下边界（最后一行复制倒数第二行）
-            }
-            // 左右边界：复制内侧第二列/倒数第二列的值
-            for (let y = 0; y < N; y++) {
-                buffer[y * N] = buffer[y * N + 1];              // 左边界（第0列复制第1列）
-                buffer[y * N + N - 1] = buffer[y * N + N - 2];    // 右边界（最后一列复制倒数第二列）
-            }
-        }
-
         // 渲染函数
         function render() {
             for (let i = 0; i < N * N; i++) {
-                const idx = i * 4;
+                const idx = i << 2;
 
                 const val = clamp(Math.sqrt(Math.abs(buffers[current][i])), 0, 1) * 255;
                 if (buffers[current][i] > 0) {
                     data[idx] = val;    // R
-                    data[idx + 1] = val / 2;  // G
+                    data[idx + 1] = val * 0.5;  // G
                     data[idx + 2] = 0;  // B
                 } else {
                     data[idx] = 0;    // R
-                    data[idx + 1] = val / 2;  // G
+                    data[idx + 1] = val * 0.5;  // G
                     data[idx + 2] = val;  // B
                 }
 
