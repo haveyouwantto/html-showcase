@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Carlimba Simulator</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        /* 强制横屏样式 */
+        @media screen and (orientation: portrait) {
+            html {
+                transform: rotate(90deg);
+                transform-origin: left top;
+                width: 100vh;
+                height: 100vw;
+                overflow-x: hidden;
+                position: absolute;
+                top: 100%;
+                left: 0;
+            }
+        }
+
+        body {
+            margin: 0;
+            background: linear-gradient(45deg, #1a1a1a, #2d2d2d);
+            touch-action: manipulation;
+            font-family: 'Segoe UI', system-ui, sans-serif;
+            /* 现代字体 */
+            color: #fff;
+        }
+
+        .container {
+            display: flex;
+            height: 100dvh;
+            overflow-x: auto;
+            gap: 0.5rem;
+            /* 按键间距 */
+            background: linear-gradient(145deg, rgba(40, 40, 40, 0.9), rgba(30, 30, 30, 0.9));
+            backdrop-filter: blur(4px);
+            /* 毛玻璃效果 */
+        }
+
+        .key {
+            width: 4.16dvw;    
+            background: linear-gradient(145deg, #343434, #797979);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.2s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+            display: flex;
+            align-items: flex-end;
+            justify-content: center;
+            font-size: 2.8vw;
+            font-weight: 500;
+            color: rgba(255, 255, 255, 0.9);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+            touch-action: none;
+            user-select: none;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .key::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(120deg,
+                    rgba(255, 255, 255, 0.1) 0%,
+                    rgba(255, 255, 255, 0.05) 50%,
+                    rgba(255, 255, 255, 0) 100%);
+            pointer-events: none;
+        }
+
+        .key.active {
+            background: linear-gradient(145deg, #404040, #4d4d4d);
+            transform: translateY(2px) scale(0.98);
+            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+            color: #fff;
+        }
+
+        .key:hover:not(.active) {
+            transform: translateY(-1px);
+            box-shadow: 0 6px 16px rgba(0, 0, 0, 0.3);
+        }
+
+        /* 添加键盘滚动条样式 */
+        .container::-webkit-scrollbar {
+            height: 8px;
+            background: rgba(0, 0, 0, 0.1);
+        }
+
+        .container::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 4px;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container" id="keyboard"></div>
+
+    <script>
+        const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+
+
+        function getRandomPhase() {
+            return Math.random() * 2 * Math.PI - Math.PI;
+        }
+
+        const data = [1,0.015149286016821861,0.00849985983222723,0.005923099350184202,0.004599865060299635,0.02799360454082489,0.017503997310996056,0.0030916910618543625,0.002580861561000347,0.002400999888777733,0.002078007208183408,0.0019331899238750339,0.0018646109383553267,0.015149286016821861,0.0013966836268082261,0.0012532543623819947,0.001347137033008039,0.0012532543623819947,0.0012087958166375756,0.001165914349257946,0.0042792982421815395,0.0012532543623819947,0.0011245541973039508,0.0010461834026500583,0.0009732744074426591,0.0010090706637129188,0.0009054464171640575,0.0009387480095028877,0.0008423453546129167,0.0008733261493034661,0.0008423453546129167,0.0008423453546129167]
+
+        // 创建钢片琴波表
+        let real = [0];
+        let imag = [0];
+        // Generate the real and imaginary parts of the waveform
+        data.forEach(f => {
+            let phase = getRandomPhase();
+            real.push(f * Math.cos(phase));
+            imag.push(f * Math.sin(phase));
+        });
+
+        const celesteWave = audioContext.createPeriodicWave(real, imag);
+
+        function midiToFrequency(midiNote) {
+            const frequency = 440 * Math.pow(2, (midiNote - 69) / 12);
+            return frequency;
+        }
+
+        function* generateMajorScale(rootNote) {
+            const scaleSteps = [2, 2, 1, 2, 2, 2, 1]; // 大调音阶的音程关系
+            let currentNote = rootNote;
+            yield currentNote; // 输出根音
+
+            let i = 0;
+            while (currentNote < 128) {
+                currentNote += scaleSteps[(i++) % 7];
+                yield currentNote; // 输出下一个音符
+            }
+        }
+
+        function midiToSimplified(midiNote) {
+            const noteMap = ["1", "1#", "2", "2#", "3", "4", "4#", "5", "5#", "6", "6#", "7"];
+            const octaveOffset = Math.floor((midiNote - 60) / 12); // 相对C4的八度偏移
+            const noteIndex = ((midiNote - 60) % 12 + 12) % 12;  // 修正负索引问题
+            let simplifiedNote = noteMap[noteIndex];
+
+            // 处理高低音点
+            if (octaveOffset > 0) {
+                simplifiedNote += "̇".repeat(octaveOffset); // 添加高音点
+            } else if (octaveOffset < 0) {
+                simplifiedNote += "̣".repeat(-octaveOffset); // 添加低音点
+            }
+
+            return simplifiedNote;
+        }
+
+        // 按指定顺序排列按键
+        const keyOrder = [];
+        let rootKey = 48;
+        let gen = generateMajorScale(rootKey)
+        for (let i = 0; i < 23; i++) {
+            if (i % 2 == 0) {
+                keyOrder.push(gen.next())
+            } else {
+                keyOrder.unshift(gen.next())
+            }
+        }
+
+        // 创建键盘布局
+        const container = document.getElementById('keyboard');
+        keyOrder.forEach((note) => {
+            const key = document.createElement('div');
+            key.className = 'key';
+            key.dataset.note = note.value;
+            key.textContent = midiToSimplified(note.value)
+            // key.addEventListener('mousedown', playNote);
+            key.addEventListener('touchstart', playNote);
+            let height = 100 - (note.value - rootKey) * 2;
+            console.log(height)
+            key.style.height = height + '%';
+            container.appendChild(key);
+        });
+
+        function playNote(e) {
+            const note = parseInt(e.target.dataset.note);
+            const frequency = midiToFrequency(note);
+
+            const oscillator = audioContext.createOscillator();
+            const gainNode = audioContext.createGain();
+            const vibrato = audioContext.createOscillator();
+            const vibratoGain = audioContext.createGain();
+
+            // 设置声音参数
+            oscillator.setPeriodicWave(celesteWave);
+            oscillator.frequency.value = frequency;
+
+            // 颤音设置
+            vibrato.type = 'sine';
+            vibrato.frequency.value = 8;
+            vibratoGain.gain.value = frequency * 0.005;
+
+            // ADSR包络（快速Attack，慢速Release）
+            const now = audioContext.currentTime;
+            gainNode.gain.setValueAtTime(0, now);
+            gainNode.gain.setTargetAtTime(0.1, now, 0.0002); // Attack
+            gainNode.gain.setTargetAtTime(0, now + 0.005, 0.5); // Release
+
+            // 连接节点
+            vibrato.connect(vibratoGain);
+            vibratoGain.connect(oscillator.frequency);
+            oscillator.connect(gainNode).connect(audioContext.destination);
+
+            // 启动
+            oscillator.start();
+            vibrato.start();
+
+            // 停止
+            setTimeout(() => {
+                oscillator.stop();
+                vibrato.stop();
+            }, 2000);
+        }
+    </script>
+</body>
+
+</html>
