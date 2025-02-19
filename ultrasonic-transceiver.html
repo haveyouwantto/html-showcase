@@ -68,6 +68,17 @@
             /* Darker pink on hover */
         }
 
+        select {
+            font-size: 18px;
+            padding: 5px 10px;
+            border: 1px solid #555;
+            /* Subtle border for select */
+            color: #fff;
+            /* Light text color inside select */
+            background-color: #333;
+            /* Dark background for select */
+        }
+
         #tx,
         #rx {
             display: none;
@@ -90,6 +101,14 @@
             outline: none;
             border-color: #33b73a;
             /* Highlight input on focus */
+        }
+
+        #display {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            flex-direction: column;
+            margin-top: 20px;
         }
 
         #spectrum,
@@ -130,9 +149,15 @@
         <input type="number" min="1" id="channelNumber" value="1"><br>
         频道范围：1 ~ <span id="maxChannelCount"></span>
     </div>
+    <div id="audio-inputs">
+        <label for="audio-input">选择音频输入设备：</label>
+        <select id="audio-input"></select>
+    </div>
     <div id="signal-strength"></div>
-    <canvas id="spectrum"></canvas><br>
-    <canvas id="waveform"></canvas>
+    <div id="display">
+        <canvas id="spectrum"></canvas><br>
+        <canvas id="waveform"></canvas>
+    </div>
     <script>
         const ctx = new AudioContext({ latencyHint: "balanced" });
         const startFreq = 15000;
@@ -194,6 +219,7 @@
         const rxBtn = document.getElementById('rx-btn');
 
         const microphoneBtn = document.getElementById('microphone');
+        const audioInput = document.getElementById('audio-input');
 
         const tx = document.getElementById('tx');
         const rx = document.getElementById('rx');
@@ -301,6 +327,8 @@
             else channelSelection.value = Math.floor(channelSelection.value)
         })
 
+        let setupMicrophone;
+        let microphone;
 
         txBtn.addEventListener('click', e => {
             acquireWakelock();
@@ -376,18 +404,25 @@
                 setFrequency(startFreq + bandwidth * (channelSelection.value - 1), bandwidth)
             })
 
-            microphoneBtn.addEventListener('click', e => {
+            setupMicrophone = () => {
                 navigator.mediaDevices.getUserMedia(
                     {
                         audio: {
                             sampleRate: 8000,
+                            deviceId: audioInput.value,
                         },
                         video: false
                     }
                 ).then(stream => {
-                    const microphone = ctx.createMediaStreamSource(stream);
+                    microphone?.disconnect();
+                    microphone = ctx.createMediaStreamSource(stream);
                     microphone.connect(mixer);
                 })
+            };
+
+            microphoneBtn.addEventListener('click', e => setupMicrophone());
+            audioInput.addEventListener('change', e => {
+                if (microphone) setupMicrophone();
             })
         })
 
@@ -397,140 +432,122 @@
             main.style.display = 'none';
             rx.style.display = 'flex';
 
-            navigator.mediaDevices.getUserMedia(
-                {
-                    audio: {
-                        sampleRate: ctx.sampleRate,
-                        echoCancellation: false,
-                        noiseSuppression: false
-                    },
-                    video: false
+
+            const bandpass = ctx.createConvolver();
+
+            const localOscillator = ctx.createOscillator()
+            localOscillator.frequency.value = startFreq;
+
+            const mixer = ctx.createGain()
+            mixer.gain.value = 0;
+
+            const lowpass = ctx.createConvolver();
+
+            const gain = ctx.createGain()
+            gain.gain.value = 1000000;
+
+
+            const agc = ctx.createDynamicsCompressor()
+            agc.threshold.value = -100;
+            agc.knee.value = 0;
+            agc.ratio.value = 3;
+            agc.attack.value = 0.01;
+            agc.release.value = 1;
+
+
+            const muteGain = ctx.createGain()
+            muteGain.gain.value = 1;
+
+            function setFrequency(freq, bandwidth) {
+                reverse = freq < reverseFreq;
+                if (!reverse) {
+                    localOscillator.frequency.value = freq;
+                    bandpass.buffer = createFilter(taps, freq + (bandwidth - guardBw) / 2, bandwidth / 2 - guardBw);
+                } else {
+                    localOscillator.frequency.value = freq + bandwidth;
+                    bandpass.buffer = createFilter(taps, freq + (bandwidth + guardBw) / 2, bandwidth / 2 - guardBw);
                 }
-            ).then(stream => {
-                const microphone = ctx.createMediaStreamSource(stream);
+                lowpass.buffer = createFilter(101, bandwidth / 2, bandwidth / 2);
+            }
 
-                const bandpass = ctx.createConvolver();
+            setFrequency(startFreq + bandwidth * (channelSelection.value - 1), bandwidth)
 
-                const localOscillator = ctx.createOscillator()
-                localOscillator.frequency.value = startFreq;
+            bandpass.connect(mixer);
+            localOscillator.connect(mixer.gain);
+            mixer.connect(lowpass);
+            lowpass.connect(gain)
+            gain.connect(agc)
+            agc.connect(muteGain)
+            muteGain.connect(ctx.destination)
+            analyser2 = ctx.createAnalyser()
+            muteGain.connect(analyser2);
 
-                const mixer = ctx.createGain()
-                mixer.gain.value = 0;
+            localOscillator.start()
 
-                const lowpass = ctx.createConvolver();
+            _osc = localOscillator;
+            resizeCanvas()
+            requestAnimationFrame(draw)
 
-                const gain = ctx.createGain()
-                gain.gain.value = 1;
-
-
-                const agc = ctx.createScriptProcessor(2048, 1, 1);
-                let lastGain = 1;
-
-                agc.onaudioprocess = event => {
-                    const inputBuffer = event.inputBuffer;
-                    const outputBuffer = event.outputBuffer;
-
-                    for (let channel = 0; channel < outputBuffer.numberOfChannels; channel++) {
-                        const inputData = inputBuffer.getChannelData(channel);
-                        const outputData = outputBuffer.getChannelData(channel);
-
-                        // 计算RMS
-                        let sum = 0;
-                        for (let sample = 0; sample < inputBuffer.length; sample++) {
-                            sum += inputData[sample] ** 2;
-                        }
-                        const rms = Math.sqrt(sum / inputBuffer.length);
-
-                        // 计算增益
-                        const targetRMS = 0.25;
-                        let gain = targetRMS / rms;
-                        
-
-                        // 平滑增益
-                        gain = gain * 0.1 + lastGain * 0.9;
-                        signalStrength.innerText = `信号强度: ${(Math.log10(rms) * 10).toFixed(1)} dB`;
-
-
-                        // 应用增益
-                        for (let sample = 0; sample < inputBuffer.length; sample++) {
-                            outputData[sample] = inputData[sample] * gain;
-                            // 检测削波
-                            if (outputData[sample] > 1 || outputData[sample] < -1) {
-                                // 调整gain
-                                gain *= 0.75;
-                            }
-                        }
-                        if (!isFinite(gain)) gain = 1;
-                        lastGain = gain;
-                    }
-                };
-
-                const comp = ctx.createDynamicsCompressor()
-
-                const muteGain = ctx.createGain()
-                muteGain.gain.value = 1;
-
-                function setFrequency(freq, bandwidth) {
-                    reverse = freq < reverseFreq;
-                    if (!reverse) {
-                        localOscillator.frequency.value = freq;
-                        bandpass.buffer = createFilter(taps, freq + (bandwidth - guardBw) / 2, bandwidth / 2 - guardBw);
-                    } else {
-                        localOscillator.frequency.value = freq + bandwidth;
-                        bandpass.buffer = createFilter(taps, freq + (bandwidth + guardBw) / 2, bandwidth / 2 - guardBw);
-                    }
-                    lowpass.buffer = createFilter(101, bandwidth / 2, bandwidth / 2);
+            let mute = false;
+            const muteBtn = document.getElementById('mute-btn');
+            muteBtn.addEventListener('click', e => {
+                mute = !mute;
+                if (mute) {
+                    muteBtn.innerText = '取消静音'
+                    muteGain.gain.value = 0;
+                } else {
+                    muteBtn.innerText = '静音'
+                    muteGain.gain.value = 1;
                 }
+            })
 
+            canvas.addEventListener('click', e => {
+                const clickFreq = e.offsetX / canvas.clientWidth * ctx.sampleRate / 2;
+                if (clickFreq > startFreq) {
+                    const channel = parseInt((clickFreq - startFreq) / bandwidth);
+                    setFrequency(startFreq + bandwidth * (channel), bandwidth)
+                    channelSelection.value = channel + 1;
+                }
+            })
+
+            channelSelection.addEventListener('change', e => {
                 setFrequency(startFreq + bandwidth * (channelSelection.value - 1), bandwidth)
+            })
 
-                microphone.connect(bandpass);
-                bandpass.connect(mixer);
-                localOscillator.connect(mixer.gain);
-                mixer.connect(lowpass);
-                lowpass.connect(gain)
-                gain.connect(agc)
-                agc.connect(comp)
-                comp.connect(muteGain)
-                muteGain.connect(ctx.destination)
-                analyser2 = ctx.createAnalyser()
-                muteGain.connect(analyser2);
-
-                localOscillator.start()
-
-                microphone.connect(analyser)
-                _osc = localOscillator;
-                resizeCanvas()
-                requestAnimationFrame(draw)
-
-                let mute = false;
-                const muteBtn = document.getElementById('mute-btn');
-                muteBtn.addEventListener('click', e => {
-                    mute = !mute;
-                    if (mute) {
-                        muteBtn.innerText = '取消静音'
-                        muteGain.gain.value = 0;
-                    } else {
-                        muteBtn.innerText = '静音'
-                        muteGain.gain.value = 1;
+            setupMicrophone = () => {
+                navigator.mediaDevices.getUserMedia(
+                    {
+                        audio: {
+                            sampleRate: ctx.sampleRate,
+                            deviceId: audioInput.value,
+                            echoCancellation: false,
+                            noiseSuppression: false
+                        },
+                        video: false
                     }
+                ).then(stream => {
+                    console.log(stream)
+                    microphone?.disconnect();
+                    microphone = ctx.createMediaStreamSource(stream);
+                    microphone.connect(bandpass);
+                    microphone.connect(analyser)
                 })
+            };
 
-                canvas.addEventListener('click', e => {
-                    const clickFreq = e.offsetX / canvas.clientWidth * ctx.sampleRate / 2;
-                    if (clickFreq > startFreq) {
-                        const channel = parseInt((clickFreq - startFreq) / bandwidth);
-                        setFrequency(startFreq + bandwidth * (channel), bandwidth)
-                        channelSelection.value = channel + 1;
-                    }
-                })
-
-                channelSelection.addEventListener('change', e => {
-                    setFrequency(startFreq + bandwidth * (channelSelection.value - 1), bandwidth)
-                })
-            });
+            setupMicrophone();
+            audioInput.addEventListener('change', e => {
+                setupMicrophone();
+            })
         })
 
+        navigator.mediaDevices.enumerateDevices().then(devices => {
+            devices.filter(device => device.kind === 'audioinput').forEach(device => {
+                const option = document.createElement('option');
+                option.value = device.deviceId;
+                option.innerText = device.label || `设备 ${audioInput.options.length + 1}`;
+                audioInput.appendChild(option);
+            })
+        })
 
         function acquireWakelock() {
             if ('wakeLock' in navigator) {
