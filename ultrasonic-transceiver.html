@@ -447,7 +447,13 @@
             gain.gain.value = 1000000;
 
 
-            const comp = ctx.createDynamicsCompressor()
+            const agc = ctx.createDynamicsCompressor()
+            agc.threshold.value = -80;
+            agc.knee.value = -6;
+            agc.ratio.value = 2;
+            agc.attack.value = 0.01;
+            agc.release.value = 1;
+
 
             const muteGain = ctx.createGain()
             muteGain.gain.value = 1;
@@ -470,8 +476,8 @@
             localOscillator.connect(mixer.gain);
             mixer.connect(lowpass);
             lowpass.connect(gain)
-            gain.connect(comp)
-            comp.connect(muteGain)
+            gain.connect(agc)
+            agc.connect(muteGain)
             muteGain.connect(ctx.destination)
             analyser2 = ctx.createAnalyser()
             muteGain.connect(analyser2);
