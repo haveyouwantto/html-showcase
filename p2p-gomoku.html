@@ -180,6 +180,19 @@
             text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
         }
 
+        #qrcode {
+            padding: 16px;
+            border-radius: 4px;
+            background-color: white;
+        }
+
+        .share {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 4px;
+        }
+
         @media screen and (max-width: 700px) {
             .board {
                 grid-template-columns: repeat(15, 5vw);
@@ -212,13 +225,12 @@
         <div>游戏链接已创建！<br>
             已自动复制到剪贴板：<br>
         </div>
-        <div style="
-        display: flex;
-        flex-direction: row;
-        align-items: center;
-        ">
-            <input type="text" id="gameUrlText" value="" readonly>
-            <button id="copyUrl" style="min-width: max-content;">复制</button>
+        <div class="share">
+            <div style="display: flex; gap: 4px;">
+                <input type="text" id="gameUrlText" value="" readonly>
+                <button id="copyUrl" style="min-width: max-content;">复制</button><br>
+            </div>
+            <div id="qrcode"></div>
         </div>
     </div>
 
@@ -228,6 +240,9 @@
     </div>
 
     <script src="https://unpkg.com/peerjs@1.4.7/dist/peerjs.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"
+        integrity="sha512-CNgIRecGo7nphbeZ04Sc13ka07paqdeTu0WR1IM4kNcpmBAUSHSQX0FslNhTDadL4O5SAGapGt4FodqL8My0mA=="
+        crossorigin="anonymous" referrerpolicy="no-referrer"></script>
     <script>
         let isHost = false;
         let reconnectAttempts = 0;
@@ -242,6 +257,16 @@
         let clientId = Math.random().toString(36).substr(2, 9);
 
         let statusText = document.getElementById('waitingOverlay');
+
+        function generateUrlSafeId(length = 16) {
+            const characters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'; // URL 安全的字符集
+            let result = '';
+            const charactersLength = characters.length;
+            for (let i = 0; i < length; i++) {
+                result += characters.charAt(Math.floor(Math.random() * charactersLength));
+            }
+            return result;
+        }
 
         // 角色协商
         function negotiateRole(remoteId) {
@@ -348,7 +373,7 @@
                 peer.destroy();
             }
             isHost = true;
-            peer = new Peer({
+            peer = new Peer(generateUrlSafeId(12), {
                 host: '0.peerjs.com',
                 port: 443,
                 secure: true,
@@ -363,6 +388,14 @@
                 document.getElementById('playerRole').textContent = '你是黑方';
                 document.getElementById('gameUrl').style.display = 'flex';
                 document.getElementById('gameUrlText').value = gameUrl;
+                new QRCode(document.getElementById("qrcode"), {
+                    text: gameUrl,
+                    width: 160,
+                    height: 160,
+                    colorDark: "#000000",
+                    colorLight: "#ffffff",
+                    correctLevel: QRCode.CorrectLevel.M
+                });
                 statusText.textContent = '等待玩家加入...'
 
                 peer.on('connection', connection => {
