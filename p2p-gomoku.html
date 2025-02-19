@@ -251,7 +251,7 @@
         let peer;
         let conn;
         let currentPlayer = null;
-        let board = Array(15).fill().map(() => Array(15).fill(null));;
+        let board = Array(15).fill().map(() => Array(15).fill(null));
         let gameActive = false;
         let playerRole = null;
         let clientId = Math.random().toString(36).substr(2, 9);
@@ -288,6 +288,7 @@
         function initBoard() {
             const boardEl = document.getElementById('board');
             boardEl.innerHTML = '';
+            board = Array(15).fill().map(() => Array(15).fill(null));
 
             for (let y = 0; y < 15; y++) {
                 for (let x = 0; x < 15; x++) {
@@ -388,7 +389,9 @@
                 document.getElementById('playerRole').textContent = '你是黑方';
                 document.getElementById('gameUrl').style.display = 'flex';
                 document.getElementById('gameUrlText').value = gameUrl;
-                new QRCode(document.getElementById("qrcode"), {
+                const qrcode = document.getElementById("qrcode");
+                qrcode.innerHTML = '';
+                new QRCode(qrcode, {
                     text: gameUrl,
                     width: 160,
                     height: 160,
