@@ -14,13 +14,11 @@
 
         body {
             display: flex;
-            flex-direction: column;
             justify-content: center;
             align-items: center;
             background: #1a1a1a;
             color: white;
-            max-width: 75%;
-            margin: auto;
+            flex-wrap: wrap;
         }
 
         .main {
@@ -36,9 +34,10 @@
         }
 
         .controls {
-            display: flex;
+            display: grid;
             gap: 10px;
-            flex-direction: column;
+            grid-template-columns: repeat(2, 1fr);
+            align-items: center;
         }
 
         .parameters {
@@ -85,6 +84,10 @@
             border: 1px solid #444;
             display: flex;
             flex-wrap: wrap;
+            max-height: 100vh;
+            min-width: min-content;
+            max-width: fit-content;
+            overflow-y: auto;
         }
 
         .device-item {
@@ -135,6 +138,11 @@
             transition: background-color 0.3s;
         }
 
+        @media (max-width: 1024px) {
+            body {
+                flex-direction: column;
+            }
+        }
 
         @media (max-width: 700px) {
             canvas {
@@ -150,6 +158,7 @@
             }
 
             .controls {
+                display: flex;
                 flex-direction: row;
                 flex-wrap: wrap;
                 justify-content: center;
@@ -175,17 +184,17 @@
 
         <div class="tools">
             <div class="controls">
-                <button id="btnWave" class="toggle active">🌊 波动模式</button>
-                <button id="btnObstacle" class="toggle">🧱 绘制障碍</button>
-                <button id="btnErase" class="toggle">🧹 擦除障碍</button>
+                <button id="btnWave" class="toggle active">🌊 放波</button>
+                <button id="btnObstacle" class="toggle">🧱 绘制</button>
+                <button id="btnErase" class="toggle">🧹 擦除</button>
 
                 <div>
                     <input type="file" id="importImage" accept="image/*" hidden>
-                    <button onclick="document.getElementById('importImage').click()">🖼️ 导入障碍图</button>
+                    <button onclick="document.getElementById('importImage').click()">🖼️ 导入</button>
                 </div>
 
                 <button id="btnStop">🛑 停波</button>
-                <button id="btnClear">❌ 清空画面</button>
+                <button id="btnClear">❌ 清空</button>
             </div>
 
             <div class="parameters">
@@ -196,6 +205,7 @@
                 笔刷材料：<select id="material">
                     <option value="1">墙体</option>
                     <option value="2">透镜</option>
+                    <option value="3">海绵</option>
                 </select>
                 波形：<select id="waveType">
                     <option value="sine">正弦波</option>
@@ -668,6 +678,12 @@
                 'color': [50, 100, 100],
                 'damping': 0.0,
                 'waveSpeed': 0.25,
+            },
+            { // 透镜
+                'name': 'sponge',
+                'color': [226, 210, 74],
+                'damping': 0.1,
+                'waveSpeed': 0.625,
             }
         ]
 
