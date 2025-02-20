@@ -138,6 +138,10 @@
             transition: background-color 0.3s;
         }
 
+        .selected {
+            border: 3px solid #4CAF50;
+        }
+
         @media (max-width: 1024px) {
             body {
                 flex-direction: column;
@@ -202,11 +206,8 @@
                 振幅：<input type="number" id="amplitude" min="0.01" max="100" step="0.1" value="10">
                 频率：<input type="number" id="frequency" min="0" max="15" step="0.1" value="5">
                 笔刷大小：<input type="range" id="brushSize" min="1" max="20" value="3"> <span id="brushSizeValue">3</span>
-                笔刷材料：<select id="material">
-                    <option value="1">墙体</option>
-                    <option value="2">透镜</option>
-                    <option value="3">海绵</option>
-                </select>
+                笔刷材料：<div id="material">
+                </div>
                 波形：<select id="waveType">
                     <option value="sine">正弦波</option>
                     <option value="square">方波</option>
@@ -668,19 +669,19 @@
         const materialDefs = [
             {},
             { // 墙体
-                'name': 'wall',
+                'name': '墙壁',
                 'color': [200, 50, 50],
                 'damping': 1.0,
                 'waveSpeed': 0.625
             },
             { // 透镜
-                'name': 'lens',
+                'name': '透镜',
                 'color': [50, 100, 100],
                 'damping': 0.0,
                 'waveSpeed': 0.25,
             },
             { // 透镜
-                'name': 'sponge',
+                'name': '海绵',
                 'color': [226, 210, 74],
                 'damping': 0.1,
                 'waveSpeed': 0.625,
@@ -733,6 +734,29 @@
         const waveType = document.getElementById('waveType');
         const deviceList = document.getElementById('deviceList')
         const materialSelect = document.getElementById('material')
+
+        // 初始化材料选择
+        materialDefs.forEach((material, idx) => {
+            if (idx === 0) return;
+            const materialButton = document.createElement('button')
+            materialButton.style.backgroundColor = `rgb(${material.color.join(',')})`
+            materialButton.appendChild(document.createTextNode(material.name || `材料${idx}`))
+            materialButton.addEventListener('click', () => {
+                materialSelect.value = idx
+                // set selected
+                document.querySelectorAll('#material button').forEach(b => b.classList.remove('selected'))
+                materialButton.classList.add('selected')
+            })
+
+            // 检测元素亮度设置文字是黑还是白
+            const brightness = (material.color[0] * 299 + material.color[1] * 587 + material.color[2] * 114) / 1000;
+            materialButton.style.color = brightness > 125 ? 'black' : 'white';
+
+            materialSelect.appendChild(materialButton)
+        })
+        // 设置第一个按钮为已选择
+        materialSelect.value = 1
+        materialSelect.children[0].classList.add('selected')
 
         // 模式切换按钮
         document.querySelectorAll('.toggle').forEach(btn => {
