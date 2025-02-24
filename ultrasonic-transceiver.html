@@ -240,6 +240,99 @@
 
         let _osc;
 
+        function createProcessorClass() {
+            const AGC = class extends AudioWorkletProcessor {
+                static get parameterDescriptors() {
+                    return [
+                        {
+                            name: 'threshold',
+                            defaultValue: 0.1, // 目标 RMS 值
+                            minValue: 0,
+                            maxValue: 1,
+                            automationRate: "k-rate"
+                        },
+                        {
+                            name: 'attackTime',
+                            defaultValue: 0.01, // 增益调整的attack时间
+                            minValue: 0,
+                            maxValue: 0.1,
+                            automationRate: "k-rate"
+                        },
+                        {
+                            name: 'releaseTime',
+                            defaultValue: 0.1, // 增益调整的release时间
+                            minValue: 0,
+                            maxValue: 1,
+                            automationRate: "k-rate"
+                        }
+                    ];
+                }
+
+                constructor() {
+                    super();
+                    this.rms = 0;
+                    this.gain = 1; // 初始增益
+                }
+
+                process(inputs, outputs, parameters) {
+                    const input = inputs[0];
+                    const output = outputs[0];
+                    const threshold = parameters.threshold[0];
+                    const attackTime = parameters.attackTime[0];
+                    const releaseTime = parameters.releaseTime[0];
+
+                    if (input[0].length <= 0) return true; // 如果输入为空，直接返回
+                    let sumOfSquares = 0;
+
+                    // 计算 RMS 值
+                    input.forEach(channel => {
+                        for (let i = 0; i < channel.length; i++) {
+                            const sample = channel[i];
+                            sumOfSquares += sample * sample;
+                        }
+                    });
+
+                    const rms = Math.sqrt(sumOfSquares / (input[0].length * input.length));
+                    this.rms = rms;
+
+                    let gainFactor = threshold / rms;
+
+                    // 将 RMS 值发送给主线程
+                    this.port.postMessage({ rms: this.rms });
+
+                    // 平滑增益，防止爆音
+                    const alpha = rms < threshold ? attackTime : releaseTime; // 小于阈值是attackTime,大于就是releaseTime
+                    this.gain = alpha * gainFactor + (1 - alpha) * this.gain;
+                    if (!isFinite(this.gain) || isNaN(this.gain)) this.gain = 1;
+
+                    // 应用增益
+                    for (let channel = 0; channel < input.length; channel++) {
+                        for (let i = 0; i < input[channel].length; i++) {
+                            output[channel][i] = input[channel][i] * this.gain;
+                            if (Math.abs(output[channel][i]) > 1) this.gain *= 0.5;
+                        }
+                    }
+
+                    return true;
+                }
+            };
+            registerProcessor('agc', AGC);
+        }
+
+        function arrayBufferToBase64(buffer) {
+            let binary = '';
+            const bytes = new Uint8Array(buffer);
+            const len = bytes.byteLength;
+            for (let i = 0; i < len; i++) {
+                binary += String.fromCharCode(bytes[i]);
+            }
+            return btoa(binary);
+        }
+
+        const code = new TextEncoder().encode(`(${createProcessorClass.toString()})();`);
+        const workletData = 'data:application/javascript;base64,' + arrayBufferToBase64(code)
+        console.log(workletData)
+
         function resizeCanvas() {
             let { width: cssWidth, height: cssHeight } = canvas.getBoundingClientRect();
             canvas.width = dpr * cssWidth;
@@ -427,11 +520,13 @@
         })
 
 
-        rxBtn.addEventListener('click', e => {
+        rxBtn.addEventListener('click', async e => {
             acquireWakelock();
             main.style.display = 'none';
             rx.style.display = 'flex';
 
+
+            await ctx.audioWorklet.addModule(workletData)
 
             const bandpass = ctx.createConvolver();
 
@@ -444,16 +539,14 @@
             const lowpass = ctx.createConvolver();
 
             const gain = ctx.createGain()
-            gain.gain.value = 1000000;
+            gain.gain.value = 1;
 
+            const agc = new AudioWorkletNode(ctx, 'agc');
 
-            const agc = ctx.createDynamicsCompressor()
-            agc.threshold.value = -100;
-            agc.knee.value = 0;
-            agc.ratio.value = 3;
-            agc.attack.value = 0.01;
-            agc.release.value = 1;
-
+            agc.port.onmessage = (event) => {
+                const rmsValue = event.data.rms;
+                signalStrength.textContent = `信号强度：${(Math.log10(rmsValue) * 10).toFixed(1)} dB`
+            };
 
             const muteGain = ctx.createGain()
             muteGain.gain.value = 1;
