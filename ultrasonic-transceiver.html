@@ -542,11 +542,13 @@
             gain.gain.value = 1;
 
             const agc = new AudioWorkletNode(ctx, 'agc');
+            agc.parameters.get('threshold').value = 0.05;
 
             agc.port.onmessage = (event) => {
                 const rmsValue = event.data.rms;
                 signalStrength.textContent = `信号强度：${(Math.log10(rmsValue) * 10).toFixed(1)} dB`
             };
+            window.agc =agc
 
             const compressor = ctx.createDynamicsCompressor();
 
