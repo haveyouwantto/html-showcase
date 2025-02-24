@@ -548,6 +548,8 @@
                 signalStrength.textContent = `信号强度：${(Math.log10(rmsValue) * 10).toFixed(1)} dB`
             };
 
+            const compressor = ctx.createDynamicsCompressor();
+
             const muteGain = ctx.createGain()
             muteGain.gain.value = 1;
 
@@ -570,7 +572,8 @@
             mixer.connect(lowpass);
             lowpass.connect(gain)
             gain.connect(agc)
-            agc.connect(muteGain)
+            agc.connect(compressor)
+            compressor.connect(muteGain)
             muteGain.connect(ctx.destination)
             analyser2 = ctx.createAnalyser()
             muteGain.connect(analyser2);
