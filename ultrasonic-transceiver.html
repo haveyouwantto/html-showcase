@@ -283,25 +283,27 @@
 
                     if (input[0].length <= 0) return true; // 如果输入为空，直接返回
                     let sumOfSquares = 0;
+                    let max = 0
 
                     // 计算 RMS 值
                     input.forEach(channel => {
                         for (let i = 0; i < channel.length; i++) {
                             const sample = channel[i];
                             sumOfSquares += sample * sample;
+                            max = Math.max(max, Math.abs(sample));
                         }
                     });
 
                     const rms = Math.sqrt(sumOfSquares / (input[0].length * input.length));
                     this.rms = rms;
 
-                    let gainFactor = threshold / rms;
+                    let gainFactor = threshold / max;
 
                     // 将 RMS 值发送给主线程
                     this.port.postMessage({ rms: this.rms });
 
                     // 平滑增益，防止爆音
-                    const alpha = rms < threshold ? attackTime : releaseTime; // 小于阈值是attackTime,大于就是releaseTime
+                    const alpha = max < threshold ? attackTime : releaseTime; // 小于阈值是attackTime,大于就是releaseTime
                     this.gain = alpha * gainFactor + (1 - alpha) * this.gain;
                     if (!isFinite(this.gain) || isNaN(this.gain)) this.gain = 1;
 
