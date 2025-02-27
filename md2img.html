@@ -32,6 +32,7 @@
             min-height: 100vh;
             display: flex;
             flex-direction: column;
+            line-height: 1.7;
         }
 
         /* 暗黑模式默认样式 */
@@ -39,16 +40,18 @@
             --bg: #1a1a1a;
             --surface: #2d2d2d;
             --text: #e0e0e0;
-            --text-secondary: #a0a0a0;
+            --text-secondary: #bbbbbb;
+            --separator: #484848;
         }
 
         /* 亮色模式 */
         body.light {
-            --bg: #f8f9fa;
+            --bg: #dfdfdf;
             --surface: #ffffff;
             --primary: #6366f1;
             --text: #374151;
-            --text-secondary: #6b7280;
+            --text-secondary: #434343;
+            --separator: #b9b9b9;
         }
 
         .container {
@@ -141,7 +144,6 @@
         }
 
         #preview p {
-            line-height: 1.7;
             margin: 1rem 0;
             color: var(--text-primary);
         }
@@ -157,6 +159,9 @@
         #preview code {
             font-family: 'Fira Code', monospace;
             font-size: 0.9em;
+            background-color: var(--bg);
+            padding: 2px;
+            border-radius: 4px;
         }
 
         #preview blockquote {
@@ -165,6 +170,7 @@
             padding: 0.02rem 1rem;
             background: var(--bg);
             border-radius: 0 var(--radius) var(--radius) 0;
+            color: var(--text-secondary);
         }
 
         #preview table {
@@ -178,7 +184,7 @@
         #preview th,
         #preview td {
             padding: 1rem;
-            border: 1px solid var(--bg);
+            border: 1px solid var(--separator);
         }
 
         #preview th {
