@@ -358,11 +358,11 @@
             }
 
             get currentTime() {
-                return this.ptr / 8000;
+                return this.ptr / this.sampleRate;
             }
 
             get duration() {
-                return this.imageData?.data?.length / 4 / 8000 ?? 0;
+                return this.imageData?.data?.length / 4 / this.sampleRate ?? 0;
             }
 
             _playBuffer(lock) {
