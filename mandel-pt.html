@@ -88,6 +88,7 @@
             resize: vertical;
             /* Allow vertical resizing */
             transition: background-color 0.3s;
+            font-size: 0.8rem;
         }
 
         textarea:hover,
@@ -96,10 +97,6 @@
             border-color: var(--theme-color);
             outline: none;
             /* Change background color on hover/focus */
-        }
-
-        textarea.large {
-            height: 100px;
         }
 
         hr {
@@ -133,6 +130,7 @@
         .shortcut {
             display: flex;
             justify-content: space-between;
+            gap: 8px;
         }
 
 
@@ -164,13 +162,13 @@
 
         <div class="location">
             Real:
-            <textarea id="re" class="large"></textarea><br>
+            <textarea id="re" class="large" rows="10"></textarea><br>
             Imaginary:
-            <textarea id="im" class="large"></textarea><br>
+            <textarea id="im" class="large" rows="10"></textarea><br>
             Zoom:
-            <textarea id="zoom"></textarea><br>
+            <textarea id="zoom" rows="2"></textarea><br>
             Iterations:
-            <textarea id="it"></textarea>
+            <textarea id="it" rows="1"></textarea>
             <div class="shortcut">
                 <button class="icon" id="zoom-in" title="Zoom in">&#10133;</button>
                 <button class="icon" id="zoom-out" title="Zoom out">&#10134;</button>
