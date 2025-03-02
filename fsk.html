@@ -480,11 +480,18 @@
             console.log(freqs)
             const oscillator = audioCtx.createOscillator()
             oscillator.frequency.value = carrierFreq + baudRate * 0.5;
+            const filter = createFilter(1001, carrierFreq, baudRate)
+            const convolver = audioCtx.createConvolver()
+            convolver.buffer = filter;
+            const gainNode = audioCtx.createGain()
+            gainNode.gain.value = 0.5;
 
             for (let i = 0; i < freqs.length; i++) {
                 oscillator.frequency.setValueAtTime(freqs[i], audioCtx.currentTime + 1 + (1 / baudRate) * i)
             }
-            oscillator.connect(audioCtx.destination)
+            oscillator.connect(convolver)
+            convolver.connect(gainNode)
+            gainNode.connect(audioCtx.destination)
             oscillator.start()
             oscillator.stop(audioCtx.currentTime + (1 / baudRate) * freqs.length + 2)
 
