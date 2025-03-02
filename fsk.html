@@ -554,10 +554,21 @@
             const ctx = canvas.getContext('2d')
             const data = new Float32Array(analyser.fftSize)
             ctx.lineWidth = 1
+            let f = 0
             function draw() {
                 analyser.getFloatTimeDomainData(data)
                 let max = Math.max(...data)
                 const mul = 1 / max * 100
+
+                let start = 0;
+                // detect zero crossing
+                for (let i = 0; i < data.length - 1; i++) {
+                    if (Math.sign(data[i]) != Math.sign(data[i + 1])) {
+                        start = i;
+                        break;
+                    }
+                }
+
                 // console.log(data)
                 ctx.clearRect(0, 0, canvas.width, canvas.height)
 
@@ -569,8 +580,8 @@
                 ctx.strokeStyle = 'white'
                 ctx.beginPath()
                 ctx.moveTo(0, canvas.height / 2)
-                for (let i = 0; i < data.length; ++i) {
-                    ctx.lineTo(i, canvas.height / 2 - data[i] * mul)
+                for (let i = start; i < data.length; ++i) {
+                    ctx.lineTo(i - start, canvas.height / 2 - data[i] * mul)
                 }
                 ctx.stroke()
                 requestAnimationFrame(draw)
