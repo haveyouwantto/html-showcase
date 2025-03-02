@@ -216,6 +216,33 @@
             return result;
         }
 
+        function encodeWithParity(n) {
+            if (!Number.isInteger(n) || n < 0) return -1; // 确保输入为非负整数
+            let ones = 0;
+            let temp = n;
+            while (temp) {
+                ones += temp & 1;
+                temp >>>= 1;
+            }
+            const parity = ones % 2 === 0 ? 0 : 1; // 偶校验规则
+            return (n << 1) | parity; // 左移后设置最低位为校验位
+        }
+
+        function decodeAndVerify(m) {
+            if (!Number.isInteger(m) || m < 0) return -1; // 确保输入为非负整数
+            const nCandidate = m >>> 1; // 无符号右移获取原始左移后的值
+            const receivedParity = m & 1; // 提取接收到的校验位
+            // 计算原始值的奇偶性
+            let ones = 0;
+            let temp = nCandidate;
+            while (temp) {
+                ones += temp & 1;
+                temp >>>= 1;
+            }
+            const expectedParity = ones % 2 === 0 ? 0 : 1;
+            return expectedParity === receivedParity ? nCandidate : -1;
+        }
+
         class FibonacciDecoder {
             constructor(callback) {
                 this.fibonacciSequence = fib;
@@ -447,12 +474,12 @@
         txBtn.addEventListener('click', () => {
             const string = document.getElementById('transmit').value;
 
-            const bits = fibonacciEncoding(stringToOrdArray(string));
+            const bits = fibonacciEncoding(stringToOrdArray(string).map(e=>encodeWithParity(e)));
 
             const freqs = bits.map(e => e == 0 ? carrierFreq - baudRate * 0.5 : carrierFreq + baudRate * 0.5)
             console.log(freqs)
             const oscillator = audioCtx.createOscillator()
-            oscillator.frequency.value = carrierFreq;
+            oscillator.frequency.value = carrierFreq + baudRate * 0.5;
 
             for (let i = 0; i < freqs.length; i++) {
                 oscillator.frequency.setValueAtTime(freqs[i], audioCtx.currentTime + 1 + (1 / baudRate) * i)
@@ -501,7 +528,8 @@
             analyser.fftSize = 2048
             demod.connect(analyser)
 
-            const decoder = new FibonacciDecoder(dec => {
+            const decoder = new FibonacciDecoder(result => {
+                const dec = decodeAndVerify(result)
                 console.log("解码结果:", dec);
                 if (dec >= 2) {
                     received.value += String.fromCharCode(dec)
