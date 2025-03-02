@@ -277,8 +277,6 @@
             )
 
             const source = audioCtx.createMediaStreamSource(stream)
-            const gain = audioCtx.createGain()
-            gain.gain.value = 0.1
             const filter = createFilter(1001, 1500, 62.5)
             const convolver = audioCtx.createConvolver()
             convolver.buffer = filter;
@@ -286,7 +284,6 @@
             const demod = new AudioWorkletNode(audioCtx, 'demod')
             source.connect(convolver)
             convolver.connect(demod)
-            demod.connect(gain)
 
             const analyser = audioCtx.createAnalyser()
             analyser.fftSize = 2048
