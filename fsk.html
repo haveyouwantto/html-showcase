@@ -161,7 +161,7 @@
     <textarea id="received" rows="25" cols="80" disabled placeholder="接收到的内容"></textarea>
     <canvas id="oscilloscope" width="800" height="200"></canvas>
     <script>
-        const baudRate = 62.5; // 波特率
+        const baudRate = 31.25; // 波特率
         const sampleRate = 48000; // 采样率
         const carrierFreq = 15000; // 载波频率
         const samplePerSymbol = sampleRate / baudRate; // 每个符号的采样点数
@@ -533,7 +533,7 @@
             convolver.connect(demod)
 
             const analyser = audioCtx.createAnalyser()
-            analyser.fftSize = 4096
+            analyser.fftSize = 8192
             demod.connect(analyser)
 
             const decoder = new FibonacciDecoder(result => {
