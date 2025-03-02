@@ -151,6 +151,7 @@
     <h1 id='title'>FSK 收发器</h1>
     <textarea id="transmit" rows="25" cols="80" placeholder="待发送的内容"></textarea>
     <button id="start-tx">发射</button>
+    <button id="clearTx">清空发送</button>
     <hr>
     <button id='start'>接收</button>
     <button id="clearRx">清空接收</button>
@@ -461,7 +462,7 @@
         const audioInput = document.getElementById('audio-input');
         const received = document.getElementById('received');
 
-        navigator.mediaDevices.enumerateDevices().then(devices => {
+        navigator.mediaDevices?.enumerateDevices().then(devices => {
             devices.filter(device => device.kind === 'audioinput').forEach(device => {
                 const option = document.createElement('option');
                 option.value = device.deviceId;
@@ -475,7 +476,7 @@
         txBtn.addEventListener('click', () => {
             const string = document.getElementById('transmit').value;
 
-            const bits = fibonacciEncoding(stringToOrdArray(string).map(e=>encodeWithParity(e)));
+            const bits = fibonacciEncoding(stringToOrdArray(string).map(e => encodeWithParity(e)));
 
             const freqs = bits.map(e => e == 0 ? carrierFreq - baudRate * 0.5 : carrierFreq + baudRate * 0.5)
             console.log(freqs)
@@ -558,12 +559,11 @@
             let f = 0
             function draw() {
                 analyser.getFloatTimeDomainData(data)
-                let max = Math.max(...data)
-                const mul = 1 / max * 100
+                const mul = 1 / (baudRate / 15625) * canvas.height * 0.5
 
                 let step = canvas.width / data.length
 
-                // console.log(data)
+                console.log(data)
                 ctx.clearRect(0, 0, canvas.width, canvas.height)
 
                 ctx.strokeStyle = 'red'
@@ -581,6 +581,10 @@
                 requestAnimationFrame(draw)
             }
             draw()
+        })
+
+        document.getElementById('clearTx').addEventListener('click', () => {
+            document.getElementById('transmit').value = ''
         })
 
         document.getElementById('clearRx').addEventListener('click', () => {
