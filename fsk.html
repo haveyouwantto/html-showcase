@@ -162,8 +162,8 @@
     <canvas id="oscilloscope" width="800" height="200"></canvas>
     <script>
         const baudRate = 62.5; // 波特率
-        const sampleRate = 8000; // 采样率
-        const carrierFreq = 1500; // 载波频率
+        const sampleRate = 48000; // 采样率
+        const carrierFreq = 15000; // 载波频率
         const samplePerSymbol = sampleRate / baudRate; // 每个符号的采样点数
 
         const audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: sampleRate });
@@ -533,7 +533,7 @@
             convolver.connect(demod)
 
             const analyser = audioCtx.createAnalyser()
-            analyser.fftSize = 1024
+            analyser.fftSize = 4096
             demod.connect(analyser)
 
             const decoder = new FibonacciDecoder(result => {
@@ -561,6 +561,8 @@
                 let max = Math.max(...data)
                 const mul = 1 / max * 100
 
+                let step = canvas.width / data.length
+
                 // console.log(data)
                 ctx.clearRect(0, 0, canvas.width, canvas.height)
 
@@ -573,7 +575,7 @@
                 ctx.beginPath()
                 ctx.moveTo(0, canvas.height / 2)
                 for (let i = 0; i < data.length; ++i) {
-                    ctx.lineTo(i, canvas.height / 2 - data[i] * mul)
+                    ctx.lineTo(i * step, canvas.height / 2 - data[i] * mul)
                 }
                 ctx.stroke()
                 requestAnimationFrame(draw)
