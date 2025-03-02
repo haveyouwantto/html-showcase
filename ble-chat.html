@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>BLE聊天室</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        #messages {
+            height: 300px;
+            border: 1px solid #ccc;
+            padding: 10px;
+            overflow-y: auto;
+            margin-bottom: 10px;
+        }
+        .message {
+            margin: 5px 0;
+            padding: 5px;
+            border-radius: 5px;
+        }
+        .received {
+            background-color: #e3f2fd;
+        }
+        .sent {
+            background-color: #c8e6c9;
+            text-align: right;
+        }
+        #controls {
+            display: flex;
+            gap: 10px;
+        }
+        input[type="text"] {
+            flex: 1;
+            padding: 5px;
+        }
+        button {
+            padding: 5px 15px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 3px;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        .room-id {
+            margin-bottom: 10px;
+            padding: 8px;
+            background-color: #f0f0f0;
+            border-radius: 3px;
+        }
+    </style>
+</head>
+<body>
+    <h1>BLE聊天室</h1>
+    <div id="roomId" class="room-id">当前房间ID: <span id="roomIdValue"></span></div>
+    <button onclick="createRoom()">开房</button>
+    <button onclick="joinRoom()" disabled>加入房间</button>
+    <div id="devices">
+        <h3>可用设备:</h3>
+        <div id="deviceList"></div>
+    </div>
+    <div id="chat">
+        <input type="text" id="messageInput" placeholder="输入消息...">
+        <button onclick="sendMessage()">发送</button>
+    </div>
+
+    <script>
+        // 房间相关变量
+        let currentRoomId = null;
+        const localStorageKey = 'currentRoomId';
+
+        // 蓝牙设备和服务的相关变量
+        let server = null;
+        let devices = [];
+        const serviceUuid = '0000ffe0-0000-1000-8000-0026aaab6ed3';
+        const characteristicUuid = '0000ffe1-0000-1000-8000-0026aaab6ed3';
+
+        // 初始化
+        function init() {
+            currentRoomId = localStorage.getItem(localStorageKey);
+            updateCurrentRoomId();
+            
+            // 检查是否有可用设备
+            scanDevices();
+
+            // 初始化蓝牙服务器
+            initializeBluetoothServer();
+        }
+
+        // 创建房间（生成唯一的room ID）
+        function createRoom() {
+            const timestamp = Date.now().toString(36).padEnd(6, '0');
+            const randomPart = Math.random().toString(36).substr(2, 6);
+            currentRoomId = `${timestamp}-${randomPart}`;
+            
+            localStorage.setItem(localStorageKey, currentRoomId);
+            updateCurrentRoomId();
+            document.getElementById('joinRoomBtn').disabled = false;
+        }
+
+        // 更新当前房间ID显示
+        function updateCurrentRoomId() {
+            const roomIdElement = document.getElementById('roomIdValue');
+            roomIdElement.textContent = currentRoomId || '未创建房间';
+        }
+
+        // 扫描可用蓝牙设备
+        function scanDevices() {
+            navigator.bluetooth.requestDevice({
+                acceptAllDevices: true,
+                optionalServices: serviceUuid
+            }).then(device => {
+                devices.push(device);
+                updateDeviceList();
+            });
+        }
+
+        // 更新设备列表显示
+        function updateDeviceList() {
+            const deviceList = document.getElementById('deviceList');
+            deviceList.innerHTML = devices.map(dev => `
+                <div>设备名称: ${dev.name || ''}</div>
+            `).join('');
+        }
+
+        // 初始化蓝牙服务器
+        function initializeBluetoothServer() {
+            if (!currentRoomId) return;
+
+            noble.startScanning([serviceUuid], true).then(() => {
+                server = noble.createService({
+                    uuid: serviceUuid,
+                    characteristics: [{
+                        uuid: characteristicUuid,
+                        properties: ['read', 'write', 'notify']
+                    }]
+                });
+
+                // 监听特征值变化
+                const characteristic = server.getCharacteristic(characteristicUuid);
+                
+                characteristic.on('write', (value, offset) => {
+                    const message = new TextEncoder().encode(value);
+                    broadcastMessage(new TextDecoder().decode(message));
+                });
+            });
+        }
+
+        // 广播消息到所有连接的设备
+        function broadcastMessage(message) {
+            devices.forEach(device => {
+                if (device.gatt && device.gatt.serviceMap.has(serviceUuid)) {
+                    const service = device.gatt.getService(serviceUuid);
+                    const characteristic = service.getCharacteristic(characteristicUuid);
+                    
+                    characteristic.writeValue(new ArrayBuffer(message.length), 0)
+                        .catch(error => console.error('广播失败:', error));
+                }
+            });
+        }
+
+        // 发送消息
+        function sendMessage() {
+            const input = document.getElementById('messageInput');
+            const message = input.value.trim();
+            
+            if (message) {
+                broadcastMessage(message);
+                addMessageToChat('发送给所有设备: ' + message, 'sent');
+                input.value = '';
+            }
+        }
+
+        // 加入房间
+        function joinRoom() {
+            // 在这里实现加入房间的逻辑，例如扫描并连接到已存在的room ID
+            console.log('加入房间功能待实现');
+        }
+
+        // 添加消息到聊天记录
+        function addMessageToChat(text, sender) {
+            const chat = document.getElementById('chat');
+            const messageDiv = document.createElement('div');
+            messageDiv.textContent = text;
+            if (sender === 'sent') {
+                messageDiv.style.textAlign = 'right';
+                messageDiv.style.color = '#008CBA';
+            } else {
+                messageDiv.style.textAlign = 'left';
+                messageDiv.style.color = '#A5AAAE';
+            }
+            chat.appendChild(messageDiv);
+        }
+
+        // 初始化页面
+        init();
+    </script>
+</body>
+</html>

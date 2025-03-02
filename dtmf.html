@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>DTMF解码器</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 20px auto;
+            padding: 20px;
+        }
+        #status {
+            color: #666;
+            margin: 10px 0;
+        }
+        #result {
+            font-size: 24px;
+            font-weight: bold;
+            color: #2c3e50;
+        }
+        button {
+            padding: 10px 20px;
+            background: #3498db;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        button:hover {
+            background: #2980b9;
+        }
+    </style>
+</head>
+<body>
+    <h1>DTMF解码器</h1>
+    <button id="startButton">开始检测</button>
+    <div id="status">点击按钮开始检测...</div>
+    <div id="result"></div>
+
+    <script>
+        const dtmfFrequencies = {
+            '1': [697, 1209], '2': [697, 1336], '3': [697, 1477],
+            '4': [770, 1209], '5': [770, 1336], '6': [770, 1477],
+            '7': [852, 1209], '8': [852, 1336], '9': [852, 1477],
+            '*': [941, 1209], '0': [941, 1336], '#': [941, 1477]
+        };
+
+        let isDetecting = false;
+        let audioContext = null;
+        let analyser = null;
+        let mediaStream = null;
+
+        async function startDetection() {
+            try {
+                mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                analyser = audioContext.createAnalyser();
+                
+                const source = audioContext.createMediaStreamSource(mediaStream);
+                source.connect(analyser);
+                
+                analyser.fftSize = 2048;
+                const bufferLength = analyser.frequencyBinCount;
+                const dataArray = new Uint8Array(bufferLength);
+                
+                isDetecting = true;
+                document.getElementById('status').textContent = "检测中...";
+                detectDTMF(analyser, dataArray, bufferLength);
+            } catch (err) {
+                document.getElementById('status').textContent = "错误: " + err.message;
+            }
+        }
+
+        function detectDTMF(analyser, dataArray, bufferLength) {
+            if (!isDetecting) return;
+
+            analyser.getByteFrequencyData(dataArray);
+            const sampleRate = audioContext.sampleRate;
+            const frequencies = [];
+
+            // 查找幅度最大的频率
+            for (let i = 0; i < bufferLength; i++) {
+                const amplitude = dataArray[i];
+                if (amplitude > 150) { // 调整这个阈值以适应不同环境
+                    const frequency = i * sampleRate / analyser.fftSize;
+                    frequencies.push(frequency);
+                }
+            }
+
+            // 找到两个最接近的DTMF频率
+            const detected = findDTMFPair(frequencies);
+            if (detected) {
+                document.getElementById('result').textContent = `检测到按键: ${detected}`;
+                console.log(detected)
+            }
+
+            requestAnimationFrame(() => detectDTMF(analyser, dataArray, bufferLength));
+        }
+
+        function findDTMFPair(frequencies) {
+            const tolerance = 20; // 频率容差
+            let bestMatch = null;
+            
+            for (const [key, [f1, f2]] of Object.entries(dtmfFrequencies)) {
+                const hasF1 = frequencies.some(f => Math.abs(f - f1) < tolerance);
+                const hasF2 = frequencies.some(f => Math.abs(f - f2) < tolerance);
+                
+                if (hasF1 && hasF2) {
+                    bestMatch = key;
+                    break;
+                }
+            }
+            return bestMatch;
+        }
+
+        document.getElementById('startButton').addEventListener('click', () => {
+            if (!isDetecting) {
+                startDetection();
+            } else {
+                isDetecting = false;
+                mediaStream.getTracks().forEach(track => track.stop());
+                document.getElementById('status').textContent = "已停止检测";
+                document.getElementById('result').textContent = "";
+            }
+            this.textContent = isDetecting ? "停止检测" : "开始检测";
+        });
+    </script>
+</body>
+</html>

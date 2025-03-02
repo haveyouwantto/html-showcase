@@ -1,0 +1,255 @@
+<html>
+
+<head>
+    <title>FSK</title>
+
+    <meta http-equiv="Content-Type" content="text/html; charset=utf8">
+    <!-- <link rel="stylesheet" type="text/css" href="style.css"> -->
+    <style>
+        #received {
+            max-width: 100vw;
+            overflow-wrap: anywhere;
+        }
+    </style>
+</head>
+
+<body>
+
+    <h1 id='title'>FSK</h1>
+    <button id='start'>Start</button>
+    <canvas id="oscilloscope" width="800" height="200"></canvas>
+    <div id="audio-inputs">
+        <label for="audio-input">选择音频输入设备：</label>
+        <select id="audio-input"></select>
+    </div>
+    <div id="received"></div>
+    <script>
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 8000 });
+
+        class FibonacciDecoder {
+            constructor(callback) {
+                this.fibonacciSequence = [1, 2, 3, 5, 8, 13, 21, 34, 55, 89, 144, 233, 377, 610, 987, 1597, 2584, 4181, 6765, 10946, 17711, 28657, 46368, 75025, 121393, 196418, 317811, 514229, 832040, 1346269, 2178309, 3524578]; // 斐波那契数列
+                this.bitBuffer = [];
+                this.callback = callback;
+            }
+
+            feed(bit) {
+                this.bitBuffer.push(bit);
+
+                // 检测结束标志
+                if (this.bitBuffer.length >= 2 && this.bitBuffer[this.bitBuffer.length - 1] === 1 && this.bitBuffer[this.bitBuffer.length - 2] === 1) {
+                    try {
+                        this._decode();
+                    } catch (IndexError) {
+                        // 忽略 IndexError 异常
+                    }
+                    this.bitBuffer = []; // 清空 bitBuffer
+                }
+
+                if (this.bitBuffer.length > 32) {
+                    this.bitBuffer = []; // 清空 bitBuffer
+                }
+            }
+
+            _decode() {
+                let total = 0;
+                for (let i = 0; i < this.bitBuffer.length - 1; i++) {
+                    total += this.fibonacciSequence[i] * this.bitBuffer[i];
+                }
+
+                this.callback(total);
+            }
+        }
+
+        function createDemodulator() {
+            const demod = class extends AudioWorkletProcessor {
+                constructor() {
+                    super();
+                    this.t = 0;
+                    this.yPrev = [0, 0];
+                    this.prev = [0, 0];
+                    this.count = 63;
+                }
+                static get parameterDescriptors() {
+                    return
+                    [{ name: 'frequency', defaultValue: 1000, minValue: 0, maxValue: 8000, automationRate: 'k-rate' }];
+                }
+                process(inputs, outputs, parameters) {
+                    const input = inputs[0][0];
+                    const freq = 1500 //parameters.frequency[0];
+
+                    const i = new Float32Array(input.length);
+                    const q = new Float32Array(input.length);
+                    for (let j = 0; j < input.length; ++j) {
+                        i[j] = input[j] * Math.cos(2 * Math.PI * freq * this.t);
+                        q[j] = input[j] * Math.sin(2 * Math.PI * freq * this.t);
+                        this.t += 1 / 8000;
+                    }
+
+                    // 定义低通滤波器参数
+                    const samplingRate = 8000;
+                    const cutoffFrequency = 62.5;
+                    const RC = 1 / (2 * Math.PI * cutoffFrequency);
+                    const deltaT = 1 / samplingRate;
+                    const alpha = deltaT / (RC + deltaT);
+
+                    // 应用低通滤波器
+                    const lowPassFilter = (input, alpha, id) => {
+                        const output = new Float32Array(input.length);
+                        for (let j = 0; j < input.length; j++) {
+                            output[j] = alpha * input[j] + (1 - alpha) * this.yPrev[id];
+                            this.yPrev[id] = output[j];
+                        }
+                        return output;
+                    }
+
+                    const filteredI = lowPassFilter(i, alpha, 0);
+                    const filteredQ = lowPassFilter(q, alpha, 1);
+
+
+                    // np.angle(samples[0:-1] * np.conj(samples[1:]))
+                    const phase = new Float32Array(input.length - 1);
+                    for (let j = 0; j < input.length; ++j) {
+                        // 计算 complex1 * conj(complex2)的实部和虚部，避免创建临时对象
+                        const real1 = filteredI[j];
+                        const imag1 = filteredQ[j];
+                        const real2 = filteredI[j + 1];
+                        const imag2 = filteredQ[j + 1];
+
+                        const resultReal = real1 * real2 + imag1 * imag2;
+                        const resultImag = real1 * -imag2 + imag1 * real2;
+
+                        // 计算角度
+                        phase[j] = Math.atan2(resultImag, resultReal);
+                        this.count++;
+                        if (this.count == 128) {
+                            this.count = 0;
+                            this.port.postMessage({ phase: (
+                                phase[j - 1] +
+                                phase[j] +
+                                 phase[j + 1]
+                            ) / 3 });
+                        }
+                    }
+
+
+                    outputs[0][0].set(phase);
+                    return true;
+                }
+            }
+            registerProcessor('demod', demod);
+        }
+
+        function arrayBufferToBase64(buffer) {
+            let binary = '';
+            const bytes = new Uint8Array(buffer);
+            const len = bytes.byteLength;
+            for (let i = 0; i < len; i++) {
+                binary += String.fromCharCode(bytes[i]);
+            }
+            return btoa(binary);
+        }
+
+        function createHannWindow(length) {
+            return [...Array(length)].map((v, i) => {
+                return 0.5 * (1 - Math.cos((2 * Math.PI * i) / (length - 1)));
+            });
+        }
+
+        function createFilter(taps, freq, bw) {
+            const buffer = audioCtx.createBuffer(1, taps, audioCtx.sampleRate);
+            const window = createHannWindow(taps);
+
+            buffer.getChannelData(0).set(
+                [...Array(taps)].map((v, i) => {
+                    const t = (i - taps / 2) / audioCtx.sampleRate;
+                    const x = 2 * Math.PI * bw * t;
+                    return t == 0 ? 1 : Math.sin(x) / x * Math.sin(2 * Math.PI * freq * t) * window[i];
+                })
+            )
+            return buffer;
+        }
+
+        const code = new TextEncoder().encode(`(${createDemodulator.toString()})();`);
+        const workletData = 'data:application/javascript;base64,' + arrayBufferToBase64(code)
+        console.log(workletData)
+
+        const audioInput = document.getElementById('audio-input');
+        const received = document.getElementById('received');
+
+        navigator.mediaDevices.enumerateDevices().then(devices => {
+            devices.filter(device => device.kind === 'audioinput').forEach(device => {
+                const option = document.createElement('option');
+                option.value = device.deviceId;
+                option.innerText = device.label || `设备 ${audioInput.options.length + 1}`;
+                audioInput.appendChild(option);
+            })
+        })
+
+        document.getElementById('start').addEventListener('click', async () => {
+            await audioCtx.audioWorklet.addModule(workletData)
+            const stream = await navigator.mediaDevices.getUserMedia(
+                {
+                    audio: {
+                        sampleRate: audioCtx.sampleRate,
+                        deviceId: audioInput.value,
+                        echoCancellation: false,
+                        noiseSuppression: false
+                    },
+                    video: false
+                }
+            )
+
+            const source = audioCtx.createMediaStreamSource(stream)
+            const gain = audioCtx.createGain()
+            gain.gain.value = 0.1
+            const filter = createFilter(1001, 1500, 400)
+            const convolver = audioCtx.createConvolver()
+            convolver.buffer = filter;
+
+            const demod = new AudioWorkletNode(audioCtx, 'demod')
+            source.connect(convolver)
+            convolver.connect(demod)
+            demod.connect(gain)
+
+            const analyser = audioCtx.createAnalyser()
+            analyser.fftSize = 2048
+            demod.connect(analyser)
+
+            const decoder = new FibonacciDecoder(dec => {
+                console.log("解码结果:", dec);
+                if (dec >= 32) received.textContent += String.fromCharCode(dec)
+            })
+
+            demod.port.onmessage = (event) => {
+                const phase = event.data.phase;
+                console.log(phase)
+                const bit = phase > 0 ? 1 : 0;
+                // received.textContent += bit;
+                decoder.feed(bit)
+            };
+
+            const canvas = document.getElementById('oscilloscope')
+            const ctx = canvas.getContext('2d')
+            const data = new Float32Array(analyser.fftSize)
+            ctx.lineStyle = 'black'
+            ctx.lineWidth = 2
+            function draw() {
+                analyser.getFloatTimeDomainData(data)
+                // console.log(data)
+                ctx.clearRect(0, 0, canvas.width, canvas.height)
+                ctx.beginPath()
+                ctx.moveTo(0, canvas.height / 2)
+                for (let i = 0; i < data.length; ++i) {
+                    ctx.lineTo(i, canvas.height / 2 - data[i] * 250)
+                }
+                ctx.stroke()
+                requestAnimationFrame(draw)
+            }
+            draw()
+        })
+
+    </script>
+</body>
+
+</html>
