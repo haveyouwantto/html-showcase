@@ -153,6 +153,7 @@
     <button id="start-tx">发射</button>
     <hr>
     <button id='start'>接收</button>
+    <button id="clearRx">清空接收</button>
     <div id="audio-inputs">
         <label for="audio-input">选择音频输入设备：</label>
         <select id="audio-input"></select>
@@ -508,7 +509,7 @@
             audioCtx.resume()
 
             await audioCtx.audioWorklet.addModule(workletData)
-            const stream = await navigator.mediaDevices.getUserMedia(
+            let stream = await navigator.mediaDevices.getUserMedia(
                 {
                     audio: {
                         sampleRate: audioCtx.sampleRate,
@@ -560,15 +561,6 @@
                 let max = Math.max(...data)
                 const mul = 1 / max * 100
 
-                let start = 0;
-                // detect zero crossing
-                for (let i = 0; i < data.length - 1; i++) {
-                    if (Math.sign(data[i]) != Math.sign(data[i + 1])) {
-                        start = i;
-                        break;
-                    }
-                }
-
                 // console.log(data)
                 ctx.clearRect(0, 0, canvas.width, canvas.height)
 
@@ -580,13 +572,17 @@
                 ctx.strokeStyle = 'white'
                 ctx.beginPath()
                 ctx.moveTo(0, canvas.height / 2)
-                for (let i = start; i < data.length; ++i) {
-                    ctx.lineTo(i - start, canvas.height / 2 - data[i] * mul)
+                for (let i = 0; i < data.length; ++i) {
+                    ctx.lineTo(i, canvas.height / 2 - data[i] * mul)
                 }
                 ctx.stroke()
                 requestAnimationFrame(draw)
             }
             draw()
+        })
+
+        document.getElementById('clearRx').addEventListener('click', () => {
+            received.value = ''
         })
 
         function acquireWakelock() {
