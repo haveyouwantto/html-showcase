@@ -16,16 +16,16 @@
 <body>
 
     <h1 id='title'>FSK</h1>
-    <textarea id="transmit"></textarea>
+    <textarea id="transmit" rows="25" cols="80"></textarea>
     <button id="start-tx">Start TX</button>
     <hr>
-    <canvas id="oscilloscope" width="800" height="200"></canvas>
     <button id='start'>Start RX</button>
     <div id="audio-inputs">
         <label for="audio-input">选择音频输入设备：</label>
         <select id="audio-input"></select>
     </div>
-    <textarea id="received"></textarea>
+    <textarea id="received" rows="25" cols="80"></textarea>
+    <canvas id="oscilloscope" width="800" height="200"></canvas>
     <script>
         const audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 8000 });
 
@@ -291,7 +291,10 @@
 
             const decoder = new FibonacciDecoder(dec => {
                 console.log("解码结果:", dec);
-                if (dec >= 2) received.value += String.fromCharCode(dec)
+                if (dec >= 2) {
+                    received.value += String.fromCharCode(dec)
+                    received.scrollTo(0, received.scrollHeight)
+                }
             })
 
             demod.port.onmessage = (event) => {
