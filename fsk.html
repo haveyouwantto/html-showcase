@@ -149,7 +149,7 @@
 <body>
 
     <h1 id='title'>FSK 收发器</h1>
-    <textarea id="transmit" rows="25" cols="80"></textarea>
+    <textarea id="transmit" rows="25" cols="80" placeholder="待发送的内容"></textarea>
     <button id="start-tx">发射</button>
     <hr>
     <button id='start'>接收</button>
@@ -157,7 +157,7 @@
         <label for="audio-input">选择音频输入设备：</label>
         <select id="audio-input"></select>
     </div>
-    <textarea id="received" rows="25" cols="80" disabled></textarea>
+    <textarea id="received" rows="25" cols="80" disabled placeholder="接收到的内容"></textarea>
     <canvas id="oscilloscope" width="800" height="200"></canvas>
     <script>
         const baudRate = 62.5; // 波特率
@@ -562,6 +562,7 @@
                 acquireWakelock();
             }
         });
+        acquireWakelock();
 
     </script>
 </body>
