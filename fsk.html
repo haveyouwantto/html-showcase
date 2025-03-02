@@ -27,11 +27,17 @@
     <textarea id="received" rows="25" cols="80"></textarea>
     <canvas id="oscilloscope" width="800" height="200"></canvas>
     <script>
-        const audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 8000 });
+        const baudRate = 62.5; // 波特率
+        const sampleRate = 8000; // 采样率
+        const carrierFreq = 1900; // 载波频率
+        const samplePerSymbol = sampleRate / baudRate; // 每个符号的采样点数
+
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: sampleRate });
 
 
         const fib = [1, 2, 3, 5, 8, 13, 21, 34, 55, 89, 144, 233, 377, 610, 987, 1597, 2584, 4181, 6765, 10946, 17711, 28657, 46368, 75025, 121393, 196418, 317811, 514229, 832040, 1346269, 2178309, 3524578]; // 斐波那契数列
         const fibRev = [...fib].reverse()
+
 
         function fibEncode(number) {
             let result = [];
@@ -146,7 +152,9 @@
             }
         }
 
-        function createDemodulator() {
+        function createDemodulator(baudRate, sampleRate) {
+            const samplePerSymbol = sampleRate / baudRate; // 每个符号的采样点数
+
             const demod = class extends AudioWorkletProcessor {
                 constructor() {
                     super();
@@ -157,10 +165,10 @@
                     this.prev = [0, 0];
                     this.count = 64;
 
-                    // 计算二阶巴特沃斯低通滤波器系数（62.5Hz截止，8kHz采样率）
-                    const f0 = 62.5;
+                    // 计算二阶巴特沃斯低通滤波器系数（baudRate截止，8kHz采样率）
+                    const f0 = baudRate;
                     const Q = Math.sqrt(2) / 2; // 巴特沃斯Q值
-                    const w0 = 2 * Math.PI * f0 / 8000;
+                    const w0 = 2 * Math.PI * f0 / sampleRate;
                     const alpha = Math.sin(w0) / (2 * Q);
 
                     // 未归一化的系数
@@ -182,16 +190,16 @@
                 static get parameterDescriptors() {
                     return [{
                         name: 'frequency',
-                        defaultValue: 1000,
+                        defaultValue: 1500,
                         minValue: 0,
-                        maxValue: 8000,
+                        maxValue: sampleRate,
                         automationRate: 'k-rate'
                     }];
                 }
 
                 process(inputs, outputs, parameters) {
                     const input = inputs[0][0];
-                    const freq = 1500; // 固定解调频率
+                    const freq = parameters.frequency[0]; // 固定解调频率
 
                     // 生成I/Q信号
                     const i = new Float32Array(input.length);
@@ -200,7 +208,7 @@
                         const omegaT = 2 * Math.PI * freq * this.t;
                         i[j] = input[j] * Math.cos(omegaT);
                         q[j] = input[j] * Math.sin(omegaT);
-                        this.t += 1 / 8000;
+                        this.t += 1 / sampleRate;
                     }
 
                     // 应用二阶IIR低通滤波器
@@ -216,10 +224,10 @@
                         const resultImag = real1 * -imag2 + imag1 * real2;
                         phase[j] = Math.atan2(resultImag, resultReal);
                         if (j > 0 && Math.sign(phase[j]) != Math.sign(phase[j - 1])) {
-                            this.count = 63;
+                            this.count = samplePerSymbol / 2;
                         }
                         this.count++;
-                        if (this.count === 128) {
+                        if (this.count === samplePerSymbol) {
                             this.count = 0;
                             this.port.postMessage({ phase: phase[j] });
                         }
@@ -285,7 +293,7 @@
             return buffer;
         }
 
-        const code = new TextEncoder().encode(`(${createDemodulator.toString()})();`);
+        const code = new TextEncoder().encode(`(${createDemodulator.toString()})(${baudRate},${sampleRate});`);
         const workletData = 'data:application/javascript;base64,' + arrayBufferToBase64(code)
         console.log(workletData)
 
@@ -306,19 +314,17 @@
 
             const bits = fibonacciEncoding(stringToOrdArray(string));
 
-            const freqs = bits.map(e => e == 0 ? 1500 - 62.5 * 0.5 : 1500 + 62.5 * 0.5)
+            const freqs = bits.map(e => e == 0 ? carrierFreq - baudRate * 0.5 : carrierFreq + baudRate * 0.5)
             console.log(freqs)
             const oscillator = audioCtx.createOscillator()
-            oscillator.frequency.value = 1500;
+            oscillator.frequency.value = carrierFreq;
 
             for (let i = 0; i < freqs.length; i++) {
-                oscillator.frequency.setValueAtTime(freqs[i], audioCtx.currentTime + 1 + 0.016 * i)
+                oscillator.frequency.setValueAtTime(freqs[i], audioCtx.currentTime + 1 + (1 / baudRate) * i)
             }
-
-            // oscillator.frequency.setValueCurveAtTime(freqs, audioCtx.currentTime + 1, 0.016 * freqs.length)
             oscillator.connect(audioCtx.destination)
             oscillator.start()
-            oscillator.stop(audioCtx.currentTime + 0.016 * freqs.length + 2)
+            oscillator.stop(audioCtx.currentTime + (1 / baudRate) * freqs.length + 2)
         })
 
         document.getElementById('start').addEventListener('click', async () => {
@@ -336,11 +342,13 @@
             )
 
             const source = audioCtx.createMediaStreamSource(stream)
-            const filter = createFilter(1001, 1500, 62.5)
+            const filter = createFilter(1001, carrierFreq, baudRate)
             const convolver = audioCtx.createConvolver()
             convolver.buffer = filter;
 
             const demod = new AudioWorkletNode(audioCtx, 'demod')
+            demod.parameters.get('frequency').value = carrierFreq
+
             source.connect(convolver)
             convolver.connect(demod)
 
@@ -368,6 +376,8 @@
             ctx.lineWidth = 1
             function draw() {
                 analyser.getFloatTimeDomainData(data)
+                let max = Math.max(...data)
+                const mul = 1 / max * 100
                 // console.log(data)
                 ctx.clearRect(0, 0, canvas.width, canvas.height)
 
@@ -380,7 +390,7 @@
                 ctx.beginPath()
                 ctx.moveTo(0, canvas.height / 2)
                 for (let i = 0; i < data.length; ++i) {
-                    ctx.lineTo(i, canvas.height / 2 - data[i] * 5000)
+                    ctx.lineTo(i, canvas.height / 2 - data[i] * mul)
                 }
                 ctx.stroke()
                 requestAnimationFrame(draw)
