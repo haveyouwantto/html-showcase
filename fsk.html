@@ -532,7 +532,7 @@
             convolver.connect(demod)
 
             const analyser = audioCtx.createAnalyser()
-            analyser.fftSize = 2048
+            analyser.fftSize = 1024
             demod.connect(analyser)
 
             const decoder = new FibonacciDecoder(result => {
