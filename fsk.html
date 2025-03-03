@@ -165,7 +165,7 @@
         const baudRate = 62.5; // 波特率
         const sampleRate = 48000; // 采样率
         const carrierFreq = 18000; // 载波频率
-        const freqMulti = 1; //
+        const freqMulti = 1; // 频率倍数
         const samplePerSymbol = sampleRate / baudRate; // 每个符号的采样点数
         const bandwidth = baudRate * freqMulti
 
@@ -282,7 +282,7 @@
             }
         }
 
-        
+
         function createDemodulator(baudRate, sampleRate) {
             const samplePerSymbol = sampleRate / baudRate; // 每个符号的采样点数
 
@@ -294,7 +294,8 @@
                     this.v1 = [0, 0];  // 通道0和1的v1状态
                     this.v2 = [0, 0];  // 通道0和1的v2状态
                     this.prev = [0, 0];
-                    this.count = 64;
+                    this.count = 0;
+                    this.sum = 0;
 
                     // 计算二阶巴特沃斯低通滤波器系数（baudRate截止，8kHz采样率）
                     const f0 = baudRate;
@@ -329,42 +330,62 @@
                 }
 
                 process(inputs, outputs, parameters) {
+                    // 获取输入信号和固定解调频率参数
                     const input = inputs[0][0];
-                    const freq = parameters.frequency[0]; // 固定解调频率
+                    const freq = parameters.frequency[0]; // 固定解调频率（单位：Hz）
 
-                    // 生成I/Q信号
+                    // 生成正交（I/Q）解调信号
                     const i = new Float32Array(input.length);
                     const q = new Float32Array(input.length);
                     for (let j = 0; j < input.length; ++j) {
+                        // 计算当前时刻的相位角（ωt = 2πft）
                         const omegaT = 2 * Math.PI * freq * this.t;
-                        i[j] = input[j] * Math.cos(omegaT);
-                        q[j] = input[j] * Math.sin(omegaT);
-                        this.t += 1 / sampleRate;
+                        // 正交下变频：将信号搬移到基带
+                        i[j] = input[j] * Math.cos(omegaT);  // 同相分量（I路）
+                        q[j] = input[j] * Math.sin(omegaT);  // 正交分量（Q路）
+                        this.t += 1 / sampleRate;            // 更新时间（基于采样率）
                     }
 
-                    // 应用二阶IIR低通滤波器
-                    const filteredI = this.lowPassFilterIIR(i, 0);
-                    const filteredQ = this.lowPassFilterIIR(q, 1);
+                    // 应用IIR低通滤波器去除高频成分（保留基带信号）
+                    const filteredI = this.lowPassFilterIIR(i, 0);  // 通道0处理I路信号
+                    const filteredQ = this.lowPassFilterIIR(q, 1);  // 通道1处理Q路信号
 
-                    // 相位差计算（保持不变）
+                    // 相位差检测与符号同步处理
                     const phase = new Float32Array(input.length);
                     for (let j = 0; j < input.length - 1; ++j) {
+                        // 计算相邻样本的共轭乘积（用于相位差检测）
                         const real1 = filteredI[j], imag1 = filteredQ[j];
                         const real2 = filteredI[j + 1], imag2 = filteredQ[j + 1];
-                        const resultReal = real1 * real2 + imag1 * imag2;
-                        const resultImag = real1 * -imag2 + imag1 * real2;
+                        const resultReal = real1 * real2 + imag1 * imag2;  // 实部
+                        const resultImag = real1 * -imag2 + imag1 * real2;  // 虚部
+
+                        // 计算瞬时相位差（arctan(虚部/实部））
                         phase[j] = Math.atan2(resultImag, resultReal);
+
+                        // 符号边界检测（相位符号变化时触发）
                         if (j > 0 && Math.sign(phase[j]) != Math.sign(phase[j - 1])) {
-                            this.count = samplePerSymbol / 2;
-                        }
-                        this.count++;
-                        if (this.count === samplePerSymbol) {
+                            // 当达到半个符号周期时提交相位和
+                            if (this.count >= samplePerSymbol / 2) {
+                                this.port.postMessage({ phase: this.sum });
+                            }
+                            // 重置累加器和计数器
                             this.count = 0;
-                            this.port.postMessage({ phase: phase[j] });
+                            this.sum = 0;
+                        }
+
+                        // 符号周期计数与相位累加
+                        this.count++;
+                        this.sum += phase[j];
+                        // 当达到完整符号周期时提交相位和
+                        if (this.count === samplePerSymbol) {
+                            this.port.postMessage({ phase: this.sum });
+                            this.count = 0;
+                            this.sum = 0;
                         }
                     }
-                    phase[phase.length - 1] = phase[phase.length - 2];
+                    phase[phase.length - 1] = phase[phase.length - 2];  // 边界处理
 
+                    // 将相位数据输出到指定端口
                     outputs[0][0].set(phase);
                     return true;
                 }
