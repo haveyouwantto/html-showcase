@@ -12,7 +12,7 @@
             --neon-purple: #bd00ff;
             --dark-bg: #0d1117;
             --text-primary: #e1e7f0;
-            --text-secondary: #8b95a5;
+            --text-secondary: #b6becc;
             --border-radius: 8px;
             --border-width: 2px;
             --glow: 0 0 15px;
@@ -48,6 +48,7 @@
             font-size: 1rem;
             transition: all 0.3s ease;
             width: 100%;
+            height: 50vh;
             resize: vertical;
         }
 
@@ -68,6 +69,7 @@
             transition: all 0.3s ease;
             position: relative;
             overflow: hidden;
+            margin: 8px;
         }
 
         button:hover {
@@ -112,6 +114,20 @@
             margin-left: 1rem;
         }
 
+        input[type="number"] {
+            background: var(--dark-bg);
+            border: var(--border-width) solid #2d3746;
+            color: var(--text-primary);
+            padding: 0.5rem;
+            border-radius: 6px;
+            margin-left: 1rem;
+        }
+
+        input[type="number"]:focus {
+            border-color: var(--neon-cyan);
+            outline: none;
+        }
+
         select:focus {
             border-color: var(--neon-cyan);
             outline: none;
@@ -138,6 +154,29 @@
             gap: 2rem;
         }
 
+        .btn-container {
+            display: flex;
+            justify-content: center;
+            align-items: stretch;
+        }
+
+        .controls {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .title-text {
+            text-align: center;
+            font-size: 1.5rem;
+            font-weight: 600;
+            background: linear-gradient(135deg, var(--neon-cyan), var(--neon-purple));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            text-shadow: var(--glow) rgba(0, 243, 255, 0.2);
+            margin-bottom: 1rem;
+        }
+
         @media (max-width: 768px) {
             .container {
                 grid-template-columns: 1fr;
@@ -149,24 +188,44 @@
 <body>
 
     <h1 id='title'>FSK 收发器</h1>
-    <textarea id="transmit" rows="25" cols="80" placeholder="待发送的内容"></textarea>
-    <button id="start-tx">发射</button>
-    <button id="clearTx">清空发送</button>
-    <hr>
-    <button id='start'>接收</button>
-    <button id="clearRx">清空接收</button>
-    <div id="audio-inputs">
-        <label for="audio-input">选择音频输入设备：</label>
-        <select id="audio-input"></select>
+    <div class="container">
+        <div>
+            <div class="title-text">发送</div>
+            <textarea id="transmit" rows="25" cols="80" placeholder="待发送的内容"></textarea>
+            <div class="btn-container">
+                <button id="start-tx">发送</button>
+                <button id="clearTx">清空发送</button>
+            </div>
+        </div>
+        <div>
+            <div class="title-text">接收</div>
+            <textarea id="received" rows="25" cols="80" disabled placeholder="接收到的内容"></textarea>
+
+            <div class="btn-container">
+                <button id='start'>接收</button>
+                <button id="clearRx">清空接收</button>
+            </div>
+            <div id="audio-inputs">
+                <label for="audio-input">选择音频输入设备：</label>
+                <select id="audio-input"></select>
+            </div>
+        </div>
     </div>
-    <textarea id="received" rows="25" cols="80" disabled placeholder="接收到的内容"></textarea>
-    <canvas id="oscilloscope" width="800" height="200"></canvas>
+    <hr>
+    <div class="controls">
+        选择频道：
+        <input type="number" id="channel" value="120" min="1" max="160">
+        <span id="freq"></span>
+        <div>频道范围：1~12，120~160</div>
+        <canvas id="oscilloscope" width="800" height="200"></canvas>
+    </div>
     <script>
         const baudRate = 62.5; // 波特率
         const sampleRate = 48000; // 采样率
-        const carrierFreq = 18000; // 载波频率
+        let carrierFreq = 16000; // 载波频率
         const freqMulti = 1; // 频率倍数
         const samplePerSymbol = sampleRate / baudRate; // 每个符号的采样点数
+        const symbolTime = samplePerSymbol / sampleRate;
         const bandwidth = baudRate * freqMulti
 
         const audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: sampleRate, latencyHint: "balanced" });
@@ -462,6 +521,7 @@
         })
 
         let txBtn = document.getElementById('start-tx')
+        let txUpdate = null
 
         txBtn.addEventListener('click', () => {
             const string = document.getElementById('transmit').value;
@@ -469,23 +529,27 @@
             const bits = fibonacciEncoding(stringToOrdArray(string).map(e => encodeWithParity(e)));
 
             const freqs = bits.map(e => e == 0 ? carrierFreq - bandwidth * 0.5 : carrierFreq + bandwidth * 0.5)
-            console.log(freqs)
             const oscillator = audioCtx.createOscillator()
             oscillator.frequency.value = carrierFreq + bandwidth * 0.5;
-            const filter = createFilter(1001, carrierFreq, bandwidth)
             const convolver = audioCtx.createConvolver()
-            convolver.buffer = filter;
             const gainNode = audioCtx.createGain()
             gainNode.gain.value = 0.5;
 
-            for (let i = 0; i < freqs.length; i++) {
-                oscillator.frequency.setValueAtTime(freqs[i], audioCtx.currentTime + 1 + (1 / baudRate) * i)
+            txUpdate = () => {
+                const filter = createFilter(1001, carrierFreq, bandwidth)
+                convolver.buffer = filter;
             }
+            txUpdate()
+
+            for (let i = 0; i < freqs.length; i++) {
+                oscillator.frequency.setValueAtTime(freqs[i], audioCtx.currentTime + symbolTime + (1 / baudRate) * i)
+            }
+
             oscillator.connect(convolver)
             convolver.connect(gainNode)
             gainNode.connect(audioCtx.destination)
             oscillator.start()
-            oscillator.stop(audioCtx.currentTime + (1 / baudRate) * freqs.length + 2)
+            oscillator.stop(audioCtx.currentTime + (1 / baudRate) * freqs.length + symbolTime * 2)
 
             txBtn.disabled = true
             oscillator.onended = () => {
@@ -494,6 +558,7 @@
         })
 
         let rxBtn = document.getElementById('start')
+        let rxUpdate = null;
 
         rxBtn.addEventListener('click', async () => {
             rxBtn.disabled = true;
@@ -512,13 +577,19 @@
                 }
             )
 
-            const source = audioCtx.createMediaStreamSource(stream)
-            const filter = createFilter(1001, carrierFreq, bandwidth)
-            const convolver = audioCtx.createConvolver()
-            convolver.buffer = filter;
 
+            const source = audioCtx.createMediaStreamSource(stream)
+            const convolver = audioCtx.createConvolver()
             const demod = new AudioWorkletNode(audioCtx, 'demod')
-            demod.parameters.get('frequency').value = carrierFreq
+
+            rxUpdate = () => {
+                const filter = createFilter(1001, carrierFreq, bandwidth)
+                convolver.buffer = filter;
+                demod.parameters.get('frequency').value = carrierFreq;
+            }
+
+            rxUpdate();
+
 
             source.connect(convolver)
             convolver.connect(demod)
@@ -553,7 +624,6 @@
 
                 let step = canvas.width / data.length
 
-                console.log(data)
                 ctx.clearRect(0, 0, canvas.width, canvas.height)
 
                 ctx.strokeStyle = 'red'
@@ -601,6 +671,38 @@
             }
         });
         acquireWakelock();
+
+        const channelInput = document.getElementById('channel')
+        channelInput.addEventListener('change', () => {
+            let channel = parseInt(channelInput.value)
+
+            // check channel range
+            if (channel < 1) {
+                channel = 1
+                channelInput.value = 1
+            } else if (channel > 160) {
+                channel = 160
+                channelInput.value = 160
+            } else if (channel > 12 && channel < 120) {
+                channel = 120
+                channelInput.value = 120
+            }
+
+            if (channel >= 1 && channel <= 12) {
+                carrierFreq = 1000 + bandwidth * 2 * channel
+            } else if (channel >= 120 && channel <= 160) {
+                carrierFreq = 16000 + bandwidth * 2 * (channel - 120)
+            }
+
+            document.getElementById('freq').textContent = carrierFreq + ' Hz'
+
+            // if (txUpdate) {
+            //     txUpdate()
+            // }
+            if (rxUpdate) {
+                rxUpdate()
+            }
+        })
 
     </script>
 </body>
