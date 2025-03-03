@@ -164,8 +164,10 @@
     <script>
         const baudRate = 62.5; // 波特率
         const sampleRate = 48000; // 采样率
-        const carrierFreq = 15000; // 载波频率
+        const carrierFreq = 18000; // 载波频率
+        const freqMulti = 1; //
         const samplePerSymbol = sampleRate / baudRate; // 每个符号的采样点数
+        const bandwidth = baudRate * freqMulti
 
         const audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: sampleRate, latencyHint: "balanced" });
 
@@ -280,40 +282,7 @@
             }
         }
 
-        class ContinuousSecondOrderLowPassFilter {
-            constructor(sampleRate, cutoffFrequency, dampingRatio = 0.707) {
-                this.sampleRate = sampleRate;
-                this.cutoffFrequency = cutoffFrequency;
-                this.dampingRatio = dampingRatio; // 阻尼比，通常选择 0.707 获得最佳的平坦响应
-
-                this.w0 = 2 * Math.PI * this.cutoffFrequency / this.sampleRate;
-                this.alpha = Math.sin(this.w0) / (2 * this.dampingRatio);
-
-                this.b0 = (1 - Math.cos(this.w0)) / 2;
-                this.b1 = 1 - Math.cos(this.w0);
-                this.b2 = (1 - Math.cos(this.w0)) / 2;
-                this.a0 = 1 + this.alpha;
-                this.a1 = -2 * Math.cos(this.w0);
-                this.a2 = 1 - this.alpha;
-
-                this.x1 = 0; // 上一个输入
-                this.x2 = 0; // 上上一个输入
-                this.y1 = 0; // 上一个输出
-                this.y2 = 0; // 上上一个输出
-            }
-
-            process(input) {
-                let output = (this.b0 * input + this.b1 * this.x1 + this.b2 * this.x2 - this.a1 * this.y1 - this.a2 * this.y2) / this.a0;
-
-                this.x2 = this.x1;
-                this.x1 = input;
-                this.y2 = this.y1;
-                this.y1 = output;
-
-                return output;
-            }
-        }
-
+        
         function createDemodulator(baudRate, sampleRate) {
             const samplePerSymbol = sampleRate / baudRate; // 每个符号的采样点数
 
@@ -478,11 +447,11 @@
 
             const bits = fibonacciEncoding(stringToOrdArray(string).map(e => encodeWithParity(e)));
 
-            const freqs = bits.map(e => e == 0 ? carrierFreq - baudRate * 0.5 : carrierFreq + baudRate * 0.5)
+            const freqs = bits.map(e => e == 0 ? carrierFreq - bandwidth * 0.5 : carrierFreq + bandwidth * 0.5)
             console.log(freqs)
             const oscillator = audioCtx.createOscillator()
-            oscillator.frequency.value = carrierFreq + baudRate * 0.5;
-            const filter = createFilter(1001, carrierFreq, baudRate)
+            oscillator.frequency.value = carrierFreq + bandwidth * 0.5;
+            const filter = createFilter(1001, carrierFreq, bandwidth)
             const convolver = audioCtx.createConvolver()
             convolver.buffer = filter;
             const gainNode = audioCtx.createGain()
@@ -523,7 +492,7 @@
             )
 
             const source = audioCtx.createMediaStreamSource(stream)
-            const filter = createFilter(1001, carrierFreq, baudRate)
+            const filter = createFilter(1001, carrierFreq, bandwidth)
             const convolver = audioCtx.createConvolver()
             convolver.buffer = filter;
 
@@ -559,7 +528,7 @@
             let f = 0
             function draw() {
                 analyser.getFloatTimeDomainData(data)
-                const mul = 1 / (baudRate / 15625) * canvas.height * 0.5
+                const mul = 1 / (baudRate / 15625) * canvas.height * 0.5 / freqMulti
 
                 let step = canvas.width / data.length
 
