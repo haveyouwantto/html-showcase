@@ -549,7 +549,7 @@
             if (!txStart) {
                 const string = document.getElementById('transmit').value;
 
-                const bits = fibonacciEncoding(stringToOrdArray(string).map(e => encodeWithParity(e)));
+                const bits = fibonacciEncoding(stringToOrdArray(string));
 
                 const freqs = bits.map(e => e == 0 ? carrierFreq - bandwidth * 0.5 : carrierFreq + bandwidth * 0.5)
                 oscillator = audioCtx.createOscillator()
@@ -577,7 +577,7 @@
                 oscillator.stop(currentTime + (1 / baudRate) * freqs.length + symbolTime * 2)
 
                 const interval = setInterval(() => {
-                    bitDisplay.textContent = `发送进度: ${toSI(Math.floor((audioCtx.currentTime - currentTime) * baudRate / 8))}B / ${toSI(bits.length / 8)}B`
+                    bitDisplay.textContent = `发送进度: ${toSI((audioCtx.currentTime - currentTime) * baudRate / 8, true)}B / ${toSI(bits.length / 8, true)}B`
                 }, 100)
 
                 oscillator.onended = () => {
@@ -636,9 +636,9 @@
             demod.connect(analyser)
 
             const decoder = new FibonacciDecoder(result => {
-                const dec = decodeAndVerify(result)
+                const dec = result
                 console.log("解码结果:", dec);
-                if (dec >= 2) {
+                if (dec > 3) {
                     received.value += String.fromCharCode(dec)
                     received.scrollTo(0, received.scrollHeight)
                 }
@@ -728,7 +728,7 @@
             if (channel >= 1 && channel <= 12) {
                 carrierFreq = 1000 + 125 * channel
             } else if (channel >= 120 && channel <= 160) {
-                carrierFreq = 16000 + 125* (channel - 120)
+                carrierFreq = 16000 + 125 * (channel - 120)
             }
 
             document.getElementById('freq').textContent = carrierFreq + ' Hz'
