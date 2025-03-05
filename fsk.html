@@ -309,6 +309,22 @@
             return expectedParity === receivedParity ? nCandidate : -1;
         }
 
+        function secondsToHms(seconds) {
+            if (typeof seconds !== 'number' || seconds < 0) {
+                return "00:00:00"; // 或者抛出错误，取决于你的需求
+            }
+
+            const hours = Math.floor(seconds / 3600);
+            const minutes = Math.floor((seconds % 3600) / 60);
+            const remainingSeconds = Math.floor(seconds % 60);
+
+            const formattedHours = String(hours).padStart(2, '0');
+            const formattedMinutes = String(minutes).padStart(2, '0');
+            const formattedSeconds = String(remainingSeconds).padStart(2, '0');
+
+            return `${formattedHours}:${formattedMinutes}:${formattedSeconds}`;
+        }
+
         class FibonacciDecoder {
             constructor(callback) {
                 this.fibonacciSequence = fib;
@@ -577,7 +593,9 @@
                 oscillator.stop(currentTime + (1 / baudRate) * freqs.length + symbolTime * 2)
 
                 const interval = setInterval(() => {
-                    bitDisplay.textContent = `发送进度: ${toSI((audioCtx.currentTime - currentTime) * baudRate / 8, true)}B / ${toSI(bits.length / 8, true)}B`
+                    const sent = (audioCtx.currentTime - currentTime) * baudRate;
+                    const remainingSeconds = (bits.length - sent) / baudRate;
+                    bitDisplay.textContent = `发送进度: ${toSI(sent / 8, true)}B / ${toSI(bits.length / 8, true)}B (剩余 ${secondsToHms(remainingSeconds)})`
                 }, 100)
 
                 oscillator.onended = () => {
