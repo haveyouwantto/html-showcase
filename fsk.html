@@ -266,7 +266,9 @@
         function fibonacciEncoding(numbers) {
             let result = [];
             for (let num of numbers) {
-                result = result.concat(fibEncode(num));
+                for (let bit of fibEncode(num)) {
+                    result.push(bit)
+                }
             }
             return result;
         }
@@ -527,6 +529,8 @@
         const audioInput = document.getElementById('audio-input');
         const received = document.getElementById('received');
 
+        const bitDisplay = document.getElementById('bits');
+
         navigator.mediaDevices?.enumerateDevices().then(devices => {
             devices.filter(device => device.kind === 'audioinput').forEach(device => {
                 const option = document.createElement('option');
@@ -572,7 +576,6 @@
                 oscillator.start()
                 oscillator.stop(currentTime + (1 / baudRate) * freqs.length + symbolTime * 2)
 
-                const bitDisplay = document.getElementById('bits');
                 const interval = setInterval(() => {
                     bitDisplay.textContent = `发送进度: ${toSI(Math.floor((audioCtx.currentTime - currentTime) * baudRate / 8))}B / ${toSI(bits.length / 8)}B`
                 }, 100)
@@ -580,12 +583,13 @@
                 oscillator.onended = () => {
                     txBtn.disabled = false;
                     clearInterval(interval)
+                    bitDisplay.textContent = ''
+                    txBtn.textContent = '发送'
+                    txStart = false;
                 }
                 txBtn.textContent = '中止'
             } else {
                 oscillator.stop()
-                txBtn.textContent = '发送'
-                bitDisplay.textContent = ''
             }
             txStart = !txStart;
         })
@@ -722,9 +726,9 @@
             }
 
             if (channel >= 1 && channel <= 12) {
-                carrierFreq = 1000 + bandwidth * 2 * channel
+                carrierFreq = 1000 + 125 * channel
             } else if (channel >= 120 && channel <= 160) {
-                carrierFreq = 16000 + bandwidth * 2 * (channel - 120)
+                carrierFreq = 16000 + 125* (channel - 120)
             }
 
             document.getElementById('freq').textContent = carrierFreq + ' Hz'
