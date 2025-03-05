@@ -196,6 +196,7 @@
                 <button id="start-tx">发送</button>
                 <button id="clearTx">清空发送</button>
             </div>
+            <div id="bits"></div>
         </div>
         <div>
             <div class="title-text">接收</div>
@@ -428,6 +429,7 @@
                                 this.port.postMessage({ phase: this.sum });
                             }
                             // 重置累加器和计数器
+                            console.log(this.count)
                             this.count = 0;
                             this.sum = 0;
                         }
@@ -504,6 +506,20 @@
             return buffer;
         }
 
+        function toSI(n, bin = false) {
+            if (n == null) return "Unknown "
+            let suffix = ['', 'K', 'M', 'G', 'T', 'P', 'E', 'Z', 'Y'];
+            let base = bin ? 1024 : 1000;
+            if (n < base) return parseInt(n) + " ";
+            for (let i in suffix) {
+                if (n < base) {
+                    return bin ? n.toFixed(2) + " " + suffix[i] : n.toFixed(2) + " " + suffix[i];
+                }
+                n /= base;
+            }
+            return (n * base).toLocaleString() + " " + suffix[suffix.length - 1];
+        }
+
         const code = new TextEncoder().encode(`(${createDemodulator.toString()})(${baudRate},${sampleRate});`);
         const workletData = 'data:application/javascript;base64,' + arrayBufferToBase64(code)
         console.log(workletData)
@@ -522,39 +538,56 @@
 
         let txBtn = document.getElementById('start-tx')
         let txUpdate = null
+        let txOscillator = null;
+        let txStart = false;
 
         txBtn.addEventListener('click', () => {
-            const string = document.getElementById('transmit').value;
+            if (!txStart) {
+                const string = document.getElementById('transmit').value;
 
-            const bits = fibonacciEncoding(stringToOrdArray(string).map(e => encodeWithParity(e)));
+                const bits = fibonacciEncoding(stringToOrdArray(string).map(e => encodeWithParity(e)));
 
-            const freqs = bits.map(e => e == 0 ? carrierFreq - bandwidth * 0.5 : carrierFreq + bandwidth * 0.5)
-            const oscillator = audioCtx.createOscillator()
-            oscillator.frequency.value = carrierFreq + bandwidth * 0.5;
-            const convolver = audioCtx.createConvolver()
-            const gainNode = audioCtx.createGain()
-            gainNode.gain.value = 0.5;
+                const freqs = bits.map(e => e == 0 ? carrierFreq - bandwidth * 0.5 : carrierFreq + bandwidth * 0.5)
+                oscillator = audioCtx.createOscillator()
+                oscillator.frequency.value = carrierFreq + bandwidth * 0.5;
+                const convolver = audioCtx.createConvolver()
+                const gainNode = audioCtx.createGain()
+                gainNode.gain.value = 0.5;
 
-            txUpdate = () => {
-                const filter = createFilter(1001, carrierFreq, bandwidth)
-                convolver.buffer = filter;
+                txUpdate = () => {
+                    const filter = createFilter(1001, carrierFreq, bandwidth)
+                    convolver.buffer = filter;
+                }
+                txUpdate()
+
+                let currentTime = audioCtx.currentTime;
+
+                for (let i = 0; i < freqs.length; i++) {
+                    oscillator.frequency.setValueAtTime(freqs[i], currentTime + symbolTime + (1 / baudRate) * i)
+                }
+
+                oscillator.connect(convolver)
+                convolver.connect(gainNode)
+                gainNode.connect(audioCtx.destination)
+                oscillator.start()
+                oscillator.stop(currentTime + (1 / baudRate) * freqs.length + symbolTime * 2)
+
+                const bitDisplay = document.getElementById('bits');
+                const interval = setInterval(() => {
+                    bitDisplay.textContent = `发送进度: ${toSI(Math.floor((audioCtx.currentTime - currentTime) * baudRate / 8))}B / ${toSI(bits.length / 8)}B`
+                }, 100)
+
+                oscillator.onended = () => {
+                    txBtn.disabled = false;
+                    clearInterval(interval)
+                }
+                txBtn.textContent = '中止'
+            } else {
+                oscillator.stop()
+                txBtn.textContent = '发送'
+                bitDisplay.textContent = ''
             }
-            txUpdate()
-
-            for (let i = 0; i < freqs.length; i++) {
-                oscillator.frequency.setValueAtTime(freqs[i], audioCtx.currentTime + symbolTime + (1 / baudRate) * i)
-            }
-
-            oscillator.connect(convolver)
-            convolver.connect(gainNode)
-            gainNode.connect(audioCtx.destination)
-            oscillator.start()
-            oscillator.stop(audioCtx.currentTime + (1 / baudRate) * freqs.length + symbolTime * 2)
-
-            txBtn.disabled = true
-            oscillator.onended = () => {
-                txBtn.disabled = false;
-            }
+            txStart = !txStart;
         })
 
         let rxBtn = document.getElementById('start')
