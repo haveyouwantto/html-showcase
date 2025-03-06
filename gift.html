@@ -72,8 +72,9 @@
             font-size: 2em;
         }
 
-        p {
+        pre {
             color: #666;
+            font-family: sans-serif;
             line-height: 1.6;
             margin-bottom: 15px;
         }
@@ -153,8 +154,7 @@
         <div class="heart" id="heart">❤️</div>
         <div class="message" id="message">
             <h1>妇女节快乐！</h1>
-            <p>亲爱的妈妈：<br>在这个属于您的节日里，祝您节日快乐！<br>您是家庭的支柱，也是我们学习的榜样。<br>感谢您为我们创造的一切，愿您永远健康美丽！</p>
-            <p>💖 祝您妇女节快乐，永远爱您！ 💖</p>
+            <pre>亲爱的妈妈：<br>在这个属于您的节日里，祝您节日快乐！<br>您是家庭的支柱，也是我们学习的榜样。<br>感谢您为我们创造的一切，愿您永远健康美丽！<br>💖 祝您妇女节快乐，永远爱您！ 💖</pre>
         </div>
     </div>
 
@@ -164,6 +164,12 @@
         const flowers = document.getElementById('flowers');
 
         let start = false;
+        let emojis = [
+            '💐', '🌹', '🌺', '🌷', '🪷', '🌸', '💮', '🏵️', '🪻', '🌻',
+            '🌼', '🍁', '🌱', '🌿', '☘️', '🍀', '🍂', '🍓', '🍒', '🍎',
+            '🍉', '🍑', '🍊', '🥭', '🍍', '🍌', '🍋', '🍈', '🍏', '🍐',
+            '🥝', '🫒', '🫐', '🍇', '🥥', '🍅', '🎉', '🎀', '🎁', '🍥'
+        ];
 
         // 点击爱心触发
         heart.addEventListener('click', () => {
@@ -340,12 +346,6 @@
 
         // 修改原有花朵创建函数
         function createFlowers(x, y, count = 10) {
-            const emojis = [
-                '💐', '🌹', '🌺', '🌷', '🪷', '🌸', '💮', '🏵️', '🪻', '🌻',
-                '🌼', '🍁', '🌱', '🌿', '☘️', '🍀', '🍂', '🍓', '🍒', '🍎',
-                '🍉', '🍑', '🍊', '🥭', '🍍', '🍌', '🍋', '🍈', '🍏', '🍐',
-                '🥝', '🫒', '🫐', '🍇', '🥥', '🍅', '🎉', '🎀', '🎁', '🍥'
-            ];
             for (let i = 0; i < count; i++) {
                 const flower = document.createElement('div');
                 flower.className = 'flower';
@@ -378,6 +378,37 @@
             // create flowers at the clicked position
             createFlowers(e.clientX, e.clientY, 2);
         });
+
+
+        // 获取 URL 查询参数
+        const urlParams = new URLSearchParams(window.location.search);
+
+        // 获取 emoji 参数，并替换花朵表情
+        const emojiParam = urlParams.get('emoji');
+        const titleParam = urlParams.get('title');
+        const textParam = urlParams.get('text');
+        const heartParam = urlParams.get('heart');
+
+        // 如果有 title 参数，替换标题
+        if (titleParam) {
+            document.querySelector('.message h1').textContent = titleParam;
+            document.title = titleParam;
+        }
+
+        // 如果有 text 参数，替换正文
+        if (textParam) {
+            document.querySelector('.message p').innerHTML = textParam.replace(/\n/g, '<br>');
+        }
+
+        // 如果有 heart 参数，替换爱心表情
+        if (heartParam) {
+            heart.textContent = heartParam;
+        }
+
+        // 如果有 emoji 参数，替换花朵表情
+        if (emojiParam) {
+            emojis = emojiParam.split(',');
+        }
     </script>
 </body>
 
