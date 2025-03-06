@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+<html lang="zh">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>节日快乐</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            min-height: 100vh;
+            background: linear-gradient(45deg, #ff9a9e, #fad0c4);
+            font-family: 'Segoe UI', sans-serif;
+            overflow-x: hidden;
+            overflow-y: hidden;
+        }
+
+        .container {
+            position: relative;
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            flex-direction: column;
+        }
+
+        .heart {
+            position: relative;
+            width: 120px;
+            height: 120px;
+            cursor: pointer;
+            animation: float 3s ease-in-out infinite;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 120px;
+            user-select: none;
+        }
+
+        .decay {
+            animation: decay 3s linear;
+            animation-fill-mode: forwards;
+        }
+
+        .message {
+            position: absolute;
+            width: 360px;
+            padding: 20px;
+            background: rgba(255, 255, 255, 0.75);
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+            text-align: center;
+            opacity: 0;
+            transform: translateY(50px);
+            transition: all 0.8s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+            pointer-events: none;
+        }
+
+        .message.active {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        h1 {
+            color: #ff3f3f;
+            margin-bottom: 15px;
+            font-size: 2em;
+        }
+
+        p {
+            color: #666;
+            line-height: 1.6;
+            margin-bottom: 15px;
+        }
+
+        .flowers {
+            position: fixed;
+            width: 100%;
+            height: 100%;
+        }
+
+        .flower {
+            position: absolute;
+            font-size: 24px;
+            user-select: none;
+            pointer-events: none;
+            transform: translate(-50%, -50%);
+        }
+
+        @keyframes decay {
+            0% {
+                opacity: 1;
+            }
+
+            100% {
+                opacity: 0;
+            }
+        }
+
+        @keyframes float {
+
+            0%,
+            100% {
+                transform: translateY(0);
+            }
+
+            50% {
+                transform: translateY(-20px);
+            }
+        }
+
+        @keyframes fall {
+            from {
+                transform: translateY(-100px) rotate(0deg);
+            }
+
+            to {
+                transform: translateY(100vh) rotate(360deg);
+            }
+        }
+
+        @keyframes fireworks {
+            0% {
+                transform: scale(0);
+                opacity: 1;
+            }
+
+            100% {
+                transform: scale(10);
+                opacity: 0;
+            }
+        }
+
+        .firework {
+            position: absolute;
+            width: 8px;
+            height: 8px;
+            background: #ffeb3b;
+            border-radius: 50%;
+            animation: fireworks 0.8s ease-out;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <div class="flowers" id="flowers"></div>
+        <div class="heart" id="heart">❤️</div>
+        <div class="message" id="message">
+            <h1>妇女节快乐！</h1>
+            <p>亲爱的妈妈：<br>在这个属于您的节日里，祝您节日快乐！<br>您是家庭的支柱，也是我们学习的榜样。<br>感谢您为我们创造的一切，愿您永远健康美丽！</p>
+            <p>💖 祝您妇女节快乐，永远爱您！ 💖</p>
+        </div>
+    </div>
+
+    <script>
+        const heart = document.getElementById('heart');
+        const message = document.getElementById('message');
+        const flowers = document.getElementById('flowers');
+
+        let start = false;
+
+        // 点击爱心触发
+        heart.addEventListener('click', () => {
+            message.classList.add('active');
+            createFireworks();
+            if (!start) {
+                createFlowers(window.innerWidth * 0.5, window.innerHeight * 0.5, 30);
+                setInterval(() => {
+                    for (let i = 0; i < 5; i++) {
+                        const x = Math.random() * window.innerWidth;
+                        const y = Math.random() * window.innerHeight;
+                        createFlowers(x, y, 1);
+                    }
+                }, 2000);
+                start = true;
+            }
+        });
+
+        // 创建烟花效果
+        function createFireworks() {
+            for (let i = 0; i < 30; i++) {
+                const firework = document.createElement('div');
+                firework.className = 'firework';
+                firework.style.left = `${Math.random() * 100}%`;
+                firework.style.top = `${Math.random() * 100}%`;
+                firework.style.background = `hsl(${Math.random() * 360}, 70%, 60%)`;
+                document.body.appendChild(firework);
+
+                setTimeout(() => firework.remove(), 800);
+            }
+        }
+
+        // 物理引擎模拟
+        class PhysicsEngine {
+            constructor() {
+                this.flowers = [];
+                this.gravity = 0;
+                this.bounce = 1;
+                this.airResistance = 0.995;
+                this.canvasWidth = window.innerWidth;
+                this.canvasHeight = window.innerHeight;
+                // 检测窗口大小变化
+                window.addEventListener('resize', () => {
+                    this.canvasWidth = window.innerWidth;
+                    this.canvasHeight = window.innerHeight;
+                });
+                // 新增旋转参数
+                this.angularFriction = 0.97; // 旋转摩擦力
+                this.time = 0;
+            }
+
+            addFlower(flower, x, y) {
+                const angle = Math.random() * Math.PI * 2;
+                const power = Math.random() * 10;
+                const physicsFlower = {
+                    element: flower,
+                    x: x,
+                    y: y,
+                    vx: Math.cos(angle) * power,
+                    vy: Math.sin(angle) * power,
+                    radius: 12,
+                    angle: 0,
+                    angularVelocity: (Math.random() - 0.5) * 0.5, // 初始旋转速度
+                };
+                this.flowers.push(physicsFlower);
+            }
+
+            update() {
+                let timeDelta = (performance.now() - this.time) / 10;
+                this.time = performance.now();
+                this.flowers.forEach((flower, index) => {
+                    // 应用物理
+                    flower.vy += this.gravity;
+                    flower.vx *= this.airResistance;
+                    flower.vy *= this.airResistance;
+                    // 更新位置
+                    flower.x += flower.vx;
+                    flower.y += flower.vy;
+                    // 边界碰撞
+                    if (flower.x < flower.radius) {
+                        flower.x = flower.radius;
+                        flower.vx *= -this.bounce;
+                    }
+                    if (flower.x > this.canvasWidth - flower.radius) {
+                        flower.x = this.canvasWidth - flower.radius;
+                        flower.vx *= -this.bounce;
+                    }
+                    if (flower.y < flower.radius) {
+                        flower.y = flower.radius;
+                        flower.vy *= -this.bounce;
+                    }
+                    if (flower.y > this.canvasHeight - flower.radius) {
+                        flower.y = this.canvasHeight - flower.radius;
+                        flower.vy *= -this.bounce;
+                    }
+                    flower.angle += flower.angularVelocity;
+                    flower.angularVelocity *= this.angularFriction; // 旋转衰减
+                    // 更新元素位置
+                    flower.element.style.left = `${flower.x}px`;
+                    flower.element.style.top = `${flower.y}px`;
+                    flower.element.style.transform =
+                        `translate(-50%, -50%) rotate(${flower.angle}rad)`;
+                    // 碰撞检测
+                    this.checkCollisions(index);
+                });
+            }
+
+            checkCollisions(currentIndex) {
+                const current = this.flowers[currentIndex];
+                for (let i = currentIndex + 1; i < this.flowers.length; i++) {
+                    const other = this.flowers[i];
+                    const dx = other.x - current.x;
+                    const dy = other.y - current.y;
+                    const distance = Math.sqrt(dx * dx + dy * dy);
+
+                    if (distance < current.radius + other.radius) {
+                        // 碰撞处理
+                        const angle = Math.atan2(dy, dx);
+                        const overlap = current.radius + other.radius - distance;
+
+                        // 位置修正
+                        current.x -= overlap * Math.cos(angle) * 0.5;
+                        current.y -= overlap * Math.sin(angle) * 0.5;
+                        other.x += overlap * Math.cos(angle) * 0.5;
+                        other.y += overlap * Math.sin(angle) * 0.5;
+
+                        // 动量交换 - 根据法向速度
+                        const relativeVelocityX = current.vx - other.vx;
+                        const relativeVelocityY = current.vy - other.vy;
+
+                        // 计算法向速度分量
+                        const normalVelocityX = relativeVelocityX * Math.cos(angle) + relativeVelocityY * Math.sin(angle);
+                        const normalVelocityY = -relativeVelocityX * Math.sin(angle) + relativeVelocityY * Math.cos(angle);
+
+                        // 计算速度变化
+                        const impulseX = normalVelocityX * (1 + this.bounce);
+                        const impulseY = normalVelocityY * (1 + this.bounce);
+
+
+                        // 应用速度变化 (假设质量为1)
+                        current.vx -= impulseX * Math.cos(angle) * 0.5;
+                        current.vy -= impulseX * Math.sin(angle) * 0.5;
+                        other.vx += impulseX * Math.cos(angle) * 0.5;
+                        other.vy += impulseX * Math.sin(angle) * 0.5;
+
+
+                        // 角速度调整 - 根据切向速度
+                        const tangentVelocityX = -relativeVelocityY;
+                        const tangentVelocityY = relativeVelocityX;
+
+                        // 计算切向动量
+                        const tangentMomentum = tangentVelocityX * Math.cos(angle) + tangentVelocityY * Math.sin(angle);
+
+                        // 计算角速度的变化量
+                        const angularImpulse1 = tangentMomentum / current.radius * this.bounce;
+                        const angularImpulse2 = -tangentMomentum / other.radius * this.bounce;
+
+                        current.angularVelocity += angularImpulse1;
+                        other.angularVelocity += angularImpulse2;
+
+                        //阻尼，防止角速度无限增加
+                        current.angularVelocity *= 0.9;
+                        other.angularVelocity *= 0.9;
+                    }
+                }
+            }
+        }
+
+
+        const flowerContainer = document.getElementById('flowers')
+
+        // 初始化物理引擎
+        const physics = new PhysicsEngine();
+
+        // 修改原有花朵创建函数
+        function createFlowers(x, y, count = 10) {
+            const emojis = [
+                '💐', '🌹', '🌺', '🌷', '🪷', '🌸', '💮', '🏵️', '🪻', '🌻',
+                '🌼', '🍁', '🌱', '🌿', '☘️', '🍀', '🍂', '🍓', '🍒', '🍎',
+                '🍉', '🍑', '🍊', '🥭', '🍍', '🍌', '🍋', '🍈', '🍏', '🍐',
+                '🥝', '🫒', '🫐', '🍇', '🥥', '🍅', '🎉', '🎀', '🎁', '🍥'
+            ];
+            for (let i = 0; i < count; i++) {
+                const flower = document.createElement('div');
+                flower.className = 'flower';
+                flower.innerHTML = emojis[Math.floor(Math.random() * emojis.length)];
+                flowerContainer.appendChild(flower);
+
+                const startX = x;
+                const startY = y;
+                physics.addFlower(flower, startX, startY);
+
+                // 30秒后移除
+                setTimeout(() => {
+                    flower.classList.add('decay');
+                }, 27000);
+                setTimeout(() => {
+                    flower.remove();
+                    physics.flowers = physics.flowers.filter(f => f.element !== flower);
+                }, 30000);
+            }
+        }
+
+        // 物理动画循环
+        function animate() {
+            physics.update();
+            requestAnimationFrame(animate);
+        }
+        animate();
+
+        flowerContainer.addEventListener('click', (e) => {
+            // create flowers at the clicked position
+            createFlowers(e.clientX, e.clientY, 2);
+        });
+    </script>
+</body>
+
+</html>
