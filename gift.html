@@ -206,7 +206,7 @@
         class PhysicsEngine {
             constructor() {
                 this.flowers = [];
-                this.gravity = 0;
+                this.gravityScale = 0.02;  
                 this.bounce = 1;
                 this.airResistance = 0.995;
                 this.canvasWidth = window.innerWidth;
@@ -219,7 +219,14 @@
                 // 新增旋转参数
                 this.angularFriction = 0.97; // 旋转摩擦力
                 this.time = 0;
-            }
+                
+                this.gravX=0;
+                this.gravY=0;
+                
+                   
+        }
+
+         
 
             addFlower(flower, x, y) {
                 const angle = Math.random() * Math.PI * 2;
@@ -242,7 +249,9 @@
                 this.time = performance.now();
                 this.flowers.forEach((flower, index) => {
                     // 应用物理
-                    flower.vy += this.gravity;
+                    
+                    flower.vx += this.gravityScale * this.gravX;
+                    flower.vy += this.gravityScale * this.gravY;
                     flower.vx *= this.airResistance;
                     flower.vy *= this.airResistance;
                     // 更新位置
@@ -343,6 +352,35 @@
 
         // 初始化物理引擎
         const physics = new PhysicsEngine();
+        
+        function handleMotion(event) {
+            // 获取加速度数据（包含重力加速度）
+            const acceleration = event.accelerationIncludingGravity;
+            
+            physics.gravX=-acceleration.x;
+            physics.gravY=acceleration.y;
+            
+            
+            }
+        
+        // 检查浏览器是否支持DeviceMotionEvent
+        if (window.DeviceMotionEvent) {
+            // 请求权限（某些浏览器需要）
+            if (typeof DeviceMotionEvent.requestPermission === 'function') {
+                DeviceMotionEvent.requestPermission()
+                    .then(permissionState => {
+                        if (permissionState === 'granted') {
+                            window.addEventListener('devicemotion', handleMotion);
+                        }
+                    })
+                    .catch(console.error);
+            } else {
+                // 非iOS 13+设备直接添加监听
+                window.addEventListener('devicemotion', handleMotion);
+            }
+        } else {
+            
+        }
 
         // 修改原有花朵创建函数
         function createFlowers(x, y, count = 10) {
