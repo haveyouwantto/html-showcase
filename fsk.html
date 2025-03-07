@@ -660,7 +660,9 @@
                 console.log("解码结果:", dec);
                 if (dec > 3) {
                     received.value += String.fromCodePoint(dec)
-                    received.scrollTo(0, received.scrollHeight)
+                   // alert(received.scrollHeight +" "+ received.scrollTop +" "+ received.clientHeight)
+                    if (Math.abs(received.scrollHeight - received.clientHeight - received.scrollTop) < 24){
+                    received.scrollTo(0, received.scrollHeight)}
                 }
             })
 
