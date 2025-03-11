@@ -111,7 +111,7 @@
             if (trackPoints.length < 2) return;
 
             let totalDistance = 0;
-            let totalTime = (trackPoints[trackPoints.length-1].timestamp - trackPoints[0].timestamp) / 1000; // 秒
+            let totalTime = (trackPoints[trackPoints.length-1].t - trackPoints[0].t) / 1000; // 秒
             
             for (let i = 1; i < trackPoints.length; i++) {
                 totalDistance += getDistance(
@@ -133,8 +133,8 @@
                     trackPoints[trackPoints.length-2].lon,
                     trackPoints[trackPoints.length-1].lat,
                     trackPoints[trackPoints.length-1].lon
-                ) / ((trackPoints[trackPoints.length-1].timestamp - trackPoints[trackPoints.length-2].timestamp) / 1000) * 3.6;
-            const currentPace = (trackPoints[trackPoints.length-1].timestamp - trackPoints[trackPoints.length-2].timestamp) / 1000 / (getDistance(
+                ) / ((trackPoints[trackPoints.length-1].t - trackPoints[trackPoints.length-2].t) / 1000) * 3.6;
+            const currentPace = (trackPoints[trackPoints.length-1].t - trackPoints[trackPoints.length-2].t) / 1000 / (getDistance(
                     trackPoints[trackPoints.length-2].lat,
                     trackPoints[trackPoints.length-2].lon,
                     trackPoints[trackPoints.length-1].lat,
