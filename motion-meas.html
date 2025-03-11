@@ -6,10 +6,39 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
     <style>
-        #map { height: 500px; }
-        .controls { margin: 10px 0; }
-        button { padding: 8px; margin-right: 5px; }
-        .stats { margin-top: 10px; }
+        body {
+            background-color: #121212;
+            color: #ffffff;
+            font-family: sans-serif;
+        }
+        #map { 
+            height: 500px;
+            background-color: #333;
+        }
+        .controls { 
+            margin: 10px 0;
+            display: flex;
+            justify-content: center;
+        }
+        button { 
+            padding: 8px 16px;
+            margin-right: 5px;
+            border: none;
+            background-color: #555;
+            color: #fff;
+            cursor: pointer;
+            border-radius: 4px;
+        }
+        button:hover {
+            background-color: #777;
+        }
+        .stats { 
+            margin-top: 10px;
+            text-align: center;
+        }
+        a {
+            color: #80cbc4;
+        }
     </style>
 </head>
 <body>
@@ -94,15 +123,34 @@
             const pace = totalTime / (totalDistance / 1000); // 秒/公里
             const paceMin = Math.floor(pace / 60);
             const paceSec = Math.round(pace % 60);
+            
+            const currentSpeed = getDistance(
+                    trackPoints[trackPoints.length-2].lat,
+                    trackPoints[trackPoints.length-2].lon,
+                    trackPoints[trackPoints.length-1].lat,
+                    trackPoints[trackPoints.length-1].lon
+                ) / ((trackPoints[trackPoints.length-1].timestamp - trackPoints[trackPoints.length-2].timestamp) / 1000) * 3.6;
+            const currentPace = (trackPoints[trackPoints.length-1].timestamp - trackPoints[trackPoints.length-2].timestamp) / 1000 / (getDistance(
+                    trackPoints[trackPoints.length-2].lat,
+                    trackPoints[trackPoints.length-2].lon,
+                    trackPoints[trackPoints.length-1].lat,
+                    trackPoints[trackPoints.length-1].lon
+                ) / 1000);
+            const currentPaceMin = Math.floor(currentPace / 60);
+            const currentPaceSec = Math.round(currentPace % 60);
 
             document.getElementById('stats').innerHTML = `
                 当前位置：${convertToDMS(lastPos.lat, lastPos.lon)} 精度：${(lastPos.acc).toFixed(0)}m<br>
                 当前海拔：${(lastPos.alt).toFixed(1)}m<br>
+                当前速度: ${currentSpeed.toFixed(2)} km/h<br>
+                当前配速: ${currentPaceMin}:${currentPaceSec.toString().padStart(2, '0')} min/km<br>
                 总距离: ${(totalDistance / 1000).toFixed(2)} km<br>
                 平均时速: ${avgSpeed.toFixed(2)} km/h<br>
                 平均配速: ${paceMin}:${paceSec.toString().padStart(2, '0')} min/km
             `;
         }
+
+        let lastAccuracyCircle;
 
         // 开始记录
         function startRecording() {
@@ -116,14 +164,14 @@
                 const point = {
                     lat: position.coords.latitude,
                     lon: position.coords.longitude,
-                    alt: position.coords.altitude,
-                    acc: position.coords.accuracy,
-                    timestamp: new Date().getTime()
+                    alt: position.coords.altitude.toFixed(3),
+                    acc: position.coords.accuracy.toFixed(3),
+                    t: new Date().getTime()
                 };
                 
                 trackPoints.push(point);
                 
-                // 更新地图显示
+                 // 更新地图显示
                 if (!trackLine) {
                     trackLine = L.polyline([], {color: 'red'}).addTo(map);
                     startMarker = L.marker([point.lat, point.lon], {title: '起点'}).addTo(map);
@@ -134,6 +182,15 @@
                 if (endMarker) endMarker.remove();
                 endMarker = L.marker([point.lat, point.lon], {title: '终点'}).addTo(map);
                 
+                // Add accuracy circle
+                if (lastAccuracyCircle) lastAccuracyCircle.remove();
+                lastAccuracyCircle = L.circle([lastPos.lat, lastPos.lon], {
+                    radius: lastPos.acc,
+                    color: 'blue',
+                    fillColor: 'blue',
+                    fillOpacity: 0.2
+                }).addTo(map);
+
                 updateStats();
             }, error => {
                 console.error('Error getting position:', error);
@@ -145,7 +202,7 @@
 
             // 每30秒自动保存
             saveInterval = setInterval(() => {
-                localStorage.setItem('gpsTrack', JSON.stringify(trackPoints));
+                localStorage.setItem('gpsTrack', JSON.stringify(trackPoints, null, 0));
             }, 30000);
         }
 
@@ -156,12 +213,12 @@
                 watchId = null;
             }
             clearInterval(saveInterval);
-            localStorage.setItem('gpsTrack', JSON.stringify(trackPoints));
+            localStorage.setItem('gpsTrack', JSON.stringify(trackPoints, null, 0));
         }
 
         // 下载JSON
         function downloadJSON() {
-            const dataStr = JSON.stringify(trackPoints);
+            const dataStr = JSON.stringify(trackPoints, null, 0);
             const blob = new Blob([dataStr], {type: 'application/json'});
             const url = URL.createObjectURL(blob);
             
