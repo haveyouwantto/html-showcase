@@ -222,8 +222,7 @@
     <div class="player-role" id="playerRole">游戏未开始</div>
     <!-- <div id="status">等待连接...</div> -->
     <div id="gameUrl" style="display: none;">
-        <div>游戏链接已创建！<br>
-            已自动复制到剪贴板：<br>
+        <div>游戏链接已创建！<br> 请分享以下链接给对方：
         </div>
         <div class="share">
             <div style="display: flex; gap: 4px;">
@@ -385,7 +384,6 @@
 
             peer.on('open', id => {
                 const gameUrl = `${location.href.split('?')[0]}?${id}`;
-                navigator.clipboard.writeText(gameUrl);
                 document.getElementById('playerRole').textContent = '你是黑方';
                 document.getElementById('gameUrl').style.display = 'flex';
                 document.getElementById('gameUrlText').value = gameUrl;
