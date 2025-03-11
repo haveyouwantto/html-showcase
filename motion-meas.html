@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>GPS轨迹记录器</title>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
+    <style>
+        #map { height: 500px; }
+        .controls { margin: 10px 0; }
+        button { padding: 8px; margin-right: 5px; }
+        .stats { margin-top: 10px; }
+    </style>
+</head>
+<body>
+    <div class="controls">
+        <button onclick="startRecording()">开始记录</button>
+        <button onclick="stopRecording()">停止记录</button>
+        <button onclick="downloadJSON()">下载JSON</button>
+        <button onclick="clearRecords()">清除记录</button>
+    </div>
+    <div id="map"></div>
+    <div class="stats" id="stats"></div>
+
+    <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
+    <script>
+        let map;
+        let trackPoints = [];
+        let watchId = null;
+        let saveInterval;
+        let trackLine = null;
+        let startMarker = null;
+        let endMarker = null;
+        
+        
+        function convertToDMS(lat, lon) {
+  // 纬度转换
+  const latDegrees = Math.floor(Math.abs(lat));
+  const latMinutes = Math.floor((Math.abs(lat) - latDegrees) * 60);
+  const latSeconds = ((Math.abs(lat) - latDegrees) * 60 - latMinutes) * 60;
+  const latDirection = lat >= 0 ? 'N' : 'S';
+
+  // 经度转换
+  const longDegrees = Math.floor(Math.abs(lon));
+  const longMinutes = Math.floor((Math.abs(lon) - longDegrees) * 60);
+  const longSeconds = ((Math.abs(lon) - longDegrees) * 60 - longMinutes) * 60;
+  const longDirection = lon >= 0 ? 'E' : 'W';
+
+  // 格式化输出
+  return `${latDegrees}°${latMinutes}'${latSeconds.toFixed(2)}"${latDirection}, ${longDegrees}°${longMinutes}'${longSeconds.toFixed(2)}"${longDirection}`;
+}
+
+
+        // 初始化地图
+        function initMap() {
+            map = L.map('map').setView([0, 0], 13);
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+        }
+
+        // 计算两个坐标点之间的距离（使用Haversine公式）
+        function getDistance(lat1, lon1, lat2, lon2) {
+            const R = 6371e3; // 地球半径（米）
+            const φ1 = lat1 * Math.PI/180;
+            const φ2 = lat2 * Math.PI/180;
+            const Δφ = (lat2 - lat1) * Math.PI/180;
+            const Δλ = (lon2 - lon1) * Math.PI/180;
+
+            const a = Math.sin(Δφ/2) * Math.sin(Δφ/2) +
+                      Math.cos(φ1) * Math.cos(φ2) *
+                      Math.sin(Δλ/2) * Math.sin(Δλ/2);
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+
+            return R * c;
+        }
+
+        // 更新统计信息
+        function updateStats() {
+            if (trackPoints.length < 2) return;
+
+            let totalDistance = 0;
+            let totalTime = (trackPoints[trackPoints.length-1].timestamp - trackPoints[0].timestamp) / 1000; // 秒
+            
+            for (let i = 1; i < trackPoints.length; i++) {
+                totalDistance += getDistance(
+                    trackPoints[i-1].lat,
+                    trackPoints[i-1].lon,
+                    trackPoints[i].lat,
+                    trackPoints[i].lon
+                );
+            }
+
+            const lastPos = trackPoints[trackPoints.length-1];
+            const avgSpeed = totalDistance / totalTime * 3.6; // km/h
+            const pace = totalTime / (totalDistance / 1000); // 秒/公里
+            const paceMin = Math.floor(pace / 60);
+            const paceSec = Math.round(pace % 60);
+
+            document.getElementById('stats').innerHTML = `
+                当前位置：${convertToDMS(lastPos.lat, lastPos.lon)}<br>
+                总距离: ${(totalDistance / 1000).toFixed(2)} km<br>
+                平均时速: ${avgSpeed.toFixed(2)} km/h<br>
+                平均配速: ${paceMin}:${paceSec.toString().padStart(2, '0')} min/km
+            `;
+        }
+
+        // 开始记录
+        function startRecording() {
+            if (watchId) return;
+            
+            // 加载已有数据
+            const savedData = localStorage.getItem('gpsTrack');
+            if (savedData) trackPoints = JSON.parse(savedData);
+
+            watchId = navigator.geolocation.watchPosition(position => {
+                const point = {
+                    lat: position.coords.latitude,
+                    lon: position.coords.longitude,
+                    alt: position.coords.altitude,
+                    timestamp: new Date().getTime()
+                };
+                
+                trackPoints.push(point);
+                
+                // 更新地图显示
+                if (!trackLine) {
+                    trackLine = L.polyline([], {color: 'red'}).addTo(map);
+                    startMarker = L.marker([point.lat, point.lon], {title: '起点'}).addTo(map);
+                }
+                trackLine.addLatLng([point.lat, point.lon]);
+                map.panTo([point.lat, point.lon]);
+                
+                if (endMarker) endMarker.remove();
+                endMarker = L.marker([point.lat, point.lon], {title: '终点'}).addTo(map);
+                
+                updateStats();
+            }, error => {
+                console.error('Error getting position:', error);
+            }, {
+                enableHighAccuracy: true,
+                maximumAge: 30000,
+                timeout: 27000
+            });
+
+            // 每30秒自动保存
+            saveInterval = setInterval(() => {
+                localStorage.setItem('gpsTrack', JSON.stringify(trackPoints));
+            }, 30000);
+        }
+
+        // 停止记录
+        function stopRecording() {
+            if (watchId) {
+                navigator.geolocation.clearWatch(watchId);
+                watchId = null;
+            }
+            clearInterval(saveInterval);
+            localStorage.setItem('gpsTrack', JSON.stringify(trackPoints));
+        }
+
+        // 下载JSON
+        function downloadJSON() {
+            const dataStr = JSON.stringify(trackPoints);
+            const blob = new Blob([dataStr], {type: 'application/json'});
+            const url = URL.createObjectURL(blob);
+            
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `gps-track-${new Date().toISOString()}.json`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
+
+        // 清除记录
+        function clearRecords() {
+            trackPoints = [];
+            localStorage.removeItem('gpsTrack');
+            if (trackLine) trackLine.remove();
+            if (startMarker) startMarker.remove();
+            if (endMarker) endMarker.remove();
+            trackLine = null;
+            document.getElementById('stats').innerHTML = '';
+        }
+
+        // 初始化
+        initMap();
+        // 加载已有数据
+        const savedData = localStorage.getItem('gpsTrack');
+        if (savedData) {
+            trackPoints = JSON.parse(savedData);
+            if (trackPoints.length > 0) {
+                const points = trackPoints.map(p => [p.lat, p.lon]);
+                trackLine = L.polyline(points, {color: 'red'}).addTo(map);
+                startMarker = L.marker([trackPoints[0].lat, trackPoints[0].lon], {title: '起点'}).addTo(map);
+                endMarker = L.marker([trackPoints[trackPoints.length-1].lat, trackPoints[trackPoints.length-1].lon], {title: '终点'}).addTo(map);
+                map.fitBounds(trackLine.getBounds());
+                updateStats();
+            }
+        }
+    </script>
+</body>
+</html>
