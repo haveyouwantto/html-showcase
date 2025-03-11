@@ -96,7 +96,8 @@
             const paceSec = Math.round(pace % 60);
 
             document.getElementById('stats').innerHTML = `
-                当前位置：${convertToDMS(lastPos.lat, lastPos.lon)}<br>
+                当前位置：${convertToDMS(lastPos.lat, lastPos.lon)} 精度：${(lastPos.acc).toFixed(0)}m<br>
+                当前海拔：${(lastPos.alt).toFixed(1)}m<br>
                 总距离: ${(totalDistance / 1000).toFixed(2)} km<br>
                 平均时速: ${avgSpeed.toFixed(2)} km/h<br>
                 平均配速: ${paceMin}:${paceSec.toString().padStart(2, '0')} min/km
@@ -116,6 +117,7 @@
                     lat: position.coords.latitude,
                     lon: position.coords.longitude,
                     alt: position.coords.altitude,
+                    acc: position.coords.accuracy,
                     timestamp: new Date().getTime()
                 };
                 
