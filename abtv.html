@@ -1,0 +1,615 @@
+<html>
+
+<head>
+    <title>ATV</title>
+
+    <meta http-equiv="Content-Type" content="text/html; charset=utf8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        :root {
+            --bg-gradient: linear-gradient(45deg, #0a0e1a, #1a1f2c);
+            --neon-cyan: #00f3ff;
+            --neon-purple: #bd00ff;
+            --dark-bg: #0d1117;
+            --text-primary: #e1e7f0;
+            --text-secondary: #b6becc;
+            --border-radius: 8px;
+            --border-width: 2px;
+            --glow: 0 0 15px;
+        }
+
+        body {
+            background: var(--bg-gradient);
+            color: var(--text-primary);
+            font-family: 'Segoe UI', system-ui, sans-serif;
+            line-height: 1.6;
+            min-height: 100vh;
+            margin: 0;
+            padding: 2rem;
+            box-sizing: border-box;
+        }
+
+        #title {
+            text-align: center;
+            font-size: 2.5rem;
+            background: linear-gradient(135deg, var(--neon-cyan), var(--neon-purple));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            text-shadow: var(--glow) rgba(0, 243, 255, 0.2);
+            margin-bottom: 2rem;
+        }
+
+        textarea {
+            background: var(--dark-bg);
+            border: var(--border-width) solid #2d3746;
+            border-radius: var(--border-radius);
+            color: var(--text-primary);
+            padding: 1rem;
+            font-size: 1rem;
+            transition: all 0.3s ease;
+            width: 100%;
+            height: 50vh;
+            resize: vertical;
+        }
+
+        textarea:focus {
+            border-color: var(--neon-cyan);
+            box-shadow: 0 0 15px rgba(0, 243, 255, 0.2);
+            outline: none;
+        }
+
+        button {
+            background: linear-gradient(135deg, #1a2333, #0d1117);
+            border: var(--border-width) solid #2d3746;
+            color: var(--text-secondary);
+            padding: 0.8rem 1.5rem;
+            border-radius: var(--border-radius);
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+            margin: 8px;
+        }
+
+        button:hover {
+            color: var(--neon-cyan);
+            border-color: var(--neon-cyan);
+            box-shadow: var(--glow) rgba(0, 243, 255, 0.3);
+        }
+
+        button:disabled {
+            color: #1a2333;
+            border-color: #2d3746
+        }
+
+        button::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg,
+                    transparent,
+                    rgba(0, 243, 255, 0.1),
+                    transparent);
+            transition: 0.5s;
+        }
+
+        button:hover::before {
+            left: 100%;
+        }
+
+        #audio-inputs {
+            margin: 1.5rem 0;
+        }
+
+        select {
+            background: var(--dark-bg);
+            border: var(--border-width) solid #2d3746;
+            color: var(--text-primary);
+            padding: 0.5rem;
+            border-radius: 6px;
+            margin-left: 1rem;
+        }
+
+        input[type="number"] {
+            background: var(--dark-bg);
+            border: var(--border-width) solid #2d3746;
+            color: var(--text-primary);
+            padding: 0.5rem;
+            border-radius: 6px;
+            margin-left: 1rem;
+        }
+
+        input[type="number"]:focus {
+            border-color: var(--neon-cyan);
+            outline: none;
+        }
+
+        select:focus {
+            border-color: var(--neon-cyan);
+            outline: none;
+        }
+
+        hr {
+            border: 1px solid #2d3746;
+            margin: 2rem 0;
+        }
+
+        #atv {
+            border: var(--border-width) solid #2d3746;
+            border-radius: var(--border-radius);
+            margin: 1rem 0;
+            width: 50vw;
+            image-rendering: pixelated;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 2rem;
+        }
+
+        .btn-container {
+            display: flex;
+            justify-content: center;
+            align-items: stretch;
+        }
+
+        .controls {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .title-text {
+            text-align: center;
+            font-size: 1.5rem;
+            font-weight: 600;
+            background: linear-gradient(135deg, var(--neon-cyan), var(--neon-purple));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            text-shadow: var(--glow) rgba(0, 243, 255, 0.2);
+            margin-bottom: 1rem;
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+    <h1 id='title'>音频 TV 收发器</h1>
+    <div class="container">
+        <div>
+            <input type="file" id="txImage" accept="image/*">
+            <div class="title-text">发送</div>
+            <div class="btn-container">
+                <button id="start-tx">发送</button>
+            </div>
+            <div id="bits"></div>
+        </div>
+        <div>
+            <div class="title-text">接收</div>
+            <div class="btn-container">
+                <button id='start'>接收</button>
+            </div>
+            <div id="audio-inputs">
+                <label for="audio-input">选择音频输入设备：</label>
+                <select id="audio-input"></select>
+            </div>
+        </div>
+    </div>
+    <hr>
+    <div class="controls">
+        <canvas id="atv" width="64" height="48"></canvas>
+    </div>
+    <script>
+        // const 10000 = 62.5; // 波特率
+        const sampleRate = 48000; // 采样率
+        let carrierFreq = 11000; // 载波频率
+        // const freqMulti = 1; // 频率倍数
+        // const samplePerSymbol = sampleRate / 10000; // 每个符号的采样点数
+        // const symbolTime = samplePerSymbol / sampleRate;
+        const freqDeviation = 10000
+        let width = 80;
+        let height = 60;
+
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: sampleRate, latencyHint: "balanced" });
+
+
+        class ATVDisplay {
+            constructor(canvas) {
+                this.canvas = canvas;
+                this.canvas.width = width;
+                this.canvas.height = height;
+                this.ctx = this.canvas.getContext('2d')
+                this.pos = 0;
+            }
+
+            draw(data) {
+                for (let pixel of data) {
+                    let x = this.pos % this.canvas.width;
+                    let y = Math.floor(this.pos / this.canvas.width);
+                    this.ctx.fillStyle = `rgb(${pixel},${pixel},${pixel})`;
+                    this.ctx.fillRect(x, y, 1, 1);
+                    this.pos++;
+                    if (this.pos >= this.canvas.width * this.canvas.height) {
+                        this.pos = 0;
+                    }
+                }
+            }
+        }
+
+        function secondsToHms(seconds) {
+            if (typeof seconds !== 'number' || seconds < 0) {
+                return "00:00:00"; // 或者抛出错误，取决于你的需求
+            }
+
+            const hours = Math.floor(seconds / 3600);
+            const minutes = Math.floor((seconds % 3600) / 60);
+            const remainingSeconds = Math.floor(seconds % 60);
+
+            const formattedHours = String(hours).padStart(2, '0');
+            const formattedMinutes = String(minutes).padStart(2, '0');
+            const formattedSeconds = String(remainingSeconds).padStart(2, '0');
+
+            return `${formattedHours}:${formattedMinutes}:${formattedSeconds}`;
+        }
+
+        function createDemodulator(sampleRate) {
+            const samplePerSymbol = sampleRate / 10000; // 每个符号的采样点数
+
+            const demod = class extends AudioWorkletProcessor {
+                constructor() {
+                    super();
+                    this.t = 0;
+                    // IIR滤波器状态变量（每个通道维护两个状态）
+                    this.v1 = [0, 0];  // 通道0和1的v1状态
+                    this.v2 = [0, 0];  // 通道0和1的v2状态
+                    this.prev = [0, 0];
+                    this.count = 0;
+                    this.sum = 0;
+
+                    // 计算二阶巴特沃斯低通滤波器系数（10000截止，8kHz采样率）
+                    const f0 = 10000;
+                    const Q = Math.sqrt(2) / 2; // 巴特沃斯Q值
+                    const w0 = 2 * Math.PI * f0 / sampleRate;
+                    const alpha = Math.sin(w0) / (2 * Q);
+
+                    // 未归一化的系数
+                    const b0 = (1 - Math.cos(w0)) / 2;
+                    const b1 = 1 - Math.cos(w0);
+                    const b2 = b0;
+                    const a0 = 1 + alpha;
+                    const a1 = -2 * Math.cos(w0);
+                    const a2 = 1 - alpha;
+
+                    // 归一化系数
+                    this.b0 = b0 / a0;
+                    this.b1 = b1 / a0;
+                    this.b2 = b2 / a0;
+                    this.a1 = a1 / a0;
+                    this.a2 = a2 / a0;
+                }
+
+                static get parameterDescriptors() {
+                    return [{
+                        name: 'frequency',
+                        defaultValue: 11000,
+                        minValue: 0,
+                        maxValue: sampleRate,
+                        automationRate: 'k-rate'
+                    }];
+                }
+
+                process(inputs, outputs, parameters) {
+                    // 获取输入信号和固定解调频率参数
+                    const input = inputs[0][0];
+                    const freq = parameters.frequency[0]; // 固定解调频率（单位：Hz）
+
+                    // 生成正交（I/Q）解调信号
+                    const i = new Float32Array(input.length);
+                    const q = new Float32Array(input.length);
+                    for (let j = 0; j < input.length; ++j) {
+                        // 计算当前时刻的相位角（ωt = 2πft）
+                        const omegaT = 2 * Math.PI * freq * this.t;
+                        // 正交下变频：将信号搬移到基带
+                        i[j] = input[j] * Math.cos(omegaT);  // 同相分量（I路）
+                        q[j] = input[j] * Math.sin(omegaT);  // 正交分量（Q路）
+                        this.t += 1 / sampleRate;            // 更新时间（基于采样率）
+                    }
+
+                    // 应用IIR低通滤波器去除高频成分（保留基带信号）
+                    const filteredI = this.lowPassFilterIIR(i, 0);  // 通道0处理I路信号
+                    const filteredQ = this.lowPassFilterIIR(q, 1);  // 通道1处理Q路信号
+
+
+                    // 相位差检测
+                    const phase = new Float32Array(input.length);
+                    for (let j = 0; j < input.length - 1; ++j) {
+                        // 计算相邻样本的共轭乘积（用于相位差检测）
+                        const real1 = filteredI[j], imag1 = filteredQ[j];
+                        const real2 = filteredI[j + 1], imag2 = filteredQ[j + 1];
+                        const resultReal = real1 * real2 + imag1 * imag2;  // 实部
+                        const resultImag = real1 * -imag2 + imag1 * real2;  // 虚部
+
+                        // 计算瞬时相位差（arctan(虚部/实部））
+                        phase[j] = Math.atan2(resultImag, resultReal);
+                    }
+                    phase[phase.length - 1] = phase[phase.length - 2];  // 边界处理
+
+                    // 将相位数据输出到指定端口
+                    outputs[0][0].set(phase);
+
+                    this.port.postMessage({ phase: phase });
+                    return true;
+                }
+
+                lowPassFilterIIR(input, channel) {
+                    const output = new Float32Array(input.length);
+                    let v1 = this.v1[channel];
+                    let v2 = this.v2[channel];
+
+                    for (let j = 0; j < input.length; j++) {
+                        const x = input[j];
+                        // 直接形式II实现
+                        const v0 = x - this.a1 * v1 - this.a2 * v2;
+                        const y = this.b0 * v0 + this.b1 * v1 + this.b2 * v2;
+
+                        output[j] = y;
+                        // 更新状态变量
+                        v2 = v1;
+                        v1 = v0;
+                    }
+
+                    this.v1[channel] = v1;
+                    this.v2[channel] = v2;
+                    return output;
+                }
+            }
+            registerProcessor('demod', demod);
+        }
+
+        function arrayBufferToBase64(buffer) {
+            let binary = '';
+            const bytes = new Uint8Array(buffer);
+            const len = bytes.byteLength;
+            for (let i = 0; i < len; i++) {
+                binary += String.fromCharCode(bytes[i]);
+            }
+            return btoa(binary);
+        }
+
+        function createHannWindow(length) {
+            return [...Array(length)].map((v, i) => {
+                return 0.5 * (1 - Math.cos((2 * Math.PI * i) / (length - 1)));
+            });
+        }
+
+        function createFilter(taps, freq, bw) {
+            const buffer = audioCtx.createBuffer(1, taps, audioCtx.sampleRate);
+            const window = createHannWindow(taps);
+
+            buffer.getChannelData(0).set(
+                [...Array(taps)].map((v, i) => {
+                    const t = (i - taps / 2) / audioCtx.sampleRate;
+                    const x = 2 * Math.PI * bw * t;
+                    return t == 0 ? 1 : Math.sin(x) / x * Math.sin(2 * Math.PI * freq * t) * window[i];
+                })
+            )
+            return buffer;
+        }
+
+        function toSI(n, bin = false) {
+            if (n == null) return "Unknown "
+            let suffix = ['', 'K', 'M', 'G', 'T', 'P', 'E', 'Z', 'Y'];
+            let base = bin ? 1024 : 1000;
+            if (n < base) return parseInt(n) + " ";
+            for (let i in suffix) {
+                if (n < base) {
+                    return bin ? n.toFixed(2) + " " + suffix[i] : n.toFixed(2) + " " + suffix[i];
+                }
+                n /= base;
+            }
+            return (n * base).toLocaleString() + " " + suffix[suffix.length - 1];
+        }
+
+        const code = new TextEncoder().encode(`(${createDemodulator.toString()})(${sampleRate});`);
+        const workletData = 'data:application/javascript;base64,' + arrayBufferToBase64(code)
+        console.log(workletData)
+
+        const audioInput = document.getElementById('audio-input');
+        const received = document.getElementById('received');
+
+        const bitDisplay = document.getElementById('bits');
+
+        navigator.mediaDevices?.enumerateDevices().then(devices => {
+            devices.filter(device => device.kind === 'audioinput').forEach(device => {
+                const option = document.createElement('option');
+                option.value = device.deviceId;
+                option.innerText = device.label || `设备 ${audioInput.options.length + 1}`;
+                audioInput.appendChild(option);
+            })
+        })
+
+        let txBtn = document.getElementById('start-tx')
+        let txUpdate = null
+        let txOscillator = null;
+        let txStart = false;
+
+        txBtn.addEventListener('click', () => {
+            if (!txStart) {
+                const image = document.getElementById('txImage').files[0];
+                if (!image) {
+                    alert('请选择一个图片文件');
+                    return;
+                }
+                const reader = new FileReader();
+                reader.onload = async function (e) {
+                    const img = new Image();
+                    img.src = e.target.result;
+                    img.onload = function () {
+                        const canvas = document.createElement('canvas');
+                        canvas.width = width;
+                        canvas.height = height;
+                        const ctx = canvas.getContext('2d');
+                        ctx.drawImage(img, 0, 0, width, height);
+                        const data = ctx.getImageData(0, 0, width, height).data;
+                        const atvData = new Float32Array(data.length / 4);
+                        for (let i = 0; i < data.length; i += 4) {
+                            atvData[i >> 2] = carrierFreq + ((data[i] - 128) / 128) * freqDeviation;
+                        }
+                        txOscillator = audioCtx.createOscillator();
+                        txOscillator.frequency.value = carrierFreq;
+
+                        let t = audioCtx.currentTime;
+
+
+                        // repeat 480 times
+                        for (let i = 0; i < 480; i++) {
+                            // // frame sync
+                            // txOscillator.frequency.setValueAtTime(500, t)
+                            // t += 64 / sampleRate
+
+                            // data
+                            txOscillator.frequency.setValueCurveAtTime(atvData, t, atvData.length / sampleRate)
+                            t += atvData.length / sampleRate
+                        }
+
+                        txOscillator.start();
+                        txOscillator.stop(audioCtx.currentTime + 100 * atvData.length / sampleRate);
+                        txOscillator.connect(audioCtx.destination);
+                        txOscillator.onended = () => {
+                            txBtn.disabled = false;
+                            txBtn.textContent = '发送';
+                            txStart = false;
+                        }
+                        txBtn.disabled = true;
+                        txBtn.textContent = '中止';
+                        txStart = true;
+
+                    }
+                }
+                reader.readAsDataURL(image);
+
+            } else {
+                // txOscillator.stop()
+            }
+            txStart = !txStart;
+        })
+
+        let rxBtn = document.getElementById('start')
+        let rxUpdate = null;
+
+        rxBtn.addEventListener('click', async () => {
+            rxBtn.disabled = true;
+            audioCtx.resume()
+
+            await audioCtx.audioWorklet.addModule(workletData)
+            let stream = await navigator.mediaDevices.getUserMedia(
+                {
+                    audio: {
+                        sampleRate: audioCtx.sampleRate,
+                        deviceId: audioInput.value,
+                        echoCancellation: false,
+                        noiseSuppression: false
+                    },
+                    video: false
+                }
+            )
+
+
+            const source = audioCtx.createMediaStreamSource(stream)
+            const convolver = audioCtx.createConvolver()
+            const demod = new AudioWorkletNode(audioCtx, 'demod')
+
+            rxUpdate = () => {
+                const filter = createFilter(101, carrierFreq, 20000)
+                convolver.buffer = filter;
+                demod.parameters.get('frequency').value = carrierFreq;
+            }
+
+            rxUpdate();
+
+
+            source.connect(demod)
+            // convolver.connect(demod)
+
+            const analyser = audioCtx.createAnalyser()
+            analyser.fftSize = 4096
+            demod.connect(analyser)
+
+            const display = new ATVDisplay(document.getElementById('atv'))
+            demod.port.onmessage = (event) => {
+                const pixel = event.data.phase.map(e => e * 128 + 128);
+                console.log(pixel)
+                display.draw(pixel)
+            };
+        })
+
+        function acquireWakelock() {
+            if ('wakeLock' in navigator) {
+                try {
+                    navigator.wakeLock.request('screen').then(lock => {
+                        lock.addEventListener('release', e => {
+                            console.log("wakelock released");
+                        })
+                    });
+                } catch (error) {
+                    console.error(error);
+                }
+            }
+        }
+
+        document.addEventListener("visibilitychange", function () {
+            if (document.visibilityState === 'visible') {
+                acquireWakelock();
+            }
+        });
+        acquireWakelock();
+
+        const channelInput = document.getElementById('channel')
+        channelInput.addEventListener('change', () => {
+            let channel = parseInt(channelInput.value)
+
+            // check channel range
+            if (channel < 1) {
+                channel = 1
+                channelInput.value = 1
+            } else if (channel > 160) {
+                channel = 160
+                channelInput.value = 160
+            } else if (channel > 12 && channel < 120) {
+                channel = 120
+                channelInput.value = 120
+            }
+
+            if (channel >= 1 && channel <= 12) {
+                carrierFreq = 1000 + 125 * channel
+            } else if (channel >= 120 && channel <= 160) {
+                carrierFreq = 16000 + 125 * (channel - 120)
+            }
+
+            document.getElementById('freq').textContent = carrierFreq + ' Hz'
+
+            // if (txUpdate) {
+            //     txUpdate()
+            // }
+            if (rxUpdate) {
+                rxUpdate()
+            }
+        })
+
+    </script>
+</body>
+
+</html>
