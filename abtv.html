@@ -190,11 +190,12 @@
     <h1 id='title'>音频 TV 收发器</h1>
     <div class="container">
         <div>
-            <input type="file" id="txImage" accept="image/*">
+            <input type="file" id="txImage" accept="video/*">
             <div class="title-text">发送</div>
             <div class="btn-container">
                 <button id="start-tx">发送</button>
             </div>
+            <video controls id="txvideo" width="640" height="480"></video>
             <div id="bits"></div>
         </div>
         <div>
@@ -439,58 +440,45 @@
 
         txBtn.addEventListener('click', () => {
             if (!txStart) {
-                const image = document.getElementById('txImage').files[0];
-                if (!image) {
-                    alert('请选择一个图片文件');
-                    return;
-                }
-                const reader = new FileReader();
-                reader.onload = async function (e) {
-                    const img = new Image();
-                    img.src = e.target.result;
-                    img.onload = function () {
-                        const canvas = document.createElement('canvas');
-                        canvas.width = width;
-                        canvas.height = height;
-                        const ctx = canvas.getContext('2d');
-                        ctx.drawImage(img, 0, 0, width, height);
-                        const data = ctx.getImageData(0, 0, width, height).data;
-                        const atvData = new Float32Array(data.length / 4);
-                        for (let i = 0; i < data.length; i += 4) {
-                            atvData[i >> 2] = carrierFreq + ((data[i] - 128) / 128) * freqDeviation;
-                        }
-                        txOscillator = audioCtx.createOscillator();
-                        txOscillator.frequency.value = carrierFreq;
+                let video = document.getElementById('txvideo');
+                video.src = URL.createObjectURL(document.getElementById('txImage').files[0]);
 
-                        let t = audioCtx.currentTime;
+                const canvas = document.createElement('canvas');
+                canvas.width = width;
+                canvas.height = height;
+                const ctx = canvas.getContext('2d');
+                txOscillator = audioCtx.createOscillator();
+                txOscillator.frequency.value = carrierFreq;
 
-
-                        // repeat 480 times
-                        for (let i = 0; i < 480; i++) {
-                            // // frame sync
-                            // txOscillator.frequency.setValueAtTime(500, t)
-                            // t += 64 / sampleRate
-
-                            // data
-                            txOscillator.frequency.setValueCurveAtTime(atvData, t, atvData.length / sampleRate)
-                            t += atvData.length / sampleRate
-                        }
-
-                        txOscillator.start();
-                        txOscillator.stop(audioCtx.currentTime + 100 * atvData.length / sampleRate);
-                        txOscillator.connect(audioCtx.destination);
-                        txOscillator.onended = () => {
-                            txBtn.disabled = false;
-                            txBtn.textContent = '发送';
-                            txStart = false;
-                        }
-                        txBtn.disabled = true;
-                        txBtn.textContent = '中止';
-                        txStart = true;
-
+                let draw = () => {
+                    ctx.drawImage(video, 0, 0, width, height);
+                    const data = ctx.getImageData(0, 0, width, height).data;
+                    const atvData = new Float32Array(data.length / 4);
+                    for (let i = 0; i < data.length; i += 4) {
+                        atvData[i >> 2] = carrierFreq + ((data[i] - 128) / 128) * freqDeviation;
                     }
+                    let t = audioCtx.currentTime;
+
+                    try{
+                        txOscillator.frequency.setValueCurveAtTime(atvData, t, atvData.length / sampleRate)
+                    } catch (e) {
+                        console.error(e)
+                    }
+                    setTimeout(draw, atvData.length / sampleRate * 1000);
+                    console.log('start', t, atvData.length / sampleRate)
+                };
+                let interval = setTimeout(draw, 10);
+
+                txOscillator.start();
+                // txOscillator.stop(audioCtx.currentTime + 100 * atvData.length / sampleRate);
+                txOscillator.connect(audioCtx.destination);
+                txOscillator.onended = () => {
+                    txBtn.disabled = false;
+                    txBtn.textContent = '发送';
+                    txStart = false;
                 }
-                reader.readAsDataURL(image);
+                txBtn.textContent = '中止';
+                txStart = true;
 
             } else {
                 // txOscillator.stop()
