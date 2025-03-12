@@ -220,8 +220,8 @@
         // const samplePerSymbol = sampleRate / 10000; // 每个符号的采样点数
         // const symbolTime = samplePerSymbol / sampleRate;
         const freqDeviation = 10000
-        let width = 80;
-        let height = 60;
+        let width = 64;
+        let height = 48;
 
         const audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: sampleRate, latencyHint: "balanced" });
 
@@ -232,6 +232,7 @@
                 this.canvas.width = width;
                 this.canvas.height = height;
                 this.ctx = this.canvas.getContext('2d')
+                this.imageData = this.ctx.createImageData(width, height);
                 this.pos = 0;
             }
 
@@ -239,13 +240,17 @@
                 for (let pixel of data) {
                     let x = this.pos % this.canvas.width;
                     let y = Math.floor(this.pos / this.canvas.width);
-                    this.ctx.fillStyle = `rgb(${pixel},${pixel},${pixel})`;
-                    this.ctx.fillRect(x, y, 1, 1);
+                    let ord = (y * this.canvas.width + x) * 4;
+                    this.imageData.data[ord] = pixel;
+                    this.imageData.data[ord + 1] = pixel;
+                    this.imageData.data[ord + 2] = pixel;
+                    this.imageData.data[ord + 3] = 255;
                     this.pos++;
                     if (this.pos >= this.canvas.width * this.canvas.height) {
                         this.pos = 0;
                     }
                 }
+                this.ctx.putImageData(this.imageData, 0, 0);
             }
         }
 
@@ -333,7 +338,7 @@
                     const filteredQ = this.lowPassFilterIIR(q, 1);  // 通道1处理Q路信号
 
 
-                    // 相位差检测
+                    // FM解调：计算瞬时相位差（相邻样本的共轭乘积）
                     const phase = new Float32Array(input.length);
                     for (let j = 0; j < input.length - 1; ++j) {
                         // 计算相邻样本的共轭乘积（用于相位差检测）
@@ -407,20 +412,6 @@
                 })
             )
             return buffer;
-        }
-
-        function toSI(n, bin = false) {
-            if (n == null) return "Unknown "
-            let suffix = ['', 'K', 'M', 'G', 'T', 'P', 'E', 'Z', 'Y'];
-            let base = bin ? 1024 : 1000;
-            if (n < base) return parseInt(n) + " ";
-            for (let i in suffix) {
-                if (n < base) {
-                    return bin ? n.toFixed(2) + " " + suffix[i] : n.toFixed(2) + " " + suffix[i];
-                }
-                n /= base;
-            }
-            return (n * base).toLocaleString() + " " + suffix[suffix.length - 1];
         }
 
         const code = new TextEncoder().encode(`(${createDemodulator.toString()})(${sampleRate});`);
@@ -529,12 +520,9 @@
 
 
             const source = audioCtx.createMediaStreamSource(stream)
-            const convolver = audioCtx.createConvolver()
             const demod = new AudioWorkletNode(audioCtx, 'demod')
 
             rxUpdate = () => {
-                const filter = createFilter(101, carrierFreq, 20000)
-                convolver.buffer = filter;
                 demod.parameters.get('frequency').value = carrierFreq;
             }
 
@@ -542,7 +530,6 @@
 
 
             source.connect(demod)
-            // convolver.connect(demod)
 
             const analyser = audioCtx.createAnalyser()
             analyser.fftSize = 4096
@@ -551,7 +538,6 @@
             const display = new ATVDisplay(document.getElementById('atv'))
             demod.port.onmessage = (event) => {
                 const pixel = event.data.phase.map(e => e * 128 + 128);
-                console.log(pixel)
                 display.draw(pixel)
             };
         })
