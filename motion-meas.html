@@ -108,6 +108,7 @@
 
         // 更新统计信息
         function updateStats() {
+        	try{
             if (trackPoints.length < 2) return;
 
             let totalDistance = 0;
@@ -144,17 +145,17 @@
             const currentPaceSec = Math.round(currentPace % 60);
 
             document.getElementById('stats').innerHTML = `
-                当前位置：${convertToDMS(lastPos.lat, lastPos.lon)} 精度：${(lastPos.acc).toFixed(0)}m<br>
+                当前位置：${convertToDMS(lastPos.lat, lastPos.lon)} 精度：${lastPos.acc.toFixed(0)}m<br>
                 当前海拔：${(lastPos.alt).toFixed(1)}m<br>
                 当前速度: ${currentSpeed.toFixed(2)} km/h<br>
                 当前配速: ${currentPaceMin}:${currentPaceSec.toString().padStart(2, '0')} min/km<br>
                 总距离: ${(totalDistance / 1000).toFixed(2)} km<br>
                 平均时速: ${avgSpeed.toFixed(2)} km/h<br>
                 平均配速: ${paceMin}:${paceSec.toString().padStart(2, '0')} min/km
-            `;
+            `;}catch(e){alert(e)}
         }
 
-        let lastAccuracyCircle;
+        //let lastAccuracyCircle;
 
         // 开始记录
         function startRecording() {
@@ -168,12 +169,13 @@
                 const point = {
                     lat: position.coords.latitude,
                     lon: position.coords.longitude,
-                    alt: position.coords.altitude.toFixed(3),
-                    acc: position.coords.accuracy.toFixed(3),
+                    alt: position.coords.altitude,
+                    acc: position.coords.accuracy,
                     t: new Date().getTime()
                 };
                 
                 trackPoints.push(point);
+                updateStats();
                 
                  // 更新地图显示
                 if (!trackLine) {
@@ -186,6 +188,7 @@
                 if (endMarker) endMarker.remove();
                 endMarker = L.marker([point.lat, point.lon], {title: '终点'}).addTo(map);
                 
+                /*
                 // Add accuracy circle
                 if (lastAccuracyCircle) lastAccuracyCircle.remove();
                 lastAccuracyCircle = L.circle([lastPos.lat, lastPos.lon], {
@@ -194,8 +197,8 @@
                     fillColor: 'blue',
                     fillOpacity: 0.2
                 }).addTo(map);
-
-                updateStats();
+*/
+                
             }, error => {
                 console.error('Error getting position:', error);
             }, {
