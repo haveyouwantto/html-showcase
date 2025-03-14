@@ -1,317 +1,286 @@
 <!DOCTYPE html>
 <html>
+
 <head>
-  <meta charset="utf-8">
-  <title>8x8 块 DCT 渐进重构</title>
-  <style>
-    canvas {
-      border: 1px solid #000;
-      margin: 10px;
-    }
-  </style>
+    <meta charset="utf-8">
+    <title>8x8 块 DCT 渐进重构</title>
+    <style>
+        canvas {
+            border: 1px solid #000;
+            margin: 10px;
+        }
+    </style>
 </head>
+
 <body>
-  <h3>上传图片（自动缩放至256×256），使用8×8块DCT渐进重构</h3>
-  <input type="file" id="upload" accept="image/*"><br>
-  <canvas id="sourceCanvas" width="256" height="256"></canvas>
-  <canvas id="reconCanvas" width="256" height="256"></canvas>
-  <div id="status"></div>
-  <script>
-    // ---------------- 1. 1D DCT 与 IDCT（标准公式） ----------------
-    function dct1d(vector) {
-      const N = vector.length;
-      let result = new Array(N).fill(0);
-      for (let k = 0; k < N; k++) {
-        let sum = 0;
-        for (let n = 0; n < N; n++) {
-          sum += vector[n] * Math.cos(Math.PI * (n + 0.5) * k / N);
-        }
-        let alpha = k === 0 ? Math.sqrt(1 / N) : Math.sqrt(2 / N);
-        result[k] = alpha * sum;
-      }
-      return result;
-    }
-
-    function idct1d(vector) {
-      const N = vector.length;
-      let result = new Array(N).fill(0);
-      for (let n = 0; n < N; n++) {
-        let sum = 0;
-        for (let k = 0; k < N; k++) {
-          let alpha = k === 0 ? Math.sqrt(1 / N) : Math.sqrt(2 / N);
-          sum += alpha * vector[k] * Math.cos(Math.PI * (n + 0.5) * k / N);
-        }
-        result[n] = sum;
-      }
-      return result;
-    }
-
-    // ---------------- 2. 2D DCT/IDCT（针对8x8块） ----------------
-    function dct2dBlock(block) {
-      const N = 8;
-      // 对每一行做1D DCT
-      let temp = [];
-      for (let i = 0; i < N; i++) {
-        temp[i] = dct1d(block[i]);
-      }
-      // 对每一列做1D DCT
-      let result = [];
-      for (let j = 0; j < N; j++) {
-        let col = [];
-        for (let i = 0; i < N; i++) {
-          col.push(temp[i][j]);
-        }
-        let dctCol = dct1d(col);
-        for (let i = 0; i < N; i++) {
-          if (!result[i]) result[i] = new Array(N);
-          result[i][j] = dctCol[i];
-        }
-      }
-      return result;
-    }
-
-    function idct2dBlock(block) {
-      const N = 8;
-      // 先对每一列做1D IDCT
-      let temp = [];
-      for (let j = 0; j < N; j++) {
-        let col = [];
-        for (let i = 0; i < N; i++) {
-          col.push(block[i][j]);
-        }
-        let idctCol = idct1d(col);
-        for (let i = 0; i < N; i++) {
-          if (!temp[i]) temp[i] = new Array(N);
-          temp[i][j] = idctCol[i];
-        }
-      }
-      // 再对每一行做1D IDCT
-      let result = [];
-      for (let i = 0; i < N; i++) {
-        result[i] = idct1d(temp[i]);
-      }
-      return result;
-    }
-    
-
-    // ---------------- 3. 全局变量 ----------------
-    const sourceCanvas = document.getElementById('sourceCanvas');
-    const sourceCtx = sourceCanvas.getContext('2d');
-    const reconCanvas = document.getElementById('reconCanvas');
-    const reconCtx = reconCanvas.getContext('2d');
-
-    let originalMatrix = [];       // 256x256 灰度图矩阵
-    let quadrupleList = [];        // 四元组列表：{ blockX, blockY, idx, value }
-    let reconstructedDCTBlocks = [];  // 二维数组：[blockY][blockX] 每个元素为8x8重构的DCT系数矩阵
-    let currentQuadIndex = 0;
-    let timer;
-
-    // ---------------- 4. 图片上传与预处理 ----------------
-    document.getElementById('upload').addEventListener('change', function(event) {
-      const file = event.target.files[0];
-      if (!file) return;
-      const img = new Image();
-      const reader = new FileReader();
-      reader.onload = function(e) {
-        img.src = e.target.result;
-      };
-      reader.readAsDataURL(file);
-
-      img.onload = function() {
-        // 将图片绘制到源 canvas 上，并缩放到256×256
-        sourceCtx.drawImage(img, 0, 0, 256, 256);
-        // 获取图像数据并转换为灰度矩阵
-        const imgData = sourceCtx.getImageData(0, 0, 256, 256);
-        originalMatrix = [];
-        for (let i = 0; i < 256; i++) {
-          let row = [];
-          for (let j = 0; j < 256; j++) {
-            const index = (i * 256 + j) * 4;
-            const r = imgData.data[index];
-            const g = imgData.data[index + 1];
-            const b = imgData.data[index + 2];
-            const gray = 0.299 * r + 0.587 * g + 0.114 * b;
-            row.push(gray);
-          }
-          originalMatrix.push(row);
-        }
-        
-        // 分成8x8块，对每块计算DCT，并生成四元组列表
-        quadrupleList = [];
-        reconstructedDCTBlocks = [];
-        const blocksPerRow = 256 / 8;  // 32
-        const blocksPerCol = 256 / 8;  // 32
-
-        for (let by = 0; by < blocksPerCol; by++) {
-          reconstructedDCTBlocks[by] = [];
-          for (let bx = 0; bx < blocksPerRow; bx++) {
-            // 提取8x8块
-            let block = [];
-            for (let i = 0; i < 8; i++) {
-              let row = [];
-              for (let j = 0; j < 8; j++) {
-                row.push(originalMatrix[by * 8 + i][bx * 8 + j]);
-              }
-              block.push(row);
+    <h3>上传图片（自动缩放至256×256），使用8×8块DCT渐进重构</h3>
+    <input type="file" id="upload" accept="image/*"><br>
+    <canvas id="sourceCanvas" width="256" height="256"></canvas>
+    <canvas id="reconCanvas" width="256" height="256"></canvas>
+    <pre id="status"></pre>
+    <script>
+        // ---------------- 1. 1D DCT 与 IDCT（标准公式） ----------------
+        function dct1d(vector) {
+            const N = vector.length;
+            let result = new Array(N).fill(0);
+            for (let k = 0; k < N; k++) {
+                let sum = 0;
+                for (let n = 0; n < N; n++) {
+                    sum += vector[n] * Math.cos(Math.PI * (n + 0.5) * k / N);
+                }
+                let alpha = k === 0 ? Math.sqrt(1 / N) : Math.sqrt(2 / N);
+                result[k] = alpha * sum;
             }
-            // 计算该块的2D DCT
-            const dctBlock = dct2dBlock(block);
-            // 初始化重构用的DCT块（全零）
-            let recBlock = [];
-            for (let i = 0; i < 8; i++) {
-              recBlock.push(new Array(8).fill(0));
-            }
-            if (!reconstructedDCTBlocks[by]) {
-              reconstructedDCTBlocks[by] = [];
-            }
-            reconstructedDCTBlocks[by][bx] = recBlock;
-            
-            // 对该块的每个系数，生成四元组：{blockX, blockY, idx, value}
-            for (let i = 0; i < 8; i++) {
-              for (let j = 0; j < 8; j++) {
-                const idx = i * 8 + j;  // 平铺索引 0～63
-                quadrupleList.push({
-                  blockX: bx,
-                  blockY: by,
-                  idx: idx,
-                  value: dctBlock[i][j]
-                });
-              }
-            }
-          }
+            return result;
         }
-        console.log("四元组总数:", quadrupleList.length); // 应为 65536
 
-        // 按系数绝对值降序排序
-        quadrupleList.sort((a, b) => Math.abs(b.value) - Math.abs(a.value));
-
-        // 启动定时器：每125毫秒更新1个系数
-        let sampIdx =0
-        const reconst = new DCTReconstructor(document.getElementById('reconCanvas'))
-        function nextSample(){
-            const sample = quadrupleList[sampIdx];
-            reconst.addSample(sample)
-            sampIdx++
-        }
-        setInterval(nextSample,50)
-        // currentQuadIndex = 0;
-        // if (timer) clearInterval(timer);
-        // timer = setInterval(updateReconstruction, 10);
-      };
-    });
-
-    // ---------------- 5. 渐进重构更新函数 ----------------
-    class DCTReconstructor {
-      /**
-       * @param {HTMLCanvasElement} canvas 用于显示重构结果的 canvas 元素
-       * @param {number} imageWidth 图像宽度，默认256
-       * @param {number} imageHeight 图像高度，默认256
-       * @param {number} blockSize 分块尺寸，默认8（即8x8块）
-       */
-      constructor(canvas, imageWidth = 256, imageHeight = 256, blockSize = 8) {
-        this.canvas = canvas;
-        this.ctx = canvas.getContext('2d');
-        this.imageWidth = imageWidth;
-        this.imageHeight = imageHeight;
-        this.blockSize = blockSize;
-        this.blocksPerRow = imageWidth / blockSize;
-        this.blocksPerCol = imageHeight / blockSize;
-        
-        // 初始化重构时每个8x8块的 DCT 系数矩阵（全部置零）
-        this.reconstructedDCTBlocks = [];
-        for (let by = 0; by < this.blocksPerCol; by++) {
-          this.reconstructedDCTBlocks[by] = [];
-          for (let bx = 0; bx < this.blocksPerRow; bx++) {
-            let block = [];
-            for (let i = 0; i < blockSize; i++) {
-              block.push(new Array(blockSize).fill(0));
+        function idct1d(vector) {
+            const N = vector.length;
+            let result = new Array(N).fill(0);
+            for (let n = 0; n < N; n++) {
+                let sum = 0;
+                for (let k = 0; k < N; k++) {
+                    let alpha = k === 0 ? Math.sqrt(1 / N) : Math.sqrt(2 / N);
+                    sum += alpha * vector[k] * Math.cos(Math.PI * (n + 0.5) * k / N);
+                }
+                result[n] = sum;
             }
-            this.reconstructedDCTBlocks[by][bx] = block;
-          }
+            return result;
         }
-      }
-      
-      /**
-       * 添加一个 DCT 四元组样本，自动更新对应块的系数，
-       * 进行 IDCT 重构，并在 canvas 上绘制更新后的块。
-       * @param {Array|Object} sample 四元组数据，[blockX, blockY, idx, value] 或 {blockX, blockY, idx, value}
-       */
-      addSample(sample) {
-        let blockX, blockY, idx, value;
-        if (Array.isArray(sample)) {
-          [blockX, blockY, idx, value] = sample;
-        } else {
-          blockX = sample.blockX;
-          blockY = sample.blockY;
-          idx = sample.idx;
-          value = sample.value;
-        }
-        // 计算块内行列（假设块尺寸为8）
-        const row = Math.floor(idx / this.blockSize);
-        const col = idx % this.blockSize;
-        
-        // 更新对应块的 DCT 系数
-        this.reconstructedDCTBlocks[blockY][blockX][row][col] = value;
-        
-        // 对该块进行逆 DCT 得到空间域数据
-        const spatialBlock = idct2dBlock(this.reconstructedDCTBlocks[blockY][blockX]);
-        
-        // 创建8x8的 ImageData，将空间域数据写入
-        const blockImageData = this.ctx.createImageData(this.blockSize, this.blockSize);
-        for (let y = 0; y < this.blockSize; y++) {
-          for (let x = 0; x < this.blockSize; x++) {
-            let pixelValue = Math.round(spatialBlock[y][x]);
-            // 限制在0-255之间
-            pixelValue = Math.max(0, Math.min(255, pixelValue));
-            const pixelIndex = (y * this.blockSize + x) * 4;
-            blockImageData.data[pixelIndex] = pixelValue;
-            blockImageData.data[pixelIndex + 1] = pixelValue;
-            blockImageData.data[pixelIndex + 2] = pixelValue;
-            blockImageData.data[pixelIndex + 3] = 255;
-          }
-        }
-        // 在 canvas 上对应位置绘制该块
-        this.ctx.putImageData(blockImageData, blockX * this.blockSize, blockY * this.blockSize);
-      }
-    }
-    
-    // function updateReconstruction() {
-    //   if (currentQuadIndex >= quadrupleList.length) {
-    //     clearInterval(timer);
-    //     console.log("重构完成！");
-    //     return;
-    //   }
-    //   const quad = quadrupleList[currentQuadIndex];
-    //   currentQuadIndex++;
 
-    //   const bx = quad.blockX;
-    //   const by = quad.blockY;
-    //   const idx = quad.idx;
-    //   const i = Math.floor(idx / 8);
-    //   const j = idx % 8;
-      
-    //   // 更新对应块的DCT系数
-    //   reconstructedDCTBlocks[by][bx][i][j] = quad.value;
-      
-    //   // 对该块进行逆 DCT 得到空间域块
-    //   const spatialBlock = idct2dBlock(reconstructedDCTBlocks[by][bx]);
-      
-    //   // 创建8x8的 ImageData 更新该块区域
-    //   const blockImageData = reconCtx.createImageData(8, 8);
-    //   for (let y = 0; y < 8; y++) {
-    //     for (let x = 0; x < 8; x++) {
-    //       let val = Math.round(spatialBlock[y][x]);
-    //       val = Math.min(255, Math.max(0, val));
-    //       const index = (y * 8 + x) * 4;
-    //       blockImageData.data[index] = val;
-    //       blockImageData.data[index + 1] = val;
-    //       blockImageData.data[index + 2] = val;
-    //       blockImageData.data[index + 3] = 255;
-    //     }
-    //   }
-    //   // 将该块写入重构canvas中对应的位置
-    //   reconCtx.putImageData(blockImageData, bx * 8, by * 8);
-    // }
-  </script>
+        // ---------------- 2. 2D DCT/IDCT（针对8x8块） ----------------
+        function dct2dBlock(block) {
+            const N = 8;
+            // 对每一行做1D DCT
+            let temp = [];
+            for (let i = 0; i < N; i++) {
+                temp[i] = dct1d(block[i]);
+            }
+            // 对每一列做1D DCT
+            let result = [];
+            for (let j = 0; j < N; j++) {
+                let col = [];
+                for (let i = 0; i < N; i++) {
+                    col.push(temp[i][j]);
+                }
+                let dctCol = dct1d(col);
+                for (let i = 0; i < N; i++) {
+                    if (!result[i]) result[i] = new Array(N);
+                    result[i][j] = dctCol[i];
+                }
+            }
+            return result;
+        }
+
+        function idct2dBlock(block) {
+            const N = 8;
+            // 先对每一列做1D IDCT
+            let temp = [];
+            for (let j = 0; j < N; j++) {
+                let col = [];
+                for (let i = 0; i < N; i++) {
+                    col.push(block[i][j]);
+                }
+                let idctCol = idct1d(col);
+                for (let i = 0; i < N; i++) {
+                    if (!temp[i]) temp[i] = new Array(N);
+                    temp[i][j] = idctCol[i];
+                }
+            }
+            // 再对每一行做1D IDCT
+            let result = [];
+            for (let i = 0; i < N; i++) {
+                result[i] = idct1d(temp[i]);
+            }
+            return result;
+        }
+
+
+        // ---------------- 3. 全局变量 ----------------
+        const sourceCanvas = document.getElementById('sourceCanvas');
+        const sourceCtx = sourceCanvas.getContext('2d');
+        const reconCanvas = document.getElementById('reconCanvas');
+        const reconCtx = reconCanvas.getContext('2d');
+
+        let originalMatrix = [];       // 256x256 灰度图矩阵
+        let quadrupleList = [];        // 四元组列表：{ blockX, blockY, idx, value }
+        let reconstructedDCTBlocks = [];  // 二维数组：[blockY][blockX] 每个元素为8x8重构的DCT系数矩阵
+        let currentQuadIndex = 0;
+        let timer;
+
+        // ---------------- 4. 图片上传与预处理 ----------------
+        document.getElementById('upload').addEventListener('change', function (event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            const img = new Image();
+            const reader = new FileReader();
+            reader.onload = function (e) {
+                img.src = e.target.result;
+            };
+            reader.readAsDataURL(file);
+
+            img.onload = function () {
+                // 将图片绘制到源 canvas 上，并缩放到256×256
+                sourceCtx.drawImage(img, 0, 0, 256, 256);
+                // 获取图像数据并转换为灰度矩阵
+                const imgData = sourceCtx.getImageData(0, 0, 256, 256);
+                originalMatrix = [];
+                for (let i = 0; i < 256; i++) {
+                    let row = [];
+                    for (let j = 0; j < 256; j++) {
+                        const index = (i * 256 + j) * 4;
+                        const r = imgData.data[index];
+                        const g = imgData.data[index + 1];
+                        const b = imgData.data[index + 2];
+                        const gray = 0.299 * r + 0.587 * g + 0.114 * b;
+                        row.push(gray);
+                    }
+                    originalMatrix.push(row);
+                }
+
+                // 分成8x8块，对每块计算DCT，并生成四元组列表
+                quadrupleList = [];
+                reconstructedDCTBlocks = [];
+                const blocksPerRow = 256 / 8;  // 32
+                const blocksPerCol = 256 / 8;  // 32
+
+                for (let by = 0; by < blocksPerCol; by++) {
+                    reconstructedDCTBlocks[by] = [];
+                    for (let bx = 0; bx < blocksPerRow; bx++) {
+                        // 提取8x8块
+                        let block = [];
+                        for (let i = 0; i < 8; i++) {
+                            let row = [];
+                            for (let j = 0; j < 8; j++) {
+                                row.push(originalMatrix[by * 8 + i][bx * 8 + j]);
+                            }
+                            block.push(row);
+                        }
+                        // 计算该块的2D DCT
+                        const dctBlock = dct2dBlock(block);
+                        // 初始化重构用的DCT块（全零）
+                        let recBlock = [];
+                        for (let i = 0; i < 8; i++) {
+                            recBlock.push(new Array(8).fill(0));
+                        }
+                        if (!reconstructedDCTBlocks[by]) {
+                            reconstructedDCTBlocks[by] = [];
+                        }
+                        reconstructedDCTBlocks[by][bx] = recBlock;
+
+                        // 对该块的每个系数，生成四元组：{blockX, blockY, idx, value}
+                        for (let i = 0; i < 8; i++) {
+                            for (let j = 0; j < 8; j++) {
+                                const idx = i * 8 + j;  // 平铺索引 0～63
+                                quadrupleList.push({
+                                    blockX: bx,
+                                    blockY: by,
+                                    idx: idx,
+                                    value: dctBlock[i][j]
+                                });
+                            }
+                        }
+                    }
+                }
+                console.log("四元组总数:", quadrupleList.length); // 应为 65536
+
+                // 按系数绝对值降序排序
+                quadrupleList.sort((a, b) => Math.abs(b.value) - Math.abs(a.value));
+
+                console.log(quadrupleList)
+
+                // 启动定时器：每125毫秒更新1个系数
+                let sampIdx = 0
+                const statusDiv = document.getElementById('status');
+                const reconst = new DCTReconstructor(document.getElementById('reconCanvas'))
+
+                if (timer) cancelAnimationFrame(timer);
+                function nextSample() {
+                    const sample = quadrupleList[sampIdx];
+                    reconst.addSample(sample)
+                    statusDiv.textContent = `接收到第${sampIdx}个样本\n坐标：(${sample.blockX},${sample.blockY})\n索引：${sample.idx}\n系数：${sample.value.toFixed(4)}`;
+                    sampIdx++
+                    timer = requestAnimationFrame(nextSample)
+                }
+                timer = requestAnimationFrame(nextSample)
+            };
+        });
+
+        // ---------------- 5. 渐进重构更新函数 ----------------
+        class DCTReconstructor {
+            /**
+             * @param {HTMLCanvasElement} canvas 用于显示重构结果的 canvas 元素
+             * @param {number} imageWidth 图像宽度，默认256
+             * @param {number} imageHeight 图像高度，默认256
+             * @param {number} blockSize 分块尺寸，默认8（即8x8块）
+             */
+            constructor(canvas, imageWidth = 256, imageHeight = 256, blockSize = 8) {
+                this.canvas = canvas;
+                this.ctx = canvas.getContext('2d');
+                this.imageWidth = imageWidth;
+                this.imageHeight = imageHeight;
+                this.blockSize = blockSize;
+                this.blocksPerRow = imageWidth / blockSize;
+                this.blocksPerCol = imageHeight / blockSize;
+
+                // 初始化重构时每个8x8块的 DCT 系数矩阵（全部置零）
+                this.reconstructedDCTBlocks = [];
+                for (let by = 0; by < this.blocksPerCol; by++) {
+                    this.reconstructedDCTBlocks[by] = [];
+                    for (let bx = 0; bx < this.blocksPerRow; bx++) {
+                        let block = [];
+                        for (let i = 0; i < blockSize; i++) {
+                            block.push(new Array(blockSize).fill(0));
+                        }
+                        this.reconstructedDCTBlocks[by][bx] = block;
+                    }
+                }
+            }
+
+            /**
+             * 添加一个 DCT 四元组样本，自动更新对应块的系数，
+             * 进行 IDCT 重构，并在 canvas 上绘制更新后的块。
+             * @param {Array|Object} sample 四元组数据，[blockX, blockY, idx, value] 或 {blockX, blockY, idx, value}
+             */
+            addSample(sample) {
+                let blockX, blockY, idx, value;
+                if (Array.isArray(sample)) {
+                    [blockX, blockY, idx, value] = sample;
+                } else {
+                    blockX = sample.blockX;
+                    blockY = sample.blockY;
+                    idx = sample.idx;
+                    value = sample.value;
+                }
+                // 计算块内行列（假设块尺寸为8）
+                const row = Math.floor(idx / this.blockSize);
+                const col = idx % this.blockSize;
+
+                // 更新对应块的 DCT 系数
+                this.reconstructedDCTBlocks[blockY][blockX][row][col] = value;
+
+                // 对该块进行逆 DCT 得到空间域数据
+                const spatialBlock = idct2dBlock(this.reconstructedDCTBlocks[blockY][blockX]);
+
+                // 创建8x8的 ImageData，将空间域数据写入
+                const blockImageData = this.ctx.createImageData(this.blockSize, this.blockSize);
+                for (let y = 0; y < this.blockSize; y++) {
+                    for (let x = 0; x < this.blockSize; x++) {
+                        let pixelValue = Math.round(spatialBlock[y][x]);
+                        // 限制在0-255之间
+                        pixelValue = Math.max(0, Math.min(255, pixelValue));
+                        const pixelIndex = (y * this.blockSize + x) * 4;
+                        blockImageData.data[pixelIndex] = pixelValue;
+                        blockImageData.data[pixelIndex + 1] = pixelValue;
+                        blockImageData.data[pixelIndex + 2] = pixelValue;
+                        blockImageData.data[pixelIndex + 3] = 255;
+                    }
+                }
+                // 在 canvas 上对应位置绘制该块
+                this.ctx.putImageData(blockImageData, blockX * this.blockSize, blockY * this.blockSize);
+            }
+        }
+    </script>
 </body>
+
 </html>
