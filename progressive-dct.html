@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <style>
+        canvas { border: 1px solid #999; margin: 10px }
+        .container { display: flex }
+    </style>
+</head>
+<body>
+    <input type="file" id="upload" accept="image/*">
+    <div class="container">
+        <canvas id="sourceCanvas" width="256" height="256"></canvas>
+        <canvas id="reconstructCanvas" width="256" height="256"></canvas>
+    </div>
+
+<script>
+const BLOCK_SIZE = 8;
+const BLOCKS_PER_SECOND = 8;
+
+// 初始化FFT/DCT函数
+function miniFFT(re, im) {
+    const N = re.length;
+    for (let i = 0; i < N; i++) {
+        for (let j = 0, h = i, k = N; k >>= 1; h >>= 1) {
+            j = (j << 1) | (h & 1);
+        }
+        if (j > i) {
+            [re[i], re[j]] = [re[j], re[i]];
+            [im[i], im[j]] = [im[j], re[i]];
+        }
+    }
+    for (let hN = 1; hN * 2 <= N; hN *= 2) {
+        for (let i = 0; i < N; i += hN * 2) {
+            for (let j = i; j < i + hN; j++) {
+                const angle = Math.PI * (j - i) / hN;
+                const cos = Math.cos(angle);
+                const sin = Math.sin(angle);
+                const tre =  re[j+hN] * cos + im[j+hN] * sin;
+                const tim = -re[j+hN] * sin + im[j+hN] * cos;
+                
+                re[j+hN] = re[j] - tre;
+                im[j+hN] = im[j] - tim;
+                re[j] += tre;
+                im[j] += tim;
+            }
+        }
+    }
+}
+
+function miniDCT(s) {
+    const N = s.length;
+    const K = -Math.PI / (2 * N);
+    const re = new Float64Array(N);
+    const im = new Float64Array(N);
+    
+    // 奇偶分离
+    for (let i = 0, j = N; j > i;) {
+        re[i] = s[i*2];
+        re[--j] = s[i*2+1];
+        i++;
+    }
+    
+    miniFFT(re, im);
+    
+    // 后处理
+    const mul = Math.sqrt(2/N);
+    for (let i = 0; i < N; i++) {
+        s[i] = (re[i] * Math.cos(K*i) - im[i] * Math.sin(K*i)) * mul;
+    }
+    s[0] *= Math.SQRT1_2;
+}
+
+function miniIDCT(s) {
+    const N = s.length;
+    const K = Math.PI / (2 * N);
+    const im = new Float64Array(N);
+    const re = new Float64Array(N);
+    const scale = Math.sqrt(2/N);
+    
+    re[0] = s[0] / Math.sqrt(N);
+    for (let i = 1; i < N; i++) {
+        const im2 = Math.sin(i*K);
+        const re2 = Math.cos(i*K);
+        re[i] = (s[N-i]*im2 + s[i]*re2) * scale/2;
+        im[i] = (im2*s[i] - s[N-i]*re2) * scale/2;
+    }
+    
+    miniFFT(im, re);
+    
+    // 重组数据
+    for (let i = 0; i < N/2; i++) {
+        s[2*i] = re[i];
+        s[2*i+1] = re[N-i-1];
+    }
+}
+
+// 二维DCT处理
+function dct2D(block) {
+    const temp = Array.from({length: BLOCK_SIZE}, () => new Float64Array(BLOCK_SIZE));
+    const output = Array.from({length: BLOCK_SIZE}, () => new Float64Array(BLOCK_SIZE));
+    
+    // 行变换
+    for (let y = 0; y < BLOCK_SIZE; y++) {
+        const row = [...block[y]];
+        miniDCT(row);
+        temp[y] = row;
+    }
+    
+    // 列变换
+    for (let x = 0; x < BLOCK_SIZE; x++) {
+        const col = new Float64Array(BLOCK_SIZE);
+        for (let y = 0; y < BLOCK_SIZE; y++) {
+            col[y] = temp[y][x];
+        }
+        miniDCT(col);
+        for (let y = 0; y < BLOCK_SIZE; y++) {
+            output[y][x] = col[y];
+        }
+    }
+    return output;
+}
+
+// 二维IDCT处理
+function idct2D(block) {
+    const temp = Array.from({length: BLOCK_SIZE}, () => new Float64Array(BLOCK_SIZE));
+    const output = Array.from({length: BLOCK_SIZE}, () => new Float64Array(BLOCK_SIZE));
+    
+    // 行逆变换
+    for (let y = 0; y < BLOCK_SIZE; y++) {
+        const row = [...block[y]];
+        miniIDCT(row);
+        temp[y] = row;
+    }
+    
+    // 列逆变换
+    for (let x = 0; x < BLOCK_SIZE; x++) {
+        const col = new Float64Array(BLOCK_SIZE);
+        for (let y = 0; y < BLOCK_SIZE; y++) {
+            col[y] = temp[y][x];
+        }
+        miniIDCT(col);
+        for (let y = 0; y < BLOCK_SIZE; y++) {
+            output[y][x] = col[y];
+        }
+    }
+    return output;
+}
+
+document.getElementById('upload').addEventListener('change', function(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+    
+    const img = new Image();
+    const reader = new FileReader();
+    
+    reader.onload = function(e) {
+        img.onload = function() {
+            // 准备画布
+            const srcCanvas = document.getElementById('sourceCanvas');
+            const srcCtx = srcCanvas.getContext('2d');
+            
+            // 调整图像尺寸
+            srcCtx.drawImage(img, 0, 0, 256, 256);
+            
+            // 获取图像数据
+            const imgData = srcCtx.getImageData(0, 0, 256, 256);
+            const data = imgData.data;
+            
+            // 转换为灰度
+            const grayData = new Array(256*256);
+            for (let i = 0; i < data.length; i += 4) {
+                grayData[i/4] = data[i] * 0.299 + data[i+1] * 0.587 + data[i+2] * 0.114;
+            }
+            
+            // 分块处理
+            const blocks = [];
+            for (let y = 0; y < 256; y += BLOCK_SIZE) {
+                for (let x = 0; x < 256; x += BLOCK_SIZE) {
+                    const block = Array.from({length: BLOCK_SIZE}, () => 
+                        new Float64Array(BLOCK_SIZE));
+                    
+                    // 提取块数据
+                    for (let dy = 0; dy < BLOCK_SIZE; dy++) {
+                        for (let dx = 0; dx < BLOCK_SIZE; dx++) {
+                            block[dy][dx] = grayData[(y+dy)*256 + (x+dx)] - 128;
+                        }
+                    }
+                    blocks.push({
+                        x, y,
+                        dct: dct2D(block)
+                    });
+                }
+            }
+            
+            // 准备重建画布
+            const reconCanvas = document.getElementById('reconstructCanvas');
+            const reconCtx = reconCanvas.getContext('2d');
+            const reconImageData = reconCtx.createImageData(256, 256);
+            const reconData = reconImageData.data;
+            
+            // 初始化重建数据（中灰色）
+            for (let i = 0; i < reconData.length; i += 4) {
+                reconData[i] = reconData[i+1] = reconData[i+2] = 128;
+                reconData[i+3] = 255;
+            }
+            reconCtx.putImageData(reconImageData, 0, 0);
+            
+            // 渐进传输
+            let currentBlock = 0;
+            const timer = setInterval(() => {
+                for (let i = 0; i < BLOCKS_PER_SECOND; i++) {
+                    if (currentBlock >= blocks.length) {
+                        clearInterval(timer);
+                        return;
+                    }
+                    
+                    const block = blocks[currentBlock];
+                    const idctBlock = idct2D(block.dct);
+                    
+                    // 更新重建数据
+                    for (let dy = 0; dy < BLOCK_SIZE; dy++) {
+                        for (let dx = 0; dx < BLOCK_SIZE; dx++) {
+                            const val = Math.min(255, Math.max(0, idctBlock[dy][dx] + 128));
+                            const pos = ((block.y + dy)*256 + (block.x + dx)) * 4;
+                            reconData[pos] = reconData[pos+1] = reconData[pos+2] = val;
+                        }
+                    }
+                    currentBlock++;
+                }
+                
+                // 更新显示
+                reconCtx.putImageData(reconImageData, 0, 0);
+            }, 1000 / BLOCKS_PER_SECOND);
+        }
+        img.src = e.target.result;
+    }
+    reader.readAsDataURL(file);
+});
+</script>
+</body>
+</html>
+
