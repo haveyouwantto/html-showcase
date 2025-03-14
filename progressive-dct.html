@@ -263,6 +263,9 @@
     }
     
     // ========== 7. 图片上传与预处理 ==========
+    
+    let timer;
+
     document.getElementById('upload').addEventListener('change', function (event) {
       const file = event.target.files[0];
       if (!file) return;
@@ -371,7 +374,6 @@
         const statusDiv = document.getElementById('status');
         const reconstructor = new ColorDCTReconstructor(reconCanvas);
         let sampIdx = 0;
-        let timer;
         function nextSample() {
           if (sampIdx >= quadrupleList.length) {
             statusDiv.textContent += "\n重构完成！";
@@ -383,6 +385,7 @@
           sampIdx++;
           timer = requestAnimationFrame(nextSample);
         }
+        if (timer) cancelAnimationFrame(timer);
         timer = requestAnimationFrame(nextSample);
       };
     });
