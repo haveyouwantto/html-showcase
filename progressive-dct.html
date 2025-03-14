@@ -1,286 +1,480 @@
 <!DOCTYPE html>
 <html>
-
 <head>
-    <meta charset="utf-8">
-    <title>8x8 块 DCT 渐进重构</title>
-    <style>
-        canvas {
-            border: 1px solid #000;
-            margin: 10px;
-        }
-    </style>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DCT 渐进重构</title>
+  <style>
+    /* Global dark theme */
+    body {
+      background-color: #121212;
+      color: #E0E0E0;
+      font-family: 'Roboto', sans-serif;
+      margin: 0;
+      padding: 20px;
+      line-height: 1.6;
+    }
+  
+    h3 {
+      color: #80cbc4;
+      font-size: 1.5rem;
+      margin-bottom: 20px;
+    }
+  
+    /* File input styling */
+    input[type="file"] {
+      background-color: #1E1E1E;
+      color: #E0E0E0;
+      border: 1px solid #333;
+      padding: 10px;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+  
+    input[type="file"]::-webkit-file-upload-button {
+      background: #1E88E5;
+      color: #fff;
+      border: none;
+      padding: 8px 16px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 1rem;
+    }
+  
+    /* Canvas style with subtle neon glow */
+    canvas {
+      background-color: #1E1E1E;
+      border: 1px solid #333;
+      box-shadow: 0 4px 8px rgba(0, 0, 0, 0.6);
+      margin: 10px 0;
+    }
+  
+    /* Status/Preformatted text styling */
+    pre {
+      background-color: #1E1E1E;
+      border: 1px solid #333;
+      padding: 10px;
+      color: #80cbc4;
+      font-family: 'Roboto Mono', monospace;
+      overflow: auto;
+      max-height: 200px;
+    }
+  
+    /* Optional: Neon text effect for signal processing vibe */
+    .neon {
+      color: #80cbc4;
+      text-shadow: 0 0 5px #80cbc4, 0 0 10px #80cbc4, 0 0 20px #80cbc4;
+    }
+  
+    /* Layout spacing */
+    body > * {
+      margin-bottom: 20px;
+    }
+  
+    /* Link styling */
+    a {
+      color: #80cbc4;
+      text-decoration: none;
+    }
+    a:hover {
+      text-decoration: underline;
+    }
+  </style>
 </head>
-
 <body>
-    <h3>上传图片（自动缩放至256×256），使用8×8块DCT渐进重构</h3>
-    <input type="file" id="upload" accept="image/*"><br>
-    <canvas id="sourceCanvas" width="256" height="256"></canvas>
-    <canvas id="reconCanvas" width="256" height="256"></canvas>
-    <pre id="status"></pre>
-    <script>
-        // ---------------- 1. 1D DCT 与 IDCT（标准公式） ----------------
-        function dct1d(vector) {
-            const N = vector.length;
-            let result = new Array(N).fill(0);
-            for (let k = 0; k < N; k++) {
-                let sum = 0;
-                for (let n = 0; n < N; n++) {
-                    sum += vector[n] * Math.cos(Math.PI * (n + 0.5) * k / N);
-                }
-                let alpha = k === 0 ? Math.sqrt(1 / N) : Math.sqrt(2 / N);
-                result[k] = alpha * sum;
-            }
-            return result;
+  <h3>
+    DCT 渐进式重构演示器
+  </h3>
+  上传图片：<input type="file" id="upload" accept="image/*"><br>
+  <!-- canvas 的宽高会由代码设置 -->
+  <canvas id="sourceCanvas"></canvas>
+  <canvas id="reconCanvas"></canvas>
+  <pre id="status"></pre>
+  <script>
+    // ========== 常量设置 ==========
+    const IMG_SIZE = 256; // 可选：64, 128, 256 等
+    const BLOCK_SIZE_Y = 8;         // Y 通道块尺寸（8×8）
+    const BLOCK_SIZE_CHROMA = 4;      // 色度块尺寸（4×4）
+    
+    // ========== 设置 Canvas 尺寸 ==========
+    const sourceCanvas = document.getElementById('sourceCanvas');
+    sourceCanvas.width = IMG_SIZE;
+    sourceCanvas.height = IMG_SIZE;
+    const reconCanvas = document.getElementById('reconCanvas');
+    reconCanvas.width = IMG_SIZE;
+    reconCanvas.height = IMG_SIZE;
+    
+    const sourceCtx = sourceCanvas.getContext('2d');
+    const reconCtx = reconCanvas.getContext('2d');
+    
+    // ========== 1. 1D DCT 与 IDCT ==========
+    function dct1d(vector) {
+      const N = vector.length;
+      let result = new Array(N).fill(0);
+      for (let k = 0; k < N; k++) {
+        let sum = 0;
+        for (let n = 0; n < N; n++) {
+          sum += vector[n] * Math.cos(Math.PI * (n + 0.5) * k / N);
         }
-
-        function idct1d(vector) {
-            const N = vector.length;
-            let result = new Array(N).fill(0);
-            for (let n = 0; n < N; n++) {
-                let sum = 0;
-                for (let k = 0; k < N; k++) {
-                    let alpha = k === 0 ? Math.sqrt(1 / N) : Math.sqrt(2 / N);
-                    sum += alpha * vector[k] * Math.cos(Math.PI * (n + 0.5) * k / N);
-                }
-                result[n] = sum;
-            }
-            return result;
+        let alpha = k === 0 ? Math.sqrt(1 / N) : Math.sqrt(2 / N);
+        result[k] = alpha * sum;
+      }
+      return result;
+    }
+    
+    function idct1d(vector) {
+      const N = vector.length;
+      let result = new Array(N).fill(0);
+      for (let n = 0; n < N; n++) {
+        let sum = 0;
+        for (let k = 0; k < N; k++) {
+          let alpha = k === 0 ? Math.sqrt(1 / N) : Math.sqrt(2 / N);
+          sum += alpha * vector[k] * Math.cos(Math.PI * (n + 0.5) * k / N);
         }
-
-        // ---------------- 2. 2D DCT/IDCT（针对8x8块） ----------------
-        function dct2dBlock(block) {
-            const N = 8;
-            // 对每一行做1D DCT
-            let temp = [];
-            for (let i = 0; i < N; i++) {
-                temp[i] = dct1d(block[i]);
-            }
-            // 对每一列做1D DCT
-            let result = [];
-            for (let j = 0; j < N; j++) {
-                let col = [];
-                for (let i = 0; i < N; i++) {
-                    col.push(temp[i][j]);
-                }
-                let dctCol = dct1d(col);
-                for (let i = 0; i < N; i++) {
-                    if (!result[i]) result[i] = new Array(N);
-                    result[i][j] = dctCol[i];
-                }
-            }
-            return result;
+        result[n] = sum;
+      }
+      return result;
+    }
+    
+    // ========== 2. 2D DCT/IDCT（针对 8×8 块，Y 通道） ==========
+    function dct2dBlock(block) {
+      const N = BLOCK_SIZE_Y;
+      let temp = [];
+      for (let i = 0; i < N; i++) {
+        temp[i] = dct1d(block[i]);
+      }
+      let result = [];
+      for (let j = 0; j < N; j++) {
+        let col = [];
+        for (let i = 0; i < N; i++) {
+          col.push(temp[i][j]);
         }
-
-        function idct2dBlock(block) {
-            const N = 8;
-            // 先对每一列做1D IDCT
-            let temp = [];
-            for (let j = 0; j < N; j++) {
-                let col = [];
-                for (let i = 0; i < N; i++) {
-                    col.push(block[i][j]);
-                }
-                let idctCol = idct1d(col);
-                for (let i = 0; i < N; i++) {
-                    if (!temp[i]) temp[i] = new Array(N);
-                    temp[i][j] = idctCol[i];
-                }
-            }
-            // 再对每一行做1D IDCT
-            let result = [];
-            for (let i = 0; i < N; i++) {
-                result[i] = idct1d(temp[i]);
-            }
-            return result;
+        let dctCol = dct1d(col);
+        for (let i = 0; i < N; i++) {
+          if (!result[i]) result[i] = new Array(N);
+          result[i][j] = dctCol[i];
         }
-
-
-        // ---------------- 3. 全局变量 ----------------
-        const sourceCanvas = document.getElementById('sourceCanvas');
-        const sourceCtx = sourceCanvas.getContext('2d');
-        const reconCanvas = document.getElementById('reconCanvas');
-        const reconCtx = reconCanvas.getContext('2d');
-
-        let originalMatrix = [];       // 256x256 灰度图矩阵
-        let quadrupleList = [];        // 四元组列表：{ blockX, blockY, idx, value }
-        let reconstructedDCTBlocks = [];  // 二维数组：[blockY][blockX] 每个元素为8x8重构的DCT系数矩阵
-        let currentQuadIndex = 0;
+      }
+      return result;
+    }
+    
+    function idct2dBlock(block) {
+      const N = BLOCK_SIZE_Y;
+      let temp = [];
+      for (let j = 0; j < N; j++) {
+        let col = [];
+        for (let i = 0; i < N; i++) {
+          col.push(block[i][j]);
+        }
+        let idctCol = idct1d(col);
+        for (let i = 0; i < N; i++) {
+          if (!temp[i]) temp[i] = new Array(N);
+          temp[i][j] = idctCol[i];
+        }
+      }
+      let result = [];
+      for (let i = 0; i < N; i++) {
+        result[i] = idct1d(temp[i]);
+      }
+      return result;
+    }
+    
+    // ========== 3. 2D DCT/IDCT（针对 4×4 块，色度通道） ==========
+    function dct2dBlock4(block) {
+      const N = BLOCK_SIZE_CHROMA;
+      let temp = [];
+      for (let i = 0; i < N; i++) {
+        temp[i] = dct1d(block[i]);
+      }
+      let result = [];
+      for (let j = 0; j < N; j++) {
+        let col = [];
+        for (let i = 0; i < N; i++) {
+          col.push(temp[i][j]);
+        }
+        let dctCol = dct1d(col);
+        for (let i = 0; i < N; i++) {
+          if (!result[i]) result[i] = new Array(N);
+          result[i][j] = dctCol[i];
+        }
+      }
+      return result;
+    }
+    
+    function idct2dBlock4(block) {
+      const N = BLOCK_SIZE_CHROMA;
+      let temp = [];
+      for (let j = 0; j < N; j++) {
+        let col = [];
+        for (let i = 0; i < N; i++) {
+          col.push(block[i][j]);
+        }
+        let idctCol = idct1d(col);
+        for (let i = 0; i < N; i++) {
+          if (!temp[i]) temp[i] = new Array(N);
+          temp[i][j] = idctCol[i];
+        }
+      }
+      let result = [];
+      for (let i = 0; i < N; i++) {
+        result[i] = idct1d(temp[i]);
+      }
+      return result;
+    }
+    
+    // ========== 4. 上采样 4×4 到 8×8（最近邻复制） ==========
+    function upsample4to8(block4) {
+      const N = BLOCK_SIZE_CHROMA;
+      const result = [];
+      for (let i = 0; i < N * 2; i++) {
+        result[i] = new Array(N * 2);
+        for (let j = 0; j < N * 2; j++) {
+          result[i][j] = block4[Math.floor(i / 2)][Math.floor(j / 2)];
+        }
+      }
+      return result;
+    }
+    
+    // ========== 5. YCbCr 转 RGB ==========
+    function convertYCbCrToRGB(Y, Cb, Cr) {
+      // BT.601 标准转换
+      let R = Y + 1.402 * (Cr - 128);
+      let G = Y - 0.344136 * (Cb - 128) - 0.714136 * (Cr - 128);
+      let B = Y + 1.772 * (Cb - 128);
+      R = Math.round(Math.max(0, Math.min(255, R)));
+      G = Math.round(Math.max(0, Math.min(255, G)));
+      B = Math.round(Math.max(0, Math.min(255, B)));
+      return [R, G, B];
+    }
+    
+    // ========== 6. 下采样色度通道 ==========
+    // 将 IMG_SIZE×IMG_SIZE 色度通道下采样为 (IMG_SIZE/2)×(IMG_SIZE/2)
+    function downsampleChroma(channel) {
+      const result = [];
+      for (let i = 0; i < IMG_SIZE; i += 2) {
+        let row = [];
+        for (let j = 0; j < IMG_SIZE; j += 2) {
+          let sum = channel[i][j] + channel[i][j+1] + channel[i+1][j] + channel[i+1][j+1];
+          row.push(sum / 4);
+        }
+        result.push(row);
+      }
+      return result;
+    }
+    
+    // ========== 7. 图片上传与预处理 ==========
+    document.getElementById('upload').addEventListener('change', function (event) {
+      const file = event.target.files[0];
+      if (!file) return;
+      const img = new Image();
+      const reader = new FileReader();
+      reader.onload = function (e) {
+        img.src = e.target.result;
+      };
+      reader.readAsDataURL(file);
+    
+      img.onload = function () {
+        // 裁剪出原图的最大正方形（居中裁剪）
+        const cropSize = Math.min(img.width, img.height);
+        const offsetX = (img.width - cropSize) / 2;
+        const offsetY = (img.height - cropSize) / 2;
+        // 将裁剪区域缩放至 IMG_SIZE×IMG_SIZE，并绘制到源 canvas
+        sourceCtx.drawImage(img, offsetX, offsetY, cropSize, cropSize, 0, 0, IMG_SIZE, IMG_SIZE);
+        const imgData = sourceCtx.getImageData(0, 0, IMG_SIZE, IMG_SIZE);
+        let YMatrix = [], CbMatrix = [], CrMatrix = [];
+        for (let i = 0; i < IMG_SIZE; i++) {
+          let rowY = [], rowCb = [], rowCr = [];
+          for (let j = 0; j < IMG_SIZE; j++) {
+            const idx = (i * IMG_SIZE + j) * 4;
+            const R = imgData.data[idx];
+            const G = imgData.data[idx+1];
+            const B = imgData.data[idx+2];
+            const Y = 0.299 * R + 0.587 * G + 0.114 * B;
+            const Cb = 128 - 0.168736 * R - 0.331264 * G + 0.5 * B;
+            const Cr = 128 + 0.5 * R - 0.418688 * G - 0.081312 * B;
+            rowY.push(Y);
+            rowCb.push(Cb);
+            rowCr.push(Cr);
+          }
+          YMatrix.push(rowY);
+          CbMatrix.push(rowCb);
+          CrMatrix.push(rowCr);
+        }
+        // 下采样色度：IMG_SIZE×IMG_SIZE → (IMG_SIZE/2)×(IMG_SIZE/2)
+        const CbDown = downsampleChroma(CbMatrix);
+        const CrDown = downsampleChroma(CrMatrix);
+    
+        // 分块生成四元组
+        // Y 通道以 BLOCK_SIZE_Y×BLOCK_SIZE_Y 划分，色度通道以 BLOCK_SIZE_CHROMA×BLOCK_SIZE_CHROMA 划分
+        const blocksPerRow = IMG_SIZE / BLOCK_SIZE_Y;
+        const blocksPerCol = IMG_SIZE / BLOCK_SIZE_Y;
+        let quadrupleList = [];
+        for (let by = 0; by < blocksPerCol; by++) {
+          for (let bx = 0; bx < blocksPerRow; bx++) {
+            // ----- Y 通道 8×8 块 -----
+            let blockY = [];
+            for (let i = 0; i < BLOCK_SIZE_Y; i++) {
+              let row = [];
+              for (let j = 0; j < BLOCK_SIZE_Y; j++) {
+                row.push(YMatrix[by * BLOCK_SIZE_Y + i][bx * BLOCK_SIZE_Y + j]);
+              }
+              blockY.push(row);
+            }
+            const dctY = dct2dBlock(blockY);
+            for (let i = 0; i < BLOCK_SIZE_Y; i++) {
+              for (let j = 0; j < BLOCK_SIZE_Y; j++) {
+                quadrupleList.push({
+                  type: "Y",
+                  blockX: bx,
+                  blockY: by,
+                  idx: i * BLOCK_SIZE_Y + j,
+                  value: dctY[i][j]
+                });
+              }
+            }
+            // ----- 色度通道（Cb 与 Cr） 4×4 块 -----
+            let blockCb = [], blockCr = [];
+            for (let i = 0; i < BLOCK_SIZE_CHROMA; i++) {
+              let rowCb = [], rowCr = [];
+              for (let j = 0; j < BLOCK_SIZE_CHROMA; j++) {
+                rowCb.push(CbDown[by * BLOCK_SIZE_CHROMA + i][bx * BLOCK_SIZE_CHROMA + j]);
+                rowCr.push(CrDown[by * BLOCK_SIZE_CHROMA + i][bx * BLOCK_SIZE_CHROMA + j]);
+              }
+              blockCb.push(rowCb);
+              blockCr.push(rowCr);
+            }
+            const dctCb = dct2dBlock4(blockCb);
+            const dctCr = dct2dBlock4(blockCr);
+            for (let i = 0; i < BLOCK_SIZE_CHROMA; i++) {
+              for (let j = 0; j < BLOCK_SIZE_CHROMA; j++) {
+                quadrupleList.push({
+                  type: "Cb",
+                  blockX: bx,
+                  blockY: by,
+                  idx: i * BLOCK_SIZE_CHROMA + j,
+                  value: dctCb[i][j]
+                });
+                quadrupleList.push({
+                  type: "Cr",
+                  blockX: bx,
+                  blockY: by,
+                  idx: i * BLOCK_SIZE_CHROMA + j,
+                  value: dctCr[i][j]
+                });
+              }
+            }
+          }
+        }
+        console.log("四元组总数:", quadrupleList.length);
+        quadrupleList.sort((a, b) => Math.abs(b.value) - Math.abs(a.value));
+    
+        const statusDiv = document.getElementById('status');
+        const reconstructor = new ColorDCTReconstructor(reconCanvas);
+        let sampIdx = 0;
         let timer;
-
-        // ---------------- 4. 图片上传与预处理 ----------------
-        document.getElementById('upload').addEventListener('change', function (event) {
-            const file = event.target.files[0];
-            if (!file) return;
-            const img = new Image();
-            const reader = new FileReader();
-            reader.onload = function (e) {
-                img.src = e.target.result;
-            };
-            reader.readAsDataURL(file);
-
-            img.onload = function () {
-                // 将图片绘制到源 canvas 上，并缩放到256×256
-                sourceCtx.drawImage(img, 0, 0, 256, 256);
-                // 获取图像数据并转换为灰度矩阵
-                const imgData = sourceCtx.getImageData(0, 0, 256, 256);
-                originalMatrix = [];
-                for (let i = 0; i < 256; i++) {
-                    let row = [];
-                    for (let j = 0; j < 256; j++) {
-                        const index = (i * 256 + j) * 4;
-                        const r = imgData.data[index];
-                        const g = imgData.data[index + 1];
-                        const b = imgData.data[index + 2];
-                        const gray = 0.299 * r + 0.587 * g + 0.114 * b;
-                        row.push(gray);
-                    }
-                    originalMatrix.push(row);
-                }
-
-                // 分成8x8块，对每块计算DCT，并生成四元组列表
-                quadrupleList = [];
-                reconstructedDCTBlocks = [];
-                const blocksPerRow = 256 / 8;  // 32
-                const blocksPerCol = 256 / 8;  // 32
-
-                for (let by = 0; by < blocksPerCol; by++) {
-                    reconstructedDCTBlocks[by] = [];
-                    for (let bx = 0; bx < blocksPerRow; bx++) {
-                        // 提取8x8块
-                        let block = [];
-                        for (let i = 0; i < 8; i++) {
-                            let row = [];
-                            for (let j = 0; j < 8; j++) {
-                                row.push(originalMatrix[by * 8 + i][bx * 8 + j]);
-                            }
-                            block.push(row);
-                        }
-                        // 计算该块的2D DCT
-                        const dctBlock = dct2dBlock(block);
-                        // 初始化重构用的DCT块（全零）
-                        let recBlock = [];
-                        for (let i = 0; i < 8; i++) {
-                            recBlock.push(new Array(8).fill(0));
-                        }
-                        if (!reconstructedDCTBlocks[by]) {
-                            reconstructedDCTBlocks[by] = [];
-                        }
-                        reconstructedDCTBlocks[by][bx] = recBlock;
-
-                        // 对该块的每个系数，生成四元组：{blockX, blockY, idx, value}
-                        for (let i = 0; i < 8; i++) {
-                            for (let j = 0; j < 8; j++) {
-                                const idx = i * 8 + j;  // 平铺索引 0～63
-                                quadrupleList.push({
-                                    blockX: bx,
-                                    blockY: by,
-                                    idx: idx,
-                                    value: dctBlock[i][j]
-                                });
-                            }
-                        }
-                    }
-                }
-                console.log("四元组总数:", quadrupleList.length); // 应为 65536
-
-                // 按系数绝对值降序排序
-                quadrupleList.sort((a, b) => Math.abs(b.value) - Math.abs(a.value));
-
-                console.log(quadrupleList)
-
-                // 启动定时器：每125毫秒更新1个系数
-                let sampIdx = 0
-                const statusDiv = document.getElementById('status');
-                const reconst = new DCTReconstructor(document.getElementById('reconCanvas'))
-
-                if (timer) cancelAnimationFrame(timer);
-                function nextSample() {
-                    const sample = quadrupleList[sampIdx];
-                    reconst.addSample(sample)
-                    statusDiv.textContent = `接收到第${sampIdx}个样本\n坐标：(${sample.blockX},${sample.blockY})\n索引：${sample.idx}\n系数：${sample.value.toFixed(4)}`;
-                    sampIdx++
-                    timer = requestAnimationFrame(nextSample)
-                }
-                timer = requestAnimationFrame(nextSample)
-            };
-        });
-
-        // ---------------- 5. 渐进重构更新函数 ----------------
-        class DCTReconstructor {
-            /**
-             * @param {HTMLCanvasElement} canvas 用于显示重构结果的 canvas 元素
-             * @param {number} imageWidth 图像宽度，默认256
-             * @param {number} imageHeight 图像高度，默认256
-             * @param {number} blockSize 分块尺寸，默认8（即8x8块）
-             */
-            constructor(canvas, imageWidth = 256, imageHeight = 256, blockSize = 8) {
-                this.canvas = canvas;
-                this.ctx = canvas.getContext('2d');
-                this.imageWidth = imageWidth;
-                this.imageHeight = imageHeight;
-                this.blockSize = blockSize;
-                this.blocksPerRow = imageWidth / blockSize;
-                this.blocksPerCol = imageHeight / blockSize;
-
-                // 初始化重构时每个8x8块的 DCT 系数矩阵（全部置零）
-                this.reconstructedDCTBlocks = [];
-                for (let by = 0; by < this.blocksPerCol; by++) {
-                    this.reconstructedDCTBlocks[by] = [];
-                    for (let bx = 0; bx < this.blocksPerRow; bx++) {
-                        let block = [];
-                        for (let i = 0; i < blockSize; i++) {
-                            block.push(new Array(blockSize).fill(0));
-                        }
-                        this.reconstructedDCTBlocks[by][bx] = block;
-                    }
-                }
-            }
-
-            /**
-             * 添加一个 DCT 四元组样本，自动更新对应块的系数，
-             * 进行 IDCT 重构，并在 canvas 上绘制更新后的块。
-             * @param {Array|Object} sample 四元组数据，[blockX, blockY, idx, value] 或 {blockX, blockY, idx, value}
-             */
-            addSample(sample) {
-                let blockX, blockY, idx, value;
-                if (Array.isArray(sample)) {
-                    [blockX, blockY, idx, value] = sample;
-                } else {
-                    blockX = sample.blockX;
-                    blockY = sample.blockY;
-                    idx = sample.idx;
-                    value = sample.value;
-                }
-                // 计算块内行列（假设块尺寸为8）
-                const row = Math.floor(idx / this.blockSize);
-                const col = idx % this.blockSize;
-
-                // 更新对应块的 DCT 系数
-                this.reconstructedDCTBlocks[blockY][blockX][row][col] = value;
-
-                // 对该块进行逆 DCT 得到空间域数据
-                const spatialBlock = idct2dBlock(this.reconstructedDCTBlocks[blockY][blockX]);
-
-                // 创建8x8的 ImageData，将空间域数据写入
-                const blockImageData = this.ctx.createImageData(this.blockSize, this.blockSize);
-                for (let y = 0; y < this.blockSize; y++) {
-                    for (let x = 0; x < this.blockSize; x++) {
-                        let pixelValue = Math.round(spatialBlock[y][x]);
-                        // 限制在0-255之间
-                        pixelValue = Math.max(0, Math.min(255, pixelValue));
-                        const pixelIndex = (y * this.blockSize + x) * 4;
-                        blockImageData.data[pixelIndex] = pixelValue;
-                        blockImageData.data[pixelIndex + 1] = pixelValue;
-                        blockImageData.data[pixelIndex + 2] = pixelValue;
-                        blockImageData.data[pixelIndex + 3] = 255;
-                    }
-                }
-                // 在 canvas 上对应位置绘制该块
-                this.ctx.putImageData(blockImageData, blockX * this.blockSize, blockY * this.blockSize);
-            }
+        function nextSample() {
+          if (sampIdx >= quadrupleList.length) {
+            statusDiv.textContent += "\n重构完成！";
+            return;
+          }
+          const sample = quadrupleList[sampIdx];
+          reconstructor.addSample(sample);
+          statusDiv.textContent = `样本 ${sampIdx}: \n类型: ${sample.type} \n块: (${sample.blockX},${sample.blockY}) \n索引: ${sample.idx} \n系数: ${sample.value.toFixed(4)}`;
+          sampIdx++;
+          timer = requestAnimationFrame(nextSample);
         }
-    </script>
+        timer = requestAnimationFrame(nextSample);
+      };
+    });
+    
+    // ========== 8. 封装重构器对象：ColorDCTReconstructor ==========
+    class ColorDCTReconstructor {
+      /**
+       * @param {HTMLCanvasElement} canvas 用于显示重构结果的 canvas 元素
+       * 默认图像大小 IMG_SIZE×IMG_SIZE, Y 块为 BLOCK_SIZE_Y×BLOCK_SIZE_Y, 色度块为 BLOCK_SIZE_CHROMA×BLOCK_SIZE_CHROMA
+       */
+      constructor(canvas, imageWidth = IMG_SIZE, imageHeight = IMG_SIZE, blockSizeY = BLOCK_SIZE_Y, blockSizeChroma = BLOCK_SIZE_CHROMA) {
+        this.canvas = canvas;
+        this.ctx = canvas.getContext('2d');
+        this.imageWidth = imageWidth;
+        this.imageHeight = imageHeight;
+        this.blockSizeY = blockSizeY;
+        this.blockSizeChroma = blockSizeChroma;
+        this.blocksPerRow = imageWidth / blockSizeY;
+        this.blocksPerCol = imageHeight / blockSizeY;
+        // 初始化各通道块的 DCT 系数矩阵
+        this.YBlocks = [];
+        this.CbBlocks = [];
+        this.CrBlocks = [];
+        for (let by = 0; by < this.blocksPerCol; by++) {
+          this.YBlocks[by] = [];
+          this.CbBlocks[by] = [];
+          this.CrBlocks[by] = [];
+          for (let bx = 0; bx < this.blocksPerRow; bx++) {
+            let blockY = [];
+            for (let i = 0; i < blockSizeY; i++) {
+              blockY.push(new Array(blockSizeY).fill(0));
+            }
+            this.YBlocks[by][bx] = blockY;
+            let blockCb = [];
+            for (let i = 0; i < blockSizeChroma; i++) {
+              blockCb.push(new Array(blockSizeChroma).fill(0));
+            }
+            this.CbBlocks[by][bx] = blockCb;
+            let blockCr = [];
+            for (let i = 0; i < blockSizeChroma; i++) {
+              blockCr.push(new Array(blockSizeChroma).fill(0));
+            }
+            this.CrBlocks[by][bx] = blockCr;
+          }
+        }
+      }
+    
+      /**
+       * 添加一个 DCT 四元组样本，更新对应块的系数，进行 IDCT 重构后转换为 RGB 更新到 canvas
+       * @param {Object} sample 四元组数据，字段包括 type, blockX, blockY, idx, value
+       */
+      addSample(sample) {
+        const bx = sample.blockX;
+        const by = sample.blockY;
+        if (sample.type === "Y") {
+          const row = Math.floor(sample.idx / this.blockSizeY);
+          const col = sample.idx % this.blockSizeY;
+          this.YBlocks[by][bx][row][col] = sample.value;
+        } else if (sample.type === "Cb") {
+          const row = Math.floor(sample.idx / this.blockSizeChroma);
+          const col = sample.idx % this.blockSizeChroma;
+          this.CbBlocks[by][bx][row][col] = sample.value;
+        } else if (sample.type === "Cr") {
+          const row = Math.floor(sample.idx / this.blockSizeChroma);
+          const col = sample.idx % this.blockSizeChroma;
+          this.CrBlocks[by][bx][row][col] = sample.value;
+        }
+        // 对该块进行重构：Y 块直接 8×8 IDCT, 色度块 4×4 IDCT 后上采样到 8×8
+        const spatialY = idct2dBlock(this.YBlocks[by][bx]);
+        const spatialCb4 = idct2dBlock4(this.CbBlocks[by][bx]);
+        const spatialCr4 = idct2dBlock4(this.CrBlocks[by][bx]);
+        const spatialCb = upsample4to8(spatialCb4);
+        const spatialCr = upsample4to8(spatialCr4);
+    
+        // 将该块（8×8）逐像素转换 YCbCr → RGB
+        const blockImageData = this.ctx.createImageData(this.blockSizeY, this.blockSizeY);
+        for (let i = 0; i < this.blockSizeY; i++) {
+          for (let j = 0; j < this.blockSizeY; j++) {
+            let Y = spatialY[i][j];
+            let Cb = spatialCb[i][j];
+            let Cr = spatialCr[i][j];
+            const [R, G, B] = convertYCbCrToRGB(Y, Cb, Cr);
+            const index = (i * this.blockSizeY + j) * 4;
+            blockImageData.data[index] = R;
+            blockImageData.data[index+1] = G;
+            blockImageData.data[index+2] = B;
+            blockImageData.data[index+3] = 255;
+          }
+        }
+        this.ctx.putImageData(blockImageData, bx * this.blockSizeY, by * this.blockSizeY);
+      }
+    }
+  </script>
 </body>
-
 </html>
