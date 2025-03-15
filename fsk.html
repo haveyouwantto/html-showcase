@@ -240,7 +240,7 @@
         <span id="freq"></span>
         <div>频道范围：1~12，120~160</div>
         符号速率：
-        <input type="number" id="baudrateInput" value="100" min="4" max="1200">
+        <input type="number" id="baudrateInput" value="100" min="30" max="1200">
         <canvas id="oscilloscope" width="800" height="200"></canvas>
     </div>
     <script>
@@ -256,9 +256,9 @@
 
         baudrateInput.addEventListener('change', () => {
             let bd = parseInt(baudrateInput.value);
-            if (bd < 4) {
-                bd = 4;
-                baudrateInput.value = 4;
+            if (bd < 30) {
+                bd = 30;
+                baudrateInput.value = 30;
             } else if (bd > 1200) {
                 bd = 1200;
                 baudrateInput.value = 1200;
