@@ -675,7 +675,7 @@
              * @param {HTMLCanvasElement} canvas 用于显示重构结果的 canvas 元素
              * 默认图像大小 IMG_SIZE×IMG_SIZE, Y 块为 BLOCK_SIZE_Y×BLOCK_SIZE_Y, 色度块为 BLOCK_SIZE_CHROMA×BLOCK_SIZE_CHROMA
              */
-            constructor(canvas, imageWidth = IMG_SIZE, imageHeight = IMG_SIZE, blockSizeY = BLOCK_SIZE_Y, blockSizeChroma = BLOCK_SIZE_CHROMA) {
+             constructor(canvas, imageWidth = IMG_SIZE, imageHeight = IMG_SIZE, blockSizeY = BLOCK_SIZE_Y, blockSizeChroma = BLOCK_SIZE_CHROMA) {
                 this.canvas = canvas;
                 this.ctx = canvas.getContext('2d');
                 this.imageWidth = imageWidth;
@@ -684,33 +684,38 @@
                 this.blockSizeChroma = blockSizeChroma;
                 this.blocksPerRow = imageWidth / blockSizeY;
                 this.blocksPerCol = imageHeight / blockSizeY;
-                // 初始化各通道块的 DCT 系数矩阵
-                this.YBlocks = [];
-                this.CbBlocks = [];
-                this.CrBlocks = [];
-                for (let by = 0; by < this.blocksPerCol; by++) {
-                    this.YBlocks[by] = [];
-                    this.CbBlocks[by] = [];
-                    this.CrBlocks[by] = [];
-                    for (let bx = 0; bx < this.blocksPerRow; bx++) {
-                        let blockY = [];
-                        for (let i = 0; i < blockSizeY; i++) {
-                            blockY.push(new Array(blockSizeY).fill(0));
+
+                // 初始化 DCT 系数矩阵（仅 DC 分量设为灰度值，AC 为 0）
+                this.YBlocks = this._initBlocks(blockSizeY, 128 * blockSizeY);
+                this.CbBlocks = this._initBlocks(blockSizeChroma, 128 * blockSizeChroma);
+                this.CrBlocks = this._initBlocks(blockSizeChroma, 128 * blockSizeChroma);
+                this.samples = 0;
+            }
+
+
+            /**
+             * 初始化指定大小的块矩阵，DC 分量设为给定值，其余为 0
+             * @param {number} blockSize 块大小
+             * @param {number} dcValue DC 分量初始值
+             */
+            _initBlocks(blockSize, dcValue) {
+                const blocks = [];
+                const blocksPerRow = this.imageWidth / blockSize;
+                const blocksPerCol = this.imageHeight / blockSize;
+
+                for (let by = 0; by < blocksPerCol; by++) {
+                    blocks[by] = [];
+                    for (let bx = 0; bx < blocksPerRow; bx++) {
+                        const block = [];
+                        for (let i = 0; i < blockSize; i++) {
+                            const row = new Array(blockSize).fill(0);
+                            if (i === 0) row[0] = dcValue; // 仅设置 DC 分量
+                            block.push(row);
                         }
-                        this.YBlocks[by][bx] = blockY;
-                        let blockCb = [];
-                        for (let i = 0; i < blockSizeChroma; i++) {
-                            blockCb.push(new Array(blockSizeChroma).fill(0));
-                        }
-                        this.CbBlocks[by][bx] = blockCb;
-                        let blockCr = [];
-                        for (let i = 0; i < blockSizeChroma; i++) {
-                            blockCr.push(new Array(blockSizeChroma).fill(0));
-                        }
-                        this.CrBlocks[by][bx] = blockCr;
+                        blocks[by][bx] = block;
                     }
                 }
-                this.samples = 0;
+                return blocks;
             }
 
             /**
