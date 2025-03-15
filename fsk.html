@@ -268,7 +268,7 @@
 
         function setBaudRate(bd) {
             baudRate = bd;
-            samplePerSymbol = sampleRate / baudRate; 
+            samplePerSymbol = sampleRate / baudRate;
             symbolTime = samplePerSymbol / sampleRate;
             bandwidth = baudRate * freqMulti
         }
@@ -666,8 +666,8 @@
                 }
                 function getValue(a) {
                     if (a.idx === 0) {
-                        return a.type === 'Y' ? Math.abs(a.value) :
-                            Math.abs(a.value - 512) * 4;
+                        return a.type === 'Y' ? Math.abs(a.value - 128 * BLOCK_SIZE_Y) :
+                            Math.abs(a.value - 128 * BLOCK_SIZE_CHROMA) * 2;
                     } else return Math.abs(a.value);
                 }
                 quadrupleList.sort((a, b) => getValue(b) - getValue(a));
@@ -681,7 +681,7 @@
              * @param {HTMLCanvasElement} canvas 用于显示重构结果的 canvas 元素
              * 默认图像大小 IMG_SIZE×IMG_SIZE, Y 块为 BLOCK_SIZE_Y×BLOCK_SIZE_Y, 色度块为 BLOCK_SIZE_CHROMA×BLOCK_SIZE_CHROMA
              */
-             constructor(canvas, imageWidth = IMG_SIZE, imageHeight = IMG_SIZE, blockSizeY = BLOCK_SIZE_Y, blockSizeChroma = BLOCK_SIZE_CHROMA) {
+            constructor(canvas, imageWidth = IMG_SIZE, imageHeight = IMG_SIZE, blockSizeY = BLOCK_SIZE_Y, blockSizeChroma = BLOCK_SIZE_CHROMA) {
                 this.canvas = canvas;
                 this.ctx = canvas.getContext('2d');
                 this.imageWidth = imageWidth;
@@ -692,11 +692,14 @@
                 this.blocksPerCol = imageHeight / blockSizeY;
 
                 // 初始化 DCT 系数矩阵（仅 DC 分量设为灰度值，AC 为 0）
-                this.YBlocks = this._initBlocks(blockSizeY, 0);
+                this.YBlocks = this._initBlocks(blockSizeY, 128 * blockSizeY);
                 this.CbBlocks = this._initBlocks(blockSizeChroma, 128 * blockSizeChroma);
                 this.CrBlocks = this._initBlocks(blockSizeChroma, 128 * blockSizeChroma);
                 this.samples = 0;
-            }
+
+                this.ctx.fillStyle = 'gray'
+                this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+           }
 
 
             /**

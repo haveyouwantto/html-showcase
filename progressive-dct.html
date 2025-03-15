@@ -397,8 +397,8 @@
                 }
                 function getValue(a) {
                     if (a.idx === 0) {
-                        return a.type === 'Y' ? Math.abs(a.value) :
-                            Math.abs(a.value - 128 * BLOCK_SIZE_CHROMA) * 4;
+                        return a.type === 'Y' ? Math.abs(a.value - 128 * BLOCK_SIZE_Y) :
+                            Math.abs(a.value - 128 * BLOCK_SIZE_CHROMA) * 2;
                     } else return Math.abs(a.value);
                 }
                 quadrupleList.sort((a, b) => getValue(b) - getValue(a));
@@ -455,9 +455,12 @@
                 this.blocksPerCol = imageHeight / blockSizeY;
 
                 // 初始化 DCT 系数矩阵（仅 DC 分量设为灰度值，AC 为 0）
-                this.YBlocks = this._initBlocks(blockSizeY, 0);
+                this.YBlocks = this._initBlocks(blockSizeY, 128 * blockSizeY);
                 this.CbBlocks = this._initBlocks(blockSizeChroma, 128 * blockSizeChroma);
                 this.CrBlocks = this._initBlocks(blockSizeChroma, 128 * blockSizeChroma);
+
+                this.ctx.fillStyle = 'gray'
+                this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
             }
 
 
