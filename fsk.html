@@ -238,7 +238,7 @@
         <canvas id="oscilloscope" width="800" height="200"></canvas>
     </div>
     <script>
-        const baudRate = 100; // 波特率
+        const baudRate = 62.5; // 波特率
         const sampleRate = 48000; // 采样率
         let carrierFreq = 16000; // 载波频率
         const freqMulti = 1; // 频率倍数
@@ -1285,41 +1285,41 @@
             const qFactor = qTable[sample.idx >> 3][sample.idx & 7];
             sample.value = Math.round(sample.value * qFactor);
         }
-
         function sampleMetaToSymbol(sample) {
             let symbol = 0;
 
-            // Write type
+            // Write idx (6 bits)
+            symbol |= sample.idx;
+
+            // Write type (2 bits)
+            symbol <<= 2;
             switch (sample.type) {
                 case "Y":
                     break;
                 case "Cb":
-                    symbol += 1;
-                    break
+                    symbol |= 1;
+                    break;
                 case "Cr":
-                    symbol += 2;
-                    break
+                    symbol |= 2;
+                    break;
                 default:
-                    symbol += 3;
+                    symbol |= 3;
                     break;
             }
 
-            // Write blockX
+            // Write blockX (5 bits)
             symbol <<= 5;
             symbol |= sample.blockX;
 
-            // Write blockY
+            // Write blockY (5 bits)
             symbol <<= 5;
-            symbol |= sample.blockY
+            symbol |= sample.blockY;
 
-            // Write idx
-            symbol <<= 6;
-            symbol |= sample.idx
-
-            // Write sync bit
+            // Write sync bit (1 bit)
             symbol <<= 1;
             symbol |= 1;
-            return symbol
+
+            return symbol;
         }
 
         function symbolToSampleMeta(symbol) {
@@ -1328,23 +1328,20 @@
                 blockX: 0,
                 blockY: 0,
                 idx: 0
-            }
+            };
 
+            // Remove sync bit (1 bit)
             symbol >>= 1;
 
-            // Read idx
-            meta.idx = symbol & 0b111111;
-            symbol >>= 6;
-
-            // Read blockY
+            // Read blockY (5 bits)
             meta.blockY = symbol & 0b11111;
             symbol >>= 5;
 
-            // Read blockX
+            // Read blockX (5 bits)
             meta.blockX = symbol & 0b11111;
             symbol >>= 5;
 
-            // Read type
+            // Read type (2 bits)
             switch (symbol & 0b11) {
                 case 0:
                     meta.type = "Y";
@@ -1359,9 +1356,15 @@
                     meta.type = "Unknown";
                     break;
             }
+            symbol >>= 2;
 
-            return meta
+            // Read idx (6 bits)
+            meta.idx = symbol & 0b111111;
+            symbol >>= 6;
+
+            return meta;
         }
+
 
         function sampleToSymbol(sample) {
             if (sample.idx == 0) return sample.value << 1;
