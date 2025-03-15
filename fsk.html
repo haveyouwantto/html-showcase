@@ -232,6 +232,11 @@
         const audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: sampleRate, latencyHint: "balanced" });
 
 
+        const IMG_SIZE = 256; // 可选：64, 128, 256 等
+        const BLOCK_SIZE_Y = 8;         // Y 通道块尺寸（8×8）
+        const BLOCK_SIZE_CHROMA = 4;      // 色度块尺寸（4×4）
+
+
         const fib = [1, 2, 3, 5, 8, 13, 21, 34, 55, 89, 144, 233, 377, 610, 987, 1597, 2584, 4181, 6765, 10946, 17711, 28657, 46368, 75025, 121393, 196418, 317811, 514229, 832040, 1346269, 2178309, 3524578]; // 斐波那契数列
         const fibRev = [...fib].reverse()
 
@@ -275,10 +280,10 @@
 
         function stringToOrdArray(string) {
             let result = [3];
-            for (let i=0;i<string.length;i++) {
+            for (let i = 0; i < string.length; i++) {
                 const ord = string.codePointAt(i);
                 result.push(ord);
-                if(ord>0xffff) i++;
+                if (ord > 0xffff) i++;
             }
             result.push(3);
             return result;
@@ -362,6 +367,252 @@
             }
         }
 
+        // ========== 1. 1D DCT 与 IDCT ==========
+        function dct1d(vector) {
+            const N = vector.length;
+            let result = new Array(N).fill(0);
+            for (let k = 0; k < N; k++) {
+                let sum = 0;
+                for (let n = 0; n < N; n++) {
+                    sum += vector[n] * Math.cos(Math.PI * (n + 0.5) * k / N);
+                }
+                let alpha = k === 0 ? Math.sqrt(1 / N) : Math.sqrt(2 / N);
+                result[k] = alpha * sum;
+            }
+            return result;
+        }
+
+        function idct1d(vector) {
+            const N = vector.length;
+            let result = new Array(N).fill(0);
+            for (let n = 0; n < N; n++) {
+                let sum = 0;
+                for (let k = 0; k < N; k++) {
+                    let alpha = k === 0 ? Math.sqrt(1 / N) : Math.sqrt(2 / N);
+                    sum += alpha * vector[k] * Math.cos(Math.PI * (n + 0.5) * k / N);
+                }
+                result[n] = sum;
+            }
+            return result;
+        }
+
+        // ========== 2. 2D DCT/IDCT（针对 8×8 块，Y 通道） ==========
+        function dct2dBlock(block) {
+            const N = BLOCK_SIZE_Y;
+            let temp = [];
+            for (let i = 0; i < N; i++) {
+                temp[i] = dct1d(block[i]);
+            }
+            let result = [];
+            for (let j = 0; j < N; j++) {
+                let col = [];
+                for (let i = 0; i < N; i++) {
+                    col.push(temp[i][j]);
+                }
+                let dctCol = dct1d(col);
+                for (let i = 0; i < N; i++) {
+                    if (!result[i]) result[i] = new Array(N);
+                    result[i][j] = dctCol[i];
+                }
+            }
+            return result;
+        }
+
+        function idct2dBlock(block) {
+            const N = BLOCK_SIZE_Y;
+            let temp = [];
+            for (let j = 0; j < N; j++) {
+                let col = [];
+                for (let i = 0; i < N; i++) {
+                    col.push(block[i][j]);
+                }
+                let idctCol = idct1d(col);
+                for (let i = 0; i < N; i++) {
+                    if (!temp[i]) temp[i] = new Array(N);
+                    temp[i][j] = idctCol[i];
+                }
+            }
+            let result = [];
+            for (let i = 0; i < N; i++) {
+                result[i] = idct1d(temp[i]);
+            }
+            return result;
+        }
+
+        // ========== 3. 2D DCT/IDCT（针对 4×4 块，色度通道） ==========
+        function dct2dBlock4(block) {
+            const N = BLOCK_SIZE_CHROMA;
+            let temp = [];
+            for (let i = 0; i < N; i++) {
+                temp[i] = dct1d(block[i]);
+            }
+            let result = [];
+            for (let j = 0; j < N; j++) {
+                let col = [];
+                for (let i = 0; i < N; i++) {
+                    col.push(temp[i][j]);
+                }
+                let dctCol = dct1d(col);
+                for (let i = 0; i < N; i++) {
+                    if (!result[i]) result[i] = new Array(N);
+                    result[i][j] = dctCol[i];
+                }
+            }
+            return result;
+        }
+
+        function idct2dBlock4(block) {
+            const N = BLOCK_SIZE_CHROMA;
+            let temp = [];
+            for (let j = 0; j < N; j++) {
+                let col = [];
+                for (let i = 0; i < N; i++) {
+                    col.push(block[i][j]);
+                }
+                let idctCol = idct1d(col);
+                for (let i = 0; i < N; i++) {
+                    if (!temp[i]) temp[i] = new Array(N);
+                    temp[i][j] = idctCol[i];
+                }
+            }
+            let result = [];
+            for (let i = 0; i < N; i++) {
+                result[i] = idct1d(temp[i]);
+            }
+            return result;
+        }
+
+        // ========== 4. 上采样 4×4 到 8×8（最近邻复制） ==========
+        function upsample4to8(block4) {
+            const N = BLOCK_SIZE_CHROMA;
+            const result = [];
+            for (let i = 0; i < N * 2; i++) {
+                result[i] = new Array(N * 2);
+                for (let j = 0; j < N * 2; j++) {
+                    result[i][j] = block4[Math.floor(i / 2)][Math.floor(j / 2)];
+                }
+            }
+            return result;
+        }
+
+        // ========== 5. YCbCr 转 RGB ==========
+        function convertYCbCrToRGB(Y, Cb, Cr) {
+            // BT.601 标准转换
+            let R = Y + 1.402 * (Cr - 128);
+            let G = Y - 0.344136 * (Cb - 128) - 0.714136 * (Cr - 128);
+            let B = Y + 1.772 * (Cb - 128);
+            R = Math.round(Math.max(0, Math.min(255, R)));
+            G = Math.round(Math.max(0, Math.min(255, G)));
+            B = Math.round(Math.max(0, Math.min(255, B)));
+            return [R, G, B];
+        }
+
+        // ========== 6. 下采样色度通道 ==========
+        // 将 IMG_SIZE×IMG_SIZE 色度通道下采样为 (IMG_SIZE/2)×(IMG_SIZE/2)
+        function downsampleChroma(channel) {
+            const result = [];
+            for (let i = 0; i < IMG_SIZE; i += 2) {
+                let row = [];
+                for (let j = 0; j < IMG_SIZE; j += 2) {
+                    let sum = channel[i][j] + channel[i][j + 1] + channel[i + 1][j] + channel[i + 1][j + 1];
+                    row.push(sum / 4);
+                }
+                result.push(row);
+            }
+            return result;
+        }
+
+        // ========== 7. 图片上传与预处理 ==========
+
+        class DCTGenerator {
+            static generate(img) {
+                const cropSize = Math.min(img.width, img.height);
+                const offsetX = (img.width - cropSize) / 2;
+                const offsetY = (img.height - cropSize) / 2;
+                sourceCtx.drawImage(img, offsetX, offsetY, cropSize, cropSize, 0, 0, IMG_SIZE, IMG_SIZE);
+                const imgData = sourceCtx.getImageData(0, 0, IMG_SIZE, IMG_SIZE);
+                let YMatrix = [], CbMatrix = [], CrMatrix = [];
+                for (let i = 0; i < IMG_SIZE; i++) {
+                    let rowY = [], rowCb = [], rowCr = [];
+                    for (let j = 0; j < IMG_SIZE; j++) {
+                        const idx = (i * IMG_SIZE + j) * 4;
+                        const R = imgData.data[idx];
+                        const G = imgData.data[idx + 1];
+                        const B = imgData.data[idx + 2];
+                        const Y = 0.299 * R + 0.587 * G + 0.114 * B;
+                        const Cb = 128 - 0.168736 * R - 0.331264 * G + 0.5 * B;
+                        const Cr = 128 + 0.5 * R - 0.418688 * G - 0.081312 * B;
+                        rowY.push(Y);
+                        rowCb.push(Cb);
+                        rowCr.push(Cr);
+                    }
+                    YMatrix.push(rowY);
+                    CbMatrix.push(rowCb);
+                    CrMatrix.push(rowCr);
+                }
+                const CbDown = downsampleChroma(CbMatrix);
+                const CrDown = downsampleChroma(CrMatrix);
+                const blocksPerRow = IMG_SIZE / BLOCK_SIZE_Y;
+                const blocksPerCol = IMG_SIZE / BLOCK_SIZE_Y;
+                let quadrupleList = [];
+                for (let by = 0; by < blocksPerCol; by++) {
+                    for (let bx = 0; bx < blocksPerRow; bx++) {
+                        let blockY = [];
+                        for (let i = 0; i < BLOCK_SIZE_Y; i++) {
+                            let row = [];
+                            for (let j = 0; j < BLOCK_SIZE_Y; j++) {
+                                row.push(YMatrix[by * BLOCK_SIZE_Y + i][bx * BLOCK_SIZE_Y + j]);
+                            }
+                            blockY.push(row);
+                        }
+                        const dctY = dct2dBlock(blockY);
+                        for (let i = 0; i < BLOCK_SIZE_Y; i++) {
+                            for (let j = 0; j < BLOCK_SIZE_Y; j++) {
+                                quadrupleList.push({
+                                    type: "Y",
+                                    blockX: bx,
+                                    blockY: by,
+                                    idx: i * BLOCK_SIZE_Y + j,
+                                    value: dctY[i][j]
+                                });
+                            }
+                        }
+                        let blockCb = [], blockCr = [];
+                        for (let i = 0; i < BLOCK_SIZE_CHROMA; i++) {
+                            let rowCb = [], rowCr = [];
+                            for (let j = 0; j < BLOCK_SIZE_CHROMA; j++) {
+                                rowCb.push(CbDown[by * BLOCK_SIZE_CHROMA + i][bx * BLOCK_SIZE_CHROMA + j]);
+                                rowCr.push(CrDown[by * BLOCK_SIZE_CHROMA + i][bx * BLOCK_SIZE_CHROMA + j]);
+                            }
+                            blockCb.push(rowCb);
+                            blockCr.push(rowCr);
+                        }
+                        const dctCb = dct2dBlock4(blockCb);
+                        const dctCr = dct2dBlock4(blockCr);
+                        for (let i = 0; i < BLOCK_SIZE_CHROMA; i++) {
+                            for (let j = 0; j < BLOCK_SIZE_CHROMA; j++) {
+                                quadrupleList.push({
+                                    type: "Cb",
+                                    blockX: bx,
+                                    blockY: by,
+                                    idx: i * BLOCK_SIZE_CHROMA + j,
+                                    value: dctCb[i][j]
+                                });
+                                quadrupleList.push({
+                                    type: "Cr",
+                                    blockX: bx,
+                                    blockY: by,
+                                    idx: i * BLOCK_SIZE_CHROMA + j,
+                                    value: dctCr[i][j]
+                                });
+                            }
+                        }
+                    }
+                }
+                quadrupleList.sort((a, b) => Math.abs(b.value) - Math.abs(a.value));
+                return quadrupleList;
+            }
+        }
 
         function createDemodulator(baudRate, sampleRate) {
             const samplePerSymbol = sampleRate / baudRate; // 每个符号的采样点数
@@ -449,7 +700,6 @@
                                 this.port.postMessage({ phase: this.sum });
                             }
                             // 重置累加器和计数器
-                            console.log(this.count)
                             this.count = 0;
                             this.sum = 0;
                         }
@@ -563,56 +813,61 @@
         let txOscillator = null;
         let txStart = false;
 
+        function transmitOrdArray(ordArray) {
+            const bits = fibonacciEncoding(ordArray);
+            const freqs = bits.map(e => e == 0 ? carrierFreq - bandwidth * 0.5 : carrierFreq + bandwidth * 0.5);
+
+            oscillator = audioCtx.createOscillator();
+            oscillator.frequency.value = carrierFreq + bandwidth * 0.5;
+            const convolver = audioCtx.createConvolver();
+            const gainNode = audioCtx.createGain();
+            gainNode.gain.value = 0.5;
+
+            txUpdate = () => {
+                const filter = createFilter(1001, carrierFreq, bandwidth);
+                convolver.buffer = filter;
+            };
+            txUpdate();
+
+            let currentTime = audioCtx.currentTime;
+
+            for (let i = 0; i < freqs.length; i++) {
+                oscillator.frequency.setValueAtTime(freqs[i], currentTime + symbolTime + (1 / baudRate) * i);
+            }
+
+            oscillator.connect(convolver);
+            convolver.connect(gainNode);
+            gainNode.connect(audioCtx.destination);
+            oscillator.start();
+            oscillator.stop(currentTime + (1 / baudRate) * freqs.length + symbolTime * 2);
+
+            const interval = setInterval(() => {
+                const sent = (audioCtx.currentTime - currentTime) * baudRate;
+                const remainingSeconds = (bits.length - sent) / baudRate;
+                bitDisplay.textContent = `发送进度: ${toSI(sent / 8, true)}B / ${toSI(bits.length / 8, true)}B (剩余 ${secondsToHms(remainingSeconds)})`;
+            }, 100);
+
+            oscillator.onended = () => {
+                txBtn.disabled = false;
+                clearInterval(interval);
+                bitDisplay.textContent = '';
+                txBtn.textContent = '发送';
+                txStart = false;
+            };
+
+            txBtn.textContent = '中止';
+        }
+
         txBtn.addEventListener('click', () => {
             if (!txStart) {
                 const string = document.getElementById('transmit').value;
-
-                const bits = fibonacciEncoding(stringToOrdArray(string));
-
-                const freqs = bits.map(e => e == 0 ? carrierFreq - bandwidth * 0.5 : carrierFreq + bandwidth * 0.5)
-                oscillator = audioCtx.createOscillator()
-                oscillator.frequency.value = carrierFreq + bandwidth * 0.5;
-                const convolver = audioCtx.createConvolver()
-                const gainNode = audioCtx.createGain()
-                gainNode.gain.value = 0.5;
-
-                txUpdate = () => {
-                    const filter = createFilter(1001, carrierFreq, bandwidth)
-                    convolver.buffer = filter;
-                }
-                txUpdate()
-
-                let currentTime = audioCtx.currentTime;
-
-                for (let i = 0; i < freqs.length; i++) {
-                    oscillator.frequency.setValueAtTime(freqs[i], currentTime + symbolTime + (1 / baudRate) * i)
-                }
-
-                oscillator.connect(convolver)
-                convolver.connect(gainNode)
-                gainNode.connect(audioCtx.destination)
-                oscillator.start()
-                oscillator.stop(currentTime + (1 / baudRate) * freqs.length + symbolTime * 2)
-
-                const interval = setInterval(() => {
-                    const sent = (audioCtx.currentTime - currentTime) * baudRate;
-                    const remainingSeconds = (bits.length - sent) / baudRate;
-                    bitDisplay.textContent = `发送进度: ${toSI(sent / 8, true)}B / ${toSI(bits.length / 8, true)}B (剩余 ${secondsToHms(remainingSeconds)})`
-                }, 100)
-
-                oscillator.onended = () => {
-                    txBtn.disabled = false;
-                    clearInterval(interval)
-                    bitDisplay.textContent = ''
-                    txBtn.textContent = '发送'
-                    txStart = false;
-                }
-                txBtn.textContent = '中止'
+                transmitOrdArray(stringToOrdArray(string));
             } else {
-                oscillator.stop()
+                oscillator.stop();
             }
             txStart = !txStart;
-        })
+        });
+
 
         let rxBtn = document.getElementById('start')
         let rxUpdate = null;
@@ -660,9 +915,10 @@
                 console.log("解码结果:", dec);
                 if (dec > 3) {
                     received.value += String.fromCodePoint(dec)
-                   // alert(received.scrollHeight +" "+ received.scrollTop +" "+ received.clientHeight)
-                    if (Math.abs(received.scrollHeight - received.clientHeight - received.scrollTop) < 24){
-                    received.scrollTo(0, received.scrollHeight)}
+                    // alert(received.scrollHeight +" "+ received.scrollTop +" "+ received.clientHeight)
+                    if (Math.abs(received.scrollHeight - received.clientHeight - received.scrollTop) < 24) {
+                        received.scrollTo(0, received.scrollHeight)
+                    }
                 }
             })
 
