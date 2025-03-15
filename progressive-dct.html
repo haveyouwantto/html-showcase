@@ -82,6 +82,7 @@
             overflow: auto;
             max-height: 200px;
             border-radius: 4px;
+            width: 50%;
         }
 
         /* Neon text effect */
@@ -448,7 +449,7 @@
                 this.blocksPerCol = imageHeight / blockSizeY;
 
                 // 初始化 DCT 系数矩阵（仅 DC 分量设为灰度值，AC 为 0）
-                this.YBlocks = this._initBlocks(blockSizeY, 128 * blockSizeY);
+                this.YBlocks = this._initBlocks(blockSizeY, 0);
                 this.CbBlocks = this._initBlocks(blockSizeChroma, 128 * blockSizeChroma);
                 this.CrBlocks = this._initBlocks(blockSizeChroma, 128 * blockSizeChroma);
             }
