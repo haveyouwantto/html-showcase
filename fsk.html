@@ -238,7 +238,7 @@
         <canvas id="oscilloscope" width="800" height="200"></canvas>
     </div>
     <script>
-        const baudRate = 62.5; // 波特率
+        const baudRate = 100; // 波特率
         const sampleRate = 48000; // 采样率
         let carrierFreq = 16000; // 载波频率
         const freqMulti = 1; // 频率倍数
@@ -249,9 +249,9 @@
         const audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: sampleRate, latencyHint: "balanced" });
 
 
-        const IMG_SIZE = 256; // 可选：64, 128, 256 等
+        const IMG_SIZE = 128; // 可选：64, 128, 256 等
         const BLOCK_SIZE_Y = 8;         // Y 通道块尺寸（8×8）
-        const BLOCK_SIZE_CHROMA = 4;      // 色度块尺寸（4×4）
+        const BLOCK_SIZE_CHROMA = BLOCK_SIZE_Y >> 1;      // 色度块尺寸（4×4）
 
 
         const fib = [1, 2, 3, 5, 8, 13, 21, 34, 55, 89, 144, 233, 377, 610, 987, 1597, 2584, 4181, 6765, 10946, 17711, 28657, 46368, 75025, 121393, 196418, 317811, 514229, 832040, 1346269, 2178309, 3524578]; // 斐波那契数列
@@ -964,7 +964,7 @@
         let txStart = false;
 
         function transmitOrdArray(ordArray, delay = 1) {
-            const bits = fibonacciEncoding(ordArray);
+            const bits = fibonacciEncoding(ordArray.map(e => encodeWithParity(e)));
             const freqs = bits.map(e => e == 0 ? carrierFreq - bandwidth * 0.5 : carrierFreq + bandwidth * 0.5);
 
             oscillator = audioCtx.createOscillator();
@@ -1078,7 +1078,7 @@
             demod.connect(analyser)
 
             const decoder = new FibonacciDecoder(result => {
-                const dec = result
+                const dec = decodeAndVerify(result)
                 console.log("解码结果:", dec);
                 if (isRxImage) {
                     imgParser.feed(dec)
@@ -1215,6 +1215,7 @@
                 let ordArray = listToSymbols(quadrupleList);
 
                 transmitOrdArray(ordArray, 5)
+                txStart = true;
             };
         })
 
@@ -1307,12 +1308,12 @@
                     break;
             }
 
-            // Write blockX (5 bits)
-            symbol <<= 5;
+            // Write blockX (4 bits)
+            symbol <<= 4;
             symbol |= sample.blockX;
 
-            // Write blockY (5 bits)
-            symbol <<= 5;
+            // Write blockY (4 bits)
+            symbol <<= 4;
             symbol |= sample.blockY;
 
             // Write sync bit (1 bit)
@@ -1333,13 +1334,13 @@
             // Remove sync bit (1 bit)
             symbol >>= 1;
 
-            // Read blockY (5 bits)
-            meta.blockY = symbol & 0b11111;
-            symbol >>= 5;
+            // Read blockY (4 bits)
+            meta.blockY = symbol & 0b1111;
+            symbol >>= 4;
 
-            // Read blockX (5 bits)
-            meta.blockX = symbol & 0b11111;
-            symbol >>= 5;
+            // Read blockX (4 bits)
+            meta.blockX = symbol & 0b1111;
+            symbol >>= 4;
 
             // Read type (2 bits)
             switch (symbol & 0b11) {
