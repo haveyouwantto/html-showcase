@@ -667,7 +667,7 @@
                 function getValue(a) {
                     if (a.idx === 0) {
                         return a.type === 'Y' ? Math.abs(a.value) :
-                            Math.abs(a.value - 512);
+                            Math.abs(a.value - 512) * 4;
                     } else return Math.abs(a.value);
                 }
                 quadrupleList.sort((a, b) => getValue(b) - getValue(a));
