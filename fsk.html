@@ -177,6 +177,14 @@
             margin-bottom: 1rem;
         }
 
+        #reconCanvas {
+            border: var(--border-width) solid #2d3746;
+            border-radius: var(--border-radius);
+            margin-top: 1rem;
+            width: 100%;
+            image-rendering: pixelated;
+        }
+
         @media (max-width: 768px) {
             .container {
                 grid-template-columns: 1fr;
@@ -209,8 +217,11 @@
                 <button id='start'>接收</button>
                 <button id="clearRx">清空接收</button>
             </div>
-            <canvas id="reconCanvas" hidden></canvas>
-            <pre id="status"></pre>
+            <div id="imageRecvDiv" hidden>
+                <canvas id="reconCanvas"></canvas>
+                <pre id="status"></pre>
+                <button id="downloadImg">下载图片</button>
+            </div>
             <button id="rxImageBtn">接收图片</button>
             <div id="audio-inputs">
                 <label for="audio-input">选择音频输入设备：</label>
@@ -227,7 +238,7 @@
         <canvas id="oscilloscope" width="800" height="200"></canvas>
     </div>
     <script>
-        const baudRate = 1200; // 波特率
+        const baudRate = 100; // 波特率
         const sampleRate = 48000; // 采样率
         let carrierFreq = 16000; // 载波频率
         const freqMulti = 1; // 频率倍数
@@ -538,6 +549,7 @@
         reconCanvas.height = IMG_SIZE;
         const sourceCtx = sourceCanvas.getContext('2d');
         const reconCtx = reconCanvas.getContext('2d');
+        reconCtx.imageSmoothingEnabled = false;
         const statusDiv = document.getElementById('status');
 
         class DCTGenerator {
@@ -1008,6 +1020,7 @@
 
 
         let rxBtn = document.getElementById('start')
+        let imageRecvDiv = document.getElementById('imageRecvDiv')
         let rxUpdate = null;
         let isRxImage = false;
         let imgParser = null;
@@ -1023,7 +1036,7 @@
                 rxImage.addSample(sample)
                 statusDiv.textContent = `样本 ${rxImage.samples}: \n类型: ${sample.type} \n块: (${sample.blockX},${sample.blockY}) \n索引: ${sample.idx} \n系数: ${sample.value.toFixed(0)}`;
             }
-            reconCanvas.hidden = false;
+            imageRecvDiv.hidden = false;
         }
 
         rxBtn.addEventListener('click', async () => {
@@ -1203,6 +1216,14 @@
 
                 transmitOrdArray(ordArray, 5)
             };
+        })
+
+        // 下载图片
+        document.getElementById('downloadImg').addEventListener('click', () => {
+            const a = document.createElement('a');
+            a.href = reconCanvas.toDataURL('image/png');
+            a.download = `fsk-recv-samp${rxImage.samples}-${new Date().toISOString()}.png`;
+            a.click();
         })
 
         function listToSymbols(quadrupleList) {
