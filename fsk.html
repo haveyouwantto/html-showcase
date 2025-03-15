@@ -718,6 +718,7 @@
              * @param {Object} sample 四元组数据，字段包括 type, blockX, blockY, idx, value
              */
             addSample(sample) {
+                if (Math.abs(sample.value) > 2040) return; // invaild
                 const bx = sample.blockX;
                 const by = sample.blockY;
                 if (sample.type === "Y") {
