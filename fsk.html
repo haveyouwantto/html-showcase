@@ -196,6 +196,9 @@
                 <button id="start-tx">发送</button>
                 <button id="clearTx">清空发送</button>
             </div>
+            <input type="file" accept="image/*" id="txImage">
+            <button id="txImageBtn">发送图片</button>
+            <canvas hidden id="sourceCanvas"></canvas>
             <div id="bits"></div>
         </div>
         <div>
@@ -206,6 +209,8 @@
                 <button id='start'>接收</button>
                 <button id="clearRx">清空接收</button>
             </div>
+            <canvas id="reconCanvas" hidden></canvas>
+            <pre id="status"></pre>
             <div id="audio-inputs">
                 <label for="audio-input">选择音频输入设备：</label>
                 <select id="audio-input"></select>
@@ -524,6 +529,16 @@
 
         // ========== 7. 图片上传与预处理 ==========
 
+        const sourceCanvas = document.getElementById('sourceCanvas');
+        sourceCanvas.width = IMG_SIZE;
+        sourceCanvas.height = IMG_SIZE;
+        const reconCanvas = document.getElementById('reconCanvas');
+        reconCanvas.width = IMG_SIZE;
+        reconCanvas.height = IMG_SIZE;
+        const sourceCtx = sourceCanvas.getContext('2d');
+        const reconCtx = reconCanvas.getContext('2d');
+        const statusDiv = document.getElementById('status');
+
         class DCTGenerator {
             static generate(img) {
                 const cropSize = Math.min(img.width, img.height);
@@ -611,6 +626,156 @@
                 }
                 quadrupleList.sort((a, b) => Math.abs(b.value) - Math.abs(a.value));
                 return quadrupleList;
+            }
+        }
+
+        // ========== 8. 封装重构器对象：ColorDCTReconstructor ==========
+        class ColorDCTReconstructor {
+            /**
+             * @param {HTMLCanvasElement} canvas 用于显示重构结果的 canvas 元素
+             * 默认图像大小 IMG_SIZE×IMG_SIZE, Y 块为 BLOCK_SIZE_Y×BLOCK_SIZE_Y, 色度块为 BLOCK_SIZE_CHROMA×BLOCK_SIZE_CHROMA
+             */
+            constructor(canvas, imageWidth = IMG_SIZE, imageHeight = IMG_SIZE, blockSizeY = BLOCK_SIZE_Y, blockSizeChroma = BLOCK_SIZE_CHROMA) {
+                this.canvas = canvas;
+                this.ctx = canvas.getContext('2d');
+                this.imageWidth = imageWidth;
+                this.imageHeight = imageHeight;
+                this.blockSizeY = blockSizeY;
+                this.blockSizeChroma = blockSizeChroma;
+                this.blocksPerRow = imageWidth / blockSizeY;
+                this.blocksPerCol = imageHeight / blockSizeY;
+                // 初始化各通道块的 DCT 系数矩阵
+                this.YBlocks = [];
+                this.CbBlocks = [];
+                this.CrBlocks = [];
+                for (let by = 0; by < this.blocksPerCol; by++) {
+                    this.YBlocks[by] = [];
+                    this.CbBlocks[by] = [];
+                    this.CrBlocks[by] = [];
+                    for (let bx = 0; bx < this.blocksPerRow; bx++) {
+                        let blockY = [];
+                        for (let i = 0; i < blockSizeY; i++) {
+                            blockY.push(new Array(blockSizeY).fill(0));
+                        }
+                        this.YBlocks[by][bx] = blockY;
+                        let blockCb = [];
+                        for (let i = 0; i < blockSizeChroma; i++) {
+                            blockCb.push(new Array(blockSizeChroma).fill(0));
+                        }
+                        this.CbBlocks[by][bx] = blockCb;
+                        let blockCr = [];
+                        for (let i = 0; i < blockSizeChroma; i++) {
+                            blockCr.push(new Array(blockSizeChroma).fill(0));
+                        }
+                        this.CrBlocks[by][bx] = blockCr;
+                    }
+                }
+                this.samples = 0;
+            }
+
+            /**
+             * 添加一个 DCT 四元组样本，更新对应块的系数，进行 IDCT 重构后转换为 RGB 更新到 canvas
+             * @param {Object} sample 四元组数据，字段包括 type, blockX, blockY, idx, value
+             */
+            addSample(sample) {
+                const bx = sample.blockX;
+                const by = sample.blockY;
+                if (sample.type === "Y") {
+                    const row = Math.floor(sample.idx / this.blockSizeY);
+                    const col = sample.idx % this.blockSizeY;
+                    this.YBlocks[by][bx][row][col] = sample.value;
+                } else if (sample.type === "Cb") {
+                    const row = Math.floor(sample.idx / this.blockSizeChroma);
+                    const col = sample.idx % this.blockSizeChroma;
+                    this.CbBlocks[by][bx][row][col] = sample.value;
+                } else if (sample.type === "Cr") {
+                    const row = Math.floor(sample.idx / this.blockSizeChroma);
+                    const col = sample.idx % this.blockSizeChroma;
+                    this.CrBlocks[by][bx][row][col] = sample.value;
+                } else return;
+                // 对该块进行重构：Y 块直接 8×8 IDCT, 色度块 4×4 IDCT 后上采样到 8×8
+                const spatialY = idct2dBlock(this.YBlocks[by][bx]);
+                const spatialCb4 = idct2dBlock4(this.CbBlocks[by][bx]);
+                const spatialCr4 = idct2dBlock4(this.CrBlocks[by][bx]);
+                const spatialCb = upsample4to8(spatialCb4);
+                const spatialCr = upsample4to8(spatialCr4);
+
+                // 将该块（8×8）逐像素转换 YCbCr → RGB
+                const blockImageData = this.ctx.createImageData(this.blockSizeY, this.blockSizeY);
+                for (let i = 0; i < this.blockSizeY; i++) {
+                    for (let j = 0; j < this.blockSizeY; j++) {
+                        let Y = spatialY[i][j];
+                        let Cb = spatialCb[i][j];
+                        let Cr = spatialCr[i][j];
+                        const [R, G, B] = convertYCbCrToRGB(Y, Cb, Cr);
+                        const index = (i * this.blockSizeY + j) * 4;
+                        blockImageData.data[index] = R;
+                        blockImageData.data[index + 1] = G;
+                        blockImageData.data[index + 2] = B;
+                        blockImageData.data[index + 3] = 255;
+                    }
+                }
+                this.ctx.putImageData(blockImageData, bx * this.blockSizeY, by * this.blockSizeY);
+                this.samples++;
+            }
+        }
+
+
+        class ImgSampleParser {
+            constructor() {
+                this.meta = {}
+                this.onSample = null;
+            }
+
+            feed(symbol) {
+                switch (symbol & 1) {
+                    case 1:
+                        let sample = {}
+                        // 去掉同步位
+                        symbol >>= 1;
+
+                        // 提取 idx
+                        sample.idx = symbol & 0x3F; // 0x3F 是 63，二进制是 00111111
+                        symbol >>= 6;
+
+                        // 提取 blockY
+                        sample.blockY = symbol & 0x1F; // 0x1F 是 31，二进制是 00011111
+                        symbol >>= 5;
+
+                        // 提取 blockX
+                        sample.blockX = symbol & 0x1F; // 0x1F 是 31，二进制是 00011111
+                        symbol >>= 5;
+
+                        // 提取 type
+                        let typeCode = symbol & 0x03; // 0x03 是 3，二进制是 00000011
+                        switch (typeCode) {
+                            case 0:
+                                sample.type = "Y";
+                                break;
+                            case 1:
+                                sample.type = "Cb";
+                                break;
+                            case 2:
+                                sample.type = "Cr";
+                                break;
+                            default:
+                                sample.type = "Unknown";
+                                break;
+                        }
+                        this.meta = sample
+                        break;
+
+                    case 0:
+                        // 去掉同步位
+                        symbol >>= 1;
+                        this.onSample({
+                            ...this.meta,
+                            value: symbol
+                        })
+
+                    default:
+                        break;
+                }
             }
         }
 
@@ -813,7 +978,7 @@
         let txOscillator = null;
         let txStart = false;
 
-        function transmitOrdArray(ordArray) {
+        function transmitOrdArray(ordArray, delay = 1) {
             const bits = fibonacciEncoding(ordArray);
             const freqs = bits.map(e => e == 0 ? carrierFreq - bandwidth * 0.5 : carrierFreq + bandwidth * 0.5);
 
@@ -829,7 +994,7 @@
             };
             txUpdate();
 
-            let currentTime = audioCtx.currentTime;
+            let currentTime = audioCtx.currentTime + delay;
 
             for (let i = 0; i < freqs.length; i++) {
                 oscillator.frequency.setValueAtTime(freqs[i], currentTime + symbolTime + (1 / baudRate) * i);
@@ -871,6 +1036,9 @@
 
         let rxBtn = document.getElementById('start')
         let rxUpdate = null;
+        let isRxImage = false;
+        let imgParser = null;
+        let rxImage = null;
 
         rxBtn.addEventListener('click', async () => {
             rxBtn.disabled = true;
@@ -913,11 +1081,25 @@
             const decoder = new FibonacciDecoder(result => {
                 const dec = result
                 console.log("解码结果:", dec);
-                if (dec > 3) {
-                    received.value += String.fromCodePoint(dec)
-                    // alert(received.scrollHeight +" "+ received.scrollTop +" "+ received.clientHeight)
-                    if (Math.abs(received.scrollHeight - received.clientHeight - received.scrollTop) < 24) {
-                        received.scrollTo(0, received.scrollHeight)
+                if (isRxImage) {
+                    imgParser.feed(dec)
+                } else {
+                    if (dec == 2000000) {
+                        isRxImage = true;
+                        rxImage = new ColorDCTReconstructor(reconCanvas)
+                        imgParser = new ImgSampleParser()// 
+                        imgParser.onSample = sample => {
+                            console.log(sample)
+                            rxImage.addSample(sample)
+                            statusDiv.textContent = `样本 ${rxImage.samples}: \n类型: ${sample.type} \n块: (${sample.blockX},${sample.blockY}) \n索引: ${sample.idx} \n系数: ${sample.value.toFixed(4)}`;
+                        }
+                        reconCanvas.hidden = false;
+                    } else if (dec > 3) {
+                        received.value += String.fromCodePoint(dec)
+                        // alert(received.scrollHeight +" "+ received.scrollTop +" "+ received.clientHeight)
+                        if (Math.abs(received.scrollHeight - received.clientHeight - received.scrollTop) < 24) {
+                            received.scrollTo(0, received.scrollHeight)
+                        }
                     }
                 }
             })
@@ -1019,6 +1201,75 @@
             }
         })
 
+        // image transmit
+        const txImageInput = document.getElementById('txImage');
+        const txImageBtn = document.getElementById('txImageBtn');
+        txImageBtn.addEventListener('click', () => {
+            const file = txImageInput.files[0];
+            if (!file) return;
+            const img = new Image();
+            const reader = new FileReader();
+            reader.onload = function (e) {
+                img.src = e.target.result;
+            };
+            reader.readAsDataURL(file);
+            img.onload = function () {
+                let quadrupleList = DCTGenerator.generate(img);
+                console.log("四元组总数:", quadrupleList.length);
+
+                let ordArray = listToSymbols(quadrupleList);
+
+                transmitOrdArray(ordArray, 5)
+            };
+        })
+
+        function listToSymbols(quadrupleList) {
+            const symbolList = [2000000];
+            for (let sample of quadrupleList) {
+                let meta = sampleToSymbol(sample);
+                symbolList.push(meta)
+
+                let sampSymbol = Math.round(sample.value);
+                symbolList.push(sampSymbol << 1)
+            }
+            return symbolList
+        }
+
+        function sampleToSymbol(sample) {
+            let symbol = 0;
+
+            // Write type
+            switch (sample.type) {
+                case "Y":
+                    break;
+                case "Cb":
+                    symbol += 1;
+                    break
+                case "Cr":
+                    symbol += 2;
+                    break
+                default:
+                    symbol += 3;
+                    break;
+            }
+
+            // Write blockX
+            symbol <<= 5;
+            symbol |= sample.blockX;
+
+            // Write blockY
+            symbol <<= 5;
+            symbol |= sample.blockY
+
+            // Write idx
+            symbol <<= 6;
+            symbol |= sample.idx
+
+            // Write sync bit
+            symbol <<= 1;
+            symbol |= 1;
+            return symbol
+        }
     </script>
 </body>
 
