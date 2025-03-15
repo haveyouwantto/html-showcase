@@ -211,6 +211,7 @@
             </div>
             <canvas id="reconCanvas" hidden></canvas>
             <pre id="status"></pre>
+            <button id="rxImageBtn">接收图片</button>
             <div id="audio-inputs">
                 <label for="audio-input">选择音频输入设备：</label>
                 <select id="audio-input"></select>
@@ -226,7 +227,7 @@
         <canvas id="oscilloscope" width="800" height="200"></canvas>
     </div>
     <script>
-        const baudRate = 62.5; // 波特率
+        const baudRate = 100; // 波特率
         const sampleRate = 48000; // 采样率
         let carrierFreq = 16000; // 载波频率
         const freqMulti = 1; // 频率倍数
@@ -1040,6 +1041,18 @@
         let imgParser = null;
         let rxImage = null;
 
+        function startRxImage() {
+            isRxImage = true;
+            rxImage = new ColorDCTReconstructor(reconCanvas)
+            imgParser = new ImgSampleParser()// 
+            imgParser.onSample = sample => {
+                console.log(sample)
+                rxImage.addSample(sample)
+                statusDiv.textContent = `样本 ${rxImage.samples}: \n类型: ${sample.type} \n块: (${sample.blockX},${sample.blockY}) \n索引: ${sample.idx} \n系数: ${sample.value.toFixed(0)}`;
+            }
+            reconCanvas.hidden = false;
+        }
+
         rxBtn.addEventListener('click', async () => {
             rxBtn.disabled = true;
             audioCtx.resume()
@@ -1085,15 +1098,7 @@
                     imgParser.feed(dec)
                 } else {
                     if (dec == 2000000) {
-                        isRxImage = true;
-                        rxImage = new ColorDCTReconstructor(reconCanvas)
-                        imgParser = new ImgSampleParser()// 
-                        imgParser.onSample = sample => {
-                            console.log(sample)
-                            rxImage.addSample(sample)
-                            statusDiv.textContent = `样本 ${rxImage.samples}: \n类型: ${sample.type} \n块: (${sample.blockX},${sample.blockY}) \n索引: ${sample.idx} \n系数: ${sample.value.toFixed(4)}`;
-                        }
-                        reconCanvas.hidden = false;
+                        startRxImage()
                     } else if (dec > 3) {
                         received.value += String.fromCodePoint(dec)
                         // alert(received.scrollHeight +" "+ received.scrollTop +" "+ received.clientHeight)
@@ -1138,6 +1143,10 @@
                 requestAnimationFrame(draw)
             }
             draw()
+        })
+
+        document.getElementById('rxImageBtn').addEventListener('click', () => {
+            startRxImage();
         })
 
         document.getElementById('clearTx').addEventListener('click', () => {
