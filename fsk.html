@@ -227,7 +227,7 @@
         <canvas id="oscilloscope" width="800" height="200"></canvas>
     </div>
     <script>
-        const baudRate = 100; // 波特率
+        const baudRate = 1200; // 波特率
         const sampleRate = 48000; // 采样率
         let carrierFreq = 16000; // 载波频率
         const freqMulti = 1; // 频率倍数
@@ -726,53 +726,25 @@
             constructor() {
                 this.meta = {}
                 this.onSample = null;
+                this.state = 0;
             }
 
             feed(symbol) {
                 switch (symbol & 1) {
                     case 1:
-                        let sample = {}
-                        // 去掉同步位
-                        symbol >>= 1;
-
-                        // 提取 idx
-                        sample.idx = symbol & 0x3F; // 0x3F 是 63，二进制是 00111111
-                        symbol >>= 6;
-
-                        // 提取 blockY
-                        sample.blockY = symbol & 0x1F; // 0x1F 是 31，二进制是 00011111
-                        symbol >>= 5;
-
-                        // 提取 blockX
-                        sample.blockX = symbol & 0x1F; // 0x1F 是 31，二进制是 00011111
-                        symbol >>= 5;
-
-                        // 提取 type
-                        let typeCode = symbol & 0x03; // 0x03 是 3，二进制是 00000011
-                        switch (typeCode) {
-                            case 0:
-                                sample.type = "Y";
-                                break;
-                            case 1:
-                                sample.type = "Cb";
-                                break;
-                            case 2:
-                                sample.type = "Cr";
-                                break;
-                            default:
-                                sample.type = "Unknown";
-                                break;
-                        }
-                        this.meta = sample
+                        this.meta = symbolToSampleMeta(symbol)
+                        this.state = 1
                         break;
 
                     case 0:
-                        // 去掉同步位
-                        symbol >>= 1;
-                        this.onSample({
-                            ...this.meta,
-                            value: symbol
-                        })
+                        if (this.state == 1) {
+                            let value = symbolToSample(symbol, this.meta.idx)
+                            this.onSample({
+                                ...this.meta,
+                                value: value
+                            })
+                            this.state = 0;
+                        }
 
                     default:
                         break;
@@ -1044,9 +1016,10 @@
         function startRxImage() {
             isRxImage = true;
             rxImage = new ColorDCTReconstructor(reconCanvas)
-            imgParser = new ImgSampleParser()// 
+            imgParser = new ImgSampleParser()
             imgParser.onSample = sample => {
                 console.log(sample)
+                dequantizeDCT(sample)
                 rxImage.addSample(sample)
                 statusDiv.textContent = `样本 ${rxImage.samples}: \n类型: ${sample.type} \n块: (${sample.blockX},${sample.blockY}) \n索引: ${sample.idx} \n系数: ${sample.value.toFixed(0)}`;
             }
@@ -1235,16 +1208,64 @@
         function listToSymbols(quadrupleList) {
             const symbolList = [2000000];
             for (let sample of quadrupleList) {
-                let meta = sampleToSymbol(sample);
-                symbolList.push(meta)
+                quantizeDCT(sample)
 
-                let sampSymbol = Math.round(sample.value);
-                symbolList.push(sampSymbol << 1)
+                if (sample.value != 0) {
+                    let meta = sampleMetaToSymbol(sample);
+                    symbolList.push(meta)
+
+                    let sampSymbol = sampleToSymbol(sample);
+                    symbolList.push(sampSymbol)
+                }
             }
             return symbolList
         }
 
-        function sampleToSymbol(sample) {
+        const LUMINANCE_QUANT_TABLE = [
+            [16, 1, 1, 2, 2, 4, 5, 6],
+            [1, 1, 1, 2, 3, 5, 6, 6],
+            [1, 1, 2, 2, 4, 6, 7, 6],
+            [2, 2, 2, 3, 5, 8, 8, 6],
+            [2, 2, 3, 4, 6, 10, 10, 7],
+            [2, 3, 4, 5, 8, 10, 11, 9],
+            [4, 5, 6, 7, 10, 12, 12, 10],
+            [7, 9, 9, 10, 11, 10, 10, 10]
+        ];
+
+        const CHROMINANCE_QUANT_TABLE = [
+            [1, 1, 2, 3, 6, 6, 6, 6],
+            [1, 2, 2, 4, 6, 6, 6, 6],
+            [2, 2, 3, 6, 6, 6, 6, 6],
+            [3, 4, 6, 6, 6, 6, 6, 6],
+            [6, 6, 6, 6, 6, 6, 6, 6],
+            [6, 6, 6, 6, 6, 6, 6, 6],
+            [6, 6, 6, 6, 6, 6, 6, 6],
+            [6, 6, 6, 6, 6, 6, 6, 6]
+        ];
+
+        function quantizeDCT(sample) {
+            let qTable;
+            if (sample.type === "Y") {
+                qTable = LUMINANCE_QUANT_TABLE;
+            } else {
+                qTable = CHROMINANCE_QUANT_TABLE;
+            }
+            const qFactor = qTable[sample.idx >> 3][sample.idx & 7]; // 获取量化系数
+            sample.value = Math.round(sample.value / qFactor);
+        }
+
+        function dequantizeDCT(sample) {
+            let qTable;
+            if (sample.type === "Y") {
+                qTable = LUMINANCE_QUANT_TABLE;
+            } else {
+                qTable = CHROMINANCE_QUANT_TABLE;
+            }
+            const qFactor = qTable[sample.idx >> 3][sample.idx & 7];
+            sample.value = Math.round(sample.value * qFactor);
+        }
+
+        function sampleMetaToSymbol(sample) {
             let symbol = 0;
 
             // Write type
@@ -1278,6 +1299,88 @@
             symbol <<= 1;
             symbol |= 1;
             return symbol
+        }
+
+        function symbolToSampleMeta(symbol) {
+            let meta = {
+                type: "",
+                blockX: 0,
+                blockY: 0,
+                idx: 0
+            }
+
+            symbol >>= 1;
+
+            // Read idx
+            meta.idx = symbol & 0b111111;
+            symbol >>= 6;
+
+            // Read blockY
+            meta.blockY = symbol & 0b11111;
+            symbol >>= 5;
+
+            // Read blockX
+            meta.blockX = symbol & 0b11111;
+            symbol >>= 5;
+
+            // Read type
+            switch (symbol & 0b11) {
+                case 0:
+                    meta.type = "Y";
+                    break;
+                case 1:
+                    meta.type = "Cb";
+                    break;
+                case 2:
+                    meta.type = "Cr";
+                    break;
+                default:
+                    meta.type = "Unknown";
+                    break;
+            }
+
+            return meta
+        }
+
+        function sampleToSymbol(sample) {
+            if (sample.idx == 0) return sample.value << 1;
+
+            let symbol = Math.abs(sample.value)
+
+            // Write sign bit
+            symbol <<= 1;
+            symbol |= Math.sign(sample.value) > 0 ? 0 : 1;
+
+            // Write sync bit
+            symbol <<= 1;
+            return symbol
+        }
+
+        function symbolToSample(symbol, idx) {
+            if (idx === 0) {
+                // 如果 idx 等于 0，直接把 symbol 右移 1 位
+                return symbol >> 1;
+            } else {
+                // 否则，按照之前的逻辑处理
+                // 去掉同步位
+                symbol >>= 1;
+
+                // 提取符号位
+                const signBit = symbol & 1;
+
+                // 去掉符号位
+                symbol >>= 1;
+
+                // 还原数值
+                let value = symbol;
+
+                // 应用符号
+                if (signBit === 1) {
+                    value = -value;
+                }
+
+                return value;
+            }
         }
     </script>
 </body>
