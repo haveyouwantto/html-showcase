@@ -239,16 +239,39 @@
         <input type="number" id="channel" value="120" min="1" max="160">
         <span id="freq"></span>
         <div>频道范围：1~12，120~160</div>
+        符号速率：
+        <input type="number" id="baudrateInput" value="100" min="4" max="1200">
         <canvas id="oscilloscope" width="800" height="200"></canvas>
     </div>
     <script>
-        const baudRate = 250; // 波特率
+        let baudRate = 250; // 波特率
         const sampleRate = 48000; // 采样率
         let carrierFreq = 16000; // 载波频率
         const freqMulti = 1; // 频率倍数
-        const samplePerSymbol = sampleRate / baudRate; // 每个符号的采样点数
-        const symbolTime = samplePerSymbol / sampleRate;
-        const bandwidth = baudRate * freqMulti
+        let samplePerSymbol = sampleRate / baudRate; // 每个符号的采样点数
+        let symbolTime = samplePerSymbol / sampleRate;
+        let bandwidth = baudRate * freqMulti
+
+        const baudrateInput = document.getElementById('baudrateInput');
+
+        baudrateInput.addEventListener('change', () => {
+            let bd = parseInt(baudrateInput.value);
+            if (bd < 4) {
+                bd = 4;
+                baudrateInput.value = 4;
+            } else if (bd > 1200) {
+                bd = 1200;
+                baudrateInput.value = 1200;
+            }
+            setBaudRate(bd);
+        });
+
+        function setBaudRate(bd) {
+            baudRate = bd;
+            samplePerSymbol = sampleRate / baudRate; 
+            symbolTime = samplePerSymbol / sampleRate;
+            bandwidth = baudRate * freqMulti
+        }
 
         const audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: sampleRate, latencyHint: "balanced" });
 
@@ -769,10 +792,8 @@
         }
 
         function createDemodulator(baudRate, sampleRate) {
-            const samplePerSymbol = sampleRate / baudRate; // 每个符号的采样点数
-
             const demod = class extends AudioWorkletProcessor {
-                constructor() {
+                constructor(options) {
                     super();
                     this.t = 0;
                     // IIR滤波器状态变量（每个通道维护两个状态）
@@ -782,6 +803,24 @@
                     this.count = 0;
                     this.sum = 0;
 
+                    // this.setBaudrate(baudRate)
+
+                    this.port.onmessage = (event) => {
+                        this.setBaudrate(event.data.baudRate);
+                    };
+                }
+
+                static get parameterDescriptors() {
+                    return [{
+                        name: 'frequency',
+                        defaultValue: 1500,
+                        minValue: 0,
+                        maxValue: sampleRate,
+                        automationRate: 'k-rate'
+                    }];
+                }
+
+                setBaudrate(baudRate) {
                     // 计算二阶巴特沃斯低通滤波器系数（baudRate截止，8kHz采样率）
                     const f0 = baudRate;
                     const Q = Math.sqrt(2) / 2; // 巴特沃斯Q值
@@ -802,16 +841,9 @@
                     this.b2 = b2 / a0;
                     this.a1 = a1 / a0;
                     this.a2 = a2 / a0;
-                }
 
-                static get parameterDescriptors() {
-                    return [{
-                        name: 'frequency',
-                        defaultValue: 1500,
-                        minValue: 0,
-                        maxValue: sampleRate,
-                        automationRate: 'k-rate'
-                    }];
+                    this.baudRate = baudRate;
+                    this.samplePerSymbol = sampleRate / baudRate;
                 }
 
                 process(inputs, outputs, parameters) {
@@ -850,7 +882,7 @@
                         // 符号边界检测（相位符号变化时触发）
                         if (j > 0 && Math.sign(phase[j]) != Math.sign(phase[j - 1])) {
                             // 当达到半个符号周期时提交相位和
-                            if (this.count >= samplePerSymbol / 2) {
+                            if (this.count >= this.samplePerSymbol / 2) {
                                 this.port.postMessage({ phase: this.sum });
                             }
                             // 重置累加器和计数器
@@ -862,7 +894,7 @@
                         this.count++;
                         this.sum += phase[j];
                         // 当达到完整符号周期时提交相位和
-                        if (this.count === samplePerSymbol) {
+                        if (this.count === this.samplePerSymbol) {
                             this.port.postMessage({ phase: this.sum });
                             this.count = 0;
                             this.sum = 0;
@@ -1047,6 +1079,7 @@
             rxBtn.disabled = true;
             audioCtx.resume()
 
+
             await audioCtx.audioWorklet.addModule(workletData)
             let stream = await navigator.mediaDevices.getUserMedia(
                 {
@@ -1064,6 +1097,8 @@
             const source = audioCtx.createMediaStreamSource(stream)
             const convolver = audioCtx.createConvolver()
             const demod = new AudioWorkletNode(audioCtx, 'demod')
+
+            demod.port.postMessage({ baudRate: baudRate })
 
             rxUpdate = () => {
                 const filter = createFilter(1001, carrierFreq, bandwidth)
