@@ -136,7 +136,7 @@
     <script>
         // ========== 常量设置 ==========
         const IMG_SIZE = 256; // 可选：64, 128, 256 等
-        const BLOCK_SIZE_Y = 8;         // Y 通道块尺寸（8×8）
+        const BLOCK_SIZE_Y = 32;         // Y 通道块尺寸（8×8）
         const BLOCK_SIZE_CHROMA = BLOCK_SIZE_Y >> 1;      // 色度块尺寸（4×4）
 
         // ========== 设置 Canvas 尺寸 ==========
@@ -398,7 +398,7 @@
                 function getValue(a) {
                     if (a.idx === 0) {
                         return a.type === 'Y' ? Math.abs(a.value) :
-                            Math.abs(a.value - 512);
+                            Math.abs(a.value - 128 * BLOCK_SIZE_CHROMA);
                     } else return Math.abs(a.value);
                 }
                 quadrupleList.sort((a, b) => getValue(b) - getValue(a));
