@@ -323,13 +323,12 @@
         }
 
         function stringToOrdArray(string) {
-            let result = [3];
+            let result = [];
             for (let i = 0; i < string.length; i++) {
                 const ord = string.codePointAt(i);
                 result.push(ord);
                 if (ord > 0xffff) i++;
             }
-            result.push(3);
             return result;
         }
 
@@ -670,7 +669,12 @@
                             Math.abs(a.value - 128 * BLOCK_SIZE_CHROMA) * 2;
                     } else return Math.abs(a.value);
                 }
-                quadrupleList.sort((a, b) => getValue(b) - getValue(a));
+                quadrupleList.sort((a, b) => getValue(b) - getValue(a)).forEach(sample => {
+                    if (sample.idx === 0) {
+                        if (sample.type === 'Y') sample.value -= 128 * BLOCK_SIZE_Y;
+                        else sample.value -= 128 * BLOCK_SIZE_CHROMA;
+                    }
+                });
                 return quadrupleList;
             }
         }
@@ -699,7 +703,7 @@
 
                 this.ctx.fillStyle = 'gray'
                 this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
-           }
+            }
 
 
             /**
@@ -792,7 +796,7 @@
 
                     case 0:
                         if (this.state == 1) {
-                            let value = symbolToSample(symbol, this.meta.idx)
+                            let value = symbolToSample(symbol, this.meta)
                             this.onSample({
                                 ...this.meta,
                                 value: value
@@ -1015,7 +1019,13 @@
         let txStart = false;
 
         function transmitOrdArray(ordArray, delay = 1) {
-            const bits = fibonacciEncoding(ordArray.map(e => encodeWithParity(e)));
+
+            const preparedArray = ordArray.map(e => encodeWithParity(e));
+            const sync = [3, 3, 3, 3, 3, 3, 3, 3];
+
+            preparedArray.unshift(...sync);
+
+            const bits = fibonacciEncoding(preparedArray);
             const freqs = bits.map(e => e == 0 ? carrierFreq - bandwidth * 0.5 : carrierFreq + bandwidth * 0.5);
 
             oscillator = audioCtx.createOscillator();
@@ -1084,6 +1094,10 @@
             imgParser.onSample = sample => {
                 console.log(sample)
                 dequantizeDCT(sample)
+                if (sample.idx === 0) {
+                    if (sample.type === 'Y') sample.value += 128 * BLOCK_SIZE_Y;
+                    else sample.value += 128 * BLOCK_SIZE_CHROMA;
+                }
                 rxImage.addSample(sample)
                 statusDiv.textContent = `样本 ${rxImage.samples}: \n类型: ${sample.type} \n块: (${sample.blockX},${sample.blockY}) \n索引: ${sample.idx} \n系数: ${sample.value.toFixed(0)}`;
             }
@@ -1136,7 +1150,12 @@
                 console.log("解码结果:", dec);
                 if (isRxImage) {
                     if (dec < 0) imgParser.state = 0;
-                    else imgParser.feed(dec)
+                    else if (dec === 2000001) {
+                        isRxImage = false;
+                    } else {
+                        if (dec >= 2000002) dec -= 2;
+                        imgParser.feed(dec)
+                    }
                 } else {
                     if (dec == 2000000) {
                         startRxImage()
@@ -1283,18 +1302,21 @@
         })
 
         function listToSymbols(quadrupleList) {
-            const symbolList = [3, 2000000, 2000000, 2000000];
+            const symbolList = [2000000, 2000000, 2000000, 2000000];
             for (let sample of quadrupleList) {
                 quantizeDCT(sample)
 
                 if (sample.value != 0) {
                     let meta = sampleMetaToSymbol(sample);
+                    if (meta >= 2000000) meta += 2;
                     symbolList.push(meta)
 
                     let sampSymbol = sampleToSymbol(sample);
+                    if (sampSymbol >= 2000000) sampSymbol += 2;
                     symbolList.push(sampSymbol)
                 }
             }
+            symbolList.push(...[2000001, 2000001, 2000001, 2000001])
             return symbolList
         }
 
@@ -1310,7 +1332,7 @@
         ];
 
         const CHROMINANCE_QUANT_TABLE = [
-            [1, 1, 2, 3, 6, 6, 6, 6],
+            [8, 1, 2, 3, 6, 6, 6, 6],
             [1, 2, 2, 4, 6, 6, 6, 6],
             [2, 2, 3, 6, 6, 6, 6, 6],
             [3, 4, 6, 6, 6, 6, 6, 6],
@@ -1422,8 +1444,7 @@
         }
 
 
-        function sampleToSymbol(sample) {
-            if (sample.idx == 0) return sample.value << 1;
+        function sampleToSymbol(sample) {//return sample.value << 1;
 
             let symbol = Math.abs(sample.value)
 
@@ -1436,31 +1457,25 @@
             return symbol
         }
 
-        function symbolToSample(symbol, idx) {
-            if (idx === 0) {
-                // 如果 idx 等于 0，直接把 symbol 右移 1 位
-                return symbol >> 1;
-            } else {
-                // 否则，按照之前的逻辑处理
-                // 去掉同步位
-                symbol >>= 1;
+        function symbolToSample(symbol, sample) {
+            // 去掉同步位
+            symbol >>= 1;
 
-                // 提取符号位
-                const signBit = symbol & 1;
+            // 提取符号位
+            const signBit = symbol & 1;
 
-                // 去掉符号位
-                symbol >>= 1;
+            // 去掉符号位
+            symbol >>= 1;
 
-                // 还原数值
-                let value = symbol;
+            // 还原数值
+            let value = symbol;
 
-                // 应用符号
-                if (signBit === 1) {
-                    value = -value;
-                }
-
-                return value;
+            // 应用符号
+            if (signBit === 1) {
+                value = -value;
             }
+
+            return value;
         }
     </script>
 </body>
