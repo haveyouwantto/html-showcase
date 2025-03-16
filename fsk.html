@@ -244,7 +244,7 @@
         <canvas id="oscilloscope" width="800" height="200"></canvas>
     </div>
     <script>
-        let baudRate = 250; // 波特率
+        let baudRate = 100; // 波特率
         const sampleRate = 48000; // 采样率
         let carrierFreq = 16000; // 载波频率
         const freqMulti = 1; // 频率倍数
@@ -1130,7 +1130,7 @@
             demod.port.postMessage({ baudRate: baudRate })
 
             rxUpdate = () => {
-                const filter = createFilter(1001, carrierFreq, bandwidth)
+                const filter = createFilter(1001, carrierFreq, bandwidth*2)
                 convolver.buffer = filter;
                 demod.parameters.get('frequency').value = carrierFreq;
             }
