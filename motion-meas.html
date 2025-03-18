@@ -264,6 +264,27 @@
                 updateStats();
             }
         }
+
+        function acquireWakelock() {
+            if ('wakeLock' in navigator) {
+                try {
+                    navigator.wakeLock.request('screen').then(lock => {
+                        lock.addEventListener('release', e => {
+                            console.log("wakelock released");
+                        })
+                    });
+                } catch (error) {
+                    console.error(error);
+                }
+            }
+        }
+
+        document.addEventListener("visibilitychange", function () {
+            if (document.visibilityState === 'visible') {
+                acquireWakelock();
+            }
+        });
+        acquireWakelock();
     </script>
 </body>
 </html>
