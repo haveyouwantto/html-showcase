@@ -902,6 +902,9 @@
                 process(inputs, outputs, parameters) {
                     const input = inputs[0];
                     const output = outputs[0];
+
+                    if (!input) return true;
+
                     // 确保是双声道输出
                     const leftChannel = output[0]; // 实部
                     const rightChannel = output[1]; // 虚部
@@ -1159,7 +1162,7 @@
 
 
                 const freqDeviation = audioCtx.createGain();
-                freqDeviation.gain.value = baudRate * 128; // ???
+                freqDeviation.gain.value = 170.778026716646371 * baudRate * 0.25;
                 oscillator = audioCtx.createOscillator();
                 oscillator.frequency.value = carrierFreq;
                 const gainNode = audioCtx.createGain();
@@ -1175,9 +1178,14 @@
                 oscillator.stop(audioCtx.currentTime + symbolTime * bits.length);
 
                 const analyser = audioCtx.createAnalyser()
-                convolver.connect(analyser)
+                freqDeviation.connect(analyser)
 
                 const arr = new Float32Array(2048)
+                setInterval(()=>{
+                    analyser.getFloatTimeDomainData(arr)
+                    console.log(arr.reduce((prev,curr)=>Math.max(prev,Math.abs(curr))))
+                },1000)
+
 
                 const currentTime = audioCtx.currentTime;
                 const interval = setInterval(() => {
@@ -1282,7 +1290,7 @@
                 let f = 0
                 function draw() {
                     analyser.getFloatTimeDomainData(data)
-                    const mul = 1 / (baudRate / 15625) * canvas.height * 0.5 / freqMulti
+                    const mul = 1 / (baudRate / 15625) * canvas.height / freqMulti
 
                     let step = canvas.width / data.length
 
