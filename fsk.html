@@ -809,98 +809,155 @@
                 }
             }
         }
-        
+
         function isValidSample(sample) {
-  if (sample.idx === 0) {
-    if (sample.type === 'Y') {
-      return sample.value >= 0 && sample.value <= 2048;
-    } else {
-      return sample.value >= 0 && sample.value <= 1024;
-    }
-  } else {
-    return sample.value >= -512 && sample.value <= 512;
-  }
-}
+            if (sample.idx === 0) {
+                if (sample.type === 'Y') {
+                    return sample.value >= 0 && sample.value <= 2048;
+                } else {
+                    return sample.value >= 0 && sample.value <= 1024;
+                }
+            } else {
+                return sample.value >= -512 && sample.value <= 512;
+            }
+        }
 
-        function createDemodulator(baudRate, sampleRate) {
-            const demod = class extends AudioWorkletProcessor {
-                constructor(options) {
+        function createWorklets(baudRate, sampleRate) {
+            const mod = class extends AudioWorkletProcessor {
+                constructor() {
                     super();
-                    this.t = 0;
-                    // IIR滤波器状态变量（每个通道维护两个状态）
-                    this.v1 = [0, 0];  // 通道0和1的v1状态
-                    this.v2 = [0, 0];  // 通道0和1的v2状态
-                    this.prev = [0, 0];
-                    this.count = 0;
-                    this.sum = 0;
+                    this.sampleRate = sampleRate;
 
-                    // this.setBaudrate(baudRate)
+                    this.bits = [];       // 待发送的比特流
+                    this.ptr = 0;         // 当前比特索引
+                    this.samplesElapsed = 0; // 当前符号已生成的样本数
 
                     this.port.onmessage = (event) => {
-                        this.setBaudrate(event.data.baudRate);
+                        switch (event.data.type) {
+                            case "baudRate":
+                                this.setBaudRate(event.data.baudRate);
+                                break;
+                            case "data":
+                                this.setData(event.data.data);
+                                break;
+                        }
                     };
                 }
 
+                process(inputs, outputs) {
+                    const output = outputs[0][0];
+                    if (!output) return true;
+
+                    if (this.ptr > this.bits.length) return true;
+
+                    for (let i = 0; i < output.length; i++) {
+
+                        // 符号周期结束，更新比特
+                        if (this.samplesElapsed >= this.samplesPerSymbol) {
+                            this.samplesElapsed = 0;
+                            if (this.bits.length > 0) {
+                                const currentBit = this.bits[this.ptr];
+                                this.ptr++;
+                                output[i] = currentBit ? 1 : -1;
+                            }
+                        }
+
+                        // 输出当前比特对应的电平（整个周期内持续）
+                        this.samplesElapsed++;
+                    }
+
+                    return true;
+                }
+
+                setBaudRate(baudRate) {
+                    this.baudRate = baudRate;
+                    this.samplesPerSymbol = Math.round(this.sampleRate / baudRate);
+                    this.samplesElapsed = 0; // 重置计数器
+                }
+
+                setData(data) {
+                    this.bits = data;
+                    this.ptr = 0; // 重置指针
+                    this.samplesElapsed = 0; // 开始新数据
+                }
+            };
+
+            const mixer = class extends AudioWorkletProcessor {
                 static get parameterDescriptors() {
                     return [{
                         name: 'frequency',
-                        defaultValue: 1500,
-                        minValue: 0,
-                        maxValue: sampleRate,
-                        automationRate: 'k-rate'
+                        defaultValue: 440,
+                        minValue: 20,
+                        maxValue: 20000,
+                        automationRate: 'a-rate' // 关键：指定 automationRate 为 'a-rate'
                     }];
                 }
 
-                setBaudrate(baudRate) {
-                    // 计算二阶巴特沃斯低通滤波器系数（baudRate截止，8kHz采样率）
-                    const f0 = baudRate;
-                    const Q = Math.sqrt(2) / 2; // 巴特沃斯Q值
-                    const w0 = 2 * Math.PI * f0 / sampleRate;
-                    const alpha = Math.sin(w0) / (2 * Q);
+                constructor() {
+                    super();
+                    this.phase = 0;
+                    this.sampleRate = sampleRate;
+                }
 
-                    // 未归一化的系数
-                    const b0 = (1 - Math.cos(w0)) / 2;
-                    const b1 = 1 - Math.cos(w0);
-                    const b2 = b0;
-                    const a0 = 1 + alpha;
-                    const a1 = -2 * Math.cos(w0);
-                    const a2 = 1 - alpha;
+                process(inputs, outputs, parameters) {
+                    const input = inputs[0];
+                    const output = outputs[0];
+                    // 确保是双声道输出
+                    const leftChannel = output[0]; // 实部
+                    const rightChannel = output[1]; // 虚部
+                    const frequencies = parameters.frequency; // 获取频率数组，因为是 a-rate
 
-                    // 归一化系数
-                    this.b0 = b0 / a0;
-                    this.b1 = b1 / a0;
-                    this.b2 = b2 / a0;
-                    this.a1 = a1 / a0;
-                    this.a2 = a2 / a0;
+                    for (let i = 0; i < leftChannel.length; i++) {
+                        const frequency = frequencies[i] ?? frequencies[0]; // 获取当前帧的频率
+                        const omega = 2 * Math.PI * frequency / this.sampleRate;
 
+                        const real = Math.cos(this.phase);
+                        const imag = Math.sin(this.phase);
+
+                        leftChannel[i] = real * input[0][i];
+                        rightChannel[i] = imag * input[0][i];
+
+                        this.phase += omega;
+                        //this.phase %= (2 * Math.PI); // 周期重置
+                    }
+
+                    return true;
+                }
+            }
+
+
+            const demod = class extends AudioWorkletProcessor {
+                constructor(options) {
+                    super();
+                    this.prev = [0, 0];
+                    this.count = 0;
+                    this.sum = 0;
+                    this.sampleRate = sampleRate;
+
+                    this.port.onmessage = (event) => {
+                        switch (event.data.type) {
+                            case "baudRate":
+                                this.setBaudRate(event.data.baudRate);
+                                break;
+                        }
+                    };
+                }
+
+                setBaudRate(baudRate) {
                     this.baudRate = baudRate;
-                    this.samplePerSymbol = sampleRate / baudRate;
+                    this.samplesPerSymbol = Math.round(this.sampleRate / baudRate);
                 }
 
                 process(inputs, outputs, parameters) {
                     // 获取输入信号和固定解调频率参数
-                    const input = inputs[0][0];
-                    const freq = parameters.frequency[0]; // 固定解调频率（单位：Hz）
+                    const input = inputs[0];
 
-                    // 生成正交（I/Q）解调信号
-                    const i = new Float32Array(input.length);
-                    const q = new Float32Array(input.length);
-                    for (let j = 0; j < input.length; ++j) {
-                        // 计算当前时刻的相位角（ωt = 2πft）
-                        const omegaT = 2 * Math.PI * freq * this.t;
-                        // 正交下变频：将信号搬移到基带
-                        i[j] = input[j] * Math.cos(omegaT);  // 同相分量（I路）
-                        q[j] = input[j] * Math.sin(omegaT);  // 正交分量（Q路）
-                        this.t += 1 / sampleRate;            // 更新时间（基于采样率）
-                    }
-
-                    // 应用IIR低通滤波器去除高频成分（保留基带信号）
-                    const filteredI = this.lowPassFilterIIR(i, 0);  // 通道0处理I路信号
-                    const filteredQ = this.lowPassFilterIIR(q, 1);  // 通道1处理Q路信号
+                    const filteredI = input[0]
+                    const filteredQ = input[1]
 
                     // 相位差检测与符号同步处理
-                    const phase = new Float32Array(input.length);
-                    for (let j = 0; j < input.length - 1; ++j) {
+                    const phase = new Float32Array(filteredI.length);
+                    for (let j = 0; j < filteredI.length - 1; ++j) {
                         // 计算相邻样本的共轭乘积（用于相位差检测）
                         const real1 = filteredI[j], imag1 = filteredQ[j];
                         const real2 = filteredI[j + 1], imag2 = filteredQ[j + 1];
@@ -913,7 +970,7 @@
                         // 符号边界检测（相位符号变化时触发）
                         if (j > 0 && Math.sign(phase[j]) != Math.sign(phase[j - 1])) {
                             // 当达到半个符号周期时提交相位和
-                            if (this.count >= this.samplePerSymbol / 2) {
+                            if (this.count >= this.samplesPerSymbol * 0.5) {
                                 this.port.postMessage({ phase: this.sum });
                             }
                             // 重置累加器和计数器
@@ -925,7 +982,7 @@
                         this.count++;
                         this.sum += phase[j];
                         // 当达到完整符号周期时提交相位和
-                        if (this.count === this.samplePerSymbol) {
+                        if (this.count === this.samplesPerSymbol) {
                             this.port.postMessage({ phase: this.sum });
                             this.count = 0;
                             this.sum = 0;
@@ -937,30 +994,10 @@
                     outputs[0][0].set(phase);
                     return true;
                 }
-
-                lowPassFilterIIR(input, channel) {
-                    const output = new Float32Array(input.length);
-                    let v1 = this.v1[channel];
-                    let v2 = this.v2[channel];
-
-                    for (let j = 0; j < input.length; j++) {
-                        const x = input[j];
-                        // 直接形式II实现
-                        const v0 = x - this.a1 * v1 - this.a2 * v2;
-                        const y = this.b0 * v0 + this.b1 * v1 + this.b2 * v2;
-
-                        output[j] = y;
-                        // 更新状态变量
-                        v2 = v1;
-                        v1 = v0;
-                    }
-
-                    this.v1[channel] = v1;
-                    this.v2[channel] = v2;
-                    return output;
-                }
             }
             registerProcessor('demod', demod);
+            registerProcessor('mixer', mixer)
+            registerProcessor('mod', mod);
         }
 
         function arrayBufferToBase64(buffer) {
@@ -978,56 +1015,46 @@
                 return 0.5 * (1 - Math.cos((2 * Math.PI * i) / (length - 1)));
             });
         }
-        
-        function createFilter(  baudRate, centerFreq, bt = 0.5) {
-    /* 
-    高斯频移键控滤波器生成函数
-    参数：
-    - audioCtx: Web Audio API上下文
-    - sampleRate: 采样率 (Hz)
-    - baudRate: 符号率 (Baud)
-    - centerFreq: 中心频率 (Hz)
-    - bt: 带宽时间积 (默认0.5)
-    */
-    
-    // 符号周期计算
-    const T = 1 / baudRate;
-    
-    // 确定滤波器持续时间（±3个符号周期）
-    const numSymbols = 3;
-    const totalDuration = 2 * numSymbols * T; 
-    const taps = Math.round(totalDuration * audioCtx.sampleRate);
-    
-    // 生成对称时间轴（精确到采样点）
-    const tValues = Array.from({length: taps}, (_, i) => {
-        return (i - taps/2 + 0.5) / audioCtx.sampleRate; // 采样点中心对齐
-    });
 
-    // 高斯脉冲参数计算
-    const B = bt / T; // 3dB带宽
-    const alpha = Math.sqrt(Math.LN2/2) / B; 
-    
-    // 生成基带高斯脉冲
-    const baseband = tValues.map(t => {
-        return Math.exp(-Math.pow(Math.PI * t / alpha, 2));
-    });
+        function createFilter(baudRate, centerFreq, bt = 0.5) {
+            /* 
+            高斯频移键控滤波器生成函数
+            参数：
+            - audioCtx: Web Audio API上下文
+            - sampleRate: 采样率 (Hz)
+            - baudRate: 符号率 (Baud)
+            - centerFreq: 中心频率 (Hz)
+            - bt: 带宽时间积 (默认0.5)
+            */
 
-    // 频率搬移：高斯脉冲与载波混频
-    const modulated = baseband.map((v, i) => {
-        const phase = 2 * Math.PI * centerFreq * tValues[i];
-        return v * Math.cos(phase); // 使用cosine保持相位连续性
-    });
+            // 符号周期计算
+            const T = 1 / baudRate;
 
-    // 归一化处理（能量守恒）
-    const maxVal = Math.max(...modulated.map(Math.abs));
-    const normalized = modulated.map(v => v / maxVal);
+            // 确定滤波器持续时间（±3个符号周期）
+            const numSymbols = 6;
+            const totalDuration = 2 * numSymbols * T;
+            const taps = Math.round(totalDuration * audioCtx.sampleRate);
 
-    // 创建音频缓冲区
-    const buffer = audioCtx.createBuffer(1, taps, audioCtx.sampleRate);
-    buffer.getChannelData(0).set(normalized);
-    
-    return buffer;
-}
+            // 生成对称时间轴（精确到采样点）
+            const tValues = Array.from({ length: taps }, (_, i) => {
+                return (i - taps / 2 + 0.5) / audioCtx.sampleRate; // 采样点中心对齐
+            });
+
+            // 高斯脉冲参数计算
+            const B = bt / T; // 3dB带宽
+            const alpha = Math.sqrt(Math.LN2 / 2) / B;
+
+            // 生成基带高斯脉冲
+            const baseband = tValues.map(t => {
+                return Math.exp(-Math.pow(Math.PI * t / alpha, 2));
+            });
+
+            // 创建音频缓冲区
+            const buffer = audioCtx.createBuffer(1, taps, audioCtx.sampleRate);
+            buffer.getChannelData(0).set(baseband);
+
+            return buffer;
+        }
 
 
         /*
@@ -1059,7 +1086,7 @@
             return (n * base).toLocaleString() + " " + suffix[suffix.length - 1];
         }
 
-        const code = new TextEncoder().encode(`(${createDemodulator.toString()})(${baudRate},${sampleRate});`);
+        const code = new TextEncoder().encode(`(${createWorklets.toString()})(${baudRate},${sampleRate});`);
         const workletData = 'data:application/javascript;base64,' + arrayBufferToBase64(code)
         console.log(workletData)
 
@@ -1081,68 +1108,6 @@
         let txUpdate = null
         let txOscillator = null;
         let txStart = false;
-
-        function transmitOrdArray(ordArray, delay = 1) {
-
-            const preparedArray = ordArray.map(e => encodeWithParity(e));
-            const sync = [3, 3, 3, 3, 3, 3, 3, 3];
-
-            preparedArray.unshift(...sync);
-
-            const bits = fibonacciEncoding(preparedArray);
-            const freqs = bits.map(e => e == 0 ? carrierFreq - bandwidth * 0.25 : carrierFreq + bandwidth * 0.25);
-
-            oscillator = audioCtx.createOscillator();
-            oscillator.frequency.value = carrierFreq + bandwidth * 0.25;
-            const convolver = audioCtx.createConvolver();
-            const gainNode = audioCtx.createGain();
-            gainNode.gain.value = 0.5;
-
-            txUpdate = () => {
-                const filter = createFilter(baudRate, carrierFreq);
-                convolver.buffer = filter;
-            };
-            txUpdate();
-
-            let currentTime = audioCtx.currentTime + delay;
-
-            for (let i = 0; i < freqs.length; i++) {
-                oscillator.frequency.setValueAtTime(freqs[i], currentTime + symbolTime + (1 / baudRate) * i);
-            }
-
-            oscillator.connect(convolver);
-            convolver.connect(gainNode);
-            gainNode.connect(audioCtx.destination);
-            oscillator.start();
-            oscillator.stop(currentTime + (1 / baudRate) * freqs.length + symbolTime * 2);
-
-            const interval = setInterval(() => {
-                const sent = (audioCtx.currentTime - currentTime) * baudRate;
-                const remainingSeconds = (bits.length - sent) / baudRate;
-                bitDisplay.textContent = `发送进度: ${toSI(sent / 8, true)}B / ${toSI(bits.length / 8, true)}B (剩余 ${secondsToHms(remainingSeconds)})`;
-            }, 100);
-
-            oscillator.onended = () => {
-                txBtn.disabled = false;
-                clearInterval(interval);
-                bitDisplay.textContent = '';
-                txBtn.textContent = '发送';
-                txStart = false;
-            };
-
-            txBtn.textContent = '中止';
-        }
-
-        txBtn.addEventListener('click', () => {
-            if (!txStart) {
-                const string = document.getElementById('transmit').value;
-                transmitOrdArray(stringToOrdArray(string));
-            } else {
-                oscillator.stop();
-            }
-            txStart = !txStart;
-        });
-
 
         let rxBtn = document.getElementById('start')
         let imageRecvDiv = document.getElementById('imageRecvDiv')
@@ -1168,118 +1133,214 @@
             imageRecvDiv.hidden = false;
         }
 
-        rxBtn.addEventListener('click', async () => {
-            rxBtn.disabled = true;
-            audioCtx.resume()
+        audioCtx.audioWorklet.addModule(workletData).then(() => {
+            let oscillator;
+
+            function transmitOrdArray(ordArray, delay = 1) {
+
+                const mod = new AudioWorkletNode(audioCtx, 'mod')
+                const preparedArray = ordArray.map(e => encodeWithParity(e));
+                const sync = [3, 3, 3, 3, 3, 3, 3, 3];
+
+                preparedArray.unshift(...sync);
+                preparedArray.push(...sync);
+
+                const bits = fibonacciEncoding(preparedArray);
+
+                mod.port.postMessage({ type: "baudRate", baudRate: baudRate })
+                mod.port.postMessage({ type: "data", data: bits })
 
 
-            await audioCtx.audioWorklet.addModule(workletData)
-            let stream = await navigator.mediaDevices.getUserMedia(
-                {
-                    audio: {
-                        sampleRate: audioCtx.sampleRate,
-                        deviceId: audioInput.value,
-                        echoCancellation: false,
-                        noiseSuppression: false
-                    },
-                    video: false
+                const convolver = audioCtx.createConvolver();
+                const filter = createFilter(baudRate);
+                convolver.buffer = filter;
+
+                console.log(baudRate)
+
+
+                const freqDeviation = audioCtx.createGain();
+                freqDeviation.gain.value = baudRate * 128; // ???
+                oscillator = audioCtx.createOscillator();
+                oscillator.frequency.value = carrierFreq;
+                const gainNode = audioCtx.createGain();
+                gainNode.gain.value = 0.5;
+
+                mod.connect(convolver)
+                convolver.connect(freqDeviation);
+                freqDeviation.connect(oscillator.frequency);
+                oscillator.connect(gainNode);
+                gainNode.connect(audioCtx.destination);
+                oscillator.start();
+
+                oscillator.stop(audioCtx.currentTime + symbolTime * bits.length);
+
+                const analyser = audioCtx.createAnalyser()
+                convolver.connect(analyser)
+
+                const arr = new Float32Array(2048)
+
+                const currentTime = audioCtx.currentTime;
+                const interval = setInterval(() => {
+                    const sent = (audioCtx.currentTime - currentTime) * baudRate;
+                    const remainingSeconds = (bits.length - sent) / baudRate;
+                    bitDisplay.textContent = `发送进度: ${toSI(sent / 8, true)}B / ${toSI(bits.length / 8, true)}B (剩余 ${secondsToHms(remainingSeconds)})`;
+                }, 100);
+
+                oscillator.onended = () => {
+                    txBtn.disabled = false;
+                    clearInterval(interval);
+                    bitDisplay.textContent = '';
+                    txBtn.textContent = '发送';
+                    txStart = false;
+                };
+
+                txBtn.textContent = '中止';
+            }
+
+            txBtn.addEventListener('click', () => {
+                if (!txStart) {
+                    const string = document.getElementById('transmit').value;
+                    transmitOrdArray(stringToOrdArray(string));
+                } else {
+                    oscillator.stop();
                 }
-            )
+                txStart = !txStart;
+            });
+
+            rxBtn.addEventListener('click', async () => {
+                rxBtn.disabled = true;
+                audioCtx.resume()
 
 
-            const source = audioCtx.createMediaStreamSource(stream)
-            const convolver = audioCtx.createConvolver()
-            const demod = new AudioWorkletNode(audioCtx, 'demod')
+                let stream = await navigator.mediaDevices.getUserMedia(
+                    {
+                        audio: {
+                            sampleRate: audioCtx.sampleRate,
+                            deviceId: audioInput.value,
+                            echoCancellation: false,
+                            noiseSuppression: false
+                        },
+                        video: false
+                    }
+                )
 
-            demod.port.postMessage({ baudRate: baudRate })
 
-            rxUpdate = () => {
+                const source = audioCtx.createMediaStreamSource(stream)
+
+                const mixer = new AudioWorkletNode(audioCtx, 'mixer', { outputChannelCount: [2] })
+                mixer.parameters.get('frequency').value = carrierFreq;
+
+                const convolver = audioCtx.createConvolver()
                 const filter = createFilter(baudRate, carrierFreq)
                 convolver.buffer = filter;
-                demod.parameters.get('frequency').value = carrierFreq;
-            }
+                const demod = new AudioWorkletNode(audioCtx, 'demod')
 
-            rxUpdate();
+                demod.port.postMessage({ type: "baudRate", baudRate: baudRate })
 
+                source.connect(mixer, 0)
+                mixer.connect(convolver);
+                convolver.connect(demod)
 
-            source.connect(convolver)
-            convolver.connect(demod)
+                const analyser = audioCtx.createAnalyser()
+                // analyser.fftSize = 4096;
+                demod.connect(analyser)
 
-            const analyser = audioCtx.createAnalyser()
-            analyser.fftSize = 4096
-            demod.connect(analyser)
-
-            const decoder = new FibonacciDecoder(result => {
-                const dec = decodeAndVerify(result)
-                console.log("解码结果:", dec);
-                if (isRxImage) {
-                    if (dec < 0) imgParser.state = 0;
-                    else if (dec === 2000001) {
-                        isRxImage = false;
+                const decoder = new FibonacciDecoder(result => {
+                    const dec = decodeAndVerify(result)
+                    console.log("解码结果:", dec);
+                    if (isRxImage) {
+                        if (dec < 0) imgParser.state = 0;
+                        else if (dec === 2000001) {
+                            isRxImage = false;
+                        } else {
+                            if (dec >= 2000002) dec -= 2;
+                            imgParser.feed(dec)
+                        }
                     } else {
-                        if (dec >= 2000002) dec -= 2;
-                        imgParser.feed(dec)
-                    }
-                } else {
-                    if (dec == 2000000) {
-                        startRxImage()
-                    } else if (dec > 3) {
-                        received.value += String.fromCodePoint(dec)
-                        // alert(received.scrollHeight +" "+ received.scrollTop +" "+ received.clientHeight)
-                        if (Math.abs(received.scrollHeight - received.clientHeight - received.scrollTop) < 24) {
-                            received.scrollTo(0, received.scrollHeight)
+                        if (dec == 2000000) {
+                            startRxImage()
+                        } else if (dec > 3) {
+                            received.value += String.fromCodePoint(dec)
+                            // alert(received.scrollHeight +" "+ received.scrollTop +" "+ received.clientHeight)
+                            if (Math.abs(received.scrollHeight - received.clientHeight - received.scrollTop) < 24) {
+                                received.scrollTo(0, received.scrollHeight)
+                            }
                         }
                     }
+                })
+
+                demod.port.onmessage = (event) => {
+                    const phase = event.data.phase;
+                    const bit = phase > 0 ? 1 : 0;
+                    decoder.feed(bit)
+                };
+
+                const canvas = document.getElementById('oscilloscope')
+                const ctx = canvas.getContext('2d')
+                const data = new Float32Array(analyser.fftSize)
+                ctx.lineWidth = 1
+                let f = 0
+                function draw() {
+                    analyser.getFloatTimeDomainData(data)
+                    const mul = 1 / (baudRate / 15625) * canvas.height * 0.5 / freqMulti
+
+                    let step = canvas.width / data.length
+
+                    ctx.clearRect(0, 0, canvas.width, canvas.height)
+
+                    ctx.strokeStyle = 'red'
+                    ctx.beginPath()
+                    ctx.moveTo(0, canvas.height / 2,)
+                    ctx.lineTo(canvas.width, canvas.height / 2)
+                    ctx.stroke()
+                    ctx.strokeStyle = 'white'
+                    ctx.beginPath()
+                    ctx.moveTo(0, canvas.height / 2)
+                    for (let i = 0; i < data.length; ++i) {
+                        ctx.lineTo(i * step, canvas.height / 2 - data[i] * mul)
+                    }
+                    ctx.stroke()
+                    requestAnimationFrame(draw)
                 }
+                draw()
             })
 
-            demod.port.onmessage = (event) => {
-                const phase = event.data.phase;
-                const bit = phase > 0 ? 1 : 0;
-                decoder.feed(bit)
-            };
+            document.getElementById('rxImageBtn').addEventListener('click', () => {
+                startRxImage();
+            })
 
-            const canvas = document.getElementById('oscilloscope')
-            const ctx = canvas.getContext('2d')
-            const data = new Float32Array(analyser.fftSize)
-            ctx.lineWidth = 1
-            let f = 0
-            function draw() {
-                analyser.getFloatTimeDomainData(data)
-                const mul = 1 / (baudRate / 15625) * canvas.height / freqMulti
+            document.getElementById('clearTx').addEventListener('click', () => {
+                document.getElementById('transmit').value = ''
+            })
 
-                let step = canvas.width / data.length
+            document.getElementById('clearRx').addEventListener('click', () => {
+                received.value = ''
+            })
 
-                ctx.clearRect(0, 0, canvas.width, canvas.height)
+            // image transmit
+            const txImageInput = document.getElementById('txImage');
+            const txImageBtn = document.getElementById('txImageBtn');
+            txImageBtn.addEventListener('click', () => {
+                const file = txImageInput.files[0];
+                if (!file) return;
+                const img = new Image();
+                const reader = new FileReader();
+                reader.onload = function (e) {
+                    img.src = e.target.result;
+                };
+                reader.readAsDataURL(file);
+                img.onload = function () {
+                    let quadrupleList = DCTGenerator.generate(img);
+                    console.log("四元组总数:", quadrupleList.length);
 
-                ctx.strokeStyle = 'red'
-                ctx.beginPath()
-                ctx.moveTo(0, canvas.height / 2,)
-                ctx.lineTo(canvas.width, canvas.height / 2)
-                ctx.stroke()
-                ctx.strokeStyle = 'white'
-                ctx.beginPath()
-                ctx.moveTo(0, canvas.height / 2)
-                for (let i = 0; i < data.length; ++i) {
-                    ctx.lineTo(i * step, canvas.height / 2 - data[i] * mul)
-                }
-                ctx.stroke()
-                requestAnimationFrame(draw)
-            }
-            draw()
+                    let ordArray = listToSymbols(quadrupleList);
+
+                    transmitOrdArray(ordArray, 5)
+                    txStart = true;
+                };
+            })
         })
 
-        document.getElementById('rxImageBtn').addEventListener('click', () => {
-            startRxImage();
-        })
-
-        document.getElementById('clearTx').addEventListener('click', () => {
-            document.getElementById('transmit').value = ''
-        })
-
-        document.getElementById('clearRx').addEventListener('click', () => {
-            received.value = ''
-        })
 
         function acquireWakelock() {
             if ('wakeLock' in navigator) {
@@ -1334,28 +1395,7 @@
             }
         })
 
-        // image transmit
-        const txImageInput = document.getElementById('txImage');
-        const txImageBtn = document.getElementById('txImageBtn');
-        txImageBtn.addEventListener('click', () => {
-            const file = txImageInput.files[0];
-            if (!file) return;
-            const img = new Image();
-            const reader = new FileReader();
-            reader.onload = function (e) {
-                img.src = e.target.result;
-            };
-            reader.readAsDataURL(file);
-            img.onload = function () {
-                let quadrupleList = DCTGenerator.generate(img);
-                console.log("四元组总数:", quadrupleList.length);
 
-                let ordArray = listToSymbols(quadrupleList);
-
-                transmitOrdArray(ordArray, 5)
-                txStart = true;
-            };
-        })
 
         // 下载图片
         document.getElementById('downloadImg').addEventListener('click', () => {
