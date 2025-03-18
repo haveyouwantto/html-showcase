@@ -736,7 +736,7 @@
              * @param {Object} sample 四元组数据，字段包括 type, blockX, blockY, idx, value
              */
             addSample(sample) {
-                if (Math.abs(sample.value) > 2040) return; // invaild
+                if (!isValidSample(sample)) return; // invaild
                 const bx = sample.blockX;
                 const by = sample.blockY;
                 if (sample.type === "Y") {
@@ -809,6 +809,18 @@
                 }
             }
         }
+        
+        function isValidSample(sample) {
+  if (sample.idx === 0) {
+    if (sample.type === 'Y') {
+      return sample.value >= 0 && sample.value <= 2048;
+    } else {
+      return sample.value >= 0 && sample.value <= 1024;
+    }
+  } else {
+    return sample.value >= -512 && sample.value <= 512;
+  }
+}
 
         function createDemodulator(baudRate, sampleRate) {
             const demod = class extends AudioWorkletProcessor {
@@ -966,7 +978,59 @@
                 return 0.5 * (1 - Math.cos((2 * Math.PI * i) / (length - 1)));
             });
         }
+        
+        function createFilter(  baudRate, centerFreq, bt = 0.5) {
+    /* 
+    高斯频移键控滤波器生成函数
+    参数：
+    - audioCtx: Web Audio API上下文
+    - sampleRate: 采样率 (Hz)
+    - baudRate: 符号率 (Baud)
+    - centerFreq: 中心频率 (Hz)
+    - bt: 带宽时间积 (默认0.5)
+    */
+    
+    // 符号周期计算
+    const T = 1 / baudRate;
+    
+    // 确定滤波器持续时间（±3个符号周期）
+    const numSymbols = 3;
+    const totalDuration = 2 * numSymbols * T; 
+    const taps = Math.round(totalDuration * audioCtx.sampleRate);
+    
+    // 生成对称时间轴（精确到采样点）
+    const tValues = Array.from({length: taps}, (_, i) => {
+        return (i - taps/2 + 0.5) / audioCtx.sampleRate; // 采样点中心对齐
+    });
 
+    // 高斯脉冲参数计算
+    const B = bt / T; // 3dB带宽
+    const alpha = Math.sqrt(Math.LN2/2) / B; 
+    
+    // 生成基带高斯脉冲
+    const baseband = tValues.map(t => {
+        return Math.exp(-Math.pow(Math.PI * t / alpha, 2));
+    });
+
+    // 频率搬移：高斯脉冲与载波混频
+    const modulated = baseband.map((v, i) => {
+        const phase = 2 * Math.PI * centerFreq * tValues[i];
+        return v * Math.cos(phase); // 使用cosine保持相位连续性
+    });
+
+    // 归一化处理（能量守恒）
+    const maxVal = Math.max(...modulated.map(Math.abs));
+    const normalized = modulated.map(v => v / maxVal);
+
+    // 创建音频缓冲区
+    const buffer = audioCtx.createBuffer(1, taps, audioCtx.sampleRate);
+    buffer.getChannelData(0).set(normalized);
+    
+    return buffer;
+}
+
+
+        /*
         function createFilter(taps, freq, bw) {
             const buffer = audioCtx.createBuffer(1, taps, audioCtx.sampleRate);
             const window = createHannWindow(taps);
@@ -979,7 +1043,7 @@
                 })
             )
             return buffer;
-        }
+        }*/
 
         function toSI(n, bin = false) {
             if (n == null) return "Unknown "
@@ -1026,16 +1090,16 @@
             preparedArray.unshift(...sync);
 
             const bits = fibonacciEncoding(preparedArray);
-            const freqs = bits.map(e => e == 0 ? carrierFreq - bandwidth * 0.5 : carrierFreq + bandwidth * 0.5);
+            const freqs = bits.map(e => e == 0 ? carrierFreq - bandwidth * 0.25 : carrierFreq + bandwidth * 0.25);
 
             oscillator = audioCtx.createOscillator();
-            oscillator.frequency.value = carrierFreq + bandwidth * 0.5;
+            oscillator.frequency.value = carrierFreq + bandwidth * 0.25;
             const convolver = audioCtx.createConvolver();
             const gainNode = audioCtx.createGain();
             gainNode.gain.value = 0.5;
 
             txUpdate = () => {
-                const filter = createFilter(1001, carrierFreq, bandwidth);
+                const filter = createFilter(baudRate, carrierFreq);
                 convolver.buffer = filter;
             };
             txUpdate();
@@ -1130,7 +1194,7 @@
             demod.port.postMessage({ baudRate: baudRate })
 
             rxUpdate = () => {
-                const filter = createFilter(1001, carrierFreq, bandwidth*2)
+                const filter = createFilter(baudRate, carrierFreq)
                 convolver.buffer = filter;
                 demod.parameters.get('frequency').value = carrierFreq;
             }
@@ -1182,7 +1246,7 @@
             let f = 0
             function draw() {
                 analyser.getFloatTimeDomainData(data)
-                const mul = 1 / (baudRate / 15625) * canvas.height * 0.5 / freqMulti
+                const mul = 1 / (baudRate / 15625) * canvas.height / freqMulti
 
                 let step = canvas.width / data.length
 
