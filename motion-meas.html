@@ -6,50 +6,152 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
     <style>
+        :root {
+            --primary: #2196F3;
+            --danger: #F44336;
+            --background: #1E1E1E;
+            --surface: #2D2D2D;
+            --text-primary: #FFFFFF;
+        }
+
         body {
-            background-color: #121212;
-            color: #ffffff;
-            font-family: sans-serif;
+            background-color: var(--background);
+            color: var(--text-primary);
+            font-family: 'Segoe UI', sans-serif;
+            margin: 0;
+            padding: 20px;
         }
-        #map { 
-            height: 500px;
-            background-color: #333;
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            display: grid;
+            grid-template-columns: 2fr 1fr;
+            gap: 20px;
         }
-        .controls { 
-            margin: 10px 0;
+
+        #map {
+            height: 600px;
+            background: var(--surface);
+            border-radius: 12px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+        }
+
+        .controls {
             display: flex;
-            justify-content: center;
+            gap: 10px;
+            margin-bottom: 20px;
         }
-        button { 
-            padding: 8px 16px;
-            margin-right: 5px;
+
+        button {
+            padding: 12px 24px;
             border: none;
-            background-color: #555;
-            color: #fff;
+            border-radius: 8px;
             cursor: pointer;
-            border-radius: 4px;
+            font-weight: 600;
+            transition: 0.3s;
         }
+
+        .primary-btn {
+            background: var(--primary);
+            color: white;
+        }
+
+        .danger-btn {
+            background: var(--danger);
+            color: white;
+        }
+
+        .secondary-btn {
+            background: var(--surface);
+            color: white;
+        }
+
         button:hover {
-            background-color: #777;
+            opacity: 0.9;
+            transform: translateY(-1px);
         }
-        .stats { 
-            margin-top: 10px;
-            text-align: center;
+
+        .stats-table {
+            background: var(--surface);
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
         }
-        a {
-            color: #80cbc4;
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        td {
+            padding: 12px;
+            border-bottom: 1px solid #404040;
+        }
+
+        td:first-child {
+            font-weight: 600;
+            color: #B0B0B0;
+        }
+
+        .coordinate {
+            font-family: monospace;
+            font-size: 0.9em;
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                grid-template-columns: 1fr;
+            }
         }
     </style>
 </head>
 <body>
-    <div class="controls">
-        <button onclick="startRecording()">开始记录</button>
-        <button onclick="stopRecording()">停止记录</button>
-        <button onclick="downloadJSON()">下载JSON</button>
-        <button onclick="clearRecords()">清除记录</button>
+    <div class="container">
+        <div>
+            <div class="controls">
+                <button id="toggleBtn" class="primary-btn" onclick="toggleRecording()">开始记录</button>
+                <button class="secondary-btn" onclick="downloadJSON()">导出数据</button>
+                <button class="danger-btn" onclick="clearRecords()">清除记录</button>
+            </div>
+            <div id="map"></div>
+        </div>
+        
+        <div class="stats-table">
+            <h3>实时数据</h3>
+            <table id="statsTable">
+                <tr>
+                    <td>当前位置</td>
+                    <td class="coordinate" id="position">-</td>
+                </tr>
+                <tr>
+                    <td>定位精度</td>
+                    <td id="accuracy">-</td>
+                </tr>
+                <tr>
+                    <td>当前海拔</td>
+                    <td id="altitude">-</td>
+                </tr>
+                <tr>
+                    <td>当前速度</td>
+                    <td id="speed">-</td>
+                </tr>
+                <tr>
+                    <td>总距离</td>
+                    <td id="totalDistance">-</td>
+                </tr>
+                <tr>
+                    <td>平均时速</td>
+                    <td id="avgSpeed">-</td>
+                </tr>
+                <tr>
+                    <td>记录时长</td>
+                    <td id="duration">-</td>
+                </tr>
+            </table>
+        </div>
     </div>
-    <div id="map"></div>
-    <div class="stats" id="stats"></div>
+
 
     <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
     <script>
@@ -60,108 +162,106 @@
         let trackLine = null;
         let startMarker = null;
         let endMarker = null;
-        
+        let isRecording = false; // 状态标记
         
         function convertToDMS(lat, lon) {
-  // 纬度转换
-  const latDegrees = Math.floor(Math.abs(lat));
-  const latMinutes = Math.floor((Math.abs(lat) - latDegrees) * 60);
-  const latSeconds = ((Math.abs(lat) - latDegrees) * 60 - latMinutes) * 60;
-  const latDirection = lat >= 0 ? 'N' : 'S';
+            const latDegrees = Math.floor(Math.abs(lat));
+            const latMinutes = Math.floor((Math.abs(lat) - latDegrees) * 60);
+            const latSeconds = ((Math.abs(lat) - latDegrees) * 60 - latMinutes) * 60;
+            const latDirection = lat >= 0 ? 'N' : 'S';
+            const longDegrees = Math.floor(Math.abs(lon));
+            const longMinutes = Math.floor((Math.abs(lon) - longDegrees) * 60);
+            const longSeconds = ((Math.abs(lon) - longDegrees) * 60 - longMinutes) * 60;
+            const longDirection = lon >= 0 ? 'E' : 'W';
+            return `${latDegrees}°${latMinutes}'${latSeconds.toFixed(2)}"${latDirection}, ${longDegrees}°${longMinutes}'${longSeconds.toFixed(2)}"${longDirection}`;
+        }
 
-  // 经度转换
-  const longDegrees = Math.floor(Math.abs(lon));
-  const longMinutes = Math.floor((Math.abs(lon) - longDegrees) * 60);
-  const longSeconds = ((Math.abs(lon) - longDegrees) * 60 - longMinutes) * 60;
-  const longDirection = lon >= 0 ? 'E' : 'W';
-
-  // 格式化输出
-  return `${latDegrees}°${latMinutes}'${latSeconds.toFixed(2)}"${latDirection}, ${longDegrees}°${longMinutes}'${longSeconds.toFixed(2)}"${longDirection}`;
-}
-
-
-       // 初始化地图
         function initMap() {
             map = L.map('map').setView([0, 0], 13);
             L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-	attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
-	subdomains: 'abcd',
-	maxZoom: 19
-}).addTo(map);
+                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
+                subdomains: 'abcd',
+                maxZoom: 19
+            }).addTo(map);
         }
 
-        // 计算两个坐标点之间的距离（使用Haversine公式）
         function getDistance(lat1, lon1, lat2, lon2) {
-            const R = 6371e3; // 地球半径（米）
-            const φ1 = lat1 * Math.PI/180;
-            const φ2 = lat2 * Math.PI/180;
-            const Δφ = (lat2 - lat1) * Math.PI/180;
-            const Δλ = (lon2 - lon1) * Math.PI/180;
-
-            const a = Math.sin(Δφ/2) * Math.sin(Δφ/2) +
+            const R = 6371e3;
+            const φ1 = lat1 * Math.PI / 180;
+            const φ2 = lat2 * Math.PI / 180;
+            const Δφ = (lat2 - lat1) * Math.PI / 180;
+            const Δλ = (lon2 - lon1) * Math.PI / 180;
+            const a = Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
                       Math.cos(φ1) * Math.cos(φ2) *
-                      Math.sin(Δλ/2) * Math.sin(Δλ/2);
-            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-
+                      Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
             return R * c;
         }
 
-        // 更新统计信息
         function updateStats() {
-        	try{
-            if (trackPoints.length < 2) return;
-
-            let totalDistance = 0;
-            let totalTime = (trackPoints[trackPoints.length-1].t - trackPoints[0].t) / 1000; // 秒
+            const statsTable = document.getElementById('statsTable');
             
-            for (let i = 1; i < trackPoints.length; i++) {
-                totalDistance += getDistance(
-                    trackPoints[i-1].lat,
-                    trackPoints[i-1].lon,
-                    trackPoints[i].lat,
-                    trackPoints[i].lon
-                );
+            if (trackPoints.length === 0) {
+                statsTable.querySelectorAll('td:not(:first-child)').forEach(td => td.textContent = '-');
+                return;
             }
 
             const lastPos = trackPoints[trackPoints.length-1];
-            const avgSpeed = totalDistance / totalTime * 3.6; // km/h
-            const pace = totalTime / (totalDistance / 1000); // 秒/公里
-            const paceMin = Math.floor(pace / 60);
-            const paceSec = Math.round(pace % 60);
             
-            const currentSpeed = getDistance(
-                    trackPoints[trackPoints.length-2].lat,
-                    trackPoints[trackPoints.length-2].lon,
-                    trackPoints[trackPoints.length-1].lat,
-                    trackPoints[trackPoints.length-1].lon
-                ) / ((trackPoints[trackPoints.length-1].t - trackPoints[trackPoints.length-2].t) / 1000) * 3.6;
-            const currentPace = (trackPoints[trackPoints.length-1].t - trackPoints[trackPoints.length-2].t) / 1000 / (getDistance(
-                    trackPoints[trackPoints.length-2].lat,
-                    trackPoints[trackPoints.length-2].lon,
-                    trackPoints[trackPoints.length-1].lat,
-                    trackPoints[trackPoints.length-1].lon
-                ) / 1000);
-            const currentPaceMin = Math.floor(currentPace / 60);
-            const currentPaceSec = Math.round(currentPace % 60);
+            // 更新基础数据
+            document.getElementById('position').textContent = convertToDMS(lastPos.lat, lastPos.lon);
+            document.getElementById('accuracy').textContent = `${lastPos.acc.toFixed(0)} 米`;
+            document.getElementById('altitude').textContent = `${lastPos.alt ? lastPos.alt.toFixed(1) : 'N/A'} 米`;
 
-            document.getElementById('stats').innerHTML = `
-                当前位置：${convertToDMS(lastPos.lat, lastPos.lon)} 精度：${lastPos.acc.toFixed(0)}m<br>
-                当前海拔：${(lastPos.alt).toFixed(1)}m<br>
-                当前速度: ${currentSpeed.toFixed(2)} km/h<br>
-                当前配速: ${currentPaceMin}:${currentPaceSec.toString().padStart(2, '0')} min/km<br>
-                总距离: ${(totalDistance / 1000).toFixed(2)} km<br>
-                平均时速: ${avgSpeed.toFixed(2)} km/h<br>
-                平均配速: ${paceMin}:${paceSec.toString().padStart(2, '0')} min/km
-            `;}catch(e){alert(e)}
+            // 更新动态数据
+            if (trackPoints.length >= 2) {
+                const currentSpeed = getDistance(
+                    trackPoints[trackPoints.length-2].lat,
+                    trackPoints[trackPoints.length-2].lon,
+                    trackPoints[trackPoints.length-1].lat,
+                    trackPoints[trackPoints.length-1].lon
+                ) / ((lastPos.t - trackPoints[trackPoints.length-2].t) / 1000) * 3.6;
+
+                document.getElementById('speed').textContent = `${currentSpeed.toFixed(1)} km/h`;
+                
+                const totalDistance = trackPoints.reduce((sum, point, index) => {
+                    if (index === 0) return sum;
+                    return sum + getDistance(
+                        trackPoints[index-1].lat,
+                        trackPoints[index-1].lon,
+                        point.lat,
+                        point.lon
+                    );
+                }, 0);
+
+                const totalTime = (lastPos.t - trackPoints[0].t) / 1000;
+                const duration = new Date(totalTime * 1000).toISOString().substr(11, 8);
+                
+                document.getElementById('totalDistance').textContent = `${(totalDistance / 1000).toFixed(2)} km`;
+                document.getElementById('avgSpeed').textContent = `${(totalDistance / totalTime * 3.6).toFixed(1)} km/h`;
+                document.getElementById('duration').textContent = duration;
+            }
         }
 
-        //let lastAccuracyCircle;
+        // 修改按钮状态切换逻辑：
+        function toggleRecording() {
+            const toggleBtn = document.getElementById('toggleBtn');
+            if (isRecording) {
+                stopRecording();
+                toggleBtn.textContent = '开始记录';
+                toggleBtn.classList.remove('danger-btn');
+                toggleBtn.classList.add('primary-btn');
+            } else {
+                startRecording();
+                toggleBtn.textContent = '停止记录';
+                toggleBtn.classList.remove('primary-btn');
+                toggleBtn.classList.add('danger-btn');
+            }
+        }
 
-        // 开始记录
         function startRecording() {
             if (watchId) return;
-            
-            // 加载已有数据
+
             const savedData = localStorage.getItem('gpsTrack');
             if (savedData) trackPoints = JSON.parse(savedData);
 
@@ -173,32 +273,19 @@
                     acc: position.coords.accuracy,
                     t: new Date().getTime()
                 };
-                
+
                 trackPoints.push(point);
                 updateStats();
-                
-                 // 更新地图显示
+
                 if (!trackLine) {
                     trackLine = L.polyline([], {color: 'red'}).addTo(map);
                     startMarker = L.marker([point.lat, point.lon], {title: '起点'}).addTo(map);
                 }
                 trackLine.addLatLng([point.lat, point.lon]);
                 map.panTo([point.lat, point.lon]);
-                
+
                 if (endMarker) endMarker.remove();
                 endMarker = L.marker([point.lat, point.lon], {title: '终点'}).addTo(map);
-                
-                /*
-                // Add accuracy circle
-                if (lastAccuracyCircle) lastAccuracyCircle.remove();
-                lastAccuracyCircle = L.circle([lastPos.lat, lastPos.lon], {
-                    radius: lastPos.acc,
-                    color: 'blue',
-                    fillColor: 'blue',
-                    fillOpacity: 0.2
-                }).addTo(map);
-*/
-                
             }, error => {
                 console.error('Error getting position:', error);
             }, {
@@ -207,13 +294,13 @@
                 timeout: 27000
             });
 
-            // 每30秒自动保存
             saveInterval = setInterval(() => {
                 localStorage.setItem('gpsTrack', JSON.stringify(trackPoints, null, 0));
             }, 30000);
+
+            isRecording = true;
         }
 
-        // 停止记录
         function stopRecording() {
             if (watchId) {
                 navigator.geolocation.clearWatch(watchId);
@@ -221,14 +308,15 @@
             }
             clearInterval(saveInterval);
             localStorage.setItem('gpsTrack', JSON.stringify(trackPoints, null, 0));
+
+            isRecording = false;
         }
 
-        // 下载JSON
         function downloadJSON() {
             const dataStr = JSON.stringify(trackPoints, null, 0);
             const blob = new Blob([dataStr], {type: 'application/json'});
             const url = URL.createObjectURL(blob);
-            
+
             const a = document.createElement('a');
             a.href = url;
             a.download = `gps-track-${new Date().toISOString()}.json`;
@@ -238,7 +326,6 @@
             URL.revokeObjectURL(url);
         }
 
-        // 清除记录
         function clearRecords() {
             trackPoints = [];
             localStorage.removeItem('gpsTrack');
@@ -249,9 +336,7 @@
             document.getElementById('stats').innerHTML = '';
         }
 
-        // 初始化
         initMap();
-        // 加载已有数据
         const savedData = localStorage.getItem('gpsTrack');
         if (savedData) {
             trackPoints = JSON.parse(savedData);
@@ -264,27 +349,6 @@
                 updateStats();
             }
         }
-
-        function acquireWakelock() {
-            if ('wakeLock' in navigator) {
-                try {
-                    navigator.wakeLock.request('screen').then(lock => {
-                        lock.addEventListener('release', e => {
-                            console.log("wakelock released");
-                        })
-                    });
-                } catch (error) {
-                    console.error(error);
-                }
-            }
-        }
-
-        document.addEventListener("visibilitychange", function () {
-            if (document.visibilityState === 'visible') {
-                acquireWakelock();
-            }
-        });
-        acquireWakelock();
     </script>
 </body>
 </html>
