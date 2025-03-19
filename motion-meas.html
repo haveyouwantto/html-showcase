@@ -104,6 +104,53 @@
                 grid-template-columns: 1fr;
             }
         }
+        
+        
+.unit-selectors {
+    margin-bottom: 1.5rem;
+    display: flex;
+    gap: 2rem;
+    font-family: system-ui, -apple-system, sans-serif;
+}
+
+.unit-selectors label {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.9em;
+    color: #eee;
+}
+
+.unit-selectors select {
+    appearance: none;
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    min-width: 120px;
+    padding: 8px 32px 8px 12px;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    background-color: #333;
+    font-size: 14px;
+    color: #eee; 
+    transition: all 0.2s ease;
+    background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23666' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpath d='M6 9l6 6 6-6'/%3e%3c/svg%3e");
+    background-repeat: no-repeat;
+    background-position: right 10px center;
+    background-size: 16px;
+}
+
+.unit-selectors select:hover {
+    border-color: #999;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+}
+
+.unit-selectors select:focus {
+    outline: none;
+    border-color: #007AFF;
+    box-shadow: 0 0 0 2px rgba(0,122,255,0.2);
+}
+
     </style>
 </head>
 <body>
@@ -141,7 +188,7 @@
                     <td id="totalDistance">-</td>
                 </tr>
                 <tr>
-                    <td>平均时速</td>
+                    <td>平均速度</td>
                     <td id="avgSpeed">-</td>
                 </tr>
                 <tr>
@@ -150,6 +197,24 @@
                 </tr>
             </table>
         </div>
+        
+        <div class="unit-selectors">
+    <label>速度单位：
+        <select id="speedUnit">
+            <option value="m/s">m/s</option>
+            <option value="km/h" selected>km/h</option>
+            <option value="pace">配速</option>
+            <option value="mph">mph</option>
+            <option value="kts">节</option>
+        </select>
+    </label>
+    <label>距离单位：
+        <select id="distanceUnit">
+            <option value="km" selected>km</option>
+            <option value="mi">英里</option>
+            <option value="nmi">海里</option>
+        </select>
+    </label>
     </div>
 
 
@@ -175,6 +240,34 @@
             const longDirection = lon >= 0 ? 'E' : 'W';
             return `${latDegrees}°${latMinutes}'${latSeconds.toFixed(2)}"${latDirection}, ${longDegrees}°${longMinutes}'${longSeconds.toFixed(2)}"${longDirection}`;
         }
+        
+        // 单位转换函数
+const unitConverter = {
+    // 速度转换（m/s为基础单位）
+    speed: {
+        'm/s': v => v.toFixed(1),
+        'km/h': v => (v * 3.6).toFixed(1),
+        'mph': v => (v * 2.23694).toFixed(1),
+        'kts': v => (v * 1.94384).toFixed(1),
+        'pace': (v, distanceUnit) => { // 配速特殊处理
+            const kmPerHour = v * 3.6;
+            const base = distanceUnit === 'km' ? 1 : 
+                       distanceUnit === 'mi' ? 1.60934 : 
+                       1.852; // 海里转km
+            return kmPerHour > 0 ? 
+                `${Math.floor(60 / (kmPerHour / base))}:${Math.round((60 / (kmPerHour / base) % 1)*60).toString().padStart(2, '0')} min/${distanceUnit}` 
+                : '-';
+        }
+    },
+    
+    // 距离转换（米为基础单位）
+    distance: {
+        'km': v => (v / 1000).toFixed(2),
+        'mi': v => (v / 1609.34).toFixed(2),
+        'nmi': v => (v / 1852).toFixed(2)
+    }
+};
+
 
         function initMap() {
             map = L.map('map').setView([0, 0], 13);
@@ -201,6 +294,9 @@
         function updateStats() {
             const statsTable = document.getElementById('statsTable');
             
+            const speedUnit = document.getElementById('speedUnit').value;
+    const distanceUnit = document.getElementById('distanceUnit').value;
+            
             if (trackPoints.length === 0) {
                 statsTable.querySelectorAll('td:not(:first-child)').forEach(td => td.textContent = '-');
                 return;
@@ -220,9 +316,12 @@
                     trackPoints[trackPoints.length-2].lon,
                     trackPoints[trackPoints.length-1].lat,
                     trackPoints[trackPoints.length-1].lon
-                ) / ((lastPos.t - trackPoints[trackPoints.length-2].t) / 1000) * 3.6;
+                ) / ((lastPos.t - trackPoints[trackPoints.length-2].t) / 1000);
 
-                document.getElementById('speed').textContent = `${currentSpeed.toFixed(1)} km/h`;
+                document.getElementById('speed').textContent = 
+        speedUnit === 'pace' ? 
+            unitConverter.speed.pace(currentSpeed, distanceUnit) :
+            `${unitConverter.speed[speedUnit](currentSpeed)} ${speedUnit}`;
                 
                 const totalDistance = trackPoints.reduce((sum, point, index) => {
                     if (index === 0) return sum;
@@ -237,11 +336,21 @@
                 const totalTime = (lastPos.t - trackPoints[0].t) / 1000;
                 const duration = new Date(totalTime * 1000).toISOString().substr(11, 8);
                 
-                document.getElementById('totalDistance').textContent = `${(totalDistance / 1000).toFixed(2)} km`;
-                document.getElementById('avgSpeed').textContent = `${(totalDistance / totalTime * 3.6).toFixed(1)} km/h`;
+                document.getElementById('totalDistance').textContent = 
+        `${unitConverter.distance[distanceUnit](totalDistance)} ${distanceUnit}`;
+                document.getElementById('avgSpeed').textContent = 
+        speedUnit === 'pace' ? 
+            unitConverter.speed.pace(totalDistance / (trackPoints.length > 1 ? 
+                (trackPoints[trackPoints.length-1].t - trackPoints[0].t)/1000 : 1), distanceUnit) :
+            `${unitConverter.speed[speedUnit](totalDistance / (trackPoints.length > 1 ? 
+                (trackPoints[trackPoints.length-1].t - trackPoints[0].t)/1000 : 1))} ${speedUnit}`;
                 document.getElementById('duration').textContent = duration;
             }
         }
+        
+        // 添加单位切换监听
+document.getElementById('speedUnit').addEventListener('change', updateStats);
+document.getElementById('distanceUnit').addEventListener('change', updateStats);
 
         // 修改按钮状态切换逻辑：
         function toggleRecording() {
