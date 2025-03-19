@@ -236,9 +236,9 @@
     <hr>
     <div class="controls">
         选择频道：
-        <input type="number" id="channel" value="120" min="1" max="160">
+        <input type="number" id="channel" value="120" min="0" max="160">
         <span id="freq"></span>
-        <div>频道范围：1~12，120~160</div>
+        <div>频道范围：1~8，120~144</div>
         符号速率：
         <input type="number" id="baudrateInput" value="100" min="30" max="4800">
         <canvas id="oscilloscope" width="800" height="200"></canvas>
@@ -1392,18 +1392,18 @@
             if (channel < 1) {
                 channel = 1
                 channelInput.value = 1
-            } else if (channel > 160) {
-                channel = 160
-                channelInput.value = 160
-            } else if (channel > 12 && channel < 120) {
+            } else if (channel > 144) {
+                channel = 144
+                channelInput.value = 144
+            } else if (channel > 8 && channel < 120) {
                 channel = 120
                 channelInput.value = 120
             }
 
-            if (channel >= 1 && channel <= 12) {
-                carrierFreq = 1000 + 125 * channel
-            } else if (channel >= 120 && channel <= 160) {
-                carrierFreq = 16000 + 125 * (channel - 120)
+            if (channel >= 1 && channel <= 8) {
+                carrierFreq = 500 + 250 * (channel - 1)
+            } else if (channel >= 120 && channel <= 144) {
+                carrierFreq = 16000 + 250 * (channel - 120)
             }
 
             document.getElementById('freq').textContent = carrierFreq + ' Hz'
