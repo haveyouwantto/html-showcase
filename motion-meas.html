@@ -31,7 +31,7 @@
         }
 
         #map {
-            height: 600px;
+            height: 100%;
             background: var(--surface);
             border-radius: 12px;
             box-shadow: 0 4px 6px rgba(0,0,0,0.3);
@@ -151,6 +151,42 @@
     box-shadow: 0 0 0 2px rgba(0,122,255,0.2);
 }
 
+#mapContainer {
+	height: 50vh;
+	max-height: 600px;
+	position: relative;
+}
+
+.map-control-btn {
+    position: absolute;
+    top: 15px;
+    right: 15px;
+    z-index: 1000;
+    padding: 8px;
+    background: white;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.2s;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.map-control-btn:hover {
+    background: #f8f8f8;
+    transform: scale(1.05);
+    box-shadow: 0 3px 6px rgba(0,0,0,0.15);
+}
+
+.map-control-btn svg {
+    width: 24px;
+    height: 24px;
+    fill: none;
+    stroke: #666;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
     </style>
 </head>
 <body>
@@ -161,8 +197,24 @@
                 <button class="secondary-btn" onclick="downloadJSON()">导出数据</button>
                 <button class="danger-btn" onclick="clearRecords()">清除记录</button>
             </div>
-            <div id="map"></div>
+            <!-- 在地图容器中添加按钮 -->
+<div id="mapContainer">
+    <!-- 地图元素 -->
+    <div id="map"></div>
+    
+    <!-- 全屏按钮 -->
+    <button id="fullscreenBtn" class="map-control-btn">
+        <svg class="fullscreen-icon" viewBox="0 0 24 24">
+            <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/>
+        </svg>
+        <svg class="exit-fullscreen-icon" viewBox="0 0 24 24" style="display:none;">
+            <path d="M8 3v3a2 2 0 0 1-2 2H3m18 0h-3a2 2 0 0 1-2-2V3m0 18v-3a2 2 0 0 1 2-2h3M3 12h18"/>
+        </svg>
+    </button>
+</div>
         </div>
+        
+                
         
         <div class="stats-table">
             <h3>实时数据</h3>
@@ -458,6 +510,64 @@ document.getElementById('distanceUnit').addEventListener('change', updateStats);
                 updateStats();
             }
         }
+        
+        // 全屏控制功能
+const fullscreenBtn = document.getElementById('fullscreenBtn');
+const mapContainer = document.getElementById('mapContainer');
+
+function toggleFullscreen() {
+    if (!document.fullscreenElement) {
+        if (mapContainer.requestFullscreen) {
+            mapContainer.requestFullscreen();
+        } else if (mapContainer.mozRequestFullScreen) { /* Firefox */
+            mapContainer.mozRequestFullScreen();
+        } else if (mapContainer.webkitRequestFullscreen) { /* Chrome, Safari & Opera */
+            mapContainer.webkitRequestFullscreen();
+        } else if (mapContainer.msRequestFullscreen) { /* IE/Edge */
+            mapContainer.msRequestFullscreen();
+        }
+    } else {
+        if (document.exitFullscreen) {
+            document.exitFullscreen();
+        } else if (document.mozCancelFullScreen) {
+            document.mozCancelFullScreen();
+        } else if (document.webkitExitFullscreen) {
+            document.webkitExitFullscreen();
+        } else if (document.msExitFullscreen) {
+            document.msExitFullscreen();
+        }
+    }
+}
+
+// 更新按钮状态
+function updateFullscreenButton() {
+    const isFullscreen = document.fullscreenElement !== null;
+    fullscreenBtn.querySelector('.fullscreen-icon').style.display = 
+        isFullscreen ? 'none' : 'block';
+    fullscreenBtn.querySelector('.exit-fullscreen-icon').style.display = 
+        isFullscreen ? 'block' : 'none';
+    
+    // 强制地图重绘以适应新尺寸
+    setTimeout(() => {
+        if (window.map) { // 假设地图变量名为map
+            window.map.invalidateSize();
+        }
+    }, 300);
+}
+
+// 事件监听
+fullscreenBtn.addEventListener('click', toggleFullscreen);
+document.addEventListener('fullscreenchange', updateFullscreenButton);
+document.addEventListener('mozfullscreenchange', updateFullscreenButton);
+document.addEventListener('webkitfullscreenchange', updateFullscreenButton);
+document.addEventListener('msfullscreenchange', updateFullscreenButton);
+
+// 键盘支持（ESC退出）
+document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && document.fullscreenElement) {
+        toggleFullscreen();
+    }
+});
     </script>
 </body>
 </html>
