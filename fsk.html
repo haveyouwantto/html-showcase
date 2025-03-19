@@ -890,7 +890,7 @@
                     const input = inputs[0];
                     const output = outputs[0];
 
-                    if (!input) return true;
+                    if (!input || !input[0]) return true;
 
                     // 确保是双声道输出
                     const leftChannel = output[0]; // 实部
