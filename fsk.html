@@ -252,19 +252,6 @@
         let symbolTime = samplePerSymbol / sampleRate;
         let bandwidth = baudRate * freqMulti
 
-        const baudrateInput = document.getElementById('baudrateInput');
-
-        baudrateInput.addEventListener('change', () => {
-            let bd = parseInt(baudrateInput.value);
-            if (bd < 30) {
-                bd = 30;
-                baudrateInput.value = 30;
-            } else if (bd > 4800) {
-                bd = 4800;
-                baudrateInput.value = 4800;
-            }
-            setBaudRate(bd);
-        });
 
         function setBaudRate(bd) {
             baudRate = bd;
@@ -958,6 +945,8 @@
                     const filteredI = input[0]
                     const filteredQ = input[1]
 
+                    if (!filteredI || !filteredQ) return true;
+
                     // 相位差检测与符号同步处理
                     const phase = new Float32Array(filteredI.length);
                     for (let j = 0; j < filteredI.length - 1; ++j) {
@@ -1181,10 +1170,10 @@
                 freqDeviation.connect(analyser)
 
                 const arr = new Float32Array(2048)
-                setInterval(()=>{
+                setInterval(() => {
                     analyser.getFloatTimeDomainData(arr)
-                    console.log(arr.reduce((prev,curr)=>Math.max(prev,Math.abs(curr))))
-                },1000)
+                    console.log(arr.reduce((prev, curr) => Math.max(prev, Math.abs(curr))))
+                }, 1000)
 
 
                 const currentTime = audioCtx.currentTime;
@@ -1239,11 +1228,16 @@
                 mixer.parameters.get('frequency').value = carrierFreq;
 
                 const convolver = audioCtx.createConvolver()
-                const filter = createFilter(baudRate, carrierFreq)
-                convolver.buffer = filter;
                 const demod = new AudioWorkletNode(audioCtx, 'demod')
 
-                demod.port.postMessage({ type: "baudRate", baudRate: baudRate })
+                rxUpdate = () => {
+                    console.log(baudRate, carrierFreq)
+                    const filter = createFilter(baudRate, carrierFreq)
+                    convolver.buffer = filter;
+                    demod.port.postMessage({ type: "baudRate", baudRate: baudRate })
+                }
+                rxUpdate()
+
 
                 source.connect(mixer, 0)
                 mixer.connect(convolver);
@@ -1325,6 +1319,24 @@
             document.getElementById('clearRx').addEventListener('click', () => {
                 received.innerHTML = ''
             })
+
+
+            const baudrateInput = document.getElementById('baudrateInput');
+
+            baudrateInput.addEventListener('change', () => {
+                let bd = parseInt(baudrateInput.value);
+                if (bd < 30) {
+                    bd = 30;
+                    baudrateInput.value = 30;
+                } else if (bd > 4800) {
+                    bd = 4800;
+                    baudrateInput.value = 4800;
+                }
+                setBaudRate(bd);
+                if (rxUpdate) {
+                    rxUpdate()
+                }
+            });
 
             // image transmit
             const txImageInput = document.getElementById('txImage');
