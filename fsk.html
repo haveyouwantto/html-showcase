@@ -1225,13 +1225,13 @@
                 const source = audioCtx.createMediaStreamSource(stream)
 
                 const mixer = new AudioWorkletNode(audioCtx, 'mixer', { outputChannelCount: [2] })
-                mixer.parameters.get('frequency').value = carrierFreq;
 
                 const convolver = audioCtx.createConvolver()
                 const demod = new AudioWorkletNode(audioCtx, 'demod')
 
                 rxUpdate = () => {
                     console.log(baudRate, carrierFreq)
+                    mixer.parameters.get('frequency').value = carrierFreq;
                     const filter = createFilter(baudRate, carrierFreq)
                     convolver.buffer = filter;
                     demod.port.postMessage({ type: "baudRate", baudRate: baudRate })
