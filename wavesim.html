@@ -199,6 +199,7 @@
 
                 <button id="btnStop">🛑 停波</button>
                 <button id="btnClear">❌ 清空</button>
+                <button id="btnPacket" class="toggle">📦 波包</button>
             </div>
 
             <div class="parameters">
@@ -214,6 +215,11 @@
                     <option value="sawtooth">锯齿波</option>
                     <option value="triangle">三角波</option>
                     <option value="noise">噪声</option>
+                </select>
+                波包：<select id="wavePackets">
+                <option value="gauss">高斯</option>
+                <option value="rect">矩形</option>
+                <option value="sinc">Sinc</option>
                 </select>
                 渲染模式：<select id="renderMode">
                     <option value="normal">正常</option>
@@ -665,6 +671,105 @@
                 this.writePointer = 0
             }
         }
+        
+        class WavePacket {
+    constructor(x,y,frequency, amplitude, phase, lifetime) {
+    	this.x=Math.floor(x);
+    	this.y=Math.floor(y);
+        this.frequency = frequency;  // 波包频率（Hz）
+        this.amplitude = amplitude;  // 最大振幅
+        this.phase = phase;          // 初始相位（弧度）
+        this.lifetime = lifetime;    // 波包持续时间（单位：采样点数）
+        this.tick = -1;              // 当前采样点计数器（从0开始）
+        this.sampleRate = 60;        // 采样率（每秒采样数）
+    }
+    
+    applyEffect(buffer) {
+                    const idx = this.y * N + this.x;
+                    buffer[idx] += this.getSample();
+            }
+    
+    getSample() {
+        this.tick++; // 每次获取样本时推进计数器
+        return 0;    // 基类默认返回0，由子类覆盖实现
+    }
+}
+
+class GaussianWavePacket extends WavePacket {
+    getSample() {
+        super.getSample(); // 调用父类方法推进tick计数器
+
+        // 超出生命周期后返回0（防止无限生成）
+        if (this.tick >= this.lifetime) return 0;
+
+        // 高斯包络计算（以波包中心为对称点）
+        const center = this.lifetime * 0.5; // 波包中心位置（采样点数）
+        const delta = this.tick - center;    // 当前点与中心的偏移量
+        
+        // 高斯宽度控制（σ设为生命周期长度的20%）
+        const sigma = this.lifetime * 0.2; 
+        const exponent = -(delta ** 2) / (2 * sigma ** 2);
+        const envelope = this.amplitude * Math.exp(exponent);
+
+        // 载波信号计算（考虑采样率转换为实际时间）
+        const time = this.tick / this.sampleRate; // 当前时间（秒）
+        const phase = 2 * Math.PI * this.frequency * time + this.phase;
+        
+        return envelope * Math.cos(phase);
+    }
+}
+
+// 矩形波包（矩形窗+余弦载波）
+class RectangularWavePacket extends WavePacket {
+    getSample() {
+        super.getSample();
+        
+        // 超出生命周期返回0
+        if (this.tick >= this.lifetime) return 0;
+
+        // 矩形包络：在生命周期内保持恒定振幅
+        const envelope = (this.tick >= 0 && this.tick < this.lifetime) 
+            ? this.amplitude 
+            : 0;
+
+        // 载波信号计算
+        const time = this.tick / this.sampleRate;
+        const phase = 2 * Math.PI * this.frequency * time + this.phase;
+        
+        return envelope * Math.cos(phase);
+    }
+}
+
+// Sinc波包（sinc函数包络+余弦载波）
+class SincWavePacket extends WavePacket {
+    getSample() {
+        super.getSample();
+        
+        // 超出生命周期返回0
+        if (this.tick >= this.lifetime) return 0;
+
+        // 计算中心对称时间轴
+        const center = this.lifetime / 2;
+        const delta = (this.tick - center) / this.sampleRate; // 转换为秒
+        
+        // 避免除以零的sinc计算
+        let sinc;
+        if (delta === 0) {
+            sinc = 1; // sinc(0) = 1
+        } else {
+            const omega = Math.PI * 2 * this.frequency; // 控制主瓣宽度
+            sinc = Math.sin(omega * delta) / (omega * delta);
+        }
+
+        // 包络振幅与载波合成
+        const envelope = this.amplitude * sinc;
+        const phase = 2 * Math.PI * this.frequency * (this.tick / this.sampleRate) + this.phase;
+        
+        return envelope * Math.cos(phase);
+    }
+}
+
+
 
         const materialDefs = [
             {},
@@ -725,6 +830,7 @@
 
         // 添加发射器
         let transceivers = new Set();
+        let wavePackets = new Set();
 
         // 获取UI元素
         const frequency = document.getElementById('frequency');
@@ -829,6 +935,11 @@
                     const idx = dev.y * N + dev.x;
                     dev.recordSample(buffers[current][idx])
                 }
+            })
+            
+            wavePackets.forEach(packet=>{
+            	packet.applyEffect(buffers[current])
+            	//if (this.tick >= this.lifetime) 
             })
 
             tick++;
@@ -955,12 +1066,14 @@
         }
 
         canvas.addEventListener('click', (e) => {
-            if (currentMode != 'trans' && currentMode != 'recv') return
-
-            const rect = canvas.getBoundingClientRect()
+        	    const rect = canvas.getBoundingClientRect()
             const x = (e.clientX - rect.left) * (N / rect.width)
             const y = (e.clientY - rect.top) * (N / rect.height)
-
+            
+            switch (currentMode){
+            	case "trans":
+            	case "recv":
+        
             const dev = currentMode === 'trans'
                 ? new Transmitter(x, y)
                 : new Receiver(x, y)
@@ -969,9 +1082,26 @@
             deviceList.appendChild(dev.panel)
             updateDeviceList()
             currentMode = '';
-
             document.querySelectorAll('button').forEach(b => b.classList.remove('active'));
-        })
+        
+            break;
+            case "packet":
+            const type=document.getElementById("wavePackets").value
+            
+            switch (type){
+            	case "gauss":
+            	wavePackets.add(new GaussianWavePacket(x,y,frequency.value, amplitude.value, 0, 60));
+            	break;
+            		case "rect":
+            	wavePackets.add(new RectangularWavePacket(x,y,frequency.value, amplitude.value, 0, 60));
+            	break
+            		case "sinc":
+            	wavePackets.add(new SincWavePacket(x,y,frequency.value, amplitude.value, 0, 60));
+            	break
+            }
+            }
+
+            })
 
         function updateDeviceList() {
             transceivers.forEach(dev => dev.updatePanel())
