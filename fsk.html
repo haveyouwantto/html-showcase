@@ -240,7 +240,7 @@
         <span id="freq"></span>
         <div>频道范围：1~12，120~160</div>
         符号速率：
-        <input type="number" id="baudrateInput" value="100" min="30" max="1200">
+        <input type="number" id="baudrateInput" value="100" min="30" max="4800">
         <canvas id="oscilloscope" width="800" height="200"></canvas>
     </div>
     <script>
@@ -259,9 +259,9 @@
             if (bd < 30) {
                 bd = 30;
                 baudrateInput.value = 30;
-            } else if (bd > 1200) {
-                bd = 1200;
-                baudrateInput.value = 1200;
+            } else if (bd > 4800) {
+                bd = 4800;
+                baudrateInput.value = 4800;
             }
             setBaudRate(bd);
         });
@@ -1124,7 +1124,7 @@
             rxImage = new ColorDCTReconstructor(reconCanvas)
             imgParser = new ImgSampleParser()
             imgParser.onSample = sample => {
-                console.log(sample)
+                // console.log(sample)
                 dequantizeDCT(sample)
                 if (sample.idx === 0) {
                     if (sample.type === 'Y') sample.value += 128 * BLOCK_SIZE_Y;
@@ -1158,7 +1158,7 @@
                 const filter = createFilter(baudRate);
                 convolver.buffer = filter;
 
-                console.log(baudRate)
+                // console.log(baudRate)
 
 
                 const freqDeviation = audioCtx.createGain();
@@ -1255,7 +1255,7 @@
 
                 const decoder = new FibonacciDecoder(result => {
                     const dec = decodeAndVerify(result)
-                    console.log("解码结果:", dec);
+                    // console.log("解码结果:", dec);
                     if (isRxImage) {
                         if (dec < 0) imgParser.state = 0;
                         else if (dec === 2000001) {
@@ -1268,7 +1268,8 @@
                         if (dec == 2000000) {
                             startRxImage()
                         } else if (dec > 3) {
-                            received.value += String.fromCodePoint(dec)
+                            received.appendChild(document.createTextNode(String.fromCodePoint(dec)))
+                            // received.value = received.value.concat(String.fromCodePoint(dec))
                             // alert(received.scrollHeight +" "+ received.scrollTop +" "+ received.clientHeight)
                             if (Math.abs(received.scrollHeight - received.clientHeight - received.scrollTop) < 24) {
                                 received.scrollTo(0, received.scrollHeight)
@@ -1322,7 +1323,7 @@
             })
 
             document.getElementById('clearRx').addEventListener('click', () => {
-                received.value = ''
+                received.innerHTML = ''
             })
 
             // image transmit
