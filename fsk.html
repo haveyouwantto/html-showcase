@@ -240,11 +240,11 @@
         <span id="freq"></span>
         <div>频道范围：1~8，120~144</div>
         符号速率：
-        <input type="number" id="baudrateInput" value="100" min="30" max="4800">
+        <input type="number" id="baudrateInput" value="50" min="30" max="4800">
         <canvas id="oscilloscope" width="800" height="200"></canvas>
     </div>
     <script>
-        let baudRate = 100; // 波特率
+        let baudRate = 50; // 波特率
         const sampleRate = 48000; // 采样率
         let carrierFreq = 16000; // 载波频率
         const freqMulti = 1; // 频率倍数
