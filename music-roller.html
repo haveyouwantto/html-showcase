@@ -71,6 +71,8 @@
             const progressBar = document.getElementById('progressBar');
             const player = document.getElementById('player')
             const audioCtx = new AudioContext();
+            
+            const dpr = window.devicePixelRatio || 1;
 
             function mapRange(value, inputStart, inputEnd, outputStart, outputEnd) {
                 return outputStart + ((value - inputStart) * (outputEnd - outputStart)) / (inputEnd - inputStart);
@@ -282,7 +284,6 @@
 
             // 设置 canvas 尺寸为全屏
             function resizeCanvas() {
-                const dpr = window.devicePixelRatio || 1;
                 canvas.width = window.innerWidth* dpr;
                 canvas.height = window.innerHeight* dpr;
             }
@@ -303,7 +304,7 @@
                     const buffer = await fileToAudioBuffer(file)
 
                     const rms = rmsToDb(calculateRMS(buffer, 1 / 120))
-                    const track = calculateTrackPoints(rms)
+                    const track = calculateTrackPoints(rms, dpr)
 
                     console.log(track)
 
