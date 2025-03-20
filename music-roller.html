@@ -71,7 +71,7 @@
             const progressBar = document.getElementById('progressBar');
             const player = document.getElementById('player')
             const audioCtx = new AudioContext();
-            
+
             const dpr = window.devicePixelRatio || 1;
 
             function mapRange(value, inputStart, inputEnd, outputStart, outputEnd) {
@@ -141,19 +141,22 @@
                 const rmsValues = [];
 
                 let startIdx = 0;
+                let endIdx = 0;
+                let i = 0;
                 while (startIdx < bufferSize) {
-                    const endIdx = Math.min(startIdx + Math.round(intervalInSeconds * sampleRate), bufferSize);
-                    const interval = endIdx - startIdx; // 实际的采样点数量
+                    startIdx = Math.round(sampleRate * intervalInSeconds * i);
+                    endIdx = Math.min(Math.round(sampleRate * intervalInSeconds * (i + 1)), bufferSize);
 
                     let sumOfSquares = 0;
+                    let length = endIdx - startIdx;
                     for (let j = startIdx; j < endIdx; j++) {
                         const sample = rawData[j];
                         sumOfSquares += sample * sample;
                     }
-                    const rms = Math.sqrt(sumOfSquares / interval);
+                    const rms = Math.sqrt(sumOfSquares / length);
+                    console.log(rms)
                     rmsValues.push(rms);
-
-                    startIdx = endIdx;
+                    i++;
                 }
 
                 return rmsValues;
@@ -192,7 +195,7 @@
                     let length
 
                     // 智能角度映射
-                    if (!isFinite(amplitude) || isNaN(amplitude)){ 
+                    if (!isFinite(amplitude) || isNaN(amplitude)) {
                         angle = -slopeFactor
                         length = 1
                     }
@@ -284,8 +287,8 @@
 
             // 设置 canvas 尺寸为全屏
             function resizeCanvas() {
-                canvas.width = window.innerWidth* dpr;
-                canvas.height = window.innerHeight* dpr;
+                canvas.width = window.innerWidth * dpr;
+                canvas.height = window.innerHeight * dpr;
             }
             resizeCanvas();
             window.addEventListener('resize', resizeCanvas);
