@@ -1,6 +1,6 @@
-
 <!DOCTYPE html>
 <html>
+
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -8,18 +8,20 @@
     <style>
         body {
             margin: 0;
-            overflow: hidden; /* 隐藏滚动条 */
+            overflow: hidden;
+            /* 隐藏滚动条 */
         }
 
         canvas {
-            display: block; /* 移除 canvas 下方的空隙 */
+            display: block;
+            /* 移除 canvas 下方的空隙 */
             width: 100%;
             height: 100%;
             background-color: #000;
         }
 
         #fileInput {
-           /* display: none; /* 隐藏文件上传 input */
+            /* display: none; /* 隐藏文件上传 input */
         }
 
         #progressBarContainer {
@@ -32,258 +34,304 @@
         }
 
         #progressBar {
+            position: absolute;
             width: 0%;
             height: 100%;
             background-color: #4CAF50;
         }
+
+        #progressInput {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            opacity: 0;
+            /* 透明 */
+            cursor: pointer;
+            margin: 0;
+        }
     </style>
 </head>
+
 <body>
     <canvas id="musicCanvas"></canvas>
     <input type="file" id="fileInput" accept="audio/*">
     <div id="progressBarContainer">
         <div id="progressBar"></div>
+        <input type="range" id="progressInput" min="0" max="1000" value="0">
     </div>
     <audio id="player" hidden>
-<!-- 在 HTML 中插入以下代码 -->
-<script src="//cdn.jsdelivr.net/npm/eruda"></script>
-<script>eruda.init();</script>
+        <!-- 在 HTML 中插入以下代码 -->
+        <script src="//cdn.jsdelivr.net/npm/eruda"></script>
+        <script>eruda.init();</script>
 
-    <script>
-        const canvas = document.getElementById('musicCanvas');
-        const ctx = canvas.getContext('2d');
-        const fileInput = document.getElementById('fileInput');
-        const progressBar = document.getElementById('progressBar');
-        const player = document.getElementById('player')
-        const audioCtx = new AudioContext();
-        
-       /* const canvasWidth = canvas.width;
-        const canvasHeight = canvas.height;
+        <script>
+            const canvas = document.getElementById('musicCanvas');
+            const ctx = canvas.getContext('2d');
+            const fileInput = document.getElementById('fileInput');
+            const progressBar = document.getElementById('progressBar');
+            const player = document.getElementById('player')
+            const audioCtx = new AudioContext();
 
-        // 计算 Canvas 中心点的坐标
-        const centerX = canvasWidth / 2;
-        const centerY = canvasHeight / 2;
-
-        // 将 Canvas 的原点移动到中心点
-        ctx.translate(centerX, centerY);*/
-        
-        async function fileToAudioBuffer(file) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-
-    reader.onload = function(event) {
-      //const audioContext = new (window.AudioContext || window.webkitAudioContext)();
-
-      audioCtx.decodeAudioData(event.target.result,
-        (buffer) => {
-          resolve(buffer);
-        },
-        (error) => {
-          reject(error);
-        }
-      );
-    };
-
-    reader.onerror = function(error) {
-      reject(error);
-    };
-
-    reader.readAsArrayBuffer(file);
-  });
-}
-
-function calculateRMS(buffer, intervalInSeconds) {
-  const rawData = buffer.getChannelData(0);
-  const sampleRate = buffer.sampleRate;
-  const bufferSize = rawData.length;
-  const rmsValues = [];
-
-  let startIdx = 0;
-  while (startIdx < bufferSize) {
-    const endIdx = Math.min(startIdx + Math.round(intervalInSeconds * sampleRate), bufferSize);
-    const interval = endIdx - startIdx; // 实际的采样点数量
-
-    let sumOfSquares = 0;
-    for (let j = startIdx; j < endIdx; j++) {
-      const sample = rawData[j];
-      sumOfSquares += sample * sample;
-    }
-    const rms = Math.sqrt(sumOfSquares / interval);
-    rmsValues.push(rms);
-
-    startIdx = endIdx;
-  }
-
-  return rmsValues;
-}
-
-function rmsToDb(rmsValues, reference = 1) {
-  const dbValues = [];
-
-  for (let i = 0; i < rmsValues.length; i++) {
-    const rms = rmsValues[i];
-    const db = 20 * Math.log10(rms / reference);
-    dbValues.push(db);
-  }
-
-  return dbValues;
-}
-function calculateTrackPoints(amplitudeData, scaleFactor = 1, slopeFactor = 45) {
-    const points = [];
-    let x = 0, y = 0;
-    
-    // 计算动态分界点
-    const sum = amplitudeData.reduce((acc, val) => acc + val, 0);
-    const turning = sum / amplitudeData.length;       // 平均值作为分界点
-    const lowerBound = turning - 40;                  // 新下限 = 平均值 -40
-    const maxAmplitude = Math.max(...amplitudeData);   // 保留最大值计算
-
-    for (const amplitude of amplitudeData) {
-        let angle;
-        
-        // 智能角度映射
-        if (amplitude > turning) {
-            // 高于平均值：slopeFactor° ~ 0°
-            const range = Math.max(maxAmplitude - turning, 1);    // 防除零且最小跨度1
-            const ratio = Math.min((amplitude - turning) / range, 1); // 限制最大比例
-            angle = slopeFactor * (1 - ratio);
-        } else {
-            // 低于平均值：0° ~ -slopeFactor°
-            const range = Math.max(turning - lowerBound, 1);       // 强制有效范围
-            const safeAmplitude = Math.max(amplitude, lowerBound); // 防止数值越界
-            const ratio = (turning - safeAmplitude) / range;
-            angle = -slopeFactor * ratio;
-        }
-        
-        let length =(1-(maxAmplitude- amplitude) / (maxAmplitude - lowerBound))*5
-        if (!isFinite(length) || isNaN(length)) length = 0;
-        
-        
-        // 增量计算
-        let deltaY = Math.tan(angle * Math.PI / 180) * scaleFactor* length;
-        if (!isFinite(deltaY) || isNaN(deltaY)) deltaY = 0;
-        points.push({ x, y: y += deltaY });
-        x += scaleFactor*length;
-    }
-    
-    return points;
-}
-
-
-
-function getHsvColor(amplitude, maxAmplitude) {
-    const hue = 240 * (1 - amplitude / maxAmplitude);  // 蓝色到红色渐变
-    return `hsv(${hue}, 100%, 50%)`;
-}
-
-
-function drawFrame(track, time) {
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    
-    // 计算当前帧索引
-    let idx = Math.floor(time * 120);
-    idx = Math.max(0, Math.min(idx, track.length - 1)); // 边界保护
-    
-    // 中心点坐标
-    const currentPoint = track[idx];
-    const centerX = canvas.width / 2;
-    const centerY = canvas.height / 2;
-    
-    // 绘制双向轨道
-    ctx.strokeStyle = "white";
-    ctx.beginPath();
-    
-    // 起始点定位到屏幕中心
-    ctx.moveTo(centerX, centerY);
-    
-    // 向左绘制轨道 (逆向绘制)
-    let leftX = centerX;
-    for(let i = 1; ; i++) {
-        const line = track[idx - i];
-        if (!line || leftX < 0) break;
-        
-        // 计算相对坐标
-        const currentX = (line.x - currentPoint.x) + centerX;
-        const currentY = (line.y - currentPoint.y) + centerY;
-        
-        ctx.lineTo(currentX, currentY);
-        leftX = currentX;
-    }
-    
-    // 回到中心点
-    ctx.moveTo(centerX, centerY);
-    
-    // 向右绘制轨道 (正向绘制)
-    let rightX = centerX;
-    for(let i = 1; ; i++) {
-        const line = track[idx + i];
-        if (!line || rightX > canvas.width) break;
-        
-        const currentX = (line.x - currentPoint.x) + centerX;
-        const currentY = (line.y - currentPoint.y) + centerY;
-        
-        ctx.lineTo(currentX, currentY);
-        rightX = currentX;
-    }
-    
-    ctx.stroke();
-    
-    // 绘制中心小球
-    ctx.beginPath();
-    ctx.arc(centerX, centerY, 5, 0, Math.PI * 2);
-    ctx.fillStyle = "red";
-    ctx.fill();
-}
-
-
-        // 设置 canvas 尺寸为全屏
-        function resizeCanvas() {
-            canvas.width = window.innerWidth;
-            canvas.height = window.innerHeight;
-        }
-        resizeCanvas();
-        window.addEventListener('resize', resizeCanvas);
-
-        // 点击 canvas 触发文件上传
-        canvas.addEventListener('click', function() {
-            fileInput.click();
-        });
-
-        // 文件上传处理
-        fileInput.addEventListener('change',async function(e) {
-            const file = e.target.files[0];
-            if (file) {
-                // TODO: 加载和解析音频文件，生成过山车动画
-                console.log('Selected file:', file);
-                // 示例：更新进度条
-                updateProgressBar(50); // 假设加载进度为 50%
-                
-                const buffer = await fileToAudioBuffer(file)
-                
-                const rms = rmsToDb(calculateRMS(buffer, 1/120))
-                const track = calculateTrackPoints(rms)
-                
-                console.log(track)
-                
-                const url =URL.createObjectURL(file)
-                player.src=url
-                player.play()
-                
-                let update=()=>{
-                	drawFrame(track,player.currentTime)
-                	updateProgressBar(player.currentTime/player.duration*100)
-                	requestAnimationFrame(update)
-                }
-                requestAnimationFrame(update)
+            function mapRange(value, inputStart, inputEnd, outputStart, outputEnd) {
+                return outputStart + ((value - inputStart) * (outputEnd - outputStart)) / (inputEnd - inputStart);
             }
-        });
 
-        // 更新进度条
-        function updateProgressBar(percentage) {
-            progressBar.style.width = percentage + '%';
-        }
+            function clamp(value, min, max) {
+                // 确保 min <= max
+                if (min > max) {
+                    [min, max] = [max, min]; // 交换 min 和 max 的值
+                }
 
-        // TODO: 添加音频可视化和过山车动画代码
-    </script>
+                // 如果 value 小于 min，则返回 min
+                if (value < min) {
+                    return min;
+                }
+
+                // 如果 value 大于 max，则返回 max
+                if (value > max) {
+                    return max;
+                }
+
+                // 否则，value 在 min 和 max 之间，直接返回 value
+                return value;
+            }
+
+
+            /* const canvasWidth = canvas.width;
+             const canvasHeight = canvas.height;
+      
+             // 计算 Canvas 中心点的坐标
+             const centerX = canvasWidth / 2;
+             const centerY = canvasHeight / 2;
+      
+             // 将 Canvas 的原点移动到中心点
+             ctx.translate(centerX, centerY);*/
+
+            async function fileToAudioBuffer(file) {
+                return new Promise((resolve, reject) => {
+                    const reader = new FileReader();
+
+                    reader.onload = function (event) {
+                        //const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+
+                        audioCtx.decodeAudioData(event.target.result,
+                            (buffer) => {
+                                resolve(buffer);
+                            },
+                            (error) => {
+                                reject(error);
+                            }
+                        );
+                    };
+
+                    reader.onerror = function (error) {
+                        reject(error);
+                    };
+
+                    reader.readAsArrayBuffer(file);
+                });
+            }
+
+            function calculateRMS(buffer, intervalInSeconds) {
+                const rawData = buffer.getChannelData(0);
+                const sampleRate = buffer.sampleRate;
+                const bufferSize = rawData.length;
+                const rmsValues = [];
+
+                let startIdx = 0;
+                while (startIdx < bufferSize) {
+                    const endIdx = Math.min(startIdx + Math.round(intervalInSeconds * sampleRate), bufferSize);
+                    const interval = endIdx - startIdx; // 实际的采样点数量
+
+                    let sumOfSquares = 0;
+                    for (let j = startIdx; j < endIdx; j++) {
+                        const sample = rawData[j];
+                        sumOfSquares += sample * sample;
+                    }
+                    const rms = Math.sqrt(sumOfSquares / interval);
+                    rmsValues.push(rms);
+
+                    startIdx = endIdx;
+                }
+
+                return rmsValues;
+            }
+
+            function rmsToDb(rmsValues, reference = 1) {
+                const dbValues = [];
+
+                for (let i = 0; i < rmsValues.length; i++) {
+                    const rms = rmsValues[i];
+                    const db = 20 * Math.log10(rms / reference);
+                    dbValues.push(db);
+                }
+
+                return dbValues;
+            }
+            function calculateTrackPoints(amplitudeData, scaleFactor = 1, slopeFactor = 45) {
+                const points = [];
+                let x = 0, y = 0;
+
+                // 计算动态分界点
+                const sum = amplitudeData.reduce((acc, val) => {
+                    if (!isFinite(val) || isNaN(val)) {
+                        return acc;
+                    }
+                    return acc + val;
+                }, 0);
+
+                const turning = sum / amplitudeData.length;       // 平均值作为分界点
+                const lowerBound = turning - 40;                  // 新下限 = 平均值 -40
+                const maxAmplitude = Math.max(...amplitudeData) - 3;   // 保留最大值计算
+                console.log(sum, turning, maxAmplitude)
+
+                for (const amplitude of amplitudeData) {
+                    let angle;
+
+                    // 智能角度映射
+                    if (!isFinite(amplitude) || isNaN(amplitude)) angle = 0
+                    else if (amplitude > turning) {
+                        // 高于平均值：0° ~ slopeFactor°
+                        angle = clamp(mapRange(amplitude, turning, maxAmplitude, 0, slopeFactor), 0, slopeFactor)
+                    } else {
+                        // 低于平均值：0° ~ -slopeFactor°
+                        angle = clamp(mapRange(amplitude, turning, lowerBound, 0, -slopeFactor), -slopeFactor, 0)
+                    }
+
+                    let length = Math.pow(mapRange(angle, -slopeFactor, slopeFactor, 1, 2), 2)
+
+                    // 增量计算
+                    let deltaY = Math.tan(angle * Math.PI / 180) * scaleFactor * length;
+                    if (!isFinite(deltaY) || isNaN(deltaY)) deltaY = 0;
+                    points.push({ x, y: y += deltaY, angle: angle });
+                    x += scaleFactor * length;
+                }
+
+                return points;
+            }
+
+
+
+            function getHsvColorFromAngle(angle) {
+                const hue = mapRange(angle, 45, -45, 0, 270);
+                return `hsl(${hue}, 100%, 50%)`; // 使用 HSL 兼容 CSS
+            }
+
+            function drawFrame(track, time) {
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+                // 计算当前帧索引
+                let idx = Math.floor(time * 120);
+                idx = Math.max(0, Math.min(idx, track.length - 1)); // 边界保护
+
+                // 中心点坐标
+                const currentPoint = track[idx];
+                const centerX = canvas.width / 2;
+                const centerY = canvas.height / 2;
+
+                // 绘制轨道
+                ctx.lineWidth = 4;
+                ctx.strokeStyle = getHsvColorFromAngle(track[idx].angle); // 颜色基于角度
+                ctx.beginPath();
+
+                let startIdx = idx, endIdx = idx;
+
+                // 向左搜索起点
+                while (startIdx > 0 && (track[startIdx].x - currentPoint.x) + centerX >= 0) {
+                    startIdx--;
+                }
+
+                // 向右搜索终点
+                while (endIdx < track.length - 1 && (track[endIdx].x - currentPoint.x) + centerX <= canvas.width) {
+                    endIdx++;
+                }
+
+                // 直接在绘制轨道时应用颜色
+                for (let i = startIdx; i <= endIdx; i++) {
+                    const line = track[i];
+                    const currentX = (line.x - currentPoint.x) + centerX;
+                    const currentY = (line.y - currentPoint.y) + centerY;
+
+                    if (i === startIdx) {
+                        ctx.moveTo(currentX, currentY);
+                    } else {
+                        ctx.lineTo(currentX, currentY);
+                    }
+                }
+
+                ctx.stroke();
+
+                // 绘制中心小球
+                ctx.beginPath();
+                ctx.arc(centerX, centerY, 5, 0, Math.PI * 2);
+                ctx.fillStyle = "red";
+                ctx.fill();
+
+                // 绘制当前距离
+                // 绘制当前距离文本
+                ctx.font = "12px Arial";
+                ctx.fillStyle = "white";
+                ctx.fillText(`位置: ${track[idx].x.toFixed(2)} ${track[idx].y.toFixed(2)} `, 20, 30); // 位置：左上角
+            }
+
+
+
+            // 设置 canvas 尺寸为全屏
+            function resizeCanvas() {
+                canvas.width = window.innerWidth;
+                canvas.height = window.innerHeight;
+            }
+            resizeCanvas();
+            window.addEventListener('resize', resizeCanvas);
+
+            // 点击 canvas 触发文件上传
+            canvas.addEventListener('click', function () {
+                fileInput.click();
+            });
+
+            let handle;
+
+            // 文件上传处理
+            fileInput.addEventListener('change', async function (e) {
+                const file = e.target.files[0];
+                if (file) {
+                    const buffer = await fileToAudioBuffer(file)
+
+                    const rms = rmsToDb(calculateRMS(buffer, 1 / 120))
+                    const track = calculateTrackPoints(rms)
+
+                    console.log(track)
+
+                    const url = URL.createObjectURL(file)
+                    player.src = url
+                    player.play()
+
+                    let update = () => {
+                        drawFrame(track, player.currentTime)
+                        updateProgressBar(player.currentTime / player.duration * 100)
+                        handle = requestAnimationFrame(update)
+                    }
+                    if (handle) cancelAnimationFrame(handle)
+                    handle = requestAnimationFrame(update)
+                }
+            });
+
+            const progressInput = document.getElementById('progressInput');
+
+            // 监听滑块变化，调整音频进度
+            progressInput.addEventListener('input', function () {
+                if (player.duration) {
+                    const newTime = (player.duration * progressInput.value) / 1000;
+                    player.currentTime = newTime;
+                    updateProgressBar(progressInput.value);
+                }
+            });
+
+            function updateProgressBar(percentage) {
+                progressBar.style.width = percentage + '%';
+                progressInput.value = percentage;
+            }
+        </script>
 </body>
+
 </html>
