@@ -168,7 +168,7 @@
 
                 return dbValues;
             }
-            function calculateTrackPoints(amplitudeData, scaleFactor = 1, slopeFactor = 45) {
+            function calculateTrackPoints(amplitudeData, scaleFactor = 1, slopeFactor = 45, slopeFactor2 = 60) {
                 const points = [];
                 let x = 0, y = 0;
 
@@ -181,24 +181,28 @@
                 }, 0);
 
                 const turning = sum / amplitudeData.length;       // 平均值作为分界点
-                const lowerBound = turning - 40;                  // 新下限 = 平均值 -40
-                const maxAmplitude = Math.max(...amplitudeData) - 3;   // 保留最大值计算
+                const lowerBound = turning - 30;                  // 新下限 = 平均值 - 30dB
+                const maxAmplitude = Math.max(...amplitudeData) - 3;   // 最大值 - 3dB
                 console.log(sum, turning, maxAmplitude)
 
                 for (const amplitude of amplitudeData) {
                     let angle;
+                    let length
 
                     // 智能角度映射
-                    if (!isFinite(amplitude) || isNaN(amplitude)) angle = -slopeFactor
+                    if (!isFinite(amplitude) || isNaN(amplitude)){ 
+                        angle = -slopeFactor
+                        length = 1
+                    }
                     else if (amplitude > turning) {
                         // 高于平均值：0° ~ slopeFactor°
-                        angle = clamp(mapRange(amplitude, turning, maxAmplitude, 0, slopeFactor), 0, slopeFactor)
+                        angle = clamp(mapRange(amplitude, turning, maxAmplitude, 0, slopeFactor2), 0, slopeFactor2)
+                        length = Math.pow(mapRange(angle, -slopeFactor2, slopeFactor2, 1, 2), 2)
                     } else {
                         // 低于平均值：0° ~ -slopeFactor°
                         angle = clamp(mapRange(amplitude, turning, lowerBound, 0, -slopeFactor), -slopeFactor, 0)
+                        length = Math.pow(mapRange(angle, -slopeFactor, slopeFactor, 1, 2), 2)
                     }
-
-                    let length = Math.pow(mapRange(angle, -slopeFactor, slopeFactor, 1, 2), 2)
 
                     // 增量计算
                     let deltaY = Math.tan(angle * Math.PI / 180) * scaleFactor * length;
@@ -213,7 +217,7 @@
 
 
             function getHsvColorFromAngle(angle) {
-                const hue = mapRange(angle, 45, -45, 0, 270);
+                const hue = clamp(mapRange(angle, 45, -45, -30, 270), 0, 270);
                 return `hsl(${hue}, 100%, 50%)`; // 使用 HSL 兼容 CSS
             }
 
@@ -230,7 +234,7 @@
                 const centerY = canvas.height / 2;
 
                 // 绘制轨道
-                ctx.lineWidth = 4;
+                ctx.lineWidth = 8;
                 ctx.strokeStyle = getHsvColorFromAngle(track[idx].angle); // 颜色基于角度
                 ctx.beginPath();
 
@@ -263,8 +267,8 @@
 
                 // 绘制中心小球
                 ctx.beginPath();
-                ctx.arc(centerX, centerY, 5, 0, Math.PI * 2);
-                ctx.fillStyle = "red";
+                ctx.arc(centerX, centerY - 32, 32, 0, Math.PI * 2);
+                ctx.fillStyle = "white";
                 ctx.fill();
 
                 // 绘制当前距离
@@ -278,8 +282,9 @@
 
             // 设置 canvas 尺寸为全屏
             function resizeCanvas() {
-                canvas.width = window.innerWidth;
-                canvas.height = window.innerHeight;
+                const dpr = window.devicePixelRatio || 1;
+                canvas.width = window.innerWidth* dpr;
+                canvas.height = window.innerHeight* dpr;
             }
             resizeCanvas();
             window.addEventListener('resize', resizeCanvas);
