@@ -189,7 +189,7 @@
                     let angle;
 
                     // 智能角度映射
-                    if (!isFinite(amplitude) || isNaN(amplitude)) angle = 0
+                    if (!isFinite(amplitude) || isNaN(amplitude)) angle = -slopeFactor
                     else if (amplitude > turning) {
                         // 高于平均值：0° ~ slopeFactor°
                         angle = clamp(mapRange(amplitude, turning, maxAmplitude, 0, slopeFactor), 0, slopeFactor)
