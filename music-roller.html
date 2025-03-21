@@ -154,7 +154,6 @@
                         sumOfSquares += sample * sample;
                     }
                     const rms = Math.sqrt(sumOfSquares / length);
-                    console.log(rms)
                     rmsValues.push(rms);
                     i++;
                 }
@@ -173,7 +172,7 @@
 
                 return dbValues;
             }
-            function calculateTrackPoints(amplitudeData, scaleFactor = 1, slopeFactor = 45, slopeFactor2 = 60) {
+            function calculateTrackPoints(amplitudeData, scaleFactor = 1, slopeFactor = 60, slopeFactor2 = 60) {
                 const points = [];
                 let x = 0, y = 0;
 
@@ -185,10 +184,9 @@
                     return acc + val;
                 }, 0);
 
-                const turning = sum / amplitudeData.length;       // 平均值作为分界点
+                const turning = sum / amplitudeData.length + 3;       // 平均值 + 3dB作为分界点
                 const lowerBound = turning - 30;                  // 新下限 = 平均值 - 30dB
                 const maxAmplitude = Math.max(...amplitudeData) - 3;   // 最大值 - 3dB
-                console.log(sum, turning, maxAmplitude)
 
                 for (const amplitude of amplitudeData) {
                     let angle;
@@ -202,11 +200,11 @@
                     else if (amplitude > turning) {
                         // 高于平均值：0° ~ slopeFactor°
                         angle = clamp(mapRange(amplitude, turning, maxAmplitude, 0, slopeFactor2), 0, slopeFactor2)
-                        length = Math.pow(mapRange(angle, -slopeFactor2, slopeFactor2, 1, 2), 2)
+                        length = Math.pow(mapRange(angle, -slopeFactor2, slopeFactor2, 0.5, 2), 2)
                     } else {
                         // 低于平均值：0° ~ -slopeFactor°
                         angle = clamp(mapRange(amplitude, turning, lowerBound, 0, -slopeFactor), -slopeFactor, 0)
-                        length = Math.pow(mapRange(angle, -slopeFactor, slopeFactor, 1, 2), 2)
+                        length = Math.pow(mapRange(angle, -slopeFactor, slopeFactor, 0.5, 2), 2)
                     }
 
                     // 增量计算
@@ -222,7 +220,7 @@
 
 
             function getHsvColorFromAngle(angle) {
-                const hue = clamp(mapRange(angle, 45, -45, -30, 270), 0, 270);
+                const hue = clamp(mapRange(angle, 60, -60, -30, 270), 0, 270);
                 return `hsl(${hue}, 100%, 50%)`; // 使用 HSL 兼容 CSS
             }
 
