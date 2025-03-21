@@ -330,9 +330,9 @@
             for (let i = 0; i < string.length; i++) {
                 const ord = string.codePointAt(i);
                 if (ord < 128) {
-                    result.push(VARICODE.indexOf(string[i]) + 2)
+                    result.push(VARICODE.indexOf(string[i]) + 1)
                 } else {
-                    result.push(ord + 2);
+                    result.push(ord + 1);
                     if (ord > 0xffff) i++;
                 }
             }
@@ -1153,7 +1153,7 @@
 
                 const mod = new AudioWorkletNode(audioCtx, 'mod')
                 const preparedArray = ordArray.map(e => encodeWithParity(e));
-                const sync = [3, 3, 3, 3, 3, 3, 3, 3];
+                const sync = [2, 2, 2, 2, 2, 2, 2, 2];
 
                 preparedArray.unshift(...sync);
                 preparedArray.push(...sync);
@@ -1284,10 +1284,10 @@
                             if (dec == 2000000) {
                                 startRxImage()
                             } else {
-                                if (dec >= 2 && dec <= 129) {
-                                    received.appendChild(document.createTextNode(VARICODE[dec - 2]))
+                                if (dec >= 1 && dec <= 128) {
+                                    received.appendChild(document.createTextNode(VARICODE[dec - 1]))
                                 } else {
-                                    received.appendChild(document.createTextNode(String.fromCodePoint(dec - 2)))
+                                    received.appendChild(document.createTextNode(String.fromCodePoint(dec - 1)))
                                 }
                                 if (Math.abs(received.scrollHeight - received.clientHeight - received.scrollTop) < 48) {
                                     received.scrollTo(0, received.scrollHeight)
