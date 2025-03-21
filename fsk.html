@@ -138,12 +138,12 @@
             margin: 2rem 0;
         }
 
-        #oscilloscope {
+        #constellation {
             background: var(--dark-bg);
             border: var(--border-width) solid #2d3746;
             border-radius: var(--border-radius);
             margin-top: 1rem;
-            width: 50%;
+            max-width: 500px;
         }
 
         .container {
@@ -190,7 +190,7 @@
                 grid-template-columns: 1fr;
             }
 
-            #oscilloscope {
+            #constellation {
                 width: 100%;
             }
         }
@@ -241,7 +241,7 @@
         <div>频道范围：1~8，120~144</div>
         符号速率：
         <input type="number" id="baudrateInput" value="50" min="30" max="4800">
-        <canvas id="oscilloscope" width="500" height="500"></canvas>
+        <canvas id="constellation" width="500" height="500"></canvas>
     </div>
     <!-- <script src="//cdn.jsdelivr.net/npm/eruda"></script>
     <script>eruda.init();</script> -->
@@ -1321,7 +1321,7 @@
                 };
 
 
-                const canvas = document.getElementById('oscilloscope')
+                const canvas = document.getElementById('constellation')
                 const ctx = canvas.getContext('2d')
                 const data = new Float32Array(analyser.fftSize)
                 ctx.lineWidth = 1
