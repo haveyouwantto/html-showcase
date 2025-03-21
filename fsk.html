@@ -243,7 +243,9 @@
         <input type="number" id="baudrateInput" value="50" min="30" max="4800">
         <canvas id="oscilloscope" width="500" height="500"></canvas>
     </div>
-      
+         <script src="//cdn.jsdelivr.net/npm/eruda"></script>
+        <script>eruda.init();</script>
+        
         
     <script>
         let baudRate = 50; // 波特率
@@ -999,28 +1001,7 @@
                         // 计算瞬时相位差（arctan(虚部/实部））
                         phase[j] = Math.atan2(resultImag, resultReal);
 
-                        /*
-                        // 符号边界检测（相位符号变化时触发）
-                        if (j > 0 && Math.sign(phase[j]) != Math.sign(phase[j - 1])) {
-                            // 当达到半个符号周期时提交相位和
-                            if (this.count >= this.samplesPerSymbol * 0.5) {
-                                this.port.postMessage({ phase: this.sum });
-                            }
-                            // 重置累加器和计数器
-                            this.count = 0;
-                            this.sum = 0;
-                        }
-
-                        // 符号周期计数与相位累加
-                        this.count++;
-                        this.sum += phase[j];
-                        // 当达到完整符号周期时提交相位和
-                        if (this.count === this.samplesPerSymbol) {
-                            this.port.postMessage({ phase: this.sum });
-                            this.count = 0;
-                            this.sum = 0;
-                        }
-                        */
+                        
                         
                         this.count=(this.count+1)%this.samplesPerSymbol;
                         //if(this.count<10) console.log(this.count,this.best,this.samplesPerSymbol)
@@ -1029,10 +1010,10 @@
                            // console.log(this.best, this.count)
                         	this.port.postMessage({ phase: phase[j-1] });
                            
-                        	let early = Math.abs(phase[j-2]);
-                        	let curr = Math.abs(phase[j-1]);
-                        	let late =Math.abs( phase[j]);
-                        	
+                        	let early = phase[j-2];
+                        	let curr = phase[j-1];
+                        	let late = phase[j];
+                        	console.log(early, curr, late,phase[j-1])
                         	if (early > curr && curr > late) this.best--;
                         	else if (early < curr && curr < late) this.best++;
                         	
@@ -1342,7 +1323,7 @@
 
                 demod.port.onmessage = (event) => {
                     const phase = event.data.phase;
-                    console.log(phase);
+                    //console.log(phase);
                     constellation.addSample(phase,0);
                     const bit = phase > 0 ? 1 : 0;
                     decoder.feed(bit)
