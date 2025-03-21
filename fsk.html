@@ -961,6 +961,7 @@
                     super();
                     this.prev = [0, 0];
                     this.count = 0;
+                    this.best = 0;
                     this.sum = 0;
                     this.sampleRate = sampleRate;
 
@@ -999,6 +1000,7 @@
                         // 计算瞬时相位差（arctan(虚部/实部））
                         phase[j] = Math.atan2(resultImag, resultReal);
 
+                        /*
                         // 符号边界检测（相位符号变化时触发）
                         if (j > 0 && Math.sign(phase[j]) != Math.sign(phase[j - 1])) {
                             // 当达到半个符号周期时提交相位和
@@ -1018,6 +1020,22 @@
                             this.port.postMessage({ phase: this.sum });
                             this.count = 0;
                             this.sum = 0;
+                        }
+                        */
+                        
+                        this.count++;
+                        
+                        if (this.count >= this.samplePerSymbol) this.count = 0;
+                        
+                        if (this.count - 1==this.best){
+                        	this.port.postMessage({ phase: phase[j-1] });
+                           
+                        	let early = Math.abs(phase[j-2]);
+                        	let curr = Math.abs(phase[j-1]);
+                        	let late =Math.abs( phase[j]);
+                        	
+                        	if (early > curr && curr > late) this.best--;
+                        	else if (early < curr && curr < late) this.best++;
                         }
                     }
                     phase[phase.length - 1] = phase[phase.length - 2];  // 边界处理
@@ -1321,6 +1339,7 @@
 
                 demod.port.onmessage = (event) => {
                     const phase = event.data.phase;
+                    console.log(phase);
                     constellation.addSample(phase,0);
                     const bit = phase > 0 ? 1 : 0;
                     decoder.feed(bit)
