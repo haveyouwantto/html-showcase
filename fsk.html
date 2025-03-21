@@ -243,10 +243,10 @@
         <input type="number" id="baudrateInput" value="50" min="30" max="4800">
         <canvas id="oscilloscope" width="500" height="500"></canvas>
     </div>
-         <script src="//cdn.jsdelivr.net/npm/eruda"></script>
-        <script>eruda.init();</script>
-        
-        
+    <!-- <script src="//cdn.jsdelivr.net/npm/eruda"></script>
+    <script>eruda.init();</script> -->
+
+
     <script>
         let baudRate = 50; // 波特率
         const sampleRate = 48000; // 采样率
@@ -821,21 +821,21 @@
                 }
             }
         }
-        
+
         class ConstellationRecorder {
-        	constructor (maxLen){
-        		this.maxLen = maxLen;
-        		this.samples=[];
-        	}
-        	
-        	addSample(i,q){
-        		this.samples.push([i,q])
-        		while(this.samples.length>this.maxLen) this.samples.shift()
-        	}
-        	
-        	getSamples(){
-        		return this.samples
-        	}
+            constructor(maxLen) {
+                this.maxLen = maxLen;
+                this.samples = [];
+            }
+
+            addSample(i, q) {
+                this.samples.push([i, q])
+                while (this.samples.length > this.maxLen) this.samples.shift()
+            }
+
+            getSamples() {
+                return this.samples
+            }
         }
 
         function isValidSample(sample) {
@@ -962,8 +962,6 @@
                     super();
                     this.prev = [0, 0];
                     this.count = 0;
-                    this.best = 0;
-                    this.sum = 0;
                     this.sampleRate = sampleRate;
 
                     this.port.onmessage = (event) => {
@@ -1001,27 +999,20 @@
                         // 计算瞬时相位差（arctan(虚部/实部））
                         phase[j] = Math.atan2(resultImag, resultReal);
 
-                        
-                        
-                        this.count=(this.count+1)%this.samplesPerSymbol;
-                        //if(this.count<10) console.log(this.count,this.best,this.samplesPerSymbol)
-                    
-                        if (this.count - 1==this.best){
-                           // console.log(this.best, this.count)
-                        	this.port.postMessage({ phase: phase[j-1] });
-                           
-                        	let early = phase[j-2];
-                        	let curr = phase[j-1];
-                        	let late = phase[j];
-                        	console.log(early, curr, late,phase[j-1])
-                        	if (early > curr && curr > late) this.best--;
-                        	else if (early < curr && curr < late) this.best++;
-                        	
-                            if (this.best < 0) this.best = this.samplesPerSymbol - 2;
-                            if (this.best >= this.samplesPerSymbol-1) this.best = 0;
-                        	
+                        // 符号边界检测（相位符号变化时触发）
+                        if (j > 0 && Math.sign(phase[j]) != Math.sign(phase[j - 1])) {
+                            // 重置计数器
+                            this.count = 0;
+                        }
+
+                        // 符号周期计数
+                        this.count = (this.count + 1) % this.samplesPerSymbol;
+                        // 当达到采样时机时提交相位
+                        if (this.count === this.samplesPerSymbol * 0.5) {
+                            this.port.postMessage({ phase: phase[j] * this.samplesPerSymbol });
                         }
                     }
+
                     phase[phase.length - 1] = phase[phase.length - 2];  // 边界处理
 
                     // 将相位数据输出到指定端口
@@ -1149,9 +1140,9 @@
         let isRxImage = false;
         let imgParser = null;
         let rxImage = null;
-        
-        const constellation= new ConstellationRecorder(baudRate/8);
-        
+
+        const constellation = new ConstellationRecorder(baudRate / 8);
+
 
         function startRxImage() {
             isRxImage = true;
@@ -1323,13 +1314,13 @@
 
                 demod.port.onmessage = (event) => {
                     const phase = event.data.phase;
-                    //console.log(phase);
-                    constellation.addSample(phase,0);
+                    console.log(phase);
+                    constellation.addSample(phase, 0);
                     const bit = phase > 0 ? 1 : 0;
                     decoder.feed(bit)
                 };
-                
-                
+
+
                 const canvas = document.getElementById('oscilloscope')
                 const ctx = canvas.getContext('2d')
                 const data = new Float32Array(analyser.fftSize)
@@ -1350,18 +1341,18 @@
                     ctx.stroke()
                     ctx.strokeStyle = 'green'
                     ctx.beginPath()
-                    ctx.moveTo( canvas.width / 2,0)
-                    ctx.lineTo(canvas.width/2, canvas.height)
+                    ctx.moveTo(canvas.width / 2, 0)
+                    ctx.lineTo(canvas.width / 2, canvas.height)
                     ctx.stroke()
                     ctx.fillStyle = 'white'
                     ctx.beginPath()
-                    const width=canvas.width*0.5;
-                    const height = canvas.height*0.5;
-                    
-                    for (let sample of constellation.getSamples()){
-                    	let x = width+sample[0]*width*0.5;
-                    	let y = height+sample[1]*width*0.5;
-                    	ctx.arc(x,y,4,0,6.28)
+                    const width = canvas.width * 0.5;
+                    const height = canvas.height * 0.5;
+
+                    for (let sample of constellation.getSamples()) {
+                        let x = width + sample[0] * width * 0.5;
+                        let y = height + sample[1] * width * 0.5;
+                        ctx.arc(x, y, 4, 0, 6.28)
                     }
                     ctx.fill()
                     /*ctx.moveTo(0, canvas.height / 2)
@@ -1399,7 +1390,7 @@
                     baudrateInput.value = 4800;
                 }
                 setBaudRate(bd);
-                constellation.maxLen=bd/8;
+                constellation.maxLen = bd / 8;
                 if (rxUpdate) {
                     rxUpdate()
                 }
