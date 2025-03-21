@@ -1036,6 +1036,8 @@
                         	
                         	if (early > curr && curr > late) this.best--;
                         	else if (early < curr && curr < late) this.best++;
+                        	this.best = Math.max(0, Math.min(this.best, this.samplePerSymbol - 1));
+                        	
                         }
                     }
                     phase[phase.length - 1] = phase[phase.length - 2];  // 边界处理
