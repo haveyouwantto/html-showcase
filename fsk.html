@@ -241,8 +241,11 @@
         <div>频道范围：1~8，120~144</div>
         符号速率：
         <input type="number" id="baudrateInput" value="50" min="30" max="4800">
-        <canvas id="oscilloscope" width="800" height="200"></canvas>
+        <canvas id="oscilloscope" width="500" height="500"></canvas>
     </div>
+      <script src="//cdn.jsdelivr.net/npm/eruda"></script>
+        <script>eruda.init();</script>
+        
     <script>
         let baudRate = 50; // 波特率
         const sampleRate = 48000; // 采样率
@@ -263,7 +266,7 @@
         const audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: sampleRate, latencyHint: "balanced" });
 
 
-        const IMG_SIZE = 128; // 可选：64, 128, 256 等
+        const IMG_SIZE = 128;
         const BLOCK_SIZE_Y = 8;         // Y 通道块尺寸（8×8）
         const BLOCK_SIZE_CHROMA = BLOCK_SIZE_Y >> 1;      // 色度块尺寸（4×4）
 
@@ -817,6 +820,22 @@
                 }
             }
         }
+        
+        class ConstellationRecorder {
+        	constructor (maxLen){
+        		this.maxLen = maxLen;
+        		this.samples=[];
+        	}
+        	
+        	addSample(i,q){
+        		this.samples.push([i,q])
+        		while(this.samples.length>this.maxLen) this.samples.shift()
+        	}
+        	
+        	getSamples(){
+        		return this.samples
+        	}
+        }
 
         function isValidSample(sample) {
             if (sample.idx === 0) {
@@ -1128,6 +1147,9 @@
         let isRxImage = false;
         let imgParser = null;
         let rxImage = null;
+        
+        const constellation= new ConstellationRecorder(baudRate/8);
+        
 
         function startRxImage() {
             isRxImage = true;
@@ -1299,10 +1321,12 @@
 
                 demod.port.onmessage = (event) => {
                     const phase = event.data.phase;
+                    constellation.addSample(phase,0);
                     const bit = phase > 0 ? 1 : 0;
                     decoder.feed(bit)
                 };
-
+                
+                
                 const canvas = document.getElementById('oscilloscope')
                 const ctx = canvas.getContext('2d')
                 const data = new Float32Array(analyser.fftSize)
@@ -1321,13 +1345,27 @@
                     ctx.moveTo(0, canvas.height / 2,)
                     ctx.lineTo(canvas.width, canvas.height / 2)
                     ctx.stroke()
-                    ctx.strokeStyle = 'white'
+                    ctx.strokeStyle = 'green'
                     ctx.beginPath()
-                    ctx.moveTo(0, canvas.height / 2)
+                    ctx.moveTo( canvas.width / 2,0)
+                    ctx.lineTo(canvas.width/2, canvas.height)
+                    ctx.stroke()
+                    ctx.fillStyle = 'white'
+                    ctx.beginPath()
+                    const width=canvas.width*0.5;
+                    const height = canvas.height*0.5;
+                    
+                    for (let sample of constellation.getSamples()){
+                    	let x = width+sample[0]*width*0.5;
+                    	let y = height+sample[1]*width*0.5;
+                    	ctx.arc(x,y,4,0,6.28)
+                    }
+                    ctx.fill()
+                    /*ctx.moveTo(0, canvas.height / 2)
                     for (let i = 0; i < data.length; ++i) {
                         ctx.lineTo(i * step, canvas.height / 2 - data[i] * mul)
                     }
-                    ctx.stroke()
+                    ctx.stroke()*/
                     requestAnimationFrame(draw)
                 }
                 draw()
@@ -1358,6 +1396,7 @@
                     baudrateInput.value = 4800;
                 }
                 setBaudRate(bd);
+                constellation.maxLen=bd/8;
                 if (rxUpdate) {
                     rxUpdate()
                 }
