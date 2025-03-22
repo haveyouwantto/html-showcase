@@ -837,6 +837,21 @@
                 return this.samples
             }
         }
+        
+        class Modulator{
+        	constructor (){
+        		this.baudRate =50;
+        	}
+        	
+        	setBaudRate(){}
+        	setCarrierFreq(){}
+        	getBitrate(){
+        		return this.baudRate;
+        	}
+        	transmit(audioCtx, bitArray){
+        		
+        	}
+        }
 
         function isValidSample(sample) {
             if (sample.idx === 0) {
@@ -1166,7 +1181,7 @@
 
             function transmitOrdArray(ordArray, delay = 1) {
 
-                const mod = new AudioWorkletNode(audioCtx, 'mod')
+                
                 const preparedArray = ordArray.map(e => encodeWithParity(e));
                 const sync = [2, 2, 2, 2, 2, 2, 2, 2];
 
@@ -1175,6 +1190,7 @@
 
                 const bits = fibonacciEncoding(preparedArray);
 
+                const mod = new AudioWorkletNode(audioCtx, 'mod')
                 mod.port.postMessage({ type: "baudRate", baudRate: baudRate })
                 mod.port.postMessage({ type: "data", data: bits })
 
