@@ -911,6 +911,54 @@
             }
         }
 
+        class Demodulator {
+            constructor() {
+                this.baudRate = 50;
+                this.onSample = null;
+            }
+
+            setBaudRate(baudRate) { this.baudRate = baudRate; }
+            setCarrierFreq(carrierFreq) { this.carrierFreq = carrierFreq; }
+            setOnSample(onSample) {
+                this.onSample = onSample;
+            }
+            receive(source) {
+
+            }
+
+            stop() {
+
+            }
+        }
+
+        class GFSKDemodulator extends Demodulator {
+            setBaudRate(baudRate) {
+                this.baudRate = baudRate;
+                const filter = createFilter(this.baudRate)
+                if (this.convolver) this.convolver.buffer = filter;
+                if (this.demod) this.demod.port.postMessage({ type: "baudRate", baudRate: baudRate })
+            }
+            setCarrierFreq(carrierFreq) {
+                this.carrierFreq = carrierFreq;
+                if (this.mixer) this.mixer.parameters.get('frequency').value = carrierFreq;
+            }
+            receive(source) {
+                this.mixer = new AudioWorkletNode(audioCtx, 'mixer', { outputChannelCount: [2] });
+                this.convolver = audioCtx.createConvolver()
+                this.demod = new AudioWorkletNode(audioCtx, 'demod')
+                this.setBaudRate(this.baudRate)
+                this.setCarrierFreq(this.carrierFreq)
+
+                source.connect(this.mixer, 0)
+                this.mixer.connect(this.convolver);
+                this.convolver.connect(this.demod)
+
+                this.demod.port.onmessage = (event) => {
+                    this.onSample(event.data.phase)
+                }
+            }
+        }
+
         function isValidSample(sample) {
             if (sample.idx === 0) {
                 if (sample.type === 'Y') {
@@ -1208,12 +1256,12 @@
 
         let rxBtn = document.getElementById('start')
         let imageRecvDiv = document.getElementById('imageRecvDiv')
-        let rxUpdate = null;
         let isRxImage = false;
         let imgParser = null;
         let rxImage = null;
 
         let modulator = null;
+        let demodulator = null;
 
         const constellation = new ConstellationRecorder(baudRate / 8);
 
@@ -1301,31 +1349,6 @@
                     }
                 )
 
-
-                const source = audioCtx.createMediaStreamSource(stream)
-
-                const mixer = new AudioWorkletNode(audioCtx, 'mixer', { outputChannelCount: [2] })
-
-                const convolver = audioCtx.createConvolver()
-                const demod = new AudioWorkletNode(audioCtx, 'demod')
-
-                rxUpdate = () => {
-                    mixer.parameters.get('frequency').value = carrierFreq;
-                    const filter = createFilter(baudRate, carrierFreq)
-                    convolver.buffer = filter;
-                    demod.port.postMessage({ type: "baudRate", baudRate: baudRate })
-                }
-                rxUpdate()
-
-
-                source.connect(mixer, 0)
-                mixer.connect(convolver);
-                convolver.connect(demod)
-
-                const analyser = audioCtx.createAnalyser()
-                // analyser.fftSize = 4096;
-                demod.connect(analyser)
-
                 const decoder = new FibonacciDecoder(result => {
                     const dec = decodeAndVerify(result)
                     console.log("解码结果:", dec);
@@ -1355,24 +1378,23 @@
                     }
                 })
 
-                demod.port.onmessage = (event) => {
-                    const phase = event.data.phase;
-                    constellation.addSample(phase, 0);
-                    const bit = phase > 0 ? 1 : 0;
-                    decoder.feed(bit)
-                };
 
+                const source = audioCtx.createMediaStreamSource(stream)
+                demodulator = new GFSKDemodulator();
+                demodulator.setBaudRate(baudRate);
+                demodulator.setCarrierFreq(carrierFreq);
+                demodulator.setOnSample(phase => {
+                    constellation.addSample(phase, 0);
+                    decoder.feed(phase > 0 ? 1 : 0)
+                })
+                demodulator.receive(source)
 
                 const canvas = document.getElementById('constellation')
                 const ctx = canvas.getContext('2d')
-                const data = new Float32Array(analyser.fftSize)
                 ctx.lineWidth = 1
                 let f = 0
                 function draw() {
-                    analyser.getFloatTimeDomainData(data)
                     const mul = 1 / (baudRate / 15625) * canvas.height / freqMulti
-
-                    let step = canvas.width / data.length
 
                     ctx.clearRect(0, 0, canvas.width, canvas.height)
 
@@ -1433,8 +1455,8 @@
                 }
                 setBaudRate(bd);
                 constellation.maxLen = bd / 8;
-                if (rxUpdate) {
-                    rxUpdate()
+                if (demodulator) {
+                    demodulator.setBaudRate(bd)
                 }
             });
 
@@ -1511,8 +1533,8 @@
             // if (txUpdate) {
             //     txUpdate()
             // }
-            if (rxUpdate) {
-                rxUpdate()
+            if (demodulator) {
+                demodulator.setCarrierFreq(carrierFreq)
             }
         })
 
