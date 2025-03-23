@@ -1288,11 +1288,11 @@
                     this.out = [[0, 0], [0, 0], [0, 0]];
                     this.outRail = [[0, 0], [0, 0], [0, 0]];
 
-                    this.alpha=0
-                    this.beta=0
-                    this.phase=0;
-                    this.freq=0;
-                    
+                    this.alpha = 0.9
+                    this.beta = 0.1
+                    this.phase = 0;
+                    this.freq = 0;
+
                     this.port.onmessage = (event) => {
                         if (event.data.type === "baudRate") {
                             this.setBaudRate(event.data.baudRate);
@@ -1311,22 +1311,21 @@
                     const q = input[1];
 
                     if (!i || !q) return true;
-                    
-                    let sum=0;
+
+                    let sum = 0;
                     for (let j = 0; j < i.length; ++j) {
-                    	sum+=i[j]*i[j]+q[j]*q[j]
-                       }
-                       sum/=i.length;
-                       const rms=Math.sqrt(sum)
-                       let gain=1 /rms;
-                       
-                       if(isNaN(gain)||!isFinite(gain))gain=1;
+                        sum += i[j] * i[j] + q[j] * q[j]
+                    }
+                    sum /= i.length;
+                    const rms = Math.sqrt(sum)
+                    let gain = 1 / rms;
+
+                    if (isNaN(gain) || !isFinite(gain)) gain = 1;
 
                     for (let j = 0; j < i.length; ++j) {
                         if (this.count >= 0) {
-                        	let currI = i[j]*gain;
-                        	let currQ=q[j]*gain
-                            this.port.postMessage({ i: currI, q: currQ, bit: i[j] > 0 ? 1 : 0 });
+                            let currI = i[j] * gain;
+                            let currQ = q[j] * gain
 
                             this.out[0] = [currI, currQ];
                             this.outRail[0] = [Number(this.out[0][0] > 0), Number(this.out[0][1] > 0)];
@@ -1344,6 +1343,16 @@
                             this.out[1] = this.out[0];
                             this.outRail[2] = this.outRail[1];
                             this.outRail[1] = this.outRail[0];
+
+                            // Costas Loop
+                            let out = complexMul(this.out[0], [Math.cos(this.phase), -Math.sin(this.phase)]);
+                            let error = out[0] * out[1];
+                            console.log(error)
+                            this.freq += this.beta * error;
+                            this.phase += this.freq + this.alpha * error;
+                            while (this.phase >= 2 * Math.PI) this.phase -= 2 * Math.PI;
+                            while (this.phase < 0) this.phase += 2 * Math.PI;
+                            this.port.postMessage({ i: out[0], q: out[1], bit: i[j] > 0 ? 1 : 0 });
                         }
 
                         this.count++;
@@ -1655,19 +1664,19 @@
                     ctx.moveTo(canvas.width / 2, 0);
                     ctx.lineTo(canvas.width / 2, canvas.height);
                     ctx.stroke();
-                    
-                    
+
+
 
                     // 绘制星座点
                     const centerX = canvas.width / 2;
                     const centerY = canvas.height / 2;
-                    const plotSize = Math.min(canvas.width, canvas.height) * 0.3535 ; // 使用画布短边的40%作为绘图区域
+                    const plotSize = Math.min(canvas.width, canvas.height) * 0.3535; // 使用画布短边的40%作为绘图区域
 
-                    ctx.strokeStyle ="gray"
+                    ctx.strokeStyle = "gray"
                     ctx.beginPath();
-                    ctx.arc(canvas.width / 2, canvas.height/2,plotSize,0,Math.PI*2); 
+                    ctx.arc(canvas.width / 2, canvas.height / 2, plotSize, 0, Math.PI * 2);
                     ctx.stroke();
-                    
+
                     ctx.fillStyle = 'white';
 
                     for (let sample of constellation.getSamples()) {
