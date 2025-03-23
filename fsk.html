@@ -1014,7 +1014,10 @@
                 this.convolver.connect(this.demod)
 
                 this.demod.port.onmessage = (event) => {
-                    this.onSample(event.data.phase)
+                    this.onSample({
+                        sample: [event.data.phase, 0],
+                        bits: [event.data.bit]
+                    })
                 }
             }
         }
@@ -1190,7 +1193,7 @@
                         this.count = (this.count + 1) % this.samplesPerSymbol;
                         // 当达到采样时机时提交相位
                         if (this.count === this.samplesPerSymbol * 0.5) {
-                            this.port.postMessage({ phase: phase[j] * this.samplesPerSymbol });
+                            this.port.postMessage({ phase: phase[j] * this.samplesPerSymbol, bit: phase[j] > 0 ? 1 : 0 });
                         }
                     }
 
@@ -1387,7 +1390,7 @@
 
                 const bits = fibonacciEncoding(preparedArray);
 
-                modulator = new BPSKModulator();
+                modulator = new GFSKModulator();
                 modulator.setBaudRate(baudRate);
                 modulator.setCarrierFreq(carrierFreq);
                 modulator.setOnStop(() => {
@@ -1398,8 +1401,6 @@
                     txStart = false;
                 })
                 modulator.transmit(audioCtx, bits);
-
-
 
                 const currentTime = audioCtx.currentTime;
                 const interval = setInterval(() => {
@@ -1473,9 +1474,10 @@
                 demodulator = new GFSKDemodulator();
                 demodulator.setBaudRate(baudRate);
                 demodulator.setCarrierFreq(carrierFreq);
-                demodulator.setOnSample(phase => {
-                    constellation.addSample(phase, 0);
-                    decoder.feed(phase > 0 ? 1 : 0)
+                demodulator.setOnSample(data => {
+                    constellation.addSample(data.sample[0], data.sample[1]);
+                    for (let bit of data.bits)
+                        decoder.feed(bit)
                 })
                 demodulator.receive(source)
 
