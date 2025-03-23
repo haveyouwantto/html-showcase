@@ -1065,7 +1065,7 @@
 
                 this.demod.port.onmessage = (event) => {
                     this.onSample({
-                        sample: [event.data.i * 5, event.data.q * 5],
+                        sample: [event.data.i, event.data.q],
                         bits: [event.data.bit != this.lastBit ? 1 : 0]
                     })
                     this.lastBit = event.data.bit;
@@ -1313,20 +1313,24 @@
                        }
                        sum/=i.length;
                        const rms=Math.sqrt(sum)
-                       const gain=0.125/rms;
+                       let gain=0.707 /rms;
+                       
+                       if(isNaN(gain)||!isFinite(gain))gain=1;
 
                     for (let j = 0; j < i.length; ++j) {
                         if (this.count <= 0) {
-                            this.port.postMessage({ i: i[j]*gain, q: q[j]*gain, bit: i[j] > 0 ? 1 : 0 });
+                        	let currI = i[j]*gain;
+                        	let currQ=q[j]*gain
+                            this.port.postMessage({ i: currI, q: currQ, bit: i[j] > 0 ? 1 : 0 });
 
-                            this.out[0] = [i[j], q[j]];
+                            this.out[0] = [currI, currQ];
                             this.outRail[0] = [Number(this.out[0][0] > 0), Number(this.out[0][1] > 0)];
 
                             let x = complexMul(complexSub(this.outRail[0], this.outRail[2]), complexConj(this.out[1]));
                             let y = complexMul(complexSub(this.out[0], this.out[2]), complexConj(this.outRail[1]));
                             let mmVal = y[0] - x[0];
 
-                            this.mu += this.samplesPerSymbol + 64 * mmVal;
+                            this.mu += this.samplesPerSymbol + 0.1 * mmVal;
                             this.count += Math.floor(this.mu);
                             this.mu -= Math.floor(this.mu);
 
@@ -1645,6 +1649,11 @@
                     ctx.beginPath();
                     ctx.moveTo(canvas.width / 2, 0);
                     ctx.lineTo(canvas.width / 2, canvas.height);
+                    ctx.stroke();
+                    
+                    ctx.strokeStyle ="gray"
+                    ctx.beginPath();
+                    ctx.arc(canvas.width / 2, canvas.height/2,canvas.width/4,0,Math.PI*2);
                     ctx.stroke();
 
                     // 绘制星座点
