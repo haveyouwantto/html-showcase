@@ -921,8 +921,10 @@
                 }
 
                 let startSync = []
-                for (let i = 0; i < baudRate; i++) {
+                for (let i = 0; i < this.baudRate * 0.25; i++) {
                     startSync.push(0)
+                    startSync.push(0)
+                    startSync.push(1)
                     startSync.push(1)
                 }
 
@@ -944,7 +946,7 @@
                 this.mixer.frequency.value = this.carrierFreq;
 
                 const gainNode = audioCtx.createGain();
-                gainNode.gain.value = 50;
+                gainNode.gain.value = 100;
 
                 const multiplier = audioCtx.createGain();
                 multiplier.gain.value = 0;
