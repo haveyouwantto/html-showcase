@@ -1022,6 +1022,40 @@
             }
         }
 
+
+        class BPSKDemodulator extends Demodulator {
+            setBaudRate(baudRate) {
+                this.baudRate = baudRate;
+                const filter = new Float32Array(rrcosFilter(sampleRate, this.baudRate, 0.5)[0]);
+                const buffer = audioCtx.createBuffer(1, filter.length, sampleRate);
+                buffer.copyToChannel(filter, 0);
+                if (this.convolver) this.convolver.buffer = buffer;
+                if (this.demod) this.demod.port.postMessage({ type: "baudRate", baudRate: baudRate })
+            }
+            setCarrierFreq(carrierFreq) {
+                this.carrierFreq = carrierFreq;
+                if (this.mixer) this.mixer.parameters.get('frequency').value = carrierFreq;
+            }
+            receive(source) {
+                this.mixer = new AudioWorkletNode(audioCtx, 'mixer', { outputChannelCount: [2] });
+                this.convolver = audioCtx.createConvolver()
+                this.demod = new AudioWorkletNode(audioCtx, 'bpsk-demod')
+                this.setBaudRate(this.baudRate)
+                this.setCarrierFreq(this.carrierFreq)
+
+                source.connect(this.mixer, 0)
+                this.mixer.connect(this.convolver);
+                this.convolver.connect(this.demod)
+
+                this.demod.port.onmessage = (event) => {
+                    this.onSample({
+                        sample: [event.data.i * 5, event.data.q * 5],
+                        bits: [0]
+                    })
+                }
+            }
+        }
+
         function isValidSample(sample) {
             if (sample.idx === 0) {
                 if (sample.type === 'Y') {
@@ -1204,9 +1238,54 @@
                     return true;
                 }
             }
+
+            const bpskDemod = class extends AudioWorkletProcessor {
+                constructor(options) {
+                    super();
+                    this.sampleRate = sampleRate;
+                    this.count = 0;
+
+                    this.mu = 0;
+
+                    this.port.onmessage = (event) => {
+                        switch (event.data.type) {
+                            case "baudRate":
+                                this.setBaudRate(event.data.baudRate);
+                                break;
+                        }
+                    };
+                }
+
+                setBaudRate(baudRate) {
+                    this.baudRate = baudRate;
+                    this.samplesPerSymbol = Math.round(this.sampleRate / baudRate);
+                }
+
+                process(inputs, outputs, parameters) {
+                    const input = inputs[0];
+                    const i = input[0];
+                    const q = input[1];
+
+                    if (!i || !q) return true;
+
+                    for (let j = 0; j < i.length; ++j) {
+                        this.count = (this.count + 1) % this.samplesPerSymbol;
+
+                        if (this.count === Math.round(this.samplesPerSymbol * 0.5)) {
+                            this.port.postMessage({ i: i[j], q: q[j] });
+                        }
+                    }
+
+                    return true;
+                }
+            }
+
+            registerProcessor("bpskDemod", bpskDemod);
+
             registerProcessor('demod', demod);
             registerProcessor('mixer', mixer)
             registerProcessor('mod', mod);
+            registerProcessor('bpsk-demod', bpskDemod)
         }
 
         function arrayBufferToBase64(buffer) {
@@ -1390,7 +1469,7 @@
 
                 const bits = fibonacciEncoding(preparedArray);
 
-                modulator = new GFSKModulator();
+                modulator = new BPSKModulator();
                 modulator.setBaudRate(baudRate);
                 modulator.setCarrierFreq(carrierFreq);
                 modulator.setOnStop(() => {
@@ -1471,10 +1550,11 @@
 
 
                 const source = audioCtx.createMediaStreamSource(stream)
-                demodulator = new GFSKDemodulator();
+                demodulator = new BPSKDemodulator();
                 demodulator.setBaudRate(baudRate);
                 demodulator.setCarrierFreq(carrierFreq);
                 demodulator.setOnSample(data => {
+                    console.log(data)
                     constellation.addSample(data.sample[0], data.sample[1]);
                     for (let bit of data.bits)
                         decoder.feed(bit)
@@ -1486,37 +1566,41 @@
                 ctx.lineWidth = 1
                 let f = 0
                 function draw() {
-                    const mul = 1 / (baudRate / 15625) * canvas.height / freqMulti
+                    const mul = 1 / (baudRate / 15625) * canvas.height / freqMulti;
 
-                    ctx.clearRect(0, 0, canvas.width, canvas.height)
+                    ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-                    ctx.strokeStyle = 'red'
-                    ctx.beginPath()
-                    ctx.moveTo(0, canvas.height / 2,)
-                    ctx.lineTo(canvas.width, canvas.height / 2)
-                    ctx.stroke()
-                    ctx.strokeStyle = 'green'
-                    ctx.beginPath()
-                    ctx.moveTo(canvas.width / 2, 0)
-                    ctx.lineTo(canvas.width / 2, canvas.height)
-                    ctx.stroke()
-                    ctx.fillStyle = 'white'
-                    ctx.beginPath()
-                    const width = canvas.width * 0.5;
-                    const height = canvas.height * 0.5;
+                    // 绘制参考轴线
+                    ctx.strokeStyle = 'red';
+                    ctx.beginPath();
+                    ctx.moveTo(0, canvas.height / 2);
+                    ctx.lineTo(canvas.width, canvas.height / 2);
+                    ctx.stroke();
+
+                    ctx.strokeStyle = 'green';
+                    ctx.beginPath();
+                    ctx.moveTo(canvas.width / 2, 0);
+                    ctx.lineTo(canvas.width / 2, canvas.height);
+                    ctx.stroke();
+
+                    // 绘制星座点
+                    const centerX = canvas.width / 2;
+                    const centerY = canvas.height / 2;
+                    const plotSize = Math.min(canvas.width, canvas.height) * 0.4; // 使用画布短边的40%作为绘图区域
+
+                    ctx.fillStyle = 'white';
 
                     for (let sample of constellation.getSamples()) {
-                        let x = width + sample[0] * width * 0.5;
-                        let y = height + sample[1] * width * 0.5;
-                        ctx.arc(x, y, 4, 0, 6.28)
+                        // 将I/Q信号映射到绘图区域
+                        const x = centerX + sample[0] * plotSize;
+                        const y = centerY + sample[1] * plotSize;
+
+                        ctx.beginPath();
+                        ctx.arc(x, y, 5, 0, Math.PI * 2); // 使用准确的角度值
+                        ctx.fill();
                     }
-                    ctx.fill()
-                    /*ctx.moveTo(0, canvas.height / 2)
-                    for (let i = 0; i < data.length; ++i) {
-                        ctx.lineTo(i * step, canvas.height / 2 - data[i] * mul)
-                    }
-                    ctx.stroke()*/
-                    requestAnimationFrame(draw)
+
+                    requestAnimationFrame(draw);
                 }
                 draw()
             })
