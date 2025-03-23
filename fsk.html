@@ -912,34 +912,58 @@
             }
         }
 
-        class BPSKModulator extends Modulator{
+        class BPSKModulator extends Modulator {
             transmit(audioCtx, bitArray) {
+                // differential coding
+                let codedArray = [0, ...bitArray];
+                for (let i = 1; i < codedArray.length; i++) {
+                    codedArray[i] = codedArray[i] ^ codedArray[i - 1];
+                }
+
                 const mod = new AudioWorkletNode(audioCtx, 'mod')
                 mod.port.postMessage({ type: "baudRate", baudRate: this.baudRate })
-                mod.port.postMessage({ type: "data", data: bitArray })
+                mod.port.postMessage({ type: "data", data: codedArray })
 
                 const convolver = audioCtx.createConvolver();
-                const filter = rrcosFilter(sampleRate, this.baudRate, 0.5);
-                convolver.buffer = filter;
+                const filter = new Float32Array(rrcosFilter(sampleRate, this.baudRate, 0.5)[0]);
+                const buffer = audioCtx.createBuffer(1, filter.length, sampleRate);
+                buffer.copyToChannel(filter, 0);
+                convolver.buffer = buffer;
 
-                this. mixer = audioCtx.createOscillator();
-                mixer.frequency.value = this.carrierFreq;
+                this.mixer = audioCtx.createOscillator();
+                this.mixer.frequency.value = this.carrierFreq;
 
                 const gainNode = audioCtx.createGain();
-                gainNode.gain.value = 0;
+                gainNode.gain.value = this.baudRate;
+
+                const multiplier = audioCtx.createGain();
+                multiplier.gain.value = 0;
 
                 mod.connect(convolver)
                 convolver.connect(gainNode);
-                this.mixer.connect(gainNode);
-                gainNode.connect(audioCtx.destination);
+                this.mixer.connect(multiplier.gain);
+                gainNode.connect(multiplier);
+                multiplier.connect(audioCtx.destination);
 
                 this.mixer.start();
+                this.mixer.stop(audioCtx.currentTime + symbolTime * bitArray.length);
+
+                const analyser = audioCtx.createAnalyser();
+                gainNode.connect(analyser)
+                let data = new Float32Array(65536);
+                setInterval(() => {
+                    analyser.getFloatTimeDomainData(data)
+
+                    // print max data
+                    let max = Math.max(...data)
+                    console.log(max)
+                }, 1000)
 
                 this.mixer.onended = () => {
                     if (this.onStop) this.onStop();
                 }
 
-                return mixer;
+                return this.mixer;
             }
 
             stop() {
@@ -1363,7 +1387,7 @@
 
                 const bits = fibonacciEncoding(preparedArray);
 
-                modulator = new GFSKModulator();
+                modulator = new BPSKModulator();
                 modulator.setBaudRate(baudRate);
                 modulator.setCarrierFreq(carrierFreq);
                 modulator.setOnStop(() => {
