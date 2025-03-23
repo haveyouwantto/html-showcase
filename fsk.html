@@ -920,6 +920,16 @@
                     codedArray[i] = codedArray[i] ^ codedArray[i - 1];
                 }
 
+                let startSync = []
+                for (let i = 0; i < baudRate; i++) {
+                    startSync.push(0)
+                    startSync.push(1)
+                }
+
+                codedArray = startSync.concat(codedArray)
+
+                console.log(codedArray)
+
                 const mod = new AudioWorkletNode(audioCtx, 'mod')
                 mod.port.postMessage({ type: "baudRate", baudRate: this.baudRate })
                 mod.port.postMessage({ type: "data", data: codedArray })
@@ -1024,6 +1034,10 @@
 
 
         class BPSKDemodulator extends Demodulator {
+            constructor() {
+                super()
+                this.lastBit = 0;
+            }
             setBaudRate(baudRate) {
                 this.baudRate = baudRate;
                 const filter = new Float32Array(rrcosFilter(sampleRate, this.baudRate, 0.5)[0]);
@@ -1050,8 +1064,9 @@
                 this.demod.port.onmessage = (event) => {
                     this.onSample({
                         sample: [event.data.i * 5, event.data.q * 5],
-                        bits: [0]
+                        bits: [event.data.bit != this.lastBit ? 1 : 0]
                     })
+                    this.lastBit = event.data.bit;
                 }
             }
         }
@@ -1292,7 +1307,7 @@
 
                     for (let j = 0; j < i.length; ++j) {
                         if (this.count <= 0) {
-                            this.port.postMessage({ i: i[j], q: q[j] });
+                            this.port.postMessage({ i: i[j], q: q[j], bit: i[j] > 0 ? 1 : 0 });
 
                             this.out[0] = [i[j], q[j]];
                             this.outRail[0] = [Number(this.out[0][0] > 0), Number(this.out[0][1] > 0)];
@@ -1302,7 +1317,6 @@
                             let mmVal = y[0] - x[0];
 
                             this.mu += this.samplesPerSymbol + 64 * mmVal;
-                            if(Math.abs(this.mu-this.samplesPerSymbol)>1)console.log(this.mu)
                             this.count += Math.floor(this.mu);
                             this.mu -= Math.floor(this.mu);
 
@@ -1312,7 +1326,7 @@
                             this.outRail[2] = this.outRail[1];
                             this.outRail[1] = this.outRail[0];
                         }
-                        
+
                         this.count--;
                     }
 
@@ -1561,7 +1575,7 @@
 
                 const decoder = new FibonacciDecoder(result => {
                     const dec = result;//decodeAndVerify(result)
-                    console.log("解码结果:", dec);
+                    // console.log("解码结果:", dec);
                     if (dec > 0) {
                         if (isRxImage) {
                             if (dec < 0) imgParser.state = 0;
