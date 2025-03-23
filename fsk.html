@@ -1306,10 +1306,18 @@
                     const q = input[1];
 
                     if (!i || !q) return true;
+                    
+                    let sum=0;
+                    for (let j = 0; j < i.length; ++j) {
+                    	sum+=i[j]*i[j]+q[j]*q[j]
+                       }
+                       sum/=i.length;
+                       const rms=Math.sqrt(sum)
+                       const gain=0.125/rms;
 
                     for (let j = 0; j < i.length; ++j) {
                         if (this.count <= 0) {
-                            this.port.postMessage({ i: i[j], q: q[j], bit: i[j] > 0 ? 1 : 0 });
+                            this.port.postMessage({ i: i[j]*gain, q: q[j]*gain, bit: i[j] > 0 ? 1 : 0 });
 
                             this.out[0] = [i[j], q[j]];
                             this.outRail[0] = [Number(this.out[0][0] > 0), Number(this.out[0][1] > 0)];
