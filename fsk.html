@@ -837,20 +837,78 @@
                 return this.samples
             }
         }
-        
-        class Modulator{
-        	constructor (){
-        		this.baudRate =50;
-        	}
-        	
-        	setBaudRate(){}
-        	setCarrierFreq(){}
-        	getBitrate(){
-        		return this.baudRate;
-        	}
-        	transmit(audioCtx, bitArray){
-        		
-        	}
+
+        class Modulator {
+            constructor() {
+                this.baudRate = 50;
+                this.carrierFreq = 16000;
+                this.onStop = null;
+            }
+
+            setBaudRate() { this.baudRate = baudRate; }
+            setCarrierFreq() { this.carrierFreq = carrierFreq; }
+            getBitrate() {
+                return this.baudRate;
+            }
+            transmit(audioCtx, bitArray) {
+
+            }
+
+            stop() {
+
+            }
+        }
+
+        class GFSKModulator extends Modulator {
+            constructor() {
+                super();
+
+            }
+
+            setOnStop(onStop) {
+                this.onStop = onStop;
+            }
+
+            transmit(audioCtx, bitArray) {
+
+                const mod = new AudioWorkletNode(audioCtx, 'mod')
+                mod.port.postMessage({ type: "baudRate", baudRate: this.baudRate })
+                mod.port.postMessage({ type: "data", data: bitArray })
+
+
+                const convolver = audioCtx.createConvolver();
+                const filter = createFilter(this.baudRate);
+                convolver.buffer = filter;
+
+                const freqDeviation = audioCtx.createGain();
+                freqDeviation.gain.value = 170.778026716646371 * this.baudRate * 0.25;
+                const oscillator = audioCtx.createOscillator();
+                oscillator.frequency.value = this.carrierFreq;
+                const gainNode = audioCtx.createGain();
+                gainNode.gain.value = 0.5;
+
+                mod.connect(convolver)
+                convolver.connect(freqDeviation);
+                freqDeviation.connect(oscillator.frequency);
+                oscillator.connect(gainNode);
+                gainNode.connect(audioCtx.destination);
+                oscillator.start();
+
+                let symbolTime = 1 / this.baudRate;
+
+                oscillator.stop(audioCtx.currentTime + symbolTime * bitArray.length);
+
+                oscillator.onended = () => {
+                    if (this.onStop) this.onStop();
+                }
+
+                this.oscillator = oscillator;
+                return oscillator;
+            }
+
+            stop() {
+                if (this.oscillator) this.oscillator.stop();
+            }
         }
 
         function isValidSample(sample) {
@@ -1146,7 +1204,6 @@
 
         let txBtn = document.getElementById('start-tx')
         let txUpdate = null
-        let txOscillator = null;
         let txStart = false;
 
         let rxBtn = document.getElementById('start')
@@ -1155,6 +1212,8 @@
         let isRxImage = false;
         let imgParser = null;
         let rxImage = null;
+
+        let modulator = null;
 
         const constellation = new ConstellationRecorder(baudRate / 8);
 
@@ -1181,7 +1240,7 @@
 
             function transmitOrdArray(ordArray, delay = 1) {
 
-                
+
                 const preparedArray = ordArray.map(e => encodeWithParity(e));
                 const sync = [2, 2, 2, 2, 2, 2, 2, 2];
 
@@ -1190,42 +1249,18 @@
 
                 const bits = fibonacciEncoding(preparedArray);
 
-                const mod = new AudioWorkletNode(audioCtx, 'mod')
-                mod.port.postMessage({ type: "baudRate", baudRate: baudRate })
-                mod.port.postMessage({ type: "data", data: bits })
+                modulator = new GFSKModulator();
+                modulator.setBaudRate(baudRate);
+                modulator.setCarrierFreq(carrierFreq);
+                modulator.setOnStop(() => {
+                    txBtn.disabled = false;
+                    clearInterval(interval);
+                    bitDisplay.textContent = '';
+                    txBtn.textContent = '发送';
+                    txStart = false;
+                })
+                modulator.transmit(audioCtx, bits);
 
-
-                const convolver = audioCtx.createConvolver();
-                const filter = createFilter(baudRate);
-                convolver.buffer = filter;
-
-                // console.log(baudRate)
-
-
-                const freqDeviation = audioCtx.createGain();
-                freqDeviation.gain.value = 170.778026716646371 * baudRate * 0.25;
-                oscillator = audioCtx.createOscillator();
-                oscillator.frequency.value = carrierFreq;
-                const gainNode = audioCtx.createGain();
-                gainNode.gain.value = 0.5;
-
-                mod.connect(convolver)
-                convolver.connect(freqDeviation);
-                freqDeviation.connect(oscillator.frequency);
-                oscillator.connect(gainNode);
-                gainNode.connect(audioCtx.destination);
-                oscillator.start();
-
-                oscillator.stop(audioCtx.currentTime + symbolTime * bits.length);
-
-                const analyser = audioCtx.createAnalyser()
-                freqDeviation.connect(analyser)
-
-                const arr = new Float32Array(2048)
-                setInterval(() => {
-                    analyser.getFloatTimeDomainData(arr)
-                    console.log(arr.reduce((prev, curr) => Math.max(prev, Math.abs(curr))))
-                }, 1000)
 
 
                 const currentTime = audioCtx.currentTime;
@@ -1235,13 +1270,6 @@
                     bitDisplay.textContent = `发送进度: ${toSI(sent / 8, true)}B / ${toSI(bits.length / 8, true)}B (剩余 ${secondsToHms(remainingSeconds)})`;
                 }, 100);
 
-                oscillator.onended = () => {
-                    txBtn.disabled = false;
-                    clearInterval(interval);
-                    bitDisplay.textContent = '';
-                    txBtn.textContent = '发送';
-                    txStart = false;
-                };
 
                 txBtn.textContent = '中止';
             }
@@ -1251,7 +1279,7 @@
                     const string = document.getElementById('transmit').value;
                     transmitOrdArray(stringToOrdArray(string));
                 } else {
-                    oscillator.stop();
+                    modulator.stop();
                 }
                 txStart = !txStart;
             });
@@ -1282,7 +1310,6 @@
                 const demod = new AudioWorkletNode(audioCtx, 'demod')
 
                 rxUpdate = () => {
-                    console.log(baudRate, carrierFreq)
                     mixer.parameters.get('frequency').value = carrierFreq;
                     const filter = createFilter(baudRate, carrierFreq)
                     convolver.buffer = filter;
@@ -1330,7 +1357,6 @@
 
                 demod.port.onmessage = (event) => {
                     const phase = event.data.phase;
-                    console.log(phase);
                     constellation.addSample(phase, 0);
                     const bit = phase > 0 ? 1 : 0;
                     decoder.feed(bit)
