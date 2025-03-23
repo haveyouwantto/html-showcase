@@ -934,7 +934,7 @@
                 this.mixer.frequency.value = this.carrierFreq;
 
                 const gainNode = audioCtx.createGain();
-                gainNode.gain.value = this.baudRate;
+                gainNode.gain.value = 50;
 
                 const multiplier = audioCtx.createGain();
                 multiplier.gain.value = 0;
@@ -956,7 +956,7 @@
 
                     // print max data
                     let max = Math.max(...data)
-                    console.log(max)
+                    // console.log(max)
                 }, 1000)
 
                 this.mixer.onended = () => {
@@ -1069,6 +1069,28 @@
         }
 
         function createWorklets(baudRate, sampleRate) {
+
+            function complexAdd(a, b) {
+                return [a[0] + b[0], a[1] + b[1]];
+            }
+
+            function complexSub(a, b) {
+                return [a[0] - b[0], a[1] - b[1]];
+            }
+
+            function complexMul(a, b) {
+                return [a[0] * b[0] - a[1] * b[1], a[0] * b[1] + a[1] * b[0]];
+            }
+
+            function complexDiv(a, b) {
+                const den = b[0] * b[0] + b[1] * b[1];
+                return [(a[0] * b[0] + a[1] * b[1]) / den, (a[1] * b[0] - a[0] * b[1]) / den];
+            }
+
+            function complexConj(a) {
+                return [a[0], -a[1]];
+            }
+
             const mod = class extends AudioWorkletProcessor {
                 constructor() {
                     super();
@@ -1246,12 +1268,12 @@
                     this.count = 0;
 
                     this.mu = 0;
+                    this.out = [[0, 0], [0, 0], [0, 0]];
+                    this.outRail = [[0, 0], [0, 0], [0, 0]];
 
                     this.port.onmessage = (event) => {
-                        switch (event.data.type) {
-                            case "baudRate":
-                                this.setBaudRate(event.data.baudRate);
-                                break;
+                        if (event.data.type === "baudRate") {
+                            this.setBaudRate(event.data.baudRate);
                         }
                     };
                 }
@@ -1269,16 +1291,35 @@
                     if (!i || !q) return true;
 
                     for (let j = 0; j < i.length; ++j) {
-                        this.count = (this.count + 1) % this.samplesPerSymbol;
-
-                        if (this.count === Math.round(this.samplesPerSymbol * 0.5)) {
+                        if (this.count <= 0) {
                             this.port.postMessage({ i: i[j], q: q[j] });
+
+                            this.out[0] = [i[j], q[j]];
+                            this.outRail[0] = [Number(this.out[0][0] > 0), Number(this.out[0][1] > 0)];
+
+                            if (this.out.length >= 3) {
+                                let x = complexMul(complexSub(this.outRail[0], this.outRail[2]), complexConj(this.out[1]));
+                                let y = complexMul(complexSub(this.out[0], this.out[2]), complexConj(this.outRail[1]));
+                                let mmVal = y[0] - x[0];
+
+                                this.mu += this.samplesPerSymbol + 0.3 * mmVal;
+                                this.count += Math.floor(this.mu);
+                                this.mu -= Math.floor(this.mu);
+                            }
+
+                            // Shift history
+                            this.out[2] = this.out[1];
+                            this.out[1] = this.out[0];
+                            this.outRail[2] = this.outRail[1];
+                            this.outRail[1] = this.outRail[0];
+                        } else {
+                            this.count--;
                         }
                     }
 
                     return true;
                 }
-            }
+            };
 
             registerProcessor("bpskDemod", bpskDemod);
 
@@ -1554,7 +1595,7 @@
                 demodulator.setBaudRate(baudRate);
                 demodulator.setCarrierFreq(carrierFreq);
                 demodulator.setOnSample(data => {
-                    console.log(data)
+                    // console.log(data)
                     constellation.addSample(data.sample[0], data.sample[1]);
                     for (let bit of data.bits)
                         decoder.feed(bit)
