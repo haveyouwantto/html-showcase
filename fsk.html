@@ -33,6 +33,7 @@
             text-align: center;
             font-size: 2.5rem;
             background: linear-gradient(135deg, var(--neon-cyan), var(--neon-purple));
+            background-clip: text;
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
             text-shadow: var(--glow) rgba(0, 243, 255, 0.2);
@@ -171,6 +172,7 @@
             font-size: 1.5rem;
             font-weight: 600;
             background: linear-gradient(135deg, var(--neon-cyan), var(--neon-purple));
+            background-clip: text;
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
             text-shadow: var(--glow) rgba(0, 243, 255, 0.2);
@@ -206,7 +208,7 @@
             <textarea id="transmit" rows="25" cols="80" placeholder="待发送的内容"></textarea>
             <div class="btn-container">
                 <button id="start-tx">发送</button>
-                <button id="clearTx">清空发送</button>
+                <button id="clearTx">清空</button>
             </div>
             <input type="file" accept="image/*" id="txImage">
             <button id="txImageBtn">发送图片</button>
@@ -219,14 +221,15 @@
 
             <div class="btn-container">
                 <button id='start'>接收</button>
-                <button id="clearRx">清空接收</button>
+                <button id="clearRx">清空</button>
+                <button id="copyRx">复制接收内容</button>
             </div>
             <div id="imageRecvDiv" hidden>
                 <canvas id="reconCanvas"></canvas>
                 <pre id="status"></pre>
                 <button id="downloadImg">下载图片</button>
             </div>
-            <button id="rxImageBtn">接收图片</button>
+            <!-- <button id="rxImageBtn">接收图片</button> -->
             <div id="audio-inputs">
                 <label for="audio-input">选择音频输入设备：</label>
                 <select id="audio-input"></select>
@@ -1439,6 +1442,11 @@
 
             document.getElementById('clearRx').addEventListener('click', () => {
                 received.innerHTML = ''
+            })
+
+            document.getElementById('copyRx').addEventListener('click', () => {
+                const text = received.value;
+                navigator.clipboard.writeText(text);
             })
 
 
