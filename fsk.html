@@ -1301,7 +1301,7 @@
                             let y = complexMul(complexSub(this.out[0], this.out[2]), complexConj(this.outRail[1]));
                             let mmVal = y[0] - x[0];
 
-                            this.mu += this.samplesPerSymbol + 0.3 * mmVal;
+                            this.mu += this.samplesPerSymbol + 64 * mmVal;
                             if(Math.abs(this.mu-this.samplesPerSymbol)>1)console.log(this.mu)
                             this.count += Math.floor(this.mu);
                             this.mu -= Math.floor(this.mu);
@@ -1311,9 +1311,9 @@
                             this.out[1] = this.out[0];
                             this.outRail[2] = this.outRail[1];
                             this.outRail[1] = this.outRail[0];
-                        } else {
-                            this.count--;
                         }
+                        
+                        this.count--;
                     }
 
                     return true;
