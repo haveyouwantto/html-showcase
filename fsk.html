@@ -1,7 +1,7 @@
 <html>
 
 <head>
-    <title>FSK</title>
+    <title>音频Modem</title>
 
     <meta http-equiv="Content-Type" content="text/html; charset=utf8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -201,7 +201,7 @@
 
 <body>
 
-    <h1 id='title'>FSK 收发器</h1>
+    <h1 id='title'>音频Modem</h1>
     <div class="container">
         <div>
             <div class="title-text">发送</div>
@@ -1347,7 +1347,6 @@
                             // Costas Loop
                             let out = complexMul(this.out[0], [Math.cos(this.phase), -Math.sin(this.phase)]);
                             let error = out[0] * out[1];
-                            console.log(error)
                             this.freq += this.beta * error;
                             this.phase += this.freq + this.alpha * error;
                             while (this.phase >= 2 * Math.PI) this.phase -= 2 * Math.PI;
@@ -1670,7 +1669,7 @@
                     // 绘制星座点
                     const centerX = canvas.width / 2;
                     const centerY = canvas.height / 2;
-                    const plotSize = Math.min(canvas.width, canvas.height) * 0.3535; // 使用画布短边的40%作为绘图区域
+                    const plotSize = Math.min(canvas.width, canvas.height) * 0.3; // 使用画布短边的40%作为绘图区域
 
                     ctx.strokeStyle = "gray"
                     ctx.beginPath();
