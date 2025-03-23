@@ -848,6 +848,10 @@
                 this.onStop = null;
             }
 
+            setOnStop(onStop) {
+                this.onStop = onStop;
+            }
+
             setBaudRate() { this.baudRate = baudRate; }
             setCarrierFreq() { this.carrierFreq = carrierFreq; }
             getBitrate() {
@@ -865,22 +869,16 @@
         class GFSKModulator extends Modulator {
             constructor() {
                 super();
-
-            }
-
-            setOnStop(onStop) {
-                this.onStop = onStop;
             }
 
             transmit(audioCtx, bitArray) {
-
                 const mod = new AudioWorkletNode(audioCtx, 'mod')
                 mod.port.postMessage({ type: "baudRate", baudRate: this.baudRate })
                 mod.port.postMessage({ type: "data", data: bitArray })
 
 
                 const convolver = audioCtx.createConvolver();
-                const filter = createFilter(this.baudRate);
+                const filter = createGFSKFilter(this.baudRate);
                 convolver.buffer = filter;
 
                 const freqDeviation = audioCtx.createGain();
@@ -914,6 +912,41 @@
             }
         }
 
+        class BPSKModulator extends Modulator{
+            transmit(audioCtx, bitArray) {
+                const mod = new AudioWorkletNode(audioCtx, 'mod')
+                mod.port.postMessage({ type: "baudRate", baudRate: this.baudRate })
+                mod.port.postMessage({ type: "data", data: bitArray })
+
+                const convolver = audioCtx.createConvolver();
+                const filter = rrcosFilter(sampleRate, this.baudRate, 0.5);
+                convolver.buffer = filter;
+
+                this. mixer = audioCtx.createOscillator();
+                mixer.frequency.value = this.carrierFreq;
+
+                const gainNode = audioCtx.createGain();
+                gainNode.gain.value = 0;
+
+                mod.connect(convolver)
+                convolver.connect(gainNode);
+                this.mixer.connect(gainNode);
+                gainNode.connect(audioCtx.destination);
+
+                this.mixer.start();
+
+                this.mixer.onended = () => {
+                    if (this.onStop) this.onStop();
+                }
+
+                return mixer;
+            }
+
+            stop() {
+                if (this.mixer) this.mixer.stop();
+            }
+        }
+
         class Demodulator {
             constructor() {
                 this.baudRate = 50;
@@ -937,7 +970,7 @@
         class GFSKDemodulator extends Demodulator {
             setBaudRate(baudRate) {
                 this.baudRate = baudRate;
-                const filter = createFilter(this.baudRate)
+                const filter = createGFSKFilter(this.baudRate)
                 if (this.convolver) this.convolver.buffer = filter;
                 if (this.demod) this.demod.port.postMessage({ type: "baudRate", baudRate: baudRate })
             }
@@ -1165,7 +1198,7 @@
             });
         }
 
-        function createFilter(baudRate, centerFreq, bt = 0.5) {
+        function createGFSKFilter(baudRate, centerFreq, bt = 0.5) {
             /* 
             高斯频移键控滤波器生成函数
             参数：
@@ -1205,21 +1238,51 @@
             return buffer;
         }
 
+        function rrcosFilter(sr, symRate, alpha = 0.25, span = 6) {
+            /**
+             * 生成根升余弦滤波器的冲激响应
+             *
+             * 参数：
+             *   sr       : 采样率（samples per second）
+             *   symRate : 符号率（symbols per second）
+             *   alpha    : 滚降系数（默认0.25）
+             *   span     : 滤波器覆盖的符号数（默认6，即滤波器长度为6个符号）
+             *
+             * 返回：
+             *   h        : RRC滤波器冲激响应（已归一化能量）
+             *   t        : 对应的时间向量
+             */
 
-        /*
-        function createFilter(taps, freq, bw) {
-            const buffer = audioCtx.createBuffer(1, taps, audioCtx.sampleRate);
-            const window = createHannWindow(taps);
+            // 每个符号对应的采样点数
+            const sps = Math.floor(sr / symRate);
+            const Ts = 1 / symRate; // 符号间隔
 
-            buffer.getChannelData(0).set(
-                [...Array(taps)].map((v, i) => {
-                    const t = (i - taps / 2) / audioCtx.sampleRate;
-                    const x = 2 * Math.PI * bw * t;
-                    return t == 0 ? 1 : Math.sin(x) / x * Math.sin(2 * Math.PI * freq * t) * window[i];
-                })
-            )
-            return buffer;
-        }*/
+            // 构造对称的时间向量，从 -span*Ts/2 到 span*Ts/2，共 span*sps+1 个点
+            const t = Array.from({ length: span * sps + 1 }, (_, i) => -span * Ts / 2 + i * (span * Ts) / (span * sps));
+            const h = new Array(t.length).fill(0);
+
+            for (let i = 0; i < t.length; i++) {
+                const ti = t[i];
+
+                // 当 t=0 时，直接计算极限值
+                if (Math.abs(ti) < 1e-8) {
+                    h[i] = (1 - alpha) + 4 * alpha / Math.PI;
+                }
+                // 当 |t| 接近 Ts/(4*alpha) 时，采用特殊处理（避免除零问题）
+                else if (Math.abs(Math.abs(ti) - Ts / (4 * alpha)) < 1e-8) {
+                    h[i] = (alpha / Math.sqrt(2)) * (
+                        (1 + 2 / Math.PI) * Math.sin(Math.PI / (4 * alpha)) +
+                        (1 - 2 / Math.PI) * Math.cos(Math.PI / (4 * alpha))
+                    );
+                } else {
+                    const numerator = Math.sin(Math.PI * ti * (1 - alpha) / Ts) + 4 * alpha * (ti / Ts) * Math.cos(Math.PI * ti * (1 + alpha) / Ts);
+                    const denominator = Math.PI * ti * (1 - (4 * alpha * ti / Ts) ** 2) / Ts;
+                    h[i] = numerator / denominator;
+                }
+            }
+
+            return [h, t];
+        }
 
         function toSI(n, bin = false) {
             if (n == null) return "Unknown "
