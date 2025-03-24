@@ -245,6 +245,12 @@
     <hr>
     <div class="controls">
         <div>
+            <label>模式：</label>
+            <select id="mode">
+                <option value="gfsk" selected>GFSK</option>
+                <option value="bpsk">BPSK</option>
+        </div>
+        <div>
             <label>选择频道：</label>
             <input type="number" id="channel" value="120" min="0" max="160">
             <span id="freq"></span>
@@ -319,6 +325,7 @@
         ]
 
 
+
         function fibEncode(number) {
             let result = [];
             let i = 0;
@@ -367,7 +374,6 @@
                     if (ord > 0xffff) i++;
                 }
             }
-            console.log(result)
             return result;
         }
 
@@ -1029,6 +1035,7 @@
             constructor() {
                 this.baudRate = 50;
                 this.onSample = null;
+                this.source = null
             }
 
             setBaudRate(baudRate) { this.baudRate = baudRate; }
@@ -1037,11 +1044,12 @@
                 this.onSample = onSample;
             }
             receive(source) {
-
+                this.source = source;
             }
 
             stop() {
-
+                if (this.source) this.source.mediaStream.getTracks().forEach(track => track.stop());
+                if (this.onSample) this.onSample = null;
             }
         }
 
@@ -1057,6 +1065,7 @@
                 if (this.mixer) this.mixer.parameters.get('frequency').value = carrierFreq;
             }
             receive(source) {
+                super.receive(source)
                 this.mixer = new AudioWorkletNode(audioCtx, 'mixer', { outputChannelCount: [2] });
                 this.convolver = audioCtx.createConvolver()
                 this.demod = new AudioWorkletNode(audioCtx, 'demod')
@@ -1073,6 +1082,13 @@
                         bits: [event.data.bit]
                     })
                 }
+            }
+
+            stop() {
+                super.stop();
+                if (this.mixer) this.mixer.disconnect();
+                if (this.convolver) this.convolver.disconnect();
+                if (this.demod) this.demod.disconnect();
             }
         }
 
@@ -1095,6 +1111,7 @@
                 if (this.mixer) this.mixer.parameters.get('frequency').value = carrierFreq;
             }
             receive(source) {
+                super.receive(source)
                 this.mixer = new AudioWorkletNode(audioCtx, 'mixer', { outputChannelCount: [2] });
                 this.convolver = audioCtx.createConvolver()
                 this.demod = new AudioWorkletNode(audioCtx, 'bpsk-demod')
@@ -1112,6 +1129,13 @@
                     })
                     this.lastBit = event.data.bit;
                 }
+            }
+
+            stop() {
+                super.stop();
+                if (this.mixer) this.mixer.disconnect();
+                if (this.convolver) this.convolver.disconnect();
+                if (this.demod) this.demod.disconnect();
             }
         }
 
@@ -1573,9 +1597,26 @@
         let isRxImage = false;
         let imgParser = null;
         let rxImage = null;
+        let rxStart = false;
 
         let modulator = null;
         let demodulator = null;
+
+        let drawHandle = null;
+
+        const MODES = {
+            gfsk: {
+                name: 'GFSK',
+                modulate: GFSKModulator,
+                demodulate: GFSKDemodulator
+            },
+            bpsk: {
+                name: 'BPSK',
+                modulate: BPSKModulator,
+                demodulate: BPSKDemodulator
+            }
+        }
+        let selectedMode = MODES['gfsk'];
 
         const constellation = new ConstellationRecorder(baudRate / 8);
 
@@ -1602,6 +1643,119 @@
             imageRecvDiv.hidden = true;
         }
 
+        async function startRx() {
+            rxBtn.textContent = '停止';
+            audioCtx.resume()
+
+
+            let stream = await navigator.mediaDevices.getUserMedia(
+                {
+                    audio: {
+                        sampleRate: audioCtx.sampleRate,
+                        deviceId: audioInput.value,
+                        echoCancellation: false,
+                        noiseSuppression: false
+                    },
+                    video: false
+                }
+            )
+
+            const decoder = new FibonacciDecoder(result => {
+                const dec = result;//decodeAndVerify(result)
+                // console.log("解码结果:", dec);
+                if (dec > 0) {
+                    if (isRxImage) {
+                        if (dec < 0) imgParser.state = 0;
+                        else if (dec === 2000001) {
+                            isRxImage = false;
+                        } else {
+                            if (dec >= 2000002) dec -= 2;
+                            imgParser.feed(dec)
+                        }
+                    } else {
+                        if (dec == 2000000) {
+                            startRxImage()
+                        } else {
+                            if (dec >= 2 && dec <= 129) {
+                                received.appendChild(document.createTextNode(VARICODE[dec - 2]))
+                            } else {
+                                received.appendChild(document.createTextNode(String.fromCodePoint(dec - 2)))
+                            }
+                            if (Math.abs(received.scrollHeight - received.clientHeight - received.scrollTop) < 48) {
+                                received.scrollTo(0, received.scrollHeight)
+                            }
+                        }
+                    }
+                }
+            })
+
+
+            const source = audioCtx.createMediaStreamSource(stream)
+            demodulator = new selectedMode.demodulate();
+            demodulator.setBaudRate(baudRate);
+            demodulator.setCarrierFreq(carrierFreq);
+            demodulator.setOnSample(data => {
+                // console.log(data)
+                constellation.addSample(data.sample[0], data.sample[1]);
+                for (let bit of data.bits)
+                    decoder.feed(bit)
+            })
+            demodulator.receive(source)
+
+            const canvas = document.getElementById('constellation')
+            const ctx = canvas.getContext('2d')
+            ctx.lineWidth = 1
+            function draw() {
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+                // 绘制参考轴线
+                ctx.strokeStyle = 'red';
+                ctx.beginPath();
+                ctx.moveTo(0, canvas.height / 2);
+                ctx.lineTo(canvas.width, canvas.height / 2);
+                ctx.stroke();
+
+                ctx.strokeStyle = 'green';
+                ctx.beginPath();
+                ctx.moveTo(canvas.width / 2, 0);
+                ctx.lineTo(canvas.width / 2, canvas.height);
+                ctx.stroke();
+
+
+
+                // 绘制星座点
+                const centerX = canvas.width / 2;
+                const centerY = canvas.height / 2;
+                const plotSize = Math.min(canvas.width, canvas.height) * 0.3; // 使用画布短边的40%作为绘图区域
+
+                ctx.strokeStyle = "gray"
+                ctx.beginPath();
+                ctx.arc(canvas.width / 2, canvas.height / 2, plotSize, 0, Math.PI * 2);
+                ctx.stroke();
+
+                ctx.fillStyle = 'white';
+
+                for (let sample of constellation.getSamples()) {
+                    // 将I/Q信号映射到绘图区域
+                    const x = clamp(centerX + sample[0] * plotSize, 0, canvas.width);
+                    const y = clamp(centerY + sample[1] * plotSize, 0, canvas.height);
+
+                    ctx.beginPath();
+                    ctx.arc(x, y, 4, 0, Math.PI * 2); // 使用准确的角度值
+                    ctx.fill();
+                }
+
+                drawHandle = requestAnimationFrame(draw);
+            }
+            drawHandle = requestAnimationFrame(draw);
+        }
+
+        function stopRx() {
+            if (drawHandle) cancelAnimationFrame(drawHandle);
+            if (demodulator) demodulator.stop();
+            rxBtn.textContent = '开始';
+        }
+
         audioCtx.audioWorklet.addModule(workletData).then(() => {
             let oscillator;
 
@@ -1616,7 +1770,7 @@
 
                 const bits = fibonacciEncoding(preparedArray);
 
-                modulator = new BPSKModulator();
+                modulator = new selectedMode.modulate();
                 modulator.setBaudRate(baudRate);
                 modulator.setCarrierFreq(carrierFreq);
                 modulator.setOnStop(() => {
@@ -1650,111 +1804,13 @@
                 txStart = !txStart;
             });
 
-            rxBtn.addEventListener('click', async () => {
-                rxBtn.disabled = true;
-                audioCtx.resume()
-
-
-                let stream = await navigator.mediaDevices.getUserMedia(
-                    {
-                        audio: {
-                            sampleRate: audioCtx.sampleRate,
-                            deviceId: audioInput.value,
-                            echoCancellation: false,
-                            noiseSuppression: false
-                        },
-                        video: false
-                    }
-                )
-
-                const decoder = new FibonacciDecoder(result => {
-                    const dec = result;//decodeAndVerify(result)
-                    // console.log("解码结果:", dec);
-                    if (dec > 0) {
-                        if (isRxImage) {
-                            if (dec < 0) imgParser.state = 0;
-                            else if (dec === 2000001) {
-                                isRxImage = false;
-                            } else {
-                                if (dec >= 2000002) dec -= 2;
-                                imgParser.feed(dec)
-                            }
-                        } else {
-                            if (dec == 2000000) {
-                                startRxImage()
-                            } else {
-                                if (dec >= 2 && dec <= 129) {
-                                    received.appendChild(document.createTextNode(VARICODE[dec - 2]))
-                                } else {
-                                    received.appendChild(document.createTextNode(String.fromCodePoint(dec - 2)))
-                                }
-                                if (Math.abs(received.scrollHeight - received.clientHeight - received.scrollTop) < 48) {
-                                    received.scrollTo(0, received.scrollHeight)
-                                }
-                            }
-                        }
-                    }
-                })
-
-
-                const source = audioCtx.createMediaStreamSource(stream)
-                demodulator = new BPSKDemodulator();
-                demodulator.setBaudRate(baudRate);
-                demodulator.setCarrierFreq(carrierFreq);
-                demodulator.setOnSample(data => {
-                    // console.log(data)
-                    constellation.addSample(data.sample[0], data.sample[1]);
-                    for (let bit of data.bits)
-                        decoder.feed(bit)
-                })
-                demodulator.receive(source)
-
-                const canvas = document.getElementById('constellation')
-                const ctx = canvas.getContext('2d')
-                ctx.lineWidth = 1
-                function draw() {
-                    ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-                    // 绘制参考轴线
-                    ctx.strokeStyle = 'red';
-                    ctx.beginPath();
-                    ctx.moveTo(0, canvas.height / 2);
-                    ctx.lineTo(canvas.width, canvas.height / 2);
-                    ctx.stroke();
-
-                    ctx.strokeStyle = 'green';
-                    ctx.beginPath();
-                    ctx.moveTo(canvas.width / 2, 0);
-                    ctx.lineTo(canvas.width / 2, canvas.height);
-                    ctx.stroke();
-
-
-
-                    // 绘制星座点
-                    const centerX = canvas.width / 2;
-                    const centerY = canvas.height / 2;
-                    const plotSize = Math.min(canvas.width, canvas.height) * 0.3; // 使用画布短边的40%作为绘图区域
-
-                    ctx.strokeStyle = "gray"
-                    ctx.beginPath();
-                    ctx.arc(canvas.width / 2, canvas.height / 2, plotSize, 0, Math.PI * 2);
-                    ctx.stroke();
-
-                    ctx.fillStyle = 'white';
-
-                    for (let sample of constellation.getSamples()) {
-                        // 将I/Q信号映射到绘图区域
-                        const x = clamp(centerX + sample[0] * plotSize, 0, canvas.width);
-                        const y = clamp(centerY + sample[1] * plotSize, 0, canvas.height);
-
-                        ctx.beginPath();
-                        ctx.arc(x, y, 4, 0, Math.PI * 2); // 使用准确的角度值
-                        ctx.fill();
-                    }
-
-                    requestAnimationFrame(draw);
+            rxBtn.addEventListener('click',  () => {
+                if (!rxStart) {
+                    startRx();
+                } else {
+                    stopRx();
                 }
-                draw()
+                rxStart = !rxStart;
             })
 
             document.getElementById('cancelImage').addEventListener('click', () => {
@@ -1772,6 +1828,15 @@
             document.getElementById('copyRx').addEventListener('click', () => {
                 const text = received.value;
                 navigator.clipboard.writeText(text);
+            })
+
+            document.getElementById('mode').addEventListener('change', () => {
+                selectedMode = MODES[document.getElementById('mode').value];
+
+                if (rxStart) {
+                    stopRx();
+                    startRx();
+                }
             })
 
 
