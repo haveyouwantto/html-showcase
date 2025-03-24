@@ -970,13 +970,10 @@
                 for (let i = 0; i < bitArray.length; i++) {
                     codedArray.push(codedArray[i] ^ bitArray[i]);
                 }
-
+                
                 let startSync = []
-                for (let i = 0; i < this.baudRate * 0.25; i++) {
-                    startSync.push(0)
-                    startSync.push(0)
-                    startSync.push(1)
-                    startSync.push(1)
+                for (let i = 0; i < this.baudRate * 0.125; i++) {
+                    startSync.push(...[1, 0, 1, 0, 0, 0, 1, 0, 0, 1, 0])
                 }
 
                 codedArray = startSync.concat(codedArray)
