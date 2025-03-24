@@ -248,7 +248,21 @@
         </div>
         <div>
         <label>符号速率：</label>
-        <input type="number" id="baudrateInput" value="50" min="30" max="4800">
+        <select id="baudrateInput">
+        <option value="2">2</option>
+         <option value="8">8</option>
+         <option value="32">32</option>
+         <option value="50" selected>50</option>
+         <option value="80">80</option>
+         <option value="100">100</option>
+         <option value="125">125</option>
+         <option value="250">250</option>
+         <option value="500">500</option>
+         <option value="800">800</option>
+         <option value="1000">1000</option>
+         <option value="1200">1200</option>
+        </select>
+       <!-- <input type="number" id="baudrateInput" value="50" min="30" max="4800"> -->
         </div>
         <canvas id="constellation" width="500" height="500"></canvas>
     </div>
@@ -833,7 +847,7 @@
 
         class ConstellationRecorder {
             constructor(maxLen) {
-                this.maxLen = maxLen;
+                this.maxLen = Math.max(1,maxLen);
                 this.samples = [];
             }
 
@@ -1725,15 +1739,8 @@
 
             baudrateInput.addEventListener('change', () => {
                 let bd = parseInt(baudrateInput.value);
-                if (bd < 30) {
-                    bd = 30;
-                    baudrateInput.value = 30;
-                } else if (bd > 4800) {
-                    bd = 4800;
-                    baudrateInput.value = 4800;
-                }
                 setBaudRate(bd);
-                constellation.maxLen = bd / 8;
+                constellation.maxLen = Math.max(1,bd / 8);
                 if (demodulator) {
                     demodulator.setBaudRate(bd)
                 }
