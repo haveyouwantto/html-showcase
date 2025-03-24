@@ -59,7 +59,8 @@
             outline: none;
         }
 
-        button,input::file-selector-button {
+        button,
+        input::file-selector-button {
             background: linear-gradient(135deg, #1a2333, #0d1117);
             border: var(--border-width) solid #2d3746;
             color: var(--text-secondary);
@@ -73,7 +74,8 @@
             margin: 8px;
         }
 
-        button:hover,input::file-selector-button:hover {
+        button:hover,
+        input::file-selector-button:hover {
             color: var(--neon-cyan);
             border-color: var(--neon-cyan);
             box-shadow: var(--glow) rgba(0, 243, 255, 0.3);
@@ -243,28 +245,28 @@
     <hr>
     <div class="controls">
         <div>
-    <label>选择频道：</label>
-        <input type="number" id="channel" value="120" min="0" max="160">
-        <span id="freq"></span>
-        <label>范围：1~8，120~144</label>
+            <label>选择频道：</label>
+            <input type="number" id="channel" value="120" min="0" max="160">
+            <span id="freq"></span>
+            <label>范围：1~8，120~144</label>
         </div>
         <div>
-        <label>符号速率：</label>
-        <select id="baudrateInput">
-        <option value="2">2</option>
-         <option value="8">8</option>
-         <option value="32">32</option>
-         <option value="50" selected>50</option>
-         <option value="80">80</option>
-         <option value="100">100</option>
-         <option value="125">125</option>
-         <option value="250">250</option>
-         <option value="500">500</option>
-         <option value="800">800</option>
-         <option value="1000">1000</option>
-         <option value="1200">1200</option>
-        </select>
-       <!-- <input type="number" id="baudrateInput" value="50" min="30" max="4800"> -->
+            <label>符号速率：</label>
+            <select id="baudrateInput">
+                <option value="2">2</option>
+                <option value="8">8</option>
+                <option value="32">32</option>
+                <option value="50" selected>50</option>
+                <option value="80">80</option>
+                <option value="100">100</option>
+                <option value="125">125</option>
+                <option value="250">250</option>
+                <option value="500">500</option>
+                <option value="800">800</option>
+                <option value="1000">1000</option>
+                <option value="1200">1200</option>
+            </select>
+            <!-- <input type="number" id="baudrateInput" value="50" min="30" max="4800"> -->
         </div>
         <canvas id="constellation" width="500" height="500"></canvas>
     </div>
@@ -410,6 +412,26 @@
             const formattedSeconds = String(remainingSeconds).padStart(2, '0');
 
             return `${formattedHours}:${formattedMinutes}:${formattedSeconds}`;
+        }
+
+        function clamp(value, min, max) {
+            // 确保 min <= max
+            if (min > max) {
+                [min, max] = [max, min]; // 交换 min 和 max 的值
+            }
+
+            // 如果 value 小于 min，则返回 min
+            if (value < min) {
+                return min;
+            }
+
+            // 如果 value 大于 max，则返回 max
+            if (value > max) {
+                return max;
+            }
+
+            // 否则，value 在 min 和 max 之间，直接返回 value
+            return value;
         }
 
         class FibonacciDecoder {
@@ -849,7 +871,7 @@
 
         class ConstellationRecorder {
             constructor(maxLen) {
-                this.maxLen = Math.max(1,maxLen);
+                this.maxLen = Math.max(1, maxLen);
                 this.samples = [];
             }
 
@@ -1128,6 +1150,24 @@
                 return [a[0], -a[1]];
             }
 
+            function getSample(array, index) {
+                const windowSize = 5; // 可调整的窗口大小（左右各包含的样本数）
+                const start = Math.max(0, Math.floor(index - windowSize));
+                const end = Math.min(array.length - 1, Math.ceil(index + windowSize));
+                let sum = 0;
+                for (let i = start; i <= end; i++) {
+                    const weight = sinc(index - i);
+                    sum += array[i] * weight;
+                }
+                return sum;
+            }
+
+            function sinc(x) {
+                if (x === 0) return 1;
+                const piX = Math.PI * x;
+                return Math.sin(piX) / piX;
+            }
+
             const mod = class extends AudioWorkletProcessor {
                 constructor() {
                     super();
@@ -1344,8 +1384,8 @@
 
                     for (let j = 0; j < i.length; ++j) {
                         if (this.count >= 0) {
-                            let currI = i[j] * gain;
-                            let currQ = q[j] * gain
+                            let currI = getSample(i, j + this.mu) * gain;
+                            let currQ = getSample(q, j + this.mu) * gain
 
                             this.out[0] = [currI, currQ];
                             this.outRail[0] = [Number(this.out[0][0] > 0), Number(this.out[0][1] > 0)];
@@ -1354,7 +1394,7 @@
                             let y = complexMul(complexSub(this.out[0], this.out[2]), complexConj(this.outRail[1]));
                             let mmVal = y[0] - x[0];
 
-                            this.mu += this.samplesPerSymbol + 0.3 * mmVal;
+                            this.mu += this.samplesPerSymbol + 0.1 * mmVal;
                             this.count -= Math.floor(this.mu);
                             this.mu -= Math.floor(this.mu);
 
@@ -1555,10 +1595,10 @@
             }
             imageRecvDiv.hidden = false;
         }
-        
-        function cancelRxImage(){
-        	isRxImage=false;
-        	imageRecvDiv.hidden=true;
+
+        function cancelRxImage() {
+            isRxImage = false;
+            imageRecvDiv.hidden = true;
         }
 
         audioCtx.audioWorklet.addModule(workletData).then(() => {
@@ -1579,7 +1619,7 @@
                 modulator.setBaudRate(baudRate);
                 modulator.setCarrierFreq(carrierFreq);
                 modulator.setOnStop(() => {
-                	txImageBtn.disabled=false;
+                    txImageBtn.disabled = false;
                     clearInterval(interval);
                     bitDisplay.textContent = '';
                     txBtn.textContent = '发送';
@@ -1595,7 +1635,7 @@
                 }, 100);
 
 
-                txImageBtn.disabled=true;
+                txImageBtn.disabled = true;
                 txBtn.textContent = '中止';
             }
 
@@ -1671,10 +1711,7 @@
                 const canvas = document.getElementById('constellation')
                 const ctx = canvas.getContext('2d')
                 ctx.lineWidth = 1
-                let f = 0
                 function draw() {
-                    const mul = 1 / (baudRate / 15625) * canvas.height / freqMulti;
-
                     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
                     // 绘制参考轴线
@@ -1706,11 +1743,11 @@
 
                     for (let sample of constellation.getSamples()) {
                         // 将I/Q信号映射到绘图区域
-                        const x = centerX + sample[0] * plotSize;
-                        const y = centerY + sample[1] * plotSize;
+                        const x = clamp(centerX + sample[0] * plotSize, 0, canvas.width);
+                        const y = clamp(centerY + sample[1] * plotSize, 0, canvas.height);
 
                         ctx.beginPath();
-                        ctx.arc(x, y, 5, 0, Math.PI * 2); // 使用准确的角度值
+                        ctx.arc(x, y, 4, 0, Math.PI * 2); // 使用准确的角度值
                         ctx.fill();
                     }
 
@@ -1719,9 +1756,9 @@
                 draw()
             })
 
-             document.getElementById('cancelImage').addEventListener('click', () => {
-                 cancelRxImage();
-             })
+            document.getElementById('cancelImage').addEventListener('click', () => {
+                cancelRxImage();
+            })
 
             document.getElementById('clearTx').addEventListener('click', () => {
                 document.getElementById('transmit').value = ''
@@ -1742,7 +1779,7 @@
             baudrateInput.addEventListener('change', () => {
                 let bd = parseInt(baudrateInput.value);
                 setBaudRate(bd);
-                constellation.maxLen = Math.max(1,bd / 8);
+                constellation.maxLen = Math.max(1, bd / 8);
                 if (demodulator) {
                     demodulator.setBaudRate(bd)
                 }
@@ -1825,60 +1862,60 @@
                 demodulator.setCarrierFreq(carrierFreq)
             }
         })
-        
+
         function isPlainText(text) {
-  // 简单判断是否为纯文本 (例如检查是否存在二进制数据)
-  // 可以根据实际情况进行更复杂的判断
-  for (let i = 0; i < text.length; i++) {
-    const charCode = text.charCodeAt(i);
-    if (charCode < 32 && charCode !== 10 && charCode !== 13 && charCode !== 9) {
-      return false; // 包含控制字符，不是纯文本
-    }
-  }
-  return true;
-}
+            // 简单判断是否为纯文本 (例如检查是否存在二进制数据)
+            // 可以根据实际情况进行更复杂的判断
+            for (let i = 0; i < text.length; i++) {
+                const charCode = text.charCodeAt(i);
+                if (charCode < 32 && charCode !== 10 && charCode !== 13 && charCode !== 9) {
+                    return false; // 包含控制字符，不是纯文本
+                }
+            }
+            return true;
+        }
 
-        const uploadTextFile=document.getElementById('uploadTextFile')
+        const uploadTextFile = document.getElementById('uploadTextFile')
 
-        uploadTextFile.addEventListener("input",e=>{
-        	const file = uploadTextFile.files[0];
+        uploadTextFile.addEventListener("input", e => {
+            const file = uploadTextFile.files[0];
 
-        	if (!file) {
-    alert('请选择文件');
-    return;
-  }
+            if (!file) {
+                alert('请选择文件');
+                return;
+            }
 
-  // 检查文件大小
-  const maxSize = 256 * 1024; // 256KB
-  if (file.size > maxSize) {
-    alert('文件大小不能超过 256KB');
-    uploadTextFile.value = ''; // 清空文件选择
-    return;
-  }
+            // 检查文件大小
+            const maxSize = 256 * 1024; // 256KB
+            if (file.size > maxSize) {
+                alert('文件大小不能超过 256KB');
+                uploadTextFile.value = ''; // 清空文件选择
+                return;
+            }
 
-  // 检查文件类型（读取文件内容并判断）
-  const reader = new FileReader();
-  reader.onload = function(event) {
-    const text = event.target.result;
-    // 简单判断是否为纯文本 (例如检查是否存在二进制数据)
-    if (!isPlainText(text)) {
-      alert('请选择纯文本文件');
-      uploadTextFile.value = ''; // 清空文件选择
-      return;
-    }
+            // 检查文件类型（读取文件内容并判断）
+            const reader = new FileReader();
+            reader.onload = function (event) {
+                const text = event.target.result;
+                // 简单判断是否为纯文本 (例如检查是否存在二进制数据)
+                if (!isPlainText(text)) {
+                    alert('请选择纯文本文件');
+                    uploadTextFile.value = ''; // 清空文件选择
+                    return;
+                }
 
-    // 文件验证通过，可以进行后续操作
-    document.getElementById('transmit').value=text
-  };
-    reader.onerror = function() {
-        alert('读取文件失败');
-        uploadTextFile.value = '';
-    }
-  reader.readAsText(file);
+                // 文件验证通过，可以进行后续操作
+                document.getElementById('transmit').value = text
+            };
+            reader.onerror = function () {
+                alert('读取文件失败');
+                uploadTextFile.value = '';
+            }
+            reader.readAsText(file);
         })
-        
-        document.getElementById('uploadText').addEventListener("click",e=>{
-        	uploadTextFile.click();
+
+        document.getElementById('uploadText').addEventListener("click", e => {
+            uploadTextFile.click();
         })
 
         // 下载图片
