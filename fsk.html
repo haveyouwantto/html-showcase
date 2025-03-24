@@ -967,10 +967,8 @@
             transmit(audioCtx, bitArray) {
                 // differential coding
                 let codedArray = [0];
-                let previous = 0;
-                for (const current of bitArray) {
-                    codedArray.push(current ^ previous);
-                    previous = current;
+                for (let i = 0; i < bitArray.length; i++) {
+                    codedArray.push(codedArray[i] ^ bitArray[i]);
                 }
 
                 let startSync = []
@@ -1126,10 +1124,10 @@
                 this.convolver.connect(this.demod)
 
                 this.demod.port.onmessage = (event) => {
-                    let current = event.data.bit ^ this.lastBit;
+                    let current = event.data.bit;
                     this.onSample({
                         sample: [event.data.i, event.data.q],
-                        bits: [current]
+                        bits: [current ^ this.lastBit]
                     })
                     this.lastBit = current;
                 }
