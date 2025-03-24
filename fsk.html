@@ -967,8 +967,8 @@
             transmit(audioCtx, bitArray) {
                 // differential coding
                 let codedArray = [0, ...bitArray];
-                for (let i = 1; i < codedArray.length; i++) {
-                    codedArray[i] = codedArray[i] ^ codedArray[i - 1];
+                for (let i = 0; i < bitArray.length; i++) {
+                    codedArray[i + 1] = (bitArray[i] === bitArray[i - 1]) ? 0 : 1;
                 }
 
                 let startSync = []
