@@ -1662,7 +1662,7 @@
             )
 
             const decoder = new FibonacciDecoder(result => {
-                const dec = result;//decodeAndVerify(result)
+                const dec = baudRate >= 200 ? decodeAndVerify(result) : result;//decodeAndVerify(result)
                 // console.log("解码结果:", dec);
                 if (dec > 0) {
                     if (isRxImage) {
@@ -1763,7 +1763,7 @@
             function transmitOrdArray(ordArray, delay = 1) {
 
                 const mod = new AudioWorkletNode(audioCtx, 'mod')
-                const preparedArray = ordArray;//.map(e => encodeWithParity(e));
+                const preparedArray = baudRate >= 200 ? ordArray.map(e => encodeWithParity(e)) : ordArray;
                 const sync = [2, 2, 2, 2, 2, 2, 2, 2];
 
                 preparedArray.unshift(...sync);
