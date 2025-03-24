@@ -209,6 +209,8 @@
             <div class="btn-container">
                 <button id="start-tx">发送</button>
                 <button id="clearTx">清空</button>
+                <button id="uploadText">上传</button>
+                <input type="file" id="uploadTextFile" accept="text/*" hidden>
             </div>
             <hr>
             <input type="file" accept="image/*" id="txImage">
@@ -1823,8 +1825,61 @@
                 demodulator.setCarrierFreq(carrierFreq)
             }
         })
+        
+        function isPlainText(text) {
+  // 简单判断是否为纯文本 (例如检查是否存在二进制数据)
+  // 可以根据实际情况进行更复杂的判断
+  for (let i = 0; i < text.length; i++) {
+    const charCode = text.charCodeAt(i);
+    if (charCode < 32 && charCode !== 10 && charCode !== 13 && charCode !== 9) {
+      return false; // 包含控制字符，不是纯文本
+    }
+  }
+  return true;
+}
 
+        const uploadTextFile=document.getElementById('uploadTextFile')
 
+        uploadTextFile.addEventListener("input",e=>{
+        	const file = uploadTextFile.files[0];
+
+        	if (!file) {
+    alert('请选择文件');
+    return;
+  }
+
+  // 检查文件大小
+  const maxSize = 256 * 1024; // 256KB
+  if (file.size > maxSize) {
+    alert('文件大小不能超过 256KB');
+    uploadTextFile.value = ''; // 清空文件选择
+    return;
+  }
+
+  // 检查文件类型（读取文件内容并判断）
+  const reader = new FileReader();
+  reader.onload = function(event) {
+    const text = event.target.result;
+    // 简单判断是否为纯文本 (例如检查是否存在二进制数据)
+    if (!isPlainText(text)) {
+      alert('请选择纯文本文件');
+      uploadTextFile.value = ''; // 清空文件选择
+      return;
+    }
+
+    // 文件验证通过，可以进行后续操作
+    document.getElementById('transmit').value=text
+  };
+    reader.onerror = function() {
+        alert('读取文件失败');
+        uploadTextFile.value = '';
+    }
+  reader.readAsText(file);
+        })
+        
+        document.getElementById('uploadText').addEventListener("click",e=>{
+        	uploadTextFile.click();
+        })
 
         // 下载图片
         document.getElementById('downloadImg').addEventListener('click', () => {
