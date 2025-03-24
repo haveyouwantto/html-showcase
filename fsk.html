@@ -966,9 +966,11 @@
         class BPSKModulator extends Modulator {
             transmit(audioCtx, bitArray) {
                 // differential coding
-                let codedArray = [0, ...bitArray];
-                for (let i = 0; i < bitArray.length; i++) {
-                    codedArray[i + 1] = (bitArray[i] === bitArray[i - 1]) ? 0 : 1;
+                let codedArray = [0];
+                let previous = 0;
+                for (const current of bitArray) {
+                    codedArray.push(current ^ previous);
+                    previous = current;
                 }
 
                 let startSync = []
@@ -1124,11 +1126,12 @@
                 this.convolver.connect(this.demod)
 
                 this.demod.port.onmessage = (event) => {
+                    let current = event.data.bit ^ this.lastBit;
                     this.onSample({
                         sample: [event.data.i, event.data.q],
-                        bits: [event.data.bit != this.lastBit ? 1 : 0]
+                        bits: [current]
                     })
-                    this.lastBit = event.data.bit;
+                    this.lastBit = current;
                 }
             }
 
