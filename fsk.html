@@ -187,13 +187,67 @@
             margin-bottom: 1rem;
         }
 
-        #reconCanvas {
+        canvas {
             border: var(--border-width) solid #2d3746;
             border-radius: var(--border-radius);
             margin-top: 1rem;
             width: 100%;
             image-rendering: pixelated;
         }
+        
+        details {
+    background: var(--dark-bg);
+    border: var(--border-width) solid #2d3746;
+    border-radius: var(--border-radius);
+    margin: 1rem 0;
+    transition: all 0.3s ease;
+}
+
+details[open] {
+    border-color: var(--neon-cyan);
+    box-shadow: var(--glow) rgba(0, 243, 255, 0.2);
+}
+
+summary {
+    color: var(--text-secondary);
+    padding: 0.75rem;
+    cursor: pointer;
+    position: relative;
+    list-style: none;
+    font-weight: 600;
+    transition: all 0.3s ease;
+}
+
+summary::-webkit-details-marker {
+    display: none;
+}
+
+summary:after {
+    content: "▶";
+    color: var(--text-secondary);
+    position: absolute;
+    right: 1rem;
+    transition: transform 0.3s ease;
+}
+
+details[open] summary:after {
+    transform: rotate(90deg);
+    color: var(--neon-cyan);
+}
+
+summary:hover {
+    color: var(--neon-cyan);
+    background: linear-gradient(90deg, 
+        rgba(0, 243, 255, 0.05), 
+        transparent 50%);
+}
+
+details > div {
+    padding: 1rem;
+    border-top: var(--border-width) solid #2d3746;
+    margin-top: 0.5rem;
+}
+
 
         @media (max-width: 768px) {
             .container {
@@ -220,11 +274,16 @@
                 <button id="uploadText">上传</button>
                 <input type="file" id="uploadTextFile" accept="text/*" hidden>
             </div>
-            <hr>
+            <details>
+            <summary>图片发送</summary>
+            <div>
             <input type="file" accept="image/*" id="txImage">
             <button id="txImageBtn">发送图片</button>
-            <canvas hidden id="sourceCanvas"></canvas>
+            <canvas id="sourceCanvas"></canvas>
+            </div>
+            </details>
             <div id="bits"></div>
+            
         </div>
         <div>
             <div class="title-text">接收</div>
@@ -235,12 +294,15 @@
                 <button id="clearRx">清空</button>
                 <button id="copyRx">复制</button>
             </div>
-            <div id="imageRecvDiv" hidden>
+            <details id="imageRecvDiv" >
+                <summary>图片接收</summary>
+                <div>
                 <canvas id="reconCanvas"></canvas>
                 <pre id="status"></pre>
                 <button id="downloadImg">下载图片</button>
                 <button id="cancelImage">取消图片</button>
-            </div>
+                </div>
+            </details>
             <!-- <button id="rxImageBtn">接收图片</button> -->
             <div id="audio-inputs">
                 <label for="audio-input">音频输入：</label>
@@ -1636,12 +1698,12 @@
                 rxImage.addSample(sample)
                 statusDiv.textContent = `样本 ${rxImage.samples}: \n类型: ${sample.type} \n块: (${sample.blockX},${sample.blockY}) \n索引: ${sample.idx} \n系数: ${sample.value.toFixed(0)}`;
             }
-            imageRecvDiv.hidden = false;
+            imageRecvDiv.open = true;
         }
 
         function cancelRxImage() {
             isRxImage = false;
-            imageRecvDiv.hidden = true;
+            imageRecvDiv.open = false;
         }
 
         async function startRx() {
