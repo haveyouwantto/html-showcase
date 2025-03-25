@@ -1139,7 +1139,7 @@ details > div {
                 this.convolver.connect(this.demod)
 
                 this.demod.port.onmessage = (event) => {
-                    this.onSample({
+                    if (this.onSample) this.onSample({
                         sample: [event.data.phase, 0],
                         bits: [event.data.bit]
                     })
@@ -1186,7 +1186,7 @@ details > div {
 
                 this.demod.port.onmessage = (event) => {
                     let current = event.data.bit;
-                    this.onSample({
+                    if (this.onSample) this.onSample({
                         sample: [event.data.i, event.data.q],
                         bits: [current ^ this.lastBit]
                     })
