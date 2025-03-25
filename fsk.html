@@ -948,7 +948,7 @@
 
             addSample(i, q) {
                 this.samples.push([i, q])
-                if (this.samples.length > this.maxLen) this.samples.shift()
+                while (this.samples.length > this.maxLen) this.samples.shift()
             }
 
             getSamples() {
