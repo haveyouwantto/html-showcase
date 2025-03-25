@@ -977,7 +977,7 @@ details > div {
             }
 
             stop() {
-
+                if (this.onStop) this.onStop();
             }
         }
 
@@ -1023,6 +1023,7 @@ details > div {
             }
 
             stop() {
+                super.stop();
                 if (this.oscillator) this.oscillator.stop();
             }
         }
@@ -1089,6 +1090,7 @@ details > div {
             }
 
             stop() {
+                super.stop();
                 if (this.mixer) this.mixer.stop();
             }
         }
@@ -1435,7 +1437,7 @@ details > div {
                     this.out = [[0, 0], [0, 0], [0, 0]];
                     this.outRail = [[0, 0], [0, 0], [0, 0]];
 
-                    this.alpha = 0.5
+                    this.alpha = 1
                     this.beta = 0.1
                     this.phase = 0;
                     this.freq = 0;
