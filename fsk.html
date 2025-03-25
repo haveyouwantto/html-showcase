@@ -319,7 +319,7 @@
                 <option value="bpsk">BPSK</option>
             </select>
             <label>选择频道：</label>
-            <input type="number" id="channel" value="120" min="0" max="180">
+            <input type="number" id="channel" value="120" min="-16" max="180">
             <span id="freq"></span>
             <label>范围：1~21，120~180</label>
             <label>符号速率：</label>
@@ -341,8 +341,8 @@
         </div>
         <canvas id="constellation" width="500" height="500"></canvas>
     </div>
-     <script src="//cdn.jsdelivr.net/npm/eruda"></script>
-    <script>eruda.init();</script> 
+    <script src="//cdn.jsdelivr.net/npm/eruda"></script>
+    <script>eruda.init();</script>
 
 
     <script>
@@ -360,6 +360,7 @@
             samplePerSymbol = sampleRate / baudRate;
             symbolTime = samplePerSymbol / sampleRate;
             bandwidth = baudRate * freqMulti
+            constellation.maxLen = Math.max(1, bd / 8);
         }
 
         const audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: sampleRate, latencyHint: "balanced" });
@@ -427,13 +428,13 @@
             }
             return result;
         }
-        
-        function differentialEncoding(bitArray){
-        	 let codedArray = [0];
-        	 for (let i = 0; i < bitArray.length; i++) {
-        	 	codedArray.push(codedArray[i] ^ bitArray[i]);
-        	 	}
-        	 	return codedArray;
+
+        function differentialEncoding(bitArray) {
+            let codedArray = [0];
+            for (let i = 0; i < bitArray.length; i++) {
+                codedArray.push(codedArray[i] ^ bitArray[i]);
+            }
+            return codedArray;
         }
 
         function stringToOrdArray(string) {
@@ -963,7 +964,7 @@
                 return this.samples
             }
 
-            clear(){
+            clear() {
                 this.samples = []
             }
         }
@@ -1043,14 +1044,14 @@
         class BPSKModulator extends Modulator {
             transmit(audioCtx, bitArray) {
                 // differential coding
-                let codedArray=differentialEncoding(bitArray)
+                let codedArray = differentialEncoding(bitArray)
                 console.log(codedArray)
 
                 let startSync = []
-                for (let i = 0; i < this.baudRate; i++) {
+                for (let i = 0; i < this.baudRate * 0.5; i++) {
                     startSync.push(...[1, 0])
                 }
-                
+
 
                 codedArray = startSync.concat(codedArray)
 
@@ -1172,7 +1173,7 @@
             constructor() {
                 super()
                 this.lastBit = 0;
-                this.debug=[]
+                this.debug = []
             }
             setBaudRate(baudRate) {
                 this.baudRate = baudRate;
@@ -1201,10 +1202,10 @@
                 this.demod.port.onmessage = (event) => {
                     let current = event.data.bit;
                     this.debug.push(current)
-                    if (this.debug.length>=18 ) {
-                    	//console.log([...this.debug])
-                    	this.debug=[]
-                    	}
+                    if (this.debug.length >= 18) {
+                        //console.log([...this.debug])
+                        this.debug = []
+                    }
                     if (this.onSample) this.onSample({
                         sample: [event.data.i, event.data.q],
                         bits: [current ^ this.lastBit]
@@ -1454,7 +1455,7 @@
                     this.out = [[0, 0], [0, 0], [0, 0]];
                     this.outRail = [[0, 0], [0, 0], [0, 0]];
 
-                    this.alpha = 0.7 
+                    this.alpha = 0.7
                     this.beta = 0.05
                     this.gamma = 0.5
                     this.phase = 0;
@@ -1989,7 +1990,7 @@
             let channel = parseInt(channelInput.value)
 
             // check channel range
-            if (channel < 1) {
+            if (channel < -16 || channel == 0) {
                 channel = 1
                 channelInput.value = 1
             } else if (channel > 180) {
@@ -2004,9 +2005,24 @@
                 carrierFreq = 500 + 100 * (channel - 1)
             } else if (channel >= 120 && channel <= 180) {
                 carrierFreq = 16000 + 100 * (channel - 120)
+            } else if (channel < 0) {
+                carrierFreq = 100 + 5 * channel
             }
 
             document.getElementById('freq').textContent = carrierFreq + ' Hz'
+
+            // disable > 2baud if channel < 0
+            if (channel < 0) {
+                document.getElementById('baudrateInput').querySelectorAll('option').forEach(e => {
+                    if (parseInt(e.value) > 2) e.disabled = true
+                    document.getElementById('baudrateInput').value = 2
+                    setBaudRate(2)
+                })
+            } else {
+                document.getElementById('baudrateInput').querySelectorAll('option').forEach(e => {
+                    e.disabled = false
+                })
+            }
 
             // if (txUpdate) {
             //     txUpdate()
