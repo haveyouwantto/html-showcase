@@ -194,59 +194,59 @@
             width: 100%;
             image-rendering: pixelated;
         }
-        
+
         details {
-    background: var(--dark-bg);
-    border: var(--border-width) solid #2d3746;
-    border-radius: var(--border-radius);
-    margin: 1rem 0;
-    transition: all 0.3s ease;
-}
+            background: var(--dark-bg);
+            border: var(--border-width) solid #2d3746;
+            border-radius: var(--border-radius);
+            margin: 1rem 0;
+            transition: all 0.3s ease;
+        }
 
-details[open] {
-    border-color: var(--neon-cyan);
-    box-shadow: var(--glow) rgba(0, 243, 255, 0.2);
-}
+        details[open] {
+            border-color: var(--neon-cyan);
+            box-shadow: var(--glow) rgba(0, 243, 255, 0.2);
+        }
 
-summary {
-    color: var(--text-secondary);
-    padding: 0.75rem;
-    cursor: pointer;
-    position: relative;
-    list-style: none;
-    font-weight: 600;
-    transition: all 0.3s ease;
-}
+        summary {
+            color: var(--text-secondary);
+            padding: 0.75rem;
+            cursor: pointer;
+            position: relative;
+            list-style: none;
+            font-weight: 600;
+            transition: all 0.3s ease;
+        }
 
-summary::-webkit-details-marker {
-    display: none;
-}
+        summary::-webkit-details-marker {
+            display: none;
+        }
 
-summary:after {
-    content: "▶";
-    color: var(--text-secondary);
-    position: absolute;
-    right: 1rem;
-    transition: transform 0.3s ease;
-}
+        summary:after {
+            content: "▶";
+            color: var(--text-secondary);
+            position: absolute;
+            right: 1rem;
+            transition: transform 0.3s ease;
+        }
 
-details[open] summary:after {
-    transform: rotate(90deg);
-    color: var(--neon-cyan);
-}
+        details[open] summary:after {
+            transform: rotate(90deg);
+            color: var(--neon-cyan);
+        }
 
-summary:hover {
-    color: var(--neon-cyan);
-    background: linear-gradient(90deg, 
-        rgba(0, 243, 255, 0.05), 
-        transparent 50%);
-}
+        summary:hover {
+            color: var(--neon-cyan);
+            background: linear-gradient(90deg,
+                    rgba(0, 243, 255, 0.05),
+                    transparent 50%);
+        }
 
-details > div {
-    padding: 1rem;
-    border-top: var(--border-width) solid #2d3746;
-    margin-top: 0.5rem;
-}
+        details>div {
+            padding: 1rem;
+            border-top: var(--border-width) solid #2d3746;
+            margin-top: 0.5rem;
+        }
 
 
         @media (max-width: 768px) {
@@ -275,15 +275,15 @@ details > div {
                 <input type="file" id="uploadTextFile" accept="text/*" hidden>
             </div>
             <details>
-            <summary>图片发送</summary>
-            <div>
-            <input type="file" accept="image/*" id="txImage">
-            <button id="txImageBtn">发送图片</button>
-            <canvas id="sourceCanvas"></canvas>
-            </div>
+                <summary>图片发送</summary>
+                <div>
+                    <input type="file" accept="image/*" id="txImage">
+                    <button id="txImageBtn">发送图片</button>
+                    <canvas id="sourceCanvas"></canvas>
+                </div>
             </details>
             <div id="bits"></div>
-            
+
         </div>
         <div>
             <div class="title-text">接收</div>
@@ -294,13 +294,13 @@ details > div {
                 <button id="clearRx">清空</button>
                 <button id="copyRx">复制</button>
             </div>
-            <details id="imageRecvDiv" >
+            <details id="imageRecvDiv">
                 <summary>图片接收</summary>
                 <div>
-                <canvas id="reconCanvas"></canvas>
-                <pre id="status"></pre>
-                <button id="downloadImg">下载图片</button>
-                <button id="cancelImage">取消图片</button>
+                    <canvas id="reconCanvas"></canvas>
+                    <pre id="status"></pre>
+                    <button id="downloadImg">下载图片</button>
+                    <button id="cancelImage">取消图片</button>
                 </div>
             </details>
             <!-- <button id="rxImageBtn">接收图片</button> -->
@@ -948,11 +948,15 @@ details > div {
 
             addSample(i, q) {
                 this.samples.push([i, q])
-                while (this.samples.length > this.maxLen) this.samples.shift()
+                if (this.samples.length > this.maxLen) this.samples.shift()
             }
 
             getSamples() {
                 return this.samples
+            }
+
+            clear(){
+                this.samples = []
             }
         }
 
@@ -1437,7 +1441,7 @@ details > div {
                     this.out = [[0, 0], [0, 0], [0, 0]];
                     this.outRail = [[0, 0], [0, 0], [0, 0]];
 
-                    this.alpha = 1
+                    this.alpha = 0.9
                     this.beta = 0.1
                     this.phase = 0;
                     this.freq = 0;
@@ -1469,15 +1473,15 @@ details > div {
                     }
                     sum /= i.length;
                     const rms = Math.sqrt(sum)
-                       
-                    this.gain = this.gain*0.5+(1 / rms)*0.5;
+
+                    this.gain = this.gain * 0.5 + (1 / rms) * 0.5;
                     if (!isFinite(this.gain) || isNaN(this.gain)) this.gain = 1;
-                     
-                   
+
+
                     for (let j = 0; j < i.length; ++j) {
                         if (this.count >= 0) {
-                            let currI = getSample(i, j + this.mu) * this.gain;
-                            let currQ = getSample(q, j + this.mu) * this.gain
+                            let currI = i[j] * this.gain;
+                            let currQ = q[j] * this.gain
 
                             this.out[0] = [currI, currQ];
                             this.outRail[0] = [Number(this.out[0][0] > 0), Number(this.out[0][1] > 0)];
@@ -1486,7 +1490,7 @@ details > div {
                             let y = complexMul(complexSub(this.out[0], this.out[2]), complexConj(this.outRail[1]));
                             let mmVal = y[0] - x[0];
 
-                            this.mu += this.samplesPerSymbol + 0.3 * mmVal;
+                            this.mu += this.samplesPerSymbol + 0.1 * mmVal;
                             this.count -= Math.floor(this.mu);
                             this.mu -= Math.floor(this.mu);
 
@@ -1501,10 +1505,10 @@ details > div {
                             let error = out[0] * out[1];
                             this.freq += this.beta * error;
                             this.phase += this.freq + this.alpha * error;
-                            while (this.phase >= 2 * Math.PI) this.phase -= 2 * Math.PI;
+                            while (this.phase > 2 * Math.PI) this.phase -= 2 * Math.PI;
                             while (this.phase < 0) this.phase += 2 * Math.PI;
                             this.port.postMessage({ i: out[0], q: out[1], bit: out[0] > 0 ? 1 : 0 });
-                         
+
                         }
 
                         this.count++;
@@ -1822,6 +1826,7 @@ details > div {
             if (drawHandle) cancelAnimationFrame(drawHandle);
             if (demodulator) demodulator.stop();
             rxBtn.textContent = '开始';
+            constellation.clear();
         }
 
         audioCtx.audioWorklet.addModule(workletData).then(() => {
