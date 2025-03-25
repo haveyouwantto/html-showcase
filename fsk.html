@@ -341,8 +341,8 @@
         </div>
         <canvas id="constellation" width="500" height="500"></canvas>
     </div>
-    <!-- <script src="//cdn.jsdelivr.net/npm/eruda"></script>
-    <script>eruda.init();</script> -->
+     <script src="//cdn.jsdelivr.net/npm/eruda"></script>
+    <script>eruda.init();</script> 
 
 
     <script>
@@ -426,6 +426,14 @@
                 }
             }
             return result;
+        }
+        
+        function differentialEncoding(bitArray){
+        	 let codedArray = [0];
+        	 for (let i = 0; i < bitArray.length; i++) {
+        	 	codedArray.push(codedArray[i] ^ bitArray[i]);
+        	 	}
+        	 	return codedArray;
         }
 
         function stringToOrdArray(string) {
@@ -1035,10 +1043,7 @@
         class BPSKModulator extends Modulator {
             transmit(audioCtx, bitArray) {
                 // differential coding
-                let codedArray = [0];
-                for (let i = 0; i < bitArray.length; i++) {
-                    codedArray.push(codedArray[i] ^ bitArray[i]);
-                }
+                let codedArray=differentialEncoding(bitArray)
 
                 let startSync = []
                 for (let i = 0; i < this.baudRate * 0.125; i++) {
@@ -1165,6 +1170,7 @@
             constructor() {
                 super()
                 this.lastBit = 0;
+                this.debug=[]
             }
             setBaudRate(baudRate) {
                 this.baudRate = baudRate;
@@ -1192,6 +1198,11 @@
 
                 this.demod.port.onmessage = (event) => {
                     let current = event.data.bit;
+                    this.debug.push(current)
+                    if (this.debug.length>=18 ) {
+                    	console.log([...this.debug])
+                    	this.debug=[]
+                    	}
                     if (this.onSample) this.onSample({
                         sample: [event.data.i, event.data.q],
                         bits: [current ^ this.lastBit]
