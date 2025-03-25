@@ -1044,11 +1044,13 @@
             transmit(audioCtx, bitArray) {
                 // differential coding
                 let codedArray=differentialEncoding(bitArray)
+                console.log(codedArray)
 
                 let startSync = []
                 for (let i = 0; i < this.baudRate * 0.125; i++) {
                     startSync.push(...[1, 0, 1, 0, 0, 0, 1, 0, 0, 1, 0])
                 }
+                
 
                 codedArray = startSync.concat(codedArray)
 
@@ -1200,7 +1202,7 @@
                     let current = event.data.bit;
                     this.debug.push(current)
                     if (this.debug.length>=18 ) {
-                    	console.log([...this.debug])
+                    	//console.log([...this.debug])
                     	this.debug=[]
                     	}
                     if (this.onSample) this.onSample({
@@ -1452,8 +1454,8 @@
                     this.out = [[0, 0], [0, 0], [0, 0]];
                     this.outRail = [[0, 0], [0, 0], [0, 0]];
 
-                    this.alpha = 0.9
-                    this.beta = 0.1
+                    this.alpha = 0.3 
+                    this.beta = 0.01
                     this.phase = 0;
                     this.freq = 0;
 
