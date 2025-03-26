@@ -667,8 +667,8 @@
                             let error = out[0] * out[1];
                             this.freq += this.beta * error;
                             this.phase += this.freq + this.alpha * error;
-                            while (this.phase > 2 * Math.PI) this.phase -= 2 * Math.PI;
-                            while (this.phase < 0) this.phase += 2 * Math.PI;
+                            if (this.phase > 2 * Math.PI) this.phase -= 2 * Math.PI;
+                            if (this.phase < 0) this.phase += 2 * Math.PI;
                             this.port.postMessage({ i: out[0], q: out[1], bit: out[0] > 0 ? 1 : 0 });
 
                         }
@@ -756,8 +756,8 @@
                             let error = this.errorFunc(out);
                             this.freq += this.beta * error;
                             this.phase += this.freq + this.alpha * error;
-                            while (this.phase > 2 * Math.PI) this.phase -= 2 * Math.PI;
-                            while (this.phase < 0) this.phase += 2 * Math.PI;
+                            if (this.phase > 2 * Math.PI) this.phase -= 2 * Math.PI;
+                            if (this.phase < 0) this.phase += 2 * Math.PI;
                             this.port.postMessage({ i: out[0], q: out[1], bit: out[0] > 0 ? 1 : 0 });
 
                         }
@@ -873,8 +873,8 @@
                             let error = this.phaseDetector8(out);
                             this.freq += this.beta * error;
                             this.phase += this.freq + this.alpha * error;
-                            while (this.phase > 2 * Math.PI) this.phase -= 2 * Math.PI;
-                            while (this.phase < 0) this.phase += 2 * Math.PI;
+                            if (this.phase > 2 * Math.PI) this.phase -= 2 * Math.PI;
+                            if (this.phase < 0) this.phase += 2 * Math.PI;
                             this.port.postMessage({ i: out[0], q: out[1], bit: out[0] > 0 ? 1 : 0 });
 
                         }
