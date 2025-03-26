@@ -1021,6 +1021,10 @@
             stop() {
                 if (this.onStop) this.onStop();
             }
+            
+            get bitsPerSymbol(){
+            	return 1;
+            }
         }
 
         class GFSKModulator extends Modulator {
@@ -1194,6 +1198,10 @@
             stop() {
                 super.stop();
                 if (this.mixer) this.mixer.disconnect();
+            }
+            
+            get bitsPerSymbol(){
+            	return 2;
             }
         }
 
@@ -2123,6 +2131,7 @@ else if (i>0 && q<0) { a=1; b=0; }
                 modulator.setBaudRate(baudRate);
                 modulator.setCarrierFreq(carrierFreq);
                 modulator.setOnStop(() => {
+                	console.log(modulator,"stopped")
                     txImageBtn.disabled = false;
                     clearInterval(interval);
                     bitDisplay.textContent = '';
@@ -2133,12 +2142,13 @@ else if (i>0 && q<0) { a=1; b=0; }
 
                 const currentTime = audioCtx.currentTime;
                 const interval = setInterval(() => {
-                    const sent = (audioCtx.currentTime - currentTime) * baudRate;
-                    const remainingSeconds = (bits.length - sent) / baudRate;
+                    const sent = (audioCtx.currentTime - currentTime) * baudRate * modulator.bitsPerSymbol;
+                    const remainingSeconds = (bits.length - sent) / (baudRate * modulator.bitsPerSymbol);
                     bitDisplay.textContent = `发送进度: ${toSI(sent / 8, true)}B / ${toSI(bits.length / 8, true)}B (剩余 ${secondsToHms(remainingSeconds)})`;
                 }, 100);
 
 
+                txStart = true;
                 txImageBtn.disabled = true;
                 txBtn.textContent = '中止';
             }
@@ -2150,7 +2160,6 @@ else if (i>0 && q<0) { a=1; b=0; }
                 } else {
                     modulator.stop();
                 }
-                txStart = !txStart;
             });
 
             rxBtn.addEventListener('click', () => {
@@ -2219,7 +2228,6 @@ else if (i>0 && q<0) { a=1; b=0; }
                     let ordArray = listToSymbols(quadrupleList);
 
                     transmitOrdArray(ordArray, 5)
-                    txStart = true;
                 };
             })
         })
