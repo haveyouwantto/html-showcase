@@ -450,6 +450,34 @@
             }
             return result;
         }
+        
+        function packBitArray(bitArray, length) {
+  const result = [];
+  let currentInt = 0;
+  let bitCount = 0;
+
+  for (let i = 0; i < bitArray.length; i++) {
+    currentInt = (currentInt << 1) | bitArray[i];
+    bitCount++;
+
+    if (bitCount === length) {
+      result.push(currentInt);
+      currentInt = 0;
+      bitCount = 0;
+    }
+  }
+
+  if (bitCount > 0) {
+    while (bitCount < length) {
+      currentInt = currentInt << 1;
+      bitCount++;
+    }
+    result.push(currentInt);
+  }
+
+  return result;
+}
+
 
         function encodeWithParity(n) {
             if (!Number.isInteger(n) || n < 0) return -1; // 确保输入为非负整数
@@ -1335,50 +1363,56 @@
             };
 
             const mixer = class extends AudioWorkletProcessor {
-                static get parameterDescriptors() {
-                    return [{
-                        name: 'frequency',
-                        defaultValue: 440,
-                        minValue: 20,
-                        maxValue: 20000,
-                        automationRate: 'a-rate' // 关键：指定 automationRate 为 'a-rate'
-                    }];
-                }
+    static get parameterDescriptors() {
+        return [{
+            name: 'frequency',
+            defaultValue: 440,
+            minValue: 20,
+            maxValue: 20000,
+            automationRate: 'a-rate' // 关键：指定 automationRate 为 'a-rate'
+        }];
+    }
 
-                constructor() {
-                    super();
-                    this.phase = 0;
-                    this.sampleRate = sampleRate;
-                }
+    constructor() {
+        super();
+        this.phase = 0;
+        this.sampleRate = sampleRate;
+    }
 
-                process(inputs, outputs, parameters) {
-                    const input = inputs[0];
-                    const output = outputs[0];
+    process(inputs, outputs, parameters) {
+        // 确保有一个输入通道
+        const input = inputs[0];
 
-                    if (!input || !input[0]) return true;
+        const output = outputs[0];
 
-                    // 确保是双声道输出
-                    const leftChannel = output[0]; // 实部
-                    const rightChannel = output[1]; // 虚部
-                    const frequencies = parameters.frequency; // 获取频率数组，因为是 a-rate
+        // 确保是双声道输出
+        const leftChannel = output[0]; // 实部
+        const rightChannel = output[1]; // 虚部
+        const frequencies = parameters.frequency; // 获取频率数组，因为是 a-rate
 
-                    for (let i = 0; i < leftChannel.length; i++) {
-                        const frequency = frequencies[i] ?? frequencies[0]; // 获取当前帧的频率
-                        const omega = 2 * Math.PI * frequency / this.sampleRate;
+        for (let i = 0; i < leftChannel.length; i++) {
+            const frequency = frequencies[i] ?? frequencies[0]; // 获取当前帧的频率
+            const omega = 2 * Math.PI * frequency / this.sampleRate;
 
-                        const real = Math.cos(this.phase);
-                        const imag = Math.sin(this.phase);
+            const real = Math.cos(this.phase);
+            const imag = Math.sin(this.phase);
 
-                        leftChannel[i] = real * input[0][i];
-                        rightChannel[i] = imag * input[0][i];
+            // 处理左声道输入，如果未连接则乘以1
+            const leftInputValue = input && input[0] ? input[0][i] : 1;
 
-                        this.phase += omega;
-                        //this.phase %= (2 * Math.PI); // 周期重置
-                    }
+            // 处理右声道输入，如果未连接则乘以1
+            const rightInputValue = input && input[1] ? input[1][i] : 1;
 
-                    return true;
-                }
-            }
+            leftChannel[i] = real * leftInputValue;
+            rightChannel[i] = imag * rightInputValue;
+
+            this.phase += omega;
+            //this.phase %= (2 * Math.PI); // 周期重置
+        }
+
+        return true;
+    }
+}
 
 
             const demod = class extends AudioWorkletProcessor {
