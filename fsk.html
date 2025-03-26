@@ -343,9 +343,6 @@
         </div>
         <canvas id="constellation" width="500" height="500"></canvas>
     </div>
-    <script src="//cdn.jsdelivr.net/npm/eruda"></script>
-    <script>eruda.init();</script>
-
     <script>
 
         let baudRate = 50; // 波特率
@@ -407,13 +404,14 @@
                     super();
                     this.sampleRate = sampleRate;
 
-                    this.bits = [];       // 待发送的比特流
+                    this.symbols = [];       // 待发送的比特流
                     this.ptr = 0;         // 当前比特索引
                     this.samplesElapsed = 0; // 当前符号已生成的样本数
                     this.symbolMap = {
                         0: [-1, 0],
                         1: [1, 0]
                     }
+                    this.started = false;
 
                     this.port.onmessage = (event) => {
                         switch (event.data.type) {
@@ -433,7 +431,7 @@
                     const output = outputs[0];
                     if (!output) return true;
 
-                    if (this.ptr >= this.bits.length) {
+                    if (this.ptr >= this.symbols.length && this.started) {
                         this.port.postMessage({ type: "stop" })
                         return false;
                     }
@@ -443,11 +441,10 @@
                         // 符号周期结束，更新比特
                         if (this.samplesElapsed >= this.samplesPerSymbol) {
                             this.samplesElapsed = 0;
-                            if (this.bits.length > 0) {
-                                const currentBit = this.bits[this.ptr];
+                            if (this.symbols.length > 0) {
+                                const currentBit = this.symbols[this.ptr];
                                 if (currentBit == null || this.symbolMap[currentBit] == null) {
-                                    this.port.postMessage({ type: "stop" })
-                                    return false;
+                                    continue;
                                 }
                                 this.ptr++;
                                 if (output[0]) output[0][i] = this.symbolMap[currentBit][0];
@@ -469,9 +466,10 @@
                 }
 
                 setData(data) {
-                    this.bits = data;
+                    this.symbols = data;
                     this.ptr = 0; // 重置指针
                     this.samplesElapsed = 0; // 开始新数据
+                    this.started = true;
                 }
             };
 
@@ -797,8 +795,8 @@
                     this.outRail = [[0, 0], [0, 0], [0, 0]];
 
                     this.alpha = 0.007
-                    this.beta = 0.00005
-                    this.gamma = 0.01
+                    this.beta = 0.0001
+                    this.gamma = 0.05
                     this.phase = 0;
                     this.freq = 0;
 
@@ -1825,6 +1823,7 @@
                     }
                 })
                 mod.port.onmessage = evt => {
+                    console.log(evt.data)
                     if (evt.data.type === "stop") {
                         this.stop();
                     }
