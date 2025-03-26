@@ -318,6 +318,7 @@
                 <option value="gfsk" selected>GFSK</option>
                 <option value="bpsk">BPSK</option>
                 <option value="qpsk">QPSK</option>
+                <option value="psk8">8PSK</option>
             </select>
             <label>选择频道：</label>
             <input type="number" id="channel" value="120" min="-16" max="180">
@@ -691,7 +692,7 @@
 
                     this.alpha = 0.09
                     this.beta = 0.001
-                    this.gamma = 0.5
+                    this.gamma = 0.2
                     this.phase = 0;
                     this.freq = 0;
 
@@ -777,11 +778,120 @@
                 }
             };
 
+            const psk8Demod = class extends AudioWorkletProcessor {
+                constructor(options) {
+                    super();
+                    this.sampleRate = sampleRate;
+                    this.count = 0;
+
+                    this.mu = 0;
+                    this.out = [[0, 0], [0, 0], [0, 0]];
+                    this.outRail = [[0, 0], [0, 0], [0, 0]];
+
+                    this.alpha = 0.09
+                    this.beta = 0.001
+                    this.gamma = 0.1
+                    this.phase = 0;
+                    this.freq = 0;
+
+                    this.gain = 1;
+
+                    this.phaseRef = Array.from({ length: 8 }, (_, k) => {
+                        const angle = 2 * Math.PI * k / 8;
+                        return [Math.cos(angle), Math.sin(angle)];
+                    });
+
+                    this.port.onmessage = (event) => {
+                        if (event.data.type === "baudRate") {
+                            this.setBaudRate(event.data.baudRate);
+                        }
+                    };
+                }
+
+                setBaudRate(baudRate) {
+                    this.baudRate = baudRate;
+                    this.samplesPerSymbol = Math.round(this.sampleRate / baudRate);
+                    // this.alpha = calculateAlpha(baudRate) / 2
+                }
+
+                nearest8psk(sample) {
+                    return this.phaseRef.reduce((nearest, ref) => {
+                        const distance = Math.sqrt(Math.pow(sample[0] - ref[0], 2) + Math.pow(sample[1] - ref[1], 2));
+                        const nearestDistance = Math.sqrt(Math.pow(sample[0] - nearest[0], 2) + Math.pow(sample[1] - nearest[1], 2));
+                        return distance < nearestDistance ? ref : nearest;
+                    });
+                }
+
+                phaseDetector8(sample) {
+                    const nearestSymbol = this.nearest8psk(sample)
+                    const error = sample[0] * nearestSymbol[1] - sample[1] * nearestSymbol[0];
+                    return error;
+                }
+
+                process(inputs, outputs, parameters) {
+                    const input = inputs[0];
+                    const i = input[0];
+                    const q = input[1];
+
+                    if (!i || !q) return true;
+
+                    let sum = 0;
+                    for (let j = 0; j < i.length; ++j) {
+                        sum += i[j] * i[j] + q[j] * q[j]
+                    }
+                    sum /= i.length;
+                    const rms = Math.sqrt(sum)
+
+                    this.gain = 0.99 * this.gain + 0.01 * (1 / (rms || 1e-6)); // 添加平滑滤波
+                    if (!isFinite(this.gain) || isNaN(this.gain)) this.gain = 1;
+
+
+                    for (let j = 0; j < i.length; ++j) {
+                        if (this.count >= 0) {
+                            let currI = getSample(i, j + this.mu) * this.gain;
+                            let currQ = getSample(q, j + this.mu) * this.gain
+
+                            this.out[0] = [currI, currQ];
+                            this.outRail[0] = this.nearest8psk(this.out[0]);
+
+                            let x = complexMul(complexSub(this.outRail[0], this.outRail[2]), complexConj(this.out[1]));
+                            let y = complexMul(complexSub(this.out[0], this.out[2]), complexConj(this.outRail[1]));
+                            let mmVal = y[0] - x[0];
+
+                            this.mu += this.samplesPerSymbol + this.gamma * mmVal;
+                            this.count -= Math.floor(this.mu);
+                            this.mu -= Math.floor(this.mu);
+
+                            // Shift history
+                            this.out[2] = this.out[1];
+                            this.out[1] = this.out[0];
+                            this.outRail[2] = this.outRail[1];
+                            this.outRail[1] = this.outRail[0];
+
+                            // Costas Loop
+                            let out = complexMul(this.out[0], [Math.cos(this.phase), -Math.sin(this.phase)]);
+                            let error = this.phaseDetector8(out);
+                            this.freq += this.beta * error;
+                            this.phase += this.freq + this.alpha * error;
+                            while (this.phase > 2 * Math.PI) this.phase -= 2 * Math.PI;
+                            while (this.phase < 0) this.phase += 2 * Math.PI;
+                            this.port.postMessage({ i: out[0], q: out[1], bit: out[0] > 0 ? 1 : 0 });
+
+                        }
+
+                        this.count++;
+                    }
+
+                    return true;
+                }
+            };
+
             registerProcessor('demod', demod);
             registerProcessor('mixer', mixer)
             registerProcessor('mod', mod);
             registerProcessor('bpsk-demod', bpskDemod)
             registerProcessor('qpsk-demod', qpskDemod)
+            registerProcessor('8psk-demod', psk8Demod)
         }
 
         function arrayBufferToBase64(buffer) {
@@ -928,6 +1038,17 @@
             let packed = packBitArray(bitArray, 2)
             for (let e of packed) {
                 phase = (phase + e) % 4
+                symbols.push(phase)
+            }
+            return symbols
+        }
+
+        function psk8Encode(bitArray) {
+            let phase = 0;
+            let symbols = [0];
+            let packed = packBitArray(bitArray, 3)
+            for (let e of packed) {
+                phase = (phase + e) % 8
                 symbols.push(phase)
             }
             return symbols
@@ -1643,21 +1764,11 @@
                 mod.connect(convolver)
                 convolver.connect(gainNode);
                 gainNode.connect(this.mixer);
-                //this.mixer.connect(merger,0,0);
                 merger.connect(audioCtx.destination)
                 this.mixer.connect(merger, 0, 0)
                 this.mixer.connect(merger, 0, 1)
 
-
-
                 this.mixer.onprocessorerror = e => { console.log(e) }
-
-                //this.mixer.start();
-                //this.mixer.stop(audioCtx.currentTime + symbolTime * codedArray.length);
-
-                /*this.mixer.onended = () => {
-                    if (this.onStop) this.onStop();
-                }*/
 
                 return this.mixer;
             }
@@ -1669,6 +1780,81 @@
 
             get bitsPerSymbol() {
                 return 2;
+            }
+        }
+
+
+        class PSK8Modulator extends Modulator {
+            transmit(audioCtx, bitArray) {
+                // differential coding
+                let codedArray = psk8Encode(bitArray)
+                console.log(codedArray)
+
+                let startSync = []
+                for (let i = 0; i < this.baudRate * 0.125; i++) {
+                    startSync.push(...[0, 1, 2, 3, 4, 5, 6, 7])
+                }
+
+                codedArray = startSync.concat(codedArray)
+                this.bits = codedArray.length * this.bitsPerSymbol
+
+                const mod = new AudioWorkletNode(audioCtx, 'mod', { outputChannelCount: [2] })
+                mod.port.postMessage({ type: "baudRate", baudRate: this.baudRate })
+                mod.port.postMessage({ type: "data", data: codedArray })
+                mod.port.postMessage({
+                    type: "symbolMap", symbolMap: {
+                        0: [1, 0],
+                        1: [0.7071, 0.7071],
+                        2: [0, 1],
+                        3: [-0.7071, 0.7071],
+                        4: [-1, 0],
+                        5: [-0.7071, - 0.7071],
+                        6: [0, - 1],
+                        7: [0.7071, - 0.7071]
+                    }
+                })
+                mod.port.onmessage = evt => {
+                    if (evt.data.type === "stop") {
+                        this.stop();
+                    }
+                }
+                console.log(codedArray)
+
+
+                const convolver = audioCtx.createConvolver();
+                const filter = new Float32Array(rrcosFilter(sampleRate, this.baudRate, 0.5)[0]);
+                const buffer = audioCtx.createBuffer(1, filter.length, sampleRate);
+                buffer.copyToChannel(filter, 0);
+                convolver.buffer = buffer;
+
+                this.mixer = new AudioWorkletNode(audioCtx, 'mixer', { inputChannelCount: [2], outputChannelCount: [2] });
+                this.mixer.parameters.get('frequency').value = this.carrierFreq;
+
+
+                const gainNode = audioCtx.createGain();
+                gainNode.gain.value = 100;
+
+                const merger = audioCtx.createChannelMerger(2)
+
+                mod.connect(convolver)
+                convolver.connect(gainNode);
+                gainNode.connect(this.mixer);
+                merger.connect(audioCtx.destination)
+                this.mixer.connect(merger, 0, 0)
+                this.mixer.connect(merger, 0, 1)
+
+                this.mixer.onprocessorerror = e => { console.log(e) }
+
+                return this.mixer;
+            }
+
+            stop() {
+                super.stop();
+                if (this.mixer) this.mixer.disconnect();
+            }
+
+            get bitsPerSymbol() {
+                return 3;
             }
         }
 
@@ -1847,6 +2033,74 @@
             }
         }
 
+        class PSK8Demodulator extends Demodulator {
+            constructor() {
+                super()
+                this.lastPhase = 0;
+                this.debug = []
+            }
+            setBaudRate(baudRate) {
+                this.baudRate = baudRate;
+                const filter = new Float32Array(rrcosFilter(sampleRate, this.baudRate, 0.5)[0]);
+                const buffer = audioCtx.createBuffer(1, filter.length, sampleRate);
+                buffer.copyToChannel(filter, 0);
+                if (this.convolver) this.convolver.buffer = buffer;
+                if (this.demod) this.demod.port.postMessage({ type: "baudRate", baudRate: baudRate })
+            }
+            setCarrierFreq(carrierFreq) {
+                this.carrierFreq = carrierFreq;
+                if (this.mixer) this.mixer.parameters.get('frequency').value = carrierFreq;
+            }
+            receive(source) {
+                super.receive(source)
+                this.mixer = new AudioWorkletNode(audioCtx, 'mixer', { outputChannelCount: [2] });
+                this.convolver = audioCtx.createConvolver()
+                this.demod = new AudioWorkletNode(audioCtx, 'qpsk-demod')
+                this.setBaudRate(this.baudRate)
+                this.setCarrierFreq(this.carrierFreq)
+
+                source.connect(this.mixer, 0)
+                this.mixer.connect(this.convolver);
+                this.convolver.connect(this.demod)
+
+                this.demod.port.onmessage = (event) => {
+                    let i = event.data.i;
+                    let q = event.data.q;
+                    let phase = this.getPhase(i, q)
+                    let phaseDiff = phase - this.lastPhase;
+                    if (phaseDiff < 0) phaseDiff += 8;
+
+
+                    let bit1 = (phaseDiff >> 2) & 1
+                    let bit2 = (phaseDiff >> 1) & 1
+                    let bit3 = phaseDiff & 1
+                    if (this.onSample) this.onSample({
+                        sample: [event.data.i, event.data.q],
+                        bits: [bit1, bit2, bit3]
+                    })
+                    this.lastPhase = phase;
+                }
+            }
+
+            getPhase(i, q) {
+                // 计算相位角度（以弧度为单位）
+                let angle = Math.atan2(q, i);
+                // 转换为 0 - 360° 范围（以度数计算）
+                angle = (angle * 180 / Math.PI + 360) % 360;
+                // 平移 22.5° 以匹配 8PSK 的中心
+                angle = (angle + 22.5) % 360;
+                // 通过角度计算 8PSK 相位索引
+                return Math.round(angle / 45) % 8; // 将角度转换为 0-7 之间的索引
+            }
+
+            stop() {
+                super.stop();
+                if (this.mixer) this.mixer.disconnect();
+                if (this.convolver) this.convolver.disconnect();
+                if (this.demod) this.demod.disconnect();
+            }
+        }
+
         function isValidSample(sample) {
             if (sample.idx === 0) {
                 if (sample.type === 'Y') {
@@ -2011,6 +2265,11 @@
                 name: 'QPSK',
                 modulate: QPSKModulator,
                 demodulate: QPSKDemodulator
+            },
+            psk8: {
+                name: '8PSK',
+                modulate: PSK8Modulator,
+                demodulate: PSK8Demodulator
             }
         }
         let selectedMode = MODES['gfsk'];
