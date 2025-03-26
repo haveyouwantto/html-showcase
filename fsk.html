@@ -396,7 +396,11 @@
             }
 
             function calculateAlpha(bd) {
-                return Math.min(1, 20 / bd);
+                return Math.min(0.5, 10 / bd);
+            }
+
+            function calculateBeta(bd) {
+                return calculateAlpha(bd) / 140;
             }
 
             const mod = class extends AudioWorkletProcessor {
@@ -618,6 +622,7 @@
                     this.baudRate = baudRate;
                     this.samplesPerSymbol = Math.round(this.sampleRate / baudRate);
                     this.alpha = calculateAlpha(baudRate)
+                    this.beta = calculateBeta(baudRate)
                 }
 
                 process(inputs, outputs, parameters) {
@@ -634,14 +639,14 @@
                     sum /= i.length;
                     const rms = Math.sqrt(sum)
 
-                    this.gain = this.gain * 0.5 + (1 / rms) * 0.5;
+                    this.gain = 1 / rms;
                     if (!isFinite(this.gain) || isNaN(this.gain)) this.gain = 1;
 
 
                     for (let j = 0; j < i.length; ++j) {
                         if (this.count >= 0) {
-                            let currI = i[j] * this.gain;
-                            let currQ = q[j] * this.gain
+                            let currI = getSample(i, j + this.mu) * this.gain;
+                            let currQ = getSample(q, j + this.mu) * this.gain
 
                             this.out[0] = [currI, currQ];
                             this.outRail[0] = [Number(this.out[0][0] > 0), Number(this.out[0][1] > 0)];
@@ -693,7 +698,7 @@
                     this.out = [[0, 0], [0, 0], [0, 0]];
                     this.outRail = [[0, 0], [0, 0], [0, 0]];
 
-                    this.alpha = 0.007
+                    this.alpha = 0.003
                     this.beta = 0.00005
                     this.gamma = 0.1
                     this.phase = 0;
@@ -711,6 +716,8 @@
                 setBaudRate(baudRate) {
                     this.baudRate = baudRate;
                     this.samplesPerSymbol = Math.round(this.sampleRate / baudRate);
+                    this.alpha = calculateAlpha(this.baudRate) / 2
+                    this.beta = calculateBeta(this.baudRate) / 2
                 }
 
                 process(inputs, outputs, parameters) {
@@ -727,14 +734,14 @@
                     sum /= i.length;
                     const rms = Math.sqrt(sum)
 
-                    this.gain = (1 / rms);
+                    this.gain = 1 / rms;
                     if (!isFinite(this.gain) || isNaN(this.gain)) this.gain = 1;
 
 
                     for (let j = 0; j < i.length; ++j) {
                         if (this.count >= 0) {
-                            let currI = i[j] * this.gain;
-                            let currQ = q[j] * this.gain
+                            let currI = getSample(i, j + this.mu) * this.gain;
+                            let currQ = getSample(q, j + this.mu) * this.gain
 
                             this.out[0] = [currI, currQ];
                             this.outRail[0] = [Number(this.out[0][0] > 0), Number(this.out[0][1] > 0)];
@@ -795,7 +802,7 @@
                     this.outRail = [[0, 0], [0, 0], [0, 0]];
 
                     this.alpha = 0.007
-                    this.beta = 0.0001
+                    this.beta = 0.001
                     this.gamma = 0.05
                     this.phase = 0;
                     this.freq = 0;
@@ -817,7 +824,8 @@
                 setBaudRate(baudRate) {
                     this.baudRate = baudRate;
                     this.samplesPerSymbol = Math.round(this.sampleRate / baudRate);
-                    // this.alpha = calculateAlpha(baudRate) / 2
+                    this.alpha = calculateAlpha(baudRate) / 4
+                    this.beta = calculateBeta(baudRate) / 4
                 }
 
                 nearest8psk(sample) {
@@ -848,7 +856,7 @@
                     sum /= i.length;
                     const rms = Math.sqrt(sum)
 
-                    this.gain = 0.99 * this.gain + 0.01 * (1 / (rms || 1e-6)); // 添加平滑滤波
+                    this.gain = 1 / rms;
                     if (!isFinite(this.gain) || isNaN(this.gain)) this.gain = 1;
 
 
