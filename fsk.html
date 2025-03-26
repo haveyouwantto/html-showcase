@@ -317,6 +317,7 @@
             <select id="mode">
                 <option value="gfsk" selected>GFSK</option>
                 <option value="bpsk">BPSK</option>
+                <option value="qpsk">QPSK</option>
             </select>
             <label>选择频道：</label>
             <input type="number" id="channel" value="120" min="-16" max="180">
@@ -1111,17 +1112,7 @@
                 this.mixer.start();
                 this.mixer.stop(audioCtx.currentTime + symbolTime * codedArray.length);
 
-                const analyser = audioCtx.createAnalyser();
-                gainNode.connect(analyser)
-                let data = new Float32Array(65536);
-                setInterval(() => {
-                    analyser.getFloatTimeDomainData(data)
-
-                    // print max data
-                    let max = Math.max(...data)
-                    // console.log(max)
-                }, 1000)
-
+                
                 this.mixer.onended = () => {
                     if (this.onStop) this.onStop();
                 }
@@ -1132,6 +1123,72 @@
             stop() {
                 super.stop();
                 if (this.mixer) this.mixer.stop();
+            }
+        }
+        
+        class QPSKModulator extends Modulator {
+            transmit(audioCtx, bitArray) {
+                // differential coding
+                let codedArray = packBitArray(differentialEncoding(bitArray),2)
+                console.log(codedArray)
+
+                let startSync = []
+                for (let i = 0; i < this.baudRate * 0.25; i++) {
+                    startSync.push(...[0,1,2,3])
+                }
+
+
+                codedArray = startSync.concat(codedArray)
+                
+                
+
+                const mod = new AudioWorkletNode(audioCtx, 'mod', {outputChannelCount:[2]})
+                mod.port.postMessage({ type: "baudRate", baudRate: this.baudRate })
+                mod.port.postMessage({ type: "data", data: codedArray })
+                mod.port.postMessage({ type: "symbolMap", symbolMap: {
+                	0:[1,1],
+                	1:[-1,1],
+                	2:[-1,-1],
+                	3:[1,-1]
+                } })
+                console.log(codedArray)
+                
+
+                const convolver = audioCtx.createConvolver();
+                const filter = new Float32Array(rrcosFilter(sampleRate, this.baudRate, 0.5)[0]);
+                const buffer = audioCtx.createBuffer(1, filter.length, sampleRate);
+                buffer.copyToChannel(filter, 0);
+                convolver.buffer = buffer;
+
+                this.mixer = new AudioWorkletNode(audioCtx, 'mixer', { outputChannelCount: [2] });
+                this.mixer.parameters.get('frequency').value =this.carrierFreq;
+            
+
+                const gainNode = audioCtx.createGain();
+                gainNode.gain.value = 100;
+                
+                const merger = audioCtx.createChannelMerger(1);
+                
+                mod.connect(convolver)
+                convolver.connect(gainNode);
+                gainNode.connect(this.mixer);
+                //this.mixer.connect(merger,0,0);
+                //mod.connect(audioCtx.destination)
+                this.mixer.connect(audioCtx.destination)
+
+                //this.mixer.start();
+                //this.mixer.stop(audioCtx.currentTime + symbolTime * codedArray.length);
+                
+                this.mixer.onended = () => {
+                    if (this.onStop) this.onStop();
+                }
+
+                return this.mixer;
+            }
+
+            stop() {
+                super.stop();
+                if (this.mixer) this.mixer.disconnect();
             }
         }
 
@@ -1311,6 +1368,10 @@
                     this.bits = [];       // 待发送的比特流
                     this.ptr = 0;         // 当前比特索引
                     this.samplesElapsed = 0; // 当前符号已生成的样本数
+                    this.symbolMap = {
+                    	0: [-1,0],
+                    	1: [1,0]
+                    }
 
                     this.port.onmessage = (event) => {
                         switch (event.data.type) {
@@ -1320,17 +1381,19 @@
                             case "data":
                                 this.setData(event.data.data);
                                 break;
+                                case "symbolMap":
+                                this.symbolMap=event.data.symbolMap;
                         }
                     };
                 }
 
                 process(inputs, outputs) {
-                    const output = outputs[0][0];
+                    const output = outputs[0];
                     if (!output) return true;
 
-                    if (this.ptr > this.bits.length) return true;
+                    if (this.ptr > this.bits.length) return false;
 
-                    for (let i = 0; i < output.length; i++) {
+                    for (let i = 0; i < output[0].length; i++) {
 
                         // 符号周期结束，更新比特
                         if (this.samplesElapsed >= this.samplesPerSymbol) {
@@ -1338,7 +1401,8 @@
                             if (this.bits.length > 0) {
                                 const currentBit = this.bits[this.ptr];
                                 this.ptr++;
-                                output[i] = currentBit ? 1 : -1;
+                                output[0][i] = this.symbolMap[currentBit][0];
+                                if(output[1]) output[1][i] = this.symbolMap[currentBit][1]
                             }
                         }
 
@@ -1382,7 +1446,6 @@
     process(inputs, outputs, parameters) {
         // 确保有一个输入通道
         const input = inputs[0];
-
         const output = outputs[0];
 
         // 确保是双声道输出
@@ -1735,6 +1798,11 @@
                 name: 'BPSK',
                 modulate: BPSKModulator,
                 demodulate: BPSKDemodulator
+            },
+            qpsk: {
+            	name: 'QPSK',
+            	modulate: QPSKModulator,
+            	demodulate: BPSKDemodulator
             }
         }
         let selectedMode = MODES['gfsk'];
