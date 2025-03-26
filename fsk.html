@@ -1014,6 +1014,7 @@ function qpskEncode(bitArray){
                 this.baudRate = 50;
                 this.carrierFreq = 16000;
                 this.onStop = null;
+                this.bits=0
             }
 
             setOnStop(onStop) {
@@ -1036,6 +1037,10 @@ function qpskEncode(bitArray){
             get bitsPerSymbol(){
             	return 1;
             }
+            
+            get totalBits(){
+            	return this.bits;
+            }
         }
 
         class GFSKModulator extends Modulator {
@@ -1047,7 +1052,7 @@ function qpskEncode(bitArray){
                 const mod = new AudioWorkletNode(audioCtx, 'mod')
                 mod.port.postMessage({ type: "baudRate", baudRate: this.baudRate })
                 mod.port.postMessage({ type: "data", data: bitArray })
-
+                this.bits=bitArray.length
 
                 const convolver = audioCtx.createConvolver();
                 const filter = createGFSKFilter(this.baudRate);
@@ -1098,6 +1103,7 @@ function qpskEncode(bitArray){
 
 
                 codedArray = startSync.concat(codedArray)
+                this.bits=codedArray.length
 
                 const mod = new AudioWorkletNode(audioCtx, 'mod')
                 mod.port.postMessage({ type: "baudRate", baudRate: this.baudRate })
@@ -1154,7 +1160,7 @@ function qpskEncode(bitArray){
 
 
                 codedArray = startSync.concat(codedArray)
-                
+                this.bits=codedArray.length*this.bitsPerSymbol
                 
 
                 const mod = new AudioWorkletNode(audioCtx, 'mod', {outputChannelCount:[2]})
@@ -1450,7 +1456,7 @@ else if (i>0 && q<0) { phase=3; }
             }
             
             function calculateAlpha(bd){
-            	return Math.min(0.1,40/bd);
+            	return Math.min(0.3,40/bd);
             }
 
             const mod = class extends AudioWorkletProcessor {
@@ -2170,8 +2176,8 @@ else if (i>0 && q<0) { phase=3; }
                 const currentTime = audioCtx.currentTime;
                 const interval = setInterval(() => {
                     const sent = (audioCtx.currentTime - currentTime) * baudRate * modulator.bitsPerSymbol;
-                    const remainingSeconds = (bits.length - sent) / (baudRate * modulator.bitsPerSymbol);
-                    bitDisplay.textContent = `发送进度: ${toSI(sent / 8, true)}B / ${toSI(bits.length / 8, true)}B (剩余 ${secondsToHms(remainingSeconds)})`;
+                    const remainingSeconds = (modulator.totalBits - sent) / (baudRate * modulator.bitsPerSymbol);
+                    bitDisplay.textContent = `发送进度: ${toSI(sent / 8, true)}B / ${toSI(modulator.totalBits / 8, true)}B (剩余 ${secondsToHms(remainingSeconds)})`;
                 }, 100);
 
 
