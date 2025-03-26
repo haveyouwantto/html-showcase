@@ -1456,7 +1456,7 @@ else if (i>0 && q<0) { phase=3; }
             }
             
             function calculateAlpha(bd){
-            	return Math.min(0.3,40/bd);
+            	return Math.min(1,40/bd);
             }
 
             const mod = class extends AudioWorkletProcessor {
