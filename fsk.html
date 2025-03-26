@@ -1160,7 +1160,7 @@
                 buffer.copyToChannel(filter, 0);
                 convolver.buffer = buffer;
 
-                this.mixer = new AudioWorkletNode(audioCtx, 'mixer', { outputChannelCount: [2] });
+                this.mixer = new AudioWorkletNode(audioCtx, 'mixer', { inputChannelCount:[2], outputChannelCount: [2] });
                 this.mixer.parameters.get('frequency').value =this.carrierFreq;
             
 
