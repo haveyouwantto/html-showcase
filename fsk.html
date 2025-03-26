@@ -345,8 +345,8 @@
     <script src="//cdn.jsdelivr.net/npm/eruda"></script>
     <script>eruda.init();</script>
 
-
     <script>
+
         let baudRate = 50; // 波特率
         const sampleRate = 48000; // 采样率
         let carrierFreq = 16000; // 载波频率
@@ -355,6 +355,449 @@
         let symbolTime = samplePerSymbol / sampleRate;
         let bandwidth = baudRate * freqMulti
 
+
+        // 创建音频工作线程
+        function createWorklets(baudRate, sampleRate) {
+            function complexAdd(a, b) {
+                return [a[0] + b[0], a[1] + b[1]];
+            }
+
+            function complexSub(a, b) {
+                return [a[0] - b[0], a[1] - b[1]];
+            }
+
+            function complexMul(a, b) {
+                return [a[0] * b[0] - a[1] * b[1], a[0] * b[1] + a[1] * b[0]];
+            }
+
+            function complexDiv(a, b) {
+                const den = b[0] * b[0] + b[1] * b[1];
+                return [(a[0] * b[0] + a[1] * b[1]) / den, (a[1] * b[0] - a[0] * b[1]) / den];
+            }
+
+            function complexConj(a) {
+                return [a[0], -a[1]];
+            }
+
+            function getSample(array, index) {
+                const windowSize = 5; // 可调整的窗口大小（左右各包含的样本数）
+                const start = Math.max(0, Math.floor(index - windowSize));
+                const end = Math.min(array.length - 1, Math.ceil(index + windowSize));
+                let sum = 0;
+                for (let i = start; i <= end; i++) {
+                    const weight = sinc(index - i);
+                    sum += array[i] * weight;
+                }
+                return sum;
+            }
+
+            function sinc(x) {
+                if (x === 0) return 1;
+                const piX = Math.PI * x;
+                return Math.sin(piX) / piX;
+            }
+
+            function calculateAlpha(bd) {
+                return Math.min(1, 20 / bd);
+            }
+
+            const mod = class extends AudioWorkletProcessor {
+                constructor() {
+                    super();
+                    this.sampleRate = sampleRate;
+
+                    this.bits = [];       // 待发送的比特流
+                    this.ptr = 0;         // 当前比特索引
+                    this.samplesElapsed = 0; // 当前符号已生成的样本数
+                    this.symbolMap = {
+                        0: [-1, 0],
+                        1: [1, 0]
+                    }
+
+                    this.port.onmessage = (event) => {
+                        switch (event.data.type) {
+                            case "baudRate":
+                                this.setBaudRate(event.data.baudRate);
+                                break;
+                            case "data":
+                                this.setData(event.data.data);
+                                break;
+                            case "symbolMap":
+                                this.symbolMap = event.data.symbolMap;
+                        }
+                    };
+                }
+
+                process(inputs, outputs) {
+                    const output = outputs[0];
+                    if (!output) return true;
+
+                    if (this.ptr >= this.bits.length) {
+                        this.port.postMessage({ type: "stop" })
+                        return false;
+                    }
+
+                    for (let i = 0; i < output[0].length; i++) {
+
+                        // 符号周期结束，更新比特
+                        if (this.samplesElapsed >= this.samplesPerSymbol) {
+                            this.samplesElapsed = 0;
+                            if (this.bits.length > 0) {
+                                const currentBit = this.bits[this.ptr];
+                                if (currentBit == null || this.symbolMap[currentBit] == null) {
+                                    this.port.postMessage({ type: "stop" })
+                                    return false;
+                                }
+                                this.ptr++;
+                                if (output[0]) output[0][i] = this.symbolMap[currentBit][0];
+                                if (output[1]) output[1][i] = this.symbolMap[currentBit][1]
+                            }
+                        }
+
+                        // 输出当前比特对应的电平（整个周期内持续）
+                        this.samplesElapsed++;
+                    }
+
+                    return true;
+                }
+
+                setBaudRate(baudRate) {
+                    this.baudRate = baudRate;
+                    this.samplesPerSymbol = Math.round(this.sampleRate / baudRate);
+                    this.samplesElapsed = 0; // 重置计数器
+                }
+
+                setData(data) {
+                    this.bits = data;
+                    this.ptr = 0; // 重置指针
+                    this.samplesElapsed = 0; // 开始新数据
+                }
+            };
+
+            const mixer = class extends AudioWorkletProcessor {
+                static get parameterDescriptors() {
+                    return [{
+                        name: 'frequency',
+                        defaultValue: 440,
+                        minValue: 20,
+                        maxValue: 20000,
+                        automationRate: 'a-rate' // 关键：指定 automationRate 为 'a-rate'
+                    }];
+                }
+
+                constructor() {
+                    super();
+                    this.phase = 0;
+                    this.sampleRate = sampleRate;
+                }
+
+                process(inputs, outputs, parameters) {
+                    // 确保有一个输入通道
+                    const input = inputs[0];
+                    const output = outputs[0];
+
+                    // 确保是双声道输出
+                    const leftChannel = output[0]; // 实部
+                    const rightChannel = output[1]; // 虚部
+                    const frequencies = parameters.frequency; // 获取频率数组，因为是 a-rate
+
+                    for (let i = 0; i < leftChannel.length; i++) {
+                        const frequency = frequencies[i] ?? frequencies[0]; // 获取当前帧的频率
+                        const omega = 2 * Math.PI * frequency / this.sampleRate;
+
+                        const real = Math.cos(this.phase);
+                        const imag = Math.sin(this.phase);
+
+                        // 处理左声道输入，如果未连接则乘以1
+                        const leftInputValue = input && input[0] ? input[0][i] : 1;
+
+                        // 处理右声道输入，如果未连接则乘以1
+                        const rightInputValue = input && input[1] ? input[1][i] : 1;
+
+                        leftChannel[i] = real * leftInputValue;
+                        rightChannel[i] = imag * rightInputValue;
+
+                        this.phase += omega;
+                        //this.phase %= (2 * Math.PI); // 周期重置
+                    }
+
+                    return true;
+                }
+            }
+
+
+            const demod = class extends AudioWorkletProcessor {
+                constructor(options) {
+                    super();
+                    this.prev = [0, 0];
+                    this.count = 0;
+                    this.sampleRate = sampleRate;
+
+                    this.port.onmessage = (event) => {
+                        switch (event.data.type) {
+                            case "baudRate":
+                                this.setBaudRate(event.data.baudRate);
+                                break;
+                        }
+                    };
+                }
+
+                setBaudRate(baudRate) {
+                    this.baudRate = baudRate;
+                    this.samplesPerSymbol = Math.round(this.sampleRate / baudRate);
+                }
+
+                process(inputs, outputs, parameters) {
+                    // 获取输入信号和固定解调频率参数
+                    const input = inputs[0];
+
+                    const filteredI = input[0]
+                    const filteredQ = input[1]
+
+                    if (!filteredI || !filteredQ) return true;
+
+                    // 相位差检测与符号同步处理
+                    const phase = new Float32Array(filteredI.length);
+                    for (let j = 0; j < filteredI.length - 1; ++j) {
+                        // 计算相邻样本的共轭乘积（用于相位差检测）
+                        const real1 = filteredI[j], imag1 = filteredQ[j];
+                        const real2 = filteredI[j + 1], imag2 = filteredQ[j + 1];
+                        const resultReal = real1 * real2 + imag1 * imag2;  // 实部
+                        const resultImag = real1 * -imag2 + imag1 * real2;  // 虚部
+
+                        // 计算瞬时相位差（arctan(虚部/实部））
+                        phase[j] = Math.atan2(resultImag, resultReal);
+
+                        // 符号边界检测（相位符号变化时触发）
+                        if (j > 0 && Math.sign(phase[j]) != Math.sign(phase[j - 1])) {
+                            // 重置计数器
+                            this.count = 0;
+                        }
+
+                        // 符号周期计数
+                        this.count = (this.count + 1) % this.samplesPerSymbol;
+                        // 当达到采样时机时提交相位
+                        if (this.count === this.samplesPerSymbol * 0.5) {
+                            this.port.postMessage({ phase: phase[j] * this.samplesPerSymbol, bit: phase[j] > 0 ? 1 : 0 });
+                        }
+                    }
+
+                    phase[phase.length - 1] = phase[phase.length - 2];  // 边界处理
+
+                    // 将相位数据输出到指定端口
+                    outputs[0][0].set(phase);
+                    return true;
+                }
+            }
+
+            const bpskDemod = class extends AudioWorkletProcessor {
+                constructor(options) {
+                    super();
+                    this.sampleRate = sampleRate;
+                    this.count = 0;
+
+                    this.mu = 0;
+                    this.out = [[0, 0], [0, 0], [0, 0]];
+                    this.outRail = [[0, 0], [0, 0], [0, 0]];
+
+                    this.alpha = 0.7
+                    this.beta = 0.05
+                    this.gamma = 0.5
+                    this.phase = 0;
+                    this.freq = 0;
+
+                    this.gain = 1;
+
+                    this.port.onmessage = (event) => {
+                        if (event.data.type === "baudRate") {
+                            this.setBaudRate(event.data.baudRate);
+                        }
+                    };
+                }
+
+                setBaudRate(baudRate) {
+                    this.baudRate = baudRate;
+                    this.samplesPerSymbol = Math.round(this.sampleRate / baudRate);
+                    this.alpha = calculateAlpha(baudRate)
+                }
+
+                process(inputs, outputs, parameters) {
+                    const input = inputs[0];
+                    const i = input[0];
+                    const q = input[1];
+
+                    if (!i || !q) return true;
+
+                    let sum = 0;
+                    for (let j = 0; j < i.length; ++j) {
+                        sum += i[j] * i[j] + q[j] * q[j]
+                    }
+                    sum /= i.length;
+                    const rms = Math.sqrt(sum)
+
+                    this.gain = this.gain * 0.5 + (1 / rms) * 0.5;
+                    if (!isFinite(this.gain) || isNaN(this.gain)) this.gain = 1;
+
+
+                    for (let j = 0; j < i.length; ++j) {
+                        if (this.count >= 0) {
+                            let currI = i[j] * this.gain;
+                            let currQ = q[j] * this.gain
+
+                            this.out[0] = [currI, currQ];
+                            this.outRail[0] = [Number(this.out[0][0] > 0), Number(this.out[0][1] > 0)];
+
+                            let x = complexMul(complexSub(this.outRail[0], this.outRail[2]), complexConj(this.out[1]));
+                            let y = complexMul(complexSub(this.out[0], this.out[2]), complexConj(this.outRail[1]));
+                            let mmVal = y[0] - x[0];
+
+                            this.mu += this.samplesPerSymbol + this.gamma * mmVal;
+                            this.count -= Math.floor(this.mu);
+                            this.mu -= Math.floor(this.mu);
+
+                            // Shift history
+                            this.out[2] = this.out[1];
+                            this.out[1] = this.out[0];
+                            this.outRail[2] = this.outRail[1];
+                            this.outRail[1] = this.outRail[0];
+
+                            // Costas Loop
+                            let out = complexMul(this.out[0], [Math.cos(this.phase), -Math.sin(this.phase)]);
+                            let error = out[0] * out[1];
+                            this.freq += this.beta * error;
+                            this.phase += this.freq + this.alpha * error;
+                            while (this.phase > 2 * Math.PI) this.phase -= 2 * Math.PI;
+                            while (this.phase < 0) this.phase += 2 * Math.PI;
+                            this.port.postMessage({ i: out[0], q: out[1], bit: out[0] > 0 ? 1 : 0 });
+
+                        }
+
+                        this.count++;
+                    }
+
+                    return true;
+                }
+            };
+
+            const qpskDemod = class extends AudioWorkletProcessor {
+                constructor(options) {
+                    super();
+                    this.sampleRate = sampleRate;
+                    this.count = 0;
+
+                    this.mu = 0;
+                    this.out = [[0, 0], [0, 0], [0, 0]];
+                    this.outRail = [[0, 0], [0, 0], [0, 0]];
+
+                    this.alpha = 0.09
+                    this.beta = 0.001
+                    this.gamma = 0.5
+                    this.phase = 0;
+                    this.freq = 0;
+
+                    this.gain = 1;
+
+                    this.port.onmessage = (event) => {
+                        if (event.data.type === "baudRate") {
+                            this.setBaudRate(event.data.baudRate);
+                        }
+                    };
+                }
+
+                setBaudRate(baudRate) {
+                    this.baudRate = baudRate;
+                    this.samplesPerSymbol = Math.round(this.sampleRate / baudRate);
+                    this.alpha = calculateAlpha(baudRate) / 2
+                }
+
+                process(inputs, outputs, parameters) {
+                    const input = inputs[0];
+                    const i = input[0];
+                    const q = input[1];
+
+                    if (!i || !q) return true;
+
+                    let sum = 0;
+                    for (let j = 0; j < i.length; ++j) {
+                        sum += i[j] * i[j] + q[j] * q[j]
+                    }
+                    sum /= i.length;
+                    const rms = Math.sqrt(sum)
+
+                    this.gain = this.gain * 0.5 + (1 / rms) * 0.5;
+                    if (!isFinite(this.gain) || isNaN(this.gain)) this.gain = 1;
+
+
+                    for (let j = 0; j < i.length; ++j) {
+                        if (this.count >= 0) {
+                            let currI = i[j] * this.gain;
+                            let currQ = q[j] * this.gain
+
+                            this.out[0] = [currI, currQ];
+                            this.outRail[0] = [Number(this.out[0][0] > 0), Number(this.out[0][1] > 0)];
+
+                            let x = complexMul(complexSub(this.outRail[0], this.outRail[2]), complexConj(this.out[1]));
+                            let y = complexMul(complexSub(this.out[0], this.out[2]), complexConj(this.outRail[1]));
+                            let mmVal = y[0] - x[0];
+
+                            this.mu += this.samplesPerSymbol + this.gamma * mmVal;
+                            this.count -= Math.floor(this.mu);
+                            this.mu -= Math.floor(this.mu);
+
+                            // Shift history
+                            this.out[2] = this.out[1];
+                            this.out[1] = this.out[0];
+                            this.outRail[2] = this.outRail[1];
+                            this.outRail[1] = this.outRail[0];
+
+                            // Costas Loop
+                            let out = complexMul(this.out[0], [Math.cos(this.phase), -Math.sin(this.phase)]);
+                            let error = this.errorFunc(out);
+                            this.freq += this.beta * error;
+                            this.phase += this.freq + this.alpha * error;
+                            while (this.phase > 2 * Math.PI) this.phase -= 2 * Math.PI;
+                            while (this.phase < 0) this.phase += 2 * Math.PI;
+                            this.port.postMessage({ i: out[0], q: out[1], bit: out[0] > 0 ? 1 : 0 });
+
+                        }
+
+                        this.count++;
+                    }
+
+                    return true;
+                }
+
+                errorFunc(sample) {
+                    let a, b;
+                    if (sample[0] > 0) a = 1;
+                    else a = -1;
+                    if (sample[1] > 0) b = 1;
+                    else b = -1;
+                    return a * sample[1] - b * sample[0]
+                }
+            };
+
+            registerProcessor('demod', demod);
+            registerProcessor('mixer', mixer)
+            registerProcessor('mod', mod);
+            registerProcessor('bpsk-demod', bpskDemod)
+            registerProcessor('qpsk-demod', qpskDemod)
+        }
+
+        function arrayBufferToBase64(buffer) {
+            let binary = '';
+            const bytes = new Uint8Array(buffer);
+            const len = bytes.byteLength;
+            for (let i = 0; i < len; i++) {
+                binary += String.fromCharCode(bytes[i]);
+            }
+            return btoa(binary);
+        }
+
+        const code = new TextEncoder().encode(`(${createWorklets.toString()})(${baudRate},${sampleRate});`);
+        const workletData = 'data:application/javascript;base64,' + arrayBufferToBase64(code)
+
+        // ============================ 以下为主要代码 ============================
 
         function setBaudRate(bd) {
             baudRate = bd;
@@ -451,44 +894,44 @@
             }
             return result;
         }
-        
+
         function packBitArray(bitArray, length) {
-  const result = [];
-  let currentInt = 0;
-  let bitCount = 0;
+            const result = [];
+            let currentInt = 0;
+            let bitCount = 0;
 
-  for (let i = 0; i < bitArray.length; i++) {
-    currentInt = (currentInt << 1) | bitArray[i];
-    bitCount++;
+            for (let i = 0; i < bitArray.length; i++) {
+                currentInt = (currentInt << 1) | bitArray[i];
+                bitCount++;
 
-    if (bitCount === length) {
-      result.push(currentInt);
-      currentInt = 0;
-      bitCount = 0;
-    }
-  }
+                if (bitCount === length) {
+                    result.push(currentInt);
+                    currentInt = 0;
+                    bitCount = 0;
+                }
+            }
 
-  if (bitCount > 0) {
-    while (bitCount < length) {
-      currentInt = currentInt << 1;
-      bitCount++;
-    }
-    result.push(currentInt);
-  }
+            if (bitCount > 0) {
+                while (bitCount < length) {
+                    currentInt = currentInt << 1;
+                    bitCount++;
+                }
+                result.push(currentInt);
+            }
 
-  return result;
-}
+            return result;
+        }
 
-function qpskEncode(bitArray){
-	let phase =0;
-	let symbols=[0];
-	let packed=packBitArray(bitArray,2)
-	for (let e of packed){
-		phase = (phase+e)%4
-		symbols.push(phase)
-	}
-	return symbols
-}
+        function qpskEncode(bitArray) {
+            let phase = 0;
+            let symbols = [0];
+            let packed = packBitArray(bitArray, 2)
+            for (let e of packed) {
+                phase = (phase + e) % 4
+                symbols.push(phase)
+            }
+            return symbols
+        }
 
 
         function encodeWithParity(n) {
@@ -1014,7 +1457,7 @@ function qpskEncode(bitArray){
                 this.baudRate = 50;
                 this.carrierFreq = 16000;
                 this.onStop = null;
-                this.bits=0
+                this.bits = 0
             }
 
             setOnStop(onStop) {
@@ -1033,13 +1476,13 @@ function qpskEncode(bitArray){
             stop() {
                 if (this.onStop) this.onStop();
             }
-            
-            get bitsPerSymbol(){
-            	return 1;
+
+            get bitsPerSymbol() {
+                return 1;
             }
-            
-            get totalBits(){
-            	return this.bits;
+
+            get totalBits() {
+                return this.bits;
             }
         }
 
@@ -1052,7 +1495,7 @@ function qpskEncode(bitArray){
                 const mod = new AudioWorkletNode(audioCtx, 'mod')
                 mod.port.postMessage({ type: "baudRate", baudRate: this.baudRate })
                 mod.port.postMessage({ type: "data", data: bitArray })
-                this.bits=bitArray.length
+                this.bits = bitArray.length
 
                 const convolver = audioCtx.createConvolver();
                 const filter = createGFSKFilter(this.baudRate);
@@ -1103,7 +1546,7 @@ function qpskEncode(bitArray){
 
 
                 codedArray = startSync.concat(codedArray)
-                this.bits=codedArray.length
+                this.bits = codedArray.length
 
                 const mod = new AudioWorkletNode(audioCtx, 'mod')
                 mod.port.postMessage({ type: "baudRate", baudRate: this.baudRate })
@@ -1133,7 +1576,7 @@ function qpskEncode(bitArray){
                 this.mixer.start();
                 this.mixer.stop(audioCtx.currentTime + symbolTime * codedArray.length);
 
-                
+
                 this.mixer.onended = () => {
                     if (this.onStop) this.onStop();
                 }
@@ -1146,7 +1589,7 @@ function qpskEncode(bitArray){
                 if (this.mixer) this.mixer.stop();
             }
         }
-        
+
         class QPSKModulator extends Modulator {
             transmit(audioCtx, bitArray) {
                 // differential coding
@@ -1155,30 +1598,32 @@ function qpskEncode(bitArray){
 
                 let startSync = []
                 for (let i = 0; i < this.baudRate * 0.25; i++) {
-                    startSync.push(...[0,1,2,3])
+                    startSync.push(...[0, 1, 2, 3])
                 }
 
 
                 codedArray = startSync.concat(codedArray)
-                this.bits=codedArray.length*this.bitsPerSymbol
-                
+                this.bits = codedArray.length * this.bitsPerSymbol
 
-                const mod = new AudioWorkletNode(audioCtx, 'mod', {outputChannelCount:[2]})
+
+                const mod = new AudioWorkletNode(audioCtx, 'mod', { outputChannelCount: [2] })
                 mod.port.postMessage({ type: "baudRate", baudRate: this.baudRate })
                 mod.port.postMessage({ type: "data", data: codedArray })
-                mod.port.postMessage({ type: "symbolMap", symbolMap: {
-                	0:[1,1],
-                	1:[-1,1],
-                	2:[-1,-1],
-                	3:[1,-1]
-                } })
-                mod.port.onmessage=evt=>{
-                	if(evt.data.type==="stop"){
-                		this.stop();
-                	}
+                mod.port.postMessage({
+                    type: "symbolMap", symbolMap: {
+                        0: [1, 1],
+                        1: [-1, 1],
+                        2: [-1, -1],
+                        3: [1, -1]
+                    }
+                })
+                mod.port.onmessage = evt => {
+                    if (evt.data.type === "stop") {
+                        this.stop();
+                    }
                 }
                 console.log(codedArray)
-                
+
 
                 const convolver = audioCtx.createConvolver();
                 const filter = new Float32Array(rrcosFilter(sampleRate, this.baudRate, 0.5)[0]);
@@ -1186,30 +1631,30 @@ function qpskEncode(bitArray){
                 buffer.copyToChannel(filter, 0);
                 convolver.buffer = buffer;
 
-                this.mixer = new AudioWorkletNode(audioCtx, 'mixer', { inputChannelCount:[2], outputChannelCount: [2] });
-                this.mixer.parameters.get('frequency').value =this.carrierFreq;
-            
+                this.mixer = new AudioWorkletNode(audioCtx, 'mixer', { inputChannelCount: [2], outputChannelCount: [2] });
+                this.mixer.parameters.get('frequency').value = this.carrierFreq;
+
 
                 const gainNode = audioCtx.createGain();
                 gainNode.gain.value = 100;
-                
-                const merger=audioCtx.createChannelMerger(2)
-                
+
+                const merger = audioCtx.createChannelMerger(2)
+
                 mod.connect(convolver)
                 convolver.connect(gainNode);
                 gainNode.connect(this.mixer);
                 //this.mixer.connect(merger,0,0);
                 merger.connect(audioCtx.destination)
-                this.mixer.connect(merger,0,0)
-                this.mixer.connect(merger,0,1)
-                
-                
-                
-                this.mixer.onprocessorerror=e=>{console.log(e)}
+                this.mixer.connect(merger, 0, 0)
+                this.mixer.connect(merger, 0, 1)
+
+
+
+                this.mixer.onprocessorerror = e => { console.log(e) }
 
                 //this.mixer.start();
                 //this.mixer.stop(audioCtx.currentTime + symbolTime * codedArray.length);
-                
+
                 /*this.mixer.onended = () => {
                     if (this.onStop) this.onStop();
                 }*/
@@ -1221,9 +1666,9 @@ function qpskEncode(bitArray){
                 super.stop();
                 if (this.mixer) this.mixer.disconnect();
             }
-            
-            get bitsPerSymbol(){
-            	return 2;
+
+            get bitsPerSymbol() {
+                return 2;
             }
         }
 
@@ -1341,7 +1786,7 @@ function qpskEncode(bitArray){
                 if (this.demod) this.demod.disconnect();
             }
         }
-        
+
         class QPSKDemodulator extends Demodulator {
             constructor() {
                 super()
@@ -1374,21 +1819,21 @@ function qpskEncode(bitArray){
 
                 this.demod.port.onmessage = (event) => {
                     let phase;
-                    let i=event.data.i;
-                    let q=event.data.q;
-                    if (i>0 && q>0) { phase=0; }
-else if (i<0 && q>0) { phase=1; }
-else if (i<0 && q<0) { phase=2; }
-else if (i>0 && q<0) { phase=3; }
-                    let phaseDiff=phase-this.lastPhase;
-                    if(phaseDiff<0)phaseDiff+=4;
+                    let i = event.data.i;
+                    let q = event.data.q;
+                    if (i > 0 && q > 0) { phase = 0; }
+                    else if (i < 0 && q > 0) { phase = 1; }
+                    else if (i < 0 && q < 0) { phase = 2; }
+                    else if (i > 0 && q < 0) { phase = 3; }
+                    let phaseDiff = phase - this.lastPhase;
+                    if (phaseDiff < 0) phaseDiff += 4;
 
-                    
-                    let bit2= phaseDiff&1
-                    let bit1 =(phaseDiff>>1)&1
+
+                    let bit2 = phaseDiff & 1
+                    let bit1 = (phaseDiff >> 1) & 1
                     if (this.onSample) this.onSample({
                         sample: [event.data.i, event.data.q],
-                        bits: [bit1,bit2]
+                        bits: [bit1, bit2]
                     })
                     this.lastPhase = phase;
                 }
@@ -1414,439 +1859,6 @@ else if (i>0 && q<0) { phase=3; }
             }
         }
 
-        function createWorklets(baudRate, sampleRate) {
-
-            function complexAdd(a, b) {
-                return [a[0] + b[0], a[1] + b[1]];
-            }
-
-            function complexSub(a, b) {
-                return [a[0] - b[0], a[1] - b[1]];
-            }
-
-            function complexMul(a, b) {
-                return [a[0] * b[0] - a[1] * b[1], a[0] * b[1] + a[1] * b[0]];
-            }
-
-            function complexDiv(a, b) {
-                const den = b[0] * b[0] + b[1] * b[1];
-                return [(a[0] * b[0] + a[1] * b[1]) / den, (a[1] * b[0] - a[0] * b[1]) / den];
-            }
-
-            function complexConj(a) {
-                return [a[0], -a[1]];
-            }
-
-            function getSample(array, index) {
-                const windowSize = 5; // 可调整的窗口大小（左右各包含的样本数）
-                const start = Math.max(0, Math.floor(index - windowSize));
-                const end = Math.min(array.length - 1, Math.ceil(index + windowSize));
-                let sum = 0;
-                for (let i = start; i <= end; i++) {
-                    const weight = sinc(index - i);
-                    sum += array[i] * weight;
-                }
-                return sum;
-            }
-
-            function sinc(x) {
-                if (x === 0) return 1;
-                const piX = Math.PI * x;
-                return Math.sin(piX) / piX;
-            }
-            
-            function calculateAlpha(bd){
-            	return Math.min(1,40/bd);
-            }
-
-            const mod = class extends AudioWorkletProcessor {
-                constructor() {
-                    super();
-                    this.sampleRate = sampleRate;
-
-                    this.bits = [];       // 待发送的比特流
-                    this.ptr = 0;         // 当前比特索引
-                    this.samplesElapsed = 0; // 当前符号已生成的样本数
-                    this.symbolMap = {
-                    	0: [-1,0],
-                    	1: [1,0]
-                    }
-
-                    this.port.onmessage = (event) => {
-                        switch (event.data.type) {
-                            case "baudRate":
-                                this.setBaudRate(event.data.baudRate);
-                                break;
-                            case "data":
-                                this.setData(event.data.data);
-                                break;
-                                case "symbolMap":
-                                this.symbolMap=event.data.symbolMap;
-                        }
-                    };
-                }
-
-                process(inputs, outputs) {
-                    const output = outputs[0];
-                    if (!output) return true;
-
-                    if (this.ptr >= this.bits.length) {
-                    	this.port.postMessage({type:"stop"})
-                    	return false;
-                    	}
-
-                    for (let i = 0; i < output[0].length; i++) {
-
-                        // 符号周期结束，更新比特
-                        if (this.samplesElapsed >= this.samplesPerSymbol) {
-                            this.samplesElapsed = 0;
-                            if (this.bits.length > 0) {
-                                const currentBit = this.bits[this.ptr];
-                                this.ptr++;
-                                output[0][i] = this.symbolMap[currentBit][0];
-                                if(output[1]) output[1][i] = this.symbolMap[currentBit][1]
-                            }
-                        }
-
-                        // 输出当前比特对应的电平（整个周期内持续）
-                        this.samplesElapsed++;
-                    }
-
-                    return true;
-                }
-
-                setBaudRate(baudRate) {
-                    this.baudRate = baudRate;
-                    this.samplesPerSymbol = Math.round(this.sampleRate / baudRate);
-                    this.samplesElapsed = 0; // 重置计数器
-                }
-
-                setData(data) {
-                    this.bits = data;
-                    this.ptr = 0; // 重置指针
-                    this.samplesElapsed = 0; // 开始新数据
-                }
-            };
-
-            const mixer = class extends AudioWorkletProcessor {
-    static get parameterDescriptors() {
-        return [{
-            name: 'frequency',
-            defaultValue: 440,
-            minValue: 20,
-            maxValue: 20000,
-            automationRate: 'a-rate' // 关键：指定 automationRate 为 'a-rate'
-        }];
-    }
-
-    constructor() {
-        super();
-        this.phase = 0;
-        this.sampleRate = sampleRate;
-    }
-
-    process(inputs, outputs, parameters) {
-        // 确保有一个输入通道
-        const input = inputs[0];
-        const output = outputs[0];
-
-        // 确保是双声道输出
-        const leftChannel = output[0]; // 实部
-        const rightChannel = output[1]; // 虚部
-        const frequencies = parameters.frequency; // 获取频率数组，因为是 a-rate
-
-        for (let i = 0; i < leftChannel.length; i++) {
-            const frequency = frequencies[i] ?? frequencies[0]; // 获取当前帧的频率
-            const omega = 2 * Math.PI * frequency / this.sampleRate;
-
-            const real = Math.cos(this.phase);
-            const imag = Math.sin(this.phase);
-
-            // 处理左声道输入，如果未连接则乘以1
-            const leftInputValue = input && input[0] ? input[0][i] : 1;
-
-            // 处理右声道输入，如果未连接则乘以1
-            const rightInputValue = input && input[1] ? input[1][i] : 1;
-
-            leftChannel[i] = real * leftInputValue;
-            rightChannel[i] = imag * rightInputValue;
-
-            this.phase += omega;
-            //this.phase %= (2 * Math.PI); // 周期重置
-        }
-
-        return true;
-    }
-}
-
-
-            const demod = class extends AudioWorkletProcessor {
-                constructor(options) {
-                    super();
-                    this.prev = [0, 0];
-                    this.count = 0;
-                    this.sampleRate = sampleRate;
-
-                    this.port.onmessage = (event) => {
-                        switch (event.data.type) {
-                            case "baudRate":
-                                this.setBaudRate(event.data.baudRate);
-                                break;
-                        }
-                    };
-                }
-
-                setBaudRate(baudRate) {
-                    this.baudRate = baudRate;
-                    this.samplesPerSymbol = Math.round(this.sampleRate / baudRate);
-                }
-
-                process(inputs, outputs, parameters) {
-                    // 获取输入信号和固定解调频率参数
-                    const input = inputs[0];
-
-                    const filteredI = input[0]
-                    const filteredQ = input[1]
-
-                    if (!filteredI || !filteredQ) return true;
-
-                    // 相位差检测与符号同步处理
-                    const phase = new Float32Array(filteredI.length);
-                    for (let j = 0; j < filteredI.length - 1; ++j) {
-                        // 计算相邻样本的共轭乘积（用于相位差检测）
-                        const real1 = filteredI[j], imag1 = filteredQ[j];
-                        const real2 = filteredI[j + 1], imag2 = filteredQ[j + 1];
-                        const resultReal = real1 * real2 + imag1 * imag2;  // 实部
-                        const resultImag = real1 * -imag2 + imag1 * real2;  // 虚部
-
-                        // 计算瞬时相位差（arctan(虚部/实部））
-                        phase[j] = Math.atan2(resultImag, resultReal);
-
-                        // 符号边界检测（相位符号变化时触发）
-                        if (j > 0 && Math.sign(phase[j]) != Math.sign(phase[j - 1])) {
-                            // 重置计数器
-                            this.count = 0;
-                        }
-
-                        // 符号周期计数
-                        this.count = (this.count + 1) % this.samplesPerSymbol;
-                        // 当达到采样时机时提交相位
-                        if (this.count === this.samplesPerSymbol * 0.5) {
-                            this.port.postMessage({ phase: phase[j] * this.samplesPerSymbol, bit: phase[j] > 0 ? 1 : 0 });
-                        }
-                    }
-
-                    phase[phase.length - 1] = phase[phase.length - 2];  // 边界处理
-
-                    // 将相位数据输出到指定端口
-                    outputs[0][0].set(phase);
-                    return true;
-                }
-            }
-
-            const bpskDemod = class extends AudioWorkletProcessor {
-                constructor(options) {
-                    super();
-                    this.sampleRate = sampleRate;
-                    this.count = 0;
-
-                    this.mu = 0;
-                    this.out = [[0, 0], [0, 0], [0, 0]];
-                    this.outRail = [[0, 0], [0, 0], [0, 0]];
-
-                    this.alpha = 0.7
-                    this.beta = 0.05
-                    this.gamma = 0.5
-                    this.phase = 0;
-                    this.freq = 0;
-
-                    this.gain = 1;
-
-                    this.port.onmessage = (event) => {
-                        if (event.data.type === "baudRate") {
-                            this.setBaudRate(event.data.baudRate);
-                        }
-                    };
-                }
-
-                setBaudRate(baudRate) {
-                    this.baudRate = baudRate;
-                    this.samplesPerSymbol = Math.round(this.sampleRate / baudRate);
-                    this.alpha=calculateAlpha(baudRate)
-                }
-
-                process(inputs, outputs, parameters) {
-                    const input = inputs[0];
-                    const i = input[0];
-                    const q = input[1];
-
-                    if (!i || !q) return true;
-
-                    let sum = 0;
-                    for (let j = 0; j < i.length; ++j) {
-                        sum += i[j] * i[j] + q[j] * q[j]
-                    }
-                    sum /= i.length;
-                    const rms = Math.sqrt(sum)
-
-                    this.gain = this.gain * 0.5 + (1 / rms) * 0.5;
-                    if (!isFinite(this.gain) || isNaN(this.gain)) this.gain = 1;
-
-
-                    for (let j = 0; j < i.length; ++j) {
-                        if (this.count >= 0) {
-                            let currI = i[j] * this.gain;
-                            let currQ = q[j] * this.gain
-
-                            this.out[0] = [currI, currQ];
-                            this.outRail[0] = [Number(this.out[0][0] > 0), Number(this.out[0][1] > 0)];
-
-                            let x = complexMul(complexSub(this.outRail[0], this.outRail[2]), complexConj(this.out[1]));
-                            let y = complexMul(complexSub(this.out[0], this.out[2]), complexConj(this.outRail[1]));
-                            let mmVal = y[0] - x[0];
-
-                            this.mu += this.samplesPerSymbol + this.gamma * mmVal;
-                            this.count -= Math.floor(this.mu);
-                            this.mu -= Math.floor(this.mu);
-
-                            // Shift history
-                            this.out[2] = this.out[1];
-                            this.out[1] = this.out[0];
-                            this.outRail[2] = this.outRail[1];
-                            this.outRail[1] = this.outRail[0];
-
-                            // Costas Loop
-                            let out = complexMul(this.out[0], [Math.cos(this.phase), -Math.sin(this.phase)]);
-                            let error = out[0] * out[1];
-                            this.freq += this.beta * error;
-                            this.phase += this.freq + this.alpha * error;
-                            while (this.phase > 2 * Math.PI) this.phase -= 2 * Math.PI;
-                            while (this.phase < 0) this.phase += 2 * Math.PI;
-                            this.port.postMessage({ i: out[0], q: out[1], bit: out[0] > 0 ? 1 : 0 });
-
-                        }
-
-                        this.count++;
-                    }
-
-                    return true;
-                }
-            };
-            
-            const qpskDemod = class extends AudioWorkletProcessor {
-                constructor(options) {
-                    super();
-                    this.sampleRate = sampleRate;
-                    this.count = 0;
-
-                    this.mu = 0;
-                    this.out = [[0, 0], [0, 0], [0, 0]];
-                    this.outRail = [[0, 0], [0, 0], [0, 0]];
-
-                    this.alpha = 0.09    
-                    this.beta = 0.001
-                    this.gamma = 0.5
-                    this.phase = 0;
-                    this.freq = 0;
-
-                    this.gain = 1;
-
-                    this.port.onmessage = (event) => {
-                        if (event.data.type === "baudRate") {
-                            this.setBaudRate(event.data.baudRate);
-                        }
-                    };
-                }
-
-                setBaudRate(baudRate) {
-                    this.baudRate = baudRate;
-                    this.samplesPerSymbol = Math.round(this.sampleRate / baudRate);
-                    this.alpha=calculateAlpha(baudRate)/2
-                }
-
-                process(inputs, outputs, parameters) {
-                    const input = inputs[0];
-                    const i = input[0];
-                    const q = input[1];
-
-                    if (!i || !q) return true;
-
-                    let sum = 0;
-                    for (let j = 0; j < i.length; ++j) {
-                        sum += i[j] * i[j] + q[j] * q[j]
-                    }
-                    sum /= i.length;
-                    const rms = Math.sqrt(sum)
-
-                    this.gain = this.gain * 0.5 + (1 / rms) * 0.5;
-                    if (!isFinite(this.gain) || isNaN(this.gain)) this.gain = 1;
-
-
-                    for (let j = 0; j < i.length; ++j) {
-                        if (this.count >= 0) {
-                            let currI = i[j] * this.gain;
-                            let currQ = q[j] * this.gain
-
-                            this.out[0] = [currI, currQ];
-                            this.outRail[0] = [Number(this.out[0][0] > 0), Number(this.out[0][1] > 0)];
-
-                            let x = complexMul(complexSub(this.outRail[0], this.outRail[2]), complexConj(this.out[1]));
-                            let y = complexMul(complexSub(this.out[0], this.out[2]), complexConj(this.outRail[1]));
-                            let mmVal = y[0] - x[0];
-
-                            this.mu += this.samplesPerSymbol + this.gamma * mmVal;
-                            this.count -= Math.floor(this.mu);
-                            this.mu -= Math.floor(this.mu);
-
-                            // Shift history
-                            this.out[2] = this.out[1];
-                            this.out[1] = this.out[0];
-                            this.outRail[2] = this.outRail[1];
-                            this.outRail[1] = this.outRail[0];
-
-                            // Costas Loop
-                            let out = complexMul(this.out[0], [Math.cos(this.phase), -Math.sin(this.phase)]);
-                            let error = this.errorFunc(out);
-                            this.freq += this.beta * error;
-                            this.phase += this.freq + this.alpha * error;
-                            while (this.phase > 2 * Math.PI) this.phase -= 2 * Math.PI;
-                            while (this.phase < 0) this.phase += 2 * Math.PI;
-                            this.port.postMessage({ i: out[0], q: out[1], bit: out[0] > 0 ? 1 : 0 });
-
-                        }
-
-                        this.count++;
-                    }
-
-                    return true;
-                }
-                
-                errorFunc(sample){
-                	let a,b;
-                	if(sample[0]>0) a=1;
-                	else a=-1;
-                	if(sample[1]>0) b=1;
-                	else b=-1;
-                	return a*sample[1]-b*sample[0]
-                }
-            };
-            
-            registerProcessor('demod', demod);
-            registerProcessor('mixer', mixer)
-            registerProcessor('mod', mod);
-            registerProcessor('bpsk-demod', bpskDemod)
-            registerProcessor('qpsk-demod', qpskDemod)
-        }
-
-        function arrayBufferToBase64(buffer) {
-            let binary = '';
-            const bytes = new Uint8Array(buffer);
-            const len = bytes.byteLength;
-            for (let i = 0; i < len; i++) {
-                binary += String.fromCharCode(bytes[i]);
-            }
-            return btoa(binary);
-        }
 
         function createHannWindow(length) {
             return [...Array(length)].map((v, i) => {
@@ -1954,10 +1966,6 @@ else if (i>0 && q<0) { phase=3; }
             return (n * base).toLocaleString() + " " + suffix[suffix.length - 1];
         }
 
-        const code = new TextEncoder().encode(`(${createWorklets.toString()})(${baudRate},${sampleRate});`);
-        const workletData = 'data:application/javascript;base64,' + arrayBufferToBase64(code)
-        console.log(workletData)
-
         const audioInput = document.getElementById('audio-input');
         const received = document.getElementById('received');
 
@@ -2000,9 +2008,9 @@ else if (i>0 && q<0) { phase=3; }
                 demodulate: BPSKDemodulator
             },
             qpsk: {
-            	name: 'QPSK',
-            	modulate: QPSKModulator,
-            	demodulate: QPSKDemodulator
+                name: 'QPSK',
+                modulate: QPSKModulator,
+                demodulate: QPSKDemodulator
             }
         }
         let selectedMode = MODES['gfsk'];
@@ -2164,7 +2172,7 @@ else if (i>0 && q<0) { phase=3; }
                 modulator.setBaudRate(baudRate);
                 modulator.setCarrierFreq(carrierFreq);
                 modulator.setOnStop(() => {
-                	console.log(modulator,"stopped")
+                    console.log(modulator, "stopped")
                     txImageBtn.disabled = false;
                     clearInterval(interval);
                     bitDisplay.textContent = '';
