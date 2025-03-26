@@ -1167,21 +1167,26 @@
                 const gainNode = audioCtx.createGain();
                 gainNode.gain.value = 100;
                 
-                const merger = audioCtx.createChannelMerger(1);
+                const merger=audioCtx.createChannelMerger(2)
                 
                 mod.connect(convolver)
                 convolver.connect(gainNode);
                 gainNode.connect(this.mixer);
                 //this.mixer.connect(merger,0,0);
-                //mod.connect(audioCtx.destination)
-                this.mixer.connect(audioCtx.destination)
+                merger.connect(audioCtx.destination)
+                this.mixer.connect(merger,0,0)
+                this.mixer.connect(merger,0,1)
+                
+                
+                
+                this.mixer.onprocessorerror=e=>{console.log(e)}
 
                 //this.mixer.start();
                 //this.mixer.stop(audioCtx.currentTime + symbolTime * codedArray.length);
                 
-                this.mixer.onended = () => {
+                /*this.mixer.onended = () => {
                     if (this.onStop) this.onStop();
-                }
+                }*/
 
                 return this.mixer;
             }
@@ -1306,6 +1311,64 @@
                 if (this.demod) this.demod.disconnect();
             }
         }
+        
+        class QPSKDemodulator extends Demodulator {
+            constructor() {
+                super()
+                this.lastBit = 0;
+                this.debug = []
+            }
+            setBaudRate(baudRate) {
+                this.baudRate = baudRate;
+                const filter = new Float32Array(rrcosFilter(sampleRate, this.baudRate, 0.5)[0]);
+                const buffer = audioCtx.createBuffer(1, filter.length, sampleRate);
+                buffer.copyToChannel(filter, 0);
+                if (this.convolver) this.convolver.buffer = buffer;
+                if (this.demod) this.demod.port.postMessage({ type: "baudRate", baudRate: baudRate })
+            }
+            setCarrierFreq(carrierFreq) {
+                this.carrierFreq = carrierFreq;
+                if (this.mixer) this.mixer.parameters.get('frequency').value = carrierFreq;
+            }
+            receive(source) {
+                super.receive(source)
+                this.mixer = new AudioWorkletNode(audioCtx, 'mixer', { outputChannelCount: [2] });
+                this.convolver = audioCtx.createConvolver()
+                this.demod = new AudioWorkletNode(audioCtx, 'qpsk-demod')
+                this.setBaudRate(this.baudRate)
+                this.setCarrierFreq(this.carrierFreq)
+
+                source.connect(this.mixer, 0)
+                this.mixer.connect(this.convolver);
+                this.convolver.connect(this.demod)
+
+                this.demod.port.onmessage = (event) => {
+                    let a,b;
+                    let i=event.data.i;
+                    let q=event.data.q;
+                    if (i>0 && q>0) { a=0; b=0; }
+else if (i<0 && q>0) { a=0; b=1; }
+else if (i<0 && q<0) { a=1; b=1; }
+else if (i>0 && q<0) { a=1; b=0; }
+
+                    
+                    let bit1= a^this.lastBit;
+                    let bit2=a^b
+                    if (this.onSample) this.onSample({
+                        sample: [event.data.i, event.data.q],
+                        bits: [bit1,bit2]
+                    })
+                    this.lastBit = b;
+                }
+            }
+
+            stop() {
+                super.stop();
+                if (this.mixer) this.mixer.disconnect();
+                if (this.convolver) this.convolver.disconnect();
+                if (this.demod) this.demod.disconnect();
+            }
+        }
 
         function isValidSample(sample) {
             if (sample.idx === 0) {
@@ -1391,7 +1454,7 @@
                     const output = outputs[0];
                     if (!output) return true;
 
-                    if (this.ptr > this.bits.length) return false;
+                    if (this.ptr >= this.bits.length) return false;
 
                     for (let i = 0; i < output[0].length; i++) {
 
@@ -1629,13 +1692,109 @@
                     return true;
                 }
             };
+            
+            const qpskDemod = class extends AudioWorkletProcessor {
+                constructor(options) {
+                    super();
+                    this.sampleRate = sampleRate;
+                    this.count = 0;
 
-            registerProcessor("bpskDemod", bpskDemod);
+                    this.mu = 0;
+                    this.out = [[0, 0], [0, 0], [0, 0]];
+                    this.outRail = [[0, 0], [0, 0], [0, 0]];
 
+                    this.alpha = 0.7
+                    this.beta = 0.05
+                    this.gamma = 0.5
+                    this.phase = 0;
+                    this.freq = 0;
+
+                    this.gain = 1;
+
+                    this.port.onmessage = (event) => {
+                        if (event.data.type === "baudRate") {
+                            this.setBaudRate(event.data.baudRate);
+                        }
+                    };
+                }
+
+                setBaudRate(baudRate) {
+                    this.baudRate = baudRate;
+                    this.samplesPerSymbol = Math.round(this.sampleRate / baudRate);
+                }
+
+                process(inputs, outputs, parameters) {
+                    const input = inputs[0];
+                    const i = input[0];
+                    const q = input[1];
+
+                    if (!i || !q) return true;
+
+                    let sum = 0;
+                    for (let j = 0; j < i.length; ++j) {
+                        sum += i[j] * i[j] + q[j] * q[j]
+                    }
+                    sum /= i.length;
+                    const rms = Math.sqrt(sum)
+
+                    this.gain = this.gain * 0.5 + (1 / rms) * 0.5;
+                    if (!isFinite(this.gain) || isNaN(this.gain)) this.gain = 1;
+
+
+                    for (let j = 0; j < i.length; ++j) {
+                        if (this.count >= 0) {
+                            let currI = i[j] * this.gain;
+                            let currQ = q[j] * this.gain
+
+                            this.out[0] = [currI, currQ];
+                            this.outRail[0] = [Number(this.out[0][0] > 0), Number(this.out[0][1] > 0)];
+
+                            let x = complexMul(complexSub(this.outRail[0], this.outRail[2]), complexConj(this.out[1]));
+                            let y = complexMul(complexSub(this.out[0], this.out[2]), complexConj(this.outRail[1]));
+                            let mmVal = y[0] - x[0];
+
+                            this.mu += this.samplesPerSymbol + this.gamma * mmVal;
+                            this.count -= Math.floor(this.mu);
+                            this.mu -= Math.floor(this.mu);
+
+                            // Shift history
+                            this.out[2] = this.out[1];
+                            this.out[1] = this.out[0];
+                            this.outRail[2] = this.outRail[1];
+                            this.outRail[1] = this.outRail[0];
+
+                            // Costas Loop
+                            let out = complexMul(this.out[0], [Math.cos(this.phase), -Math.sin(this.phase)]);
+                            let error = this.errorFunc(out);
+                            this.freq += this.beta * error;
+                            this.phase += this.freq + this.alpha * error;
+                            while (this.phase > 2 * Math.PI) this.phase -= 2 * Math.PI;
+                            while (this.phase < 0) this.phase += 2 * Math.PI;
+                            this.port.postMessage({ i: out[0], q: out[1], bit: out[0] > 0 ? 1 : 0 });
+
+                        }
+
+                        this.count++;
+                    }
+
+                    return true;
+                }
+                
+                errorFunc(sample){
+                	let a,b;
+                	if(sample[0]>0) a=1;
+                	else a=-1;
+                	if(sample[1]>0) b=1;
+                	else b=-1;
+                	return a*sample[1]-b*sample[0]
+                }
+            };
+            
             registerProcessor('demod', demod);
             registerProcessor('mixer', mixer)
             registerProcessor('mod', mod);
             registerProcessor('bpsk-demod', bpskDemod)
+            registerProcessor('qpsk-demod', qpskDemod)
         }
 
         function arrayBufferToBase64(buffer) {
@@ -1802,7 +1961,7 @@
             qpsk: {
             	name: 'QPSK',
             	modulate: QPSKModulator,
-            	demodulate: BPSKDemodulator
+            	demodulate: QPSKDemodulator
             }
         }
         let selectedMode = MODES['gfsk'];
@@ -1950,7 +2109,7 @@
             let oscillator;
 
             function transmitOrdArray(ordArray, delay = 1) {
-
+                audioCtx.resume();
                 const mod = new AudioWorkletNode(audioCtx, 'mod')
                 const preparedArray = baudRate >= 200 ? ordArray.map(e => encodeWithParity(e)) : ordArray;
                 const sync = [2, 2, 2, 2, 2, 2, 2, 2];
