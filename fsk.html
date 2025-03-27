@@ -671,9 +671,9 @@
 
                             this.out[0] = new Complex(currI, currQ);
                             this.outRail[0] = new Complex(Number(this.out[0].real > 0), Number(this.out[0].imag > 0));
-                            
-                            let x = this.outRail[2].sub(this.outRail[0]).mul(this.out[1].conj()).real;
-                            let y = this.out[2].sub(this.out[0]).mul(this.outRail[1].conj()).real;
+
+                            let x = this.outRail[0].sub(this.outRail[2]).mul(this.out[1].conj()).real;
+                            let y = this.out[0].sub(this.out[2]).mul(this.outRail[1].conj()).real;
                             let mmVal = y - x;
 
                             this.mu += this.samplesPerSymbol + this.gamma * mmVal;
@@ -767,8 +767,8 @@
                             this.out[0] = new Complex(currI, currQ);
                             this.outRail[0] = new Complex(Number(this.out[0].real > 0), Number(this.out[0].imag > 0));
 
-                            let x = this.outRail[2].sub(this.outRail[0]).mul(this.out[1].conj()).real;
-                            let y = this.out[2].sub(this.out[0]).mul(this.outRail[1].conj()).real;
+                            let x = this.outRail[0].sub(this.outRail[2]).mul(this.out[1].conj()).real;
+                            let y = this.out[0].sub(this.out[2]).mul(this.outRail[1].conj()).real;
                             let mmVal = y - x;
 
                             this.mu += this.samplesPerSymbol + this.gamma * mmVal;
@@ -890,9 +890,9 @@
                             this.out[0] = new Complex(currI, currQ);
                             this.outRail[0] = this.nearest8psk(this.out[0]);
 
-                            let x = complexMul(complexSub(this.outRail[0], this.outRail[2]), complexConj(this.out[1]));
-                            let y = complexMul(complexSub(this.out[0], this.out[2]), complexConj(this.outRail[1]));
-                            let mmVal = y[0] - x[0];
+                            let x = this.outRail[0].sub(this.outRail[2]).mul(this.out[1].conj()).real;
+                            let y = this.out[0].sub(this.out[2]).mul(this.outRail[1].conj()).real;
+                            let mmVal = y - x;
 
                             this.mu += this.samplesPerSymbol + this.gamma * mmVal;
                             this.count -= Math.floor(this.mu);
