@@ -356,25 +356,46 @@
 
         // 创建音频工作线程
         function createWorklets(baudRate, sampleRate) {
-            function complexAdd(a, b) {
-                return [a[0] + b[0], a[1] + b[1]];
-            }
+            class Complex {
+                constructor(real, imag) {
+                    this.real = real;
+                    this.imag = imag;
+                }
 
-            function complexSub(a, b) {
-                return [a[0] - b[0], a[1] - b[1]];
-            }
+                add(other) {
+                    return new Complex(this.real + other.real, this.imag + other.imag);
+                }
 
-            function complexMul(a, b) {
-                return [a[0] * b[0] - a[1] * b[1], a[0] * b[1] + a[1] * b[0]];
-            }
+                sub(other) {
+                    return new Complex(this.real - other.real, this.imag - other.imag);
+                }
 
-            function complexDiv(a, b) {
-                const den = b[0] * b[0] + b[1] * b[1];
-                return [(a[0] * b[0] + a[1] * b[1]) / den, (a[1] * b[0] - a[0] * b[1]) / den];
-            }
+                mul(other) {
+                    return new Complex(this.real * other.real - this.imag * other.imag, this.real * other.imag + this.imag * other.real);
+                }
 
-            function complexConj(a) {
-                return [a[0], -a[1]];
+                div(other) {
+                    const den = other.real * other.real + other.imag * other.imag;
+                    return new Complex((this.real * other.real + this.imag * other.imag) / den, (this.imag * other.real - this.real * other.imag) / den);
+                }
+
+                conj() {
+                    return new Complex(this.real, -this.imag);
+                }
+
+                square() {
+                    const real = this.real * this.real - this.imag * this.imag;
+                    const imag = 2 * this.real * this.imag;
+                    return new Complex(real, imag);
+                }
+
+                abs() {
+                    return Math.sqrt(this.real * this.real + this.imag * this.imag); // 绝对值
+                }
+
+                toString() {
+                    return `${this.real} + ${this.imag}i`;
+                }
             }
 
             function getSample(array, index) {
@@ -600,8 +621,8 @@
                     this.count = 0;
 
                     this.mu = 0;
-                    this.out = [[0, 0], [0, 0], [0, 0]];
-                    this.outRail = [[0, 0], [0, 0], [0, 0]];
+                    this.out = [new Complex(0, 0), new Complex(0, 0), new Complex(0, 0)];
+                    this.outRail = [new Complex(0, 0), new Complex(0, 0), new Complex(0, 0)];
 
                     this.alpha = 0.007
                     this.beta = 0.00005
@@ -648,12 +669,12 @@
                             let currI = getSample(i, j + this.mu) * this.gain;
                             let currQ = getSample(q, j + this.mu) * this.gain
 
-                            this.out[0] = [currI, currQ];
-                            this.outRail[0] = [Number(this.out[0][0] > 0), Number(this.out[0][1] > 0)];
-
-                            let x = complexMul(complexSub(this.outRail[0], this.outRail[2]), complexConj(this.out[1]));
-                            let y = complexMul(complexSub(this.out[0], this.out[2]), complexConj(this.outRail[1]));
-                            let mmVal = y[0] - x[0];
+                            this.out[0] = new Complex(currI, currQ);
+                            this.outRail[0] = new Complex(Number(this.out[0].real > 0), Number(this.out[0].imag > 0));
+                            
+                            let x = this.outRail[2].sub(this.outRail[0]).mul(this.out[1].conj()).real;
+                            let y = this.out[2].sub(this.out[0]).mul(this.outRail[1].conj()).real;
+                            let mmVal = y - x;
 
                             this.mu += this.samplesPerSymbol + this.gamma * mmVal;
                             this.count -= Math.floor(this.mu);
@@ -666,8 +687,9 @@
                             this.outRail[1] = this.outRail[0];
 
                             // Costas Loop
-                            let out = complexMul(this.out[0], [Math.cos(this.phase), -Math.sin(this.phase)]);
-                            let error = out[0] * out[1];
+                            let costas = new Complex(Math.cos(this.phase), -Math.sin(this.phase));
+                            let out = this.out[0].mul(costas);
+                            let error = out.real * out.imag;
                             this.freq += this.beta * error;
 
                             let absFreq = this.freq * this.sampleRate / (2 * Math.PI);
@@ -677,8 +699,7 @@
                             this.phase += this.freq + this.alpha * error;
                             if (this.phase > 2 * Math.PI) this.phase -= 2 * Math.PI;
                             if (this.phase < 0) this.phase += 2 * Math.PI;
-                            this.port.postMessage({ i: out[0], q: out[1], bit: out[0] > 0 ? 1 : 0 });
-
+                            this.port.postMessage({ i: out.real, q: out.imag, bit: out.real > 0 ? 1 : 0 });
                         }
 
                         this.count++;
@@ -695,8 +716,8 @@
                     this.count = 0;
 
                     this.mu = 0;
-                    this.out = [[0, 0], [0, 0], [0, 0]];
-                    this.outRail = [[0, 0], [0, 0], [0, 0]];
+                    this.out = [new Complex(0, 0), new Complex(0, 0), new Complex(0, 0)];
+                    this.outRail = [new Complex(0, 0), new Complex(0, 0), new Complex(0, 0)];
 
                     this.alpha = 0.003
                     this.beta = 0.00005
@@ -743,12 +764,12 @@
                             let currI = getSample(i, j + this.mu) * this.gain;
                             let currQ = getSample(q, j + this.mu) * this.gain
 
-                            this.out[0] = [currI, currQ];
-                            this.outRail[0] = [Number(this.out[0][0] > 0), Number(this.out[0][1] > 0)];
+                            this.out[0] = new Complex(currI, currQ);
+                            this.outRail[0] = new Complex(Number(this.out[0].real > 0), Number(this.out[0].imag > 0));
 
-                            let x = complexMul(complexSub(this.outRail[0], this.outRail[2]), complexConj(this.out[1]));
-                            let y = complexMul(complexSub(this.out[0], this.out[2]), complexConj(this.outRail[1]));
-                            let mmVal = y[0] - x[0];
+                            let x = this.outRail[2].sub(this.outRail[0]).mul(this.out[1].conj()).real;
+                            let y = this.out[2].sub(this.out[0]).mul(this.outRail[1].conj()).real;
+                            let mmVal = y - x;
 
                             this.mu += this.samplesPerSymbol + this.gamma * mmVal;
                             this.count -= Math.floor(this.mu);
@@ -761,9 +782,11 @@
                             this.outRail[1] = this.outRail[0];
 
                             // Costas Loop
-                            let out = complexMul(this.out[0], [Math.cos(this.phase), -Math.sin(this.phase)]);
-                            let error = this.errorFunc(out);
+                            let costas = new Complex(Math.cos(this.phase), -Math.sin(this.phase));
+                            let out = this.out[0].mul(costas);
+                            let error = this.errorFunc(out); // errorFunc 需要根据实际情况进行修改
                             this.freq += this.beta * error;
+
                             let absFreq = this.freq * this.sampleRate / (2 * Math.PI);
                             if (Math.abs(absFreq) > this.baudRate) {
                                 this.freq = 0;
@@ -771,8 +794,7 @@
                             this.phase += this.freq + this.alpha * error;
                             if (this.phase > 2 * Math.PI) this.phase -= 2 * Math.PI;
                             if (this.phase < 0) this.phase += 2 * Math.PI;
-                            this.port.postMessage({ i: out[0], q: out[1], bit: out[0] > 0 ? 1 : 0 });
-
+                            this.port.postMessage({ i: out.real, q: out.imag });
                         }
 
                         this.count++;
@@ -783,11 +805,11 @@
 
                 errorFunc(sample) {
                     let a, b;
-                    if (sample[0] > 0) a = 1;
+                    if (sample.real > 0) a = 1;
                     else a = -1;
-                    if (sample[1] > 0) b = 1;
+                    if (sample.imag > 0) b = 1;
                     else b = -1;
-                    return a * sample[1] - b * sample[0]
+                    return a * sample.imag - b * sample.real;
                 }
             };
 
@@ -798,8 +820,8 @@
                     this.count = 0;
 
                     this.mu = 0;
-                    this.out = [[0, 0], [0, 0], [0, 0]];
-                    this.outRail = [[0, 0], [0, 0], [0, 0]];
+                    this.out = [new Complex(0, 0), new Complex(0, 0), new Complex(0, 0)];
+                    this.outRail = [new Complex(0, 0), new Complex(0, 0), new Complex(0, 0)];
 
                     this.alpha = 0.007
                     this.beta = 0.001
@@ -830,15 +852,15 @@
 
                 nearest8psk(sample) {
                     return this.phaseRef.reduce((nearest, ref) => {
-                        const distance = Math.sqrt(Math.pow(sample[0] - ref[0], 2) + Math.pow(sample[1] - ref[1], 2));
-                        const nearestDistance = Math.sqrt(Math.pow(sample[0] - nearest[0], 2) + Math.pow(sample[1] - nearest[1], 2));
+                        const distance = Math.sqrt(Math.pow(sample.real - ref.real, 2) + Math.pow(sample.imag - ref.imag, 2));
+                        const nearestDistance = Math.sqrt(Math.pow(sample.real - nearest.real, 2) + Math.pow(sample.imag - nearest.imag, 2));
                         return distance < nearestDistance ? ref : nearest;
                     });
                 }
 
                 phaseDetector8(sample) {
-                    const nearestSymbol = this.nearest8psk(sample)
-                    const error = sample[0] * nearestSymbol[1] - sample[1] * nearestSymbol[0];
+                    const nearestSymbol = this.nearest8psk(sample);
+                    const error = sample.real * nearestSymbol.imag - sample.imag * nearestSymbol.real;
                     return error;
                 }
 
@@ -865,7 +887,7 @@
                             let currI = getSample(i, j + this.mu) * this.gain;
                             let currQ = getSample(q, j + this.mu) * this.gain
 
-                            this.out[0] = [currI, currQ];
+                            this.out[0] = new Complex(currI, currQ);
                             this.outRail[0] = this.nearest8psk(this.out[0]);
 
                             let x = complexMul(complexSub(this.outRail[0], this.outRail[2]), complexConj(this.out[1]));
@@ -883,7 +905,8 @@
                             this.outRail[1] = this.outRail[0];
 
                             // Costas Loop
-                            let out = complexMul(this.out[0], [Math.cos(this.phase), -Math.sin(this.phase)]);
+                            let costas = new Complex(Math.cos(this.phase), -Math.sin(this.phase));
+                            let out = this.out[0].mul(costas);
                             let error = this.phaseDetector8(out);
                             this.freq += this.beta * error;
                             if (Math.abs(absFreq) > this.baudRate) {
@@ -892,8 +915,7 @@
                             this.phase += this.freq + this.alpha * error;
                             if (this.phase > 2 * Math.PI) this.phase -= 2 * Math.PI;
                             if (this.phase < 0) this.phase += 2 * Math.PI;
-                            this.port.postMessage({ i: out[0], q: out[1], bit: out[0] > 0 ? 1 : 0 });
-
+                            this.port.postMessage({ i: out.real, q: out.imag });
                         }
 
                         this.count++;
