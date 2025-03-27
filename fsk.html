@@ -1735,8 +1735,8 @@
                 console.log(codedArray)
 
                 let startSync = []
-                for (let i = 0; i < this.baudRate * 0.25; i++) {
-                    startSync.push(...[0, 1, 2, 3])
+                for (let i = 0; i < this.baudRate * 0.5; i++) {
+                    startSync.push(...[0, 2])
                 }
 
 
@@ -1808,8 +1808,8 @@
                 console.log(codedArray)
 
                 let startSync = []
-                for (let i = 0; i < this.baudRate * 0.125; i++) {
-                    startSync.push(...[0, 1, 2, 3, 4, 5, 6, 7])
+                for (let i = 0; i < this.baudRate * 0.5; i++) {
+                    startSync.push(...[0, 4])
                 }
 
                 codedArray = startSync.concat(codedArray)
