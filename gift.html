@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>节日快乐</title>
+    <title>Emoji雨</title>
     <style>
         * {
             margin: 0;
@@ -153,7 +153,8 @@
     <div class="flowers" id="flowers"></div>
     <div class="heart" id="heart">🎁️</div>
     <div class="message" id="message">
-        <h1>Emoji雨</h1>
+        <h1 id="title">Emoji雨</h1>
+        <div id="text">
         <p>欢迎使用Emoji雨！通过URL参数自定义体验：</p>
         <ul>
             <li><b>emoji:</b>  调整掉落的Emoji，使用逗号分隔，例如：<code>?emoji=😀,🎉,🎈</code></li>
@@ -161,6 +162,7 @@
             <li><b>text:</b>  设置正文内容，例如：<code>?text=祝你万事如意</code></li>
             <li><b>heart:</b> 设置开场显示的Emoji，例如：<code>?heart=💖</code></li>
         </ul>
+        </div>
     </div>
 </div>
 
@@ -435,13 +437,13 @@
 
         // 如果有 title 参数，替换标题
         if (titleParam) {
-            document.querySelector('.message h1').textContent = titleParam;
+            document.querySelector('#title').textContent = titleParam;
             document.title = titleParam;
         }
 
         // 如果有 text 参数，替换正文
         if (textParam) {
-            document.querySelector('.message p').innerHTML = textParam.replace(/\n/g, '<br>');
+            document.querySelector('#text').innerHTML = textParam.replace(/\n/g, '<br>'); 
         }
 
         // 如果有 heart 参数，替换爱心表情
