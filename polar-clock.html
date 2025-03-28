@@ -1,60 +1,395 @@
 <!DOCTYPE html>
 <html lang="zh">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>反向极地时钟</title>
+    <title>极地时钟</title>
     <style>
         body {
             margin: 0;
             overflow: hidden;
             background-color: #000;
             font-family: 'Arial', sans-serif;
+            user-select: none;
         }
+
         canvas {
             display: block;
         }
-        #info {
+
+        #time-display {
             position: absolute;
-            bottom: 10px;
-            left: 10px;
+            bottom: 20px;
+            left: 0;
+            right: 0;
+            text-align: center;
             color: white;
+            font-size: 24px;
+            text-shadow: 0 0 5px rgba(0, 0, 0, 0.5);
+            z-index: 10;
+        }
+
+        #settings-btn {
+            position: absolute;
+            top: 15px;
+            right: 15px;
             background: rgba(0, 0, 0, 0.5);
-            padding: 8px;
-            border-radius: 4px;
+            color: white;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            font-size: 20px;
+            cursor: pointer;
+            z-index: 100;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        #settings-panel {
+            position: absolute;
+            top: 60px;
+            right: 15px;
+            background: rgba(0, 0, 0, 0.8);
+            color: white;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 8px;
+            padding: 15px;
+            width: 220px;
+            display: none;
+            z-index: 100;
+        }
+
+        .setting-group {
+            margin-bottom: 15px;
+            padding-bottom: 15px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .setting-group:last-child {
+            margin-bottom: 0;
+            padding-bottom: 0;
+            border-bottom: none;
+        }
+
+        .setting-title {
+            font-size: 14px;
+            margin-bottom: 8px;
+            color: #aaa;
+        }
+
+        .color-scheme {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 12px;
+            max-height: 200px;
+            overflow-y: auto;
+            padding-right: 5px;
+        }
+
+        .color-option-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 4px;
+            width: 50px;
+        }
+
+        .color-option {
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            cursor: pointer;
+            border: 2px solid black;
+        }
+
+        .color-option.selected {
+            border-color: white;
+        }
+
+        .color-option[data-scheme="hsv"] {
+            background: conic-gradient(red, yellow, lime, cyan, blue, magenta, red) !important;
+        }
+
+        .color-name {
+            color: #ddd;
             font-size: 12px;
+            text-align: center;
+            width: 100%;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        /* 滚动条样式保持不变 */
+        .color-scheme::-webkit-scrollbar {
+            width: 5px;
+        }
+
+        .color-scheme::-webkit-scrollbar-track {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 3px;
+        }
+
+        .color-scheme::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.3);
+            border-radius: 3px;
+        }
+
+        .switch {
+            position: relative;
+            display: inline-block;
+            width: 50px;
+            height: 24px;
+        }
+
+        .switch input {
             opacity: 0;
-            transition: opacity 0.5s;
+            width: 0;
+            height: 0;
+        }
+
+        .slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: #333;
+            transition: .4s;
+            border-radius: 24px;
+        }
+
+        .slider:before {
+            position: absolute;
+            content: "";
+            height: 16px;
+            width: 16px;
+            left: 4px;
+            bottom: 4px;
+            background-color: white;
+            transition: .4s;
+            border-radius: 50%;
+        }
+
+        input:checked+.slider {
+            background-color: #4CAF50;
+        }
+
+        input:checked+.slider:before {
+            transform: translateX(26px);
+        }
+
+        .switch-label {
+            width: max-content;
+            display: block;
+            margin-top: 6px;
         }
     </style>
 </head>
+
 <body>
     <canvas id="polarClock"></canvas>
-    <div id="info">极地时钟 | 秒/分/时/周/月/季/年</div>
-    
+    <div id="time-display"></div>
+    <button id="settings-btn">⚙️</button>
+    <div id="settings-panel">
+        <div class="setting-group">
+            <div class="setting-title">显示设置</div>
+            <label class="switch">
+                <input type="checkbox" id="show-tracks">
+                <span class="slider"></span>
+                <span class="switch-label">显示轨道</span>
+            </label>
+        </div>
+        <div class="setting-group">
+            <div class="setting-title">配色模式</div>
+            <label class="switch">
+                <input type="checkbox" id="gradient-mode">
+                <span class="slider"></span>
+                <span class="switch-label">渐变模式</span>
+            </label>
+        </div>
+        <div class="setting-group">
+            <div class="setting-title">配色方案</div>
+            <div class="color-scheme">
+                <div class="color-option-container">
+                    <div class="color-option" data-scheme="default"></div>
+                    <div class="color-name">默认</div>
+                </div>
+                <div class="color-option-container">
+                    <div class="color-option" data-scheme="android"></div>
+                    <div class="color-name">安卓</div>
+                </div>
+                <div class="color-option-container">
+                    <div class="color-option" data-scheme="hsv"></div>
+                    <div class="color-name">HSV光谱</div>
+                </div>
+                <div class="color-option-container">
+                    <div class="color-option" data-scheme="monochrome"></div>
+                    <div class="color-name">单色</div>
+                </div>
+                <div class="color-option-container">
+                    <div class="color-option" data-scheme="pastel"></div>
+                    <div class="color-name">粉彩</div>
+                </div>
+                <div class="color-option-container">
+                    <div class="color-option" data-scheme="ocean"></div>
+                    <div class="color-name">海洋</div>
+                </div>
+                <div class="color-option-container">
+                    <div class="color-option" data-scheme="fire"></div>
+                    <div class="color-name">火焰</div>
+                </div>
+                <div class="color-option-container">
+                    <div class="color-option" data-scheme="neon"></div>
+                    <div class="color-name">霓虹</div>
+                </div>
+                <div class="color-option-container">
+                    <div class="color-option" data-scheme="forest"></div>
+                    <div class="color-name">森林</div>
+                </div>
+                <div class="color-option-container">
+                    <div class="color-option" data-scheme="sunset"></div>
+                    <div class="color-name">日落</div>
+                </div>
+                <div class="color-option-container">
+                    <div class="color-option" data-scheme="deepspace"></div>
+                    <div class="color-name">深空</div>
+                </div>
+                <div class="color-option-container">
+                    <div class="color-option" data-scheme="candy"></div>
+                    <div class="color-name">糖果</div>
+                </div>
+                <div class="color-option-container">
+                    <div class="color-option" data-scheme="vintage"></div>
+                    <div class="color-name">复古</div>
+                </div>
+                <div class="color-option-container">
+                    <div class="color-option" data-scheme="ice"></div>
+                    <div class="color-name">冰蓝</div>
+                </div>
+                <div class="color-option-container">
+                    <div class="color-option" data-scheme="earth"></div>
+                    <div class="color-name">大地</div>
+                </div>
+                <div class="color-option-container">
+                    <div class="color-option" data-scheme="rainbow"></div>
+                    <div class="color-name">彩虹</div>
+                </div>
+                <div class="color-option-container">
+                    <div class="color-option" data-scheme="jewel"></div>
+                    <div class="color-name">宝石</div>
+                </div>
+                <div class="color-option-container">
+                    <div class="color-option" data-scheme="galaxy"></div>
+                    <div class="color-name">银河</div>
+                </div>
+                <div class="color-option-container">
+                    <div class="color-option" data-scheme="coral"></div>
+                    <div class="color-name">珊瑚</div>
+                </div>
+                <div class="color-option-container">
+                    <div class="color-option" data-scheme="metallic"></div>
+                    <div class="color-name">金属</div>
+                </div>
+                <div class="color-option-container">
+                    <div class="color-option" data-scheme="tropical"></div>
+                    <div class="color-name">热带</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script>
+        // 高DPI适配
         const canvas = document.getElementById('polarClock');
         const ctx = canvas.getContext('2d');
-        const infoElement = document.getElementById('info');
+        const timeDisplay = document.getElementById('time-display');
+        const settingsBtn = document.getElementById('settings-btn');
+        const settingsPanel = document.getElementById('settings-panel');
+        const showTracksCheckbox = document.getElementById('show-tracks');
+        const colorOptions = document.querySelectorAll('.color-option');
+        const gradientModeCheckbox = document.getElementById('gradient-mode');
 
-        // 设置canvas大小为窗口大小
+        // 设备像素比
+        let dpr = window.devicePixelRatio || 1;
+
+        // 设置canvas大小为窗口大小（考虑DPI）
         function resizeCanvas() {
-            canvas.width = window.innerWidth;
-            canvas.height = window.innerHeight;
+            const width = window.innerWidth;
+            const height = window.innerHeight;
+
+            canvas.width = width * dpr;
+            canvas.height = height * dpr;
+            canvas.style.width = width + 'px';
+            canvas.style.height = height + 'px';
+
+            ctx.scale(dpr, dpr);
         }
         resizeCanvas();
         window.addEventListener('resize', resizeCanvas);
 
-        // 颜色配置 - 彩虹色系（从外到内）
-        const colors = [
-            '#FF1744', // 红色 - 秒
-            '#FF9100', // 橙色 - 分
-            '#FFEA00', // 黄色 - 时
-            '#00E676', // 绿色 - 星期
-            '#00B0FF', // 蓝色 - 月
-            '#651FFF', // 紫色 - 季度
-            '#F50057'  // 粉色 - 年
-        ];
+        // 配色方案
+        const colorSchemes = {
+            default: ['#FF1744', '#FF9100', '#FFEA00', '#00E676', '#00B0FF', '#651FFF', '#F50057'],
+            android: ['#FF5722', '#FF9800', '#FFC107', '#8BC34A', '#03A9F4', '#673AB7', '#E91E63'],
+            monochrome: ['#FFFFFF', '#E0E0E0', '#BDBDBD', '#9E9E9E', '#757575', '#424242', '#212121'],
+            pastel: ['#FF9AA2', '#FFB7B2', '#FFDAC1', '#E2F0CB', '#B5EAD7', '#C7CEEA', '#F8B195'],
+            ocean: ['#00B4D8', '#0096C7', '#0077B6', '#023E8A', '#03045E', '#48CAE4', '#90E0EF'],
+            fire: ['#FF5400', '#FF6D00', '#FF8500', '#FF9100', '#FF9E00', '#FFAA00', '#FFB700'],
+            neon: ['#FF00FF', '#00FFFF', '#FFFF00', '#FF00AA', '#AA00FF', '#00FFAA', '#FFAA00'],
+            forest: ['#2E7D32', '#689F38', '#9CCC65', '#558B2F', '#33691E', '#7CB342', '#AED581'],
+            sunset: ['#FF6B6B', '#FFA3A3', '#FFD166', '#FFA07A', '#FF8C69', '#FF7F50', '#FF6347'],
+            deepspace: ['#6A1B9A', '#4527A0', '#283593', '#1565C0', '#0277BD', '#00838F', '#00695C'],
+            candy: ['#FF4081', '#FF80AB', '#EA80FC', '#B388FF', '#8C9EFF', '#82B1FF', '#80D8FF'],
+            vintage: ['#D7CCC8', '#BCAAA4', '#A1887F', '#8D6E63', '#795548', '#6D4C41', '#5D4037'],
+            ice: ['#E1F5FE', '#B3E5FC', '#81D4FA', '#4FC3F7', '#29B6F6', '#03A9F4', '#039BE5'],
+            earth: ['#8D6E63', '#A1887F', '#BCAAA4', '#D7CCC8', '#EFEBE9', '#DCE775', '#AED581'],
+            rainbow: ['#FF0000', '#FF7F00', '#FFFF00', '#00FF00', '#0000FF', '#4B0082', '#9400D3'],
+            jewel: ['#9C27B0', '#673AB7', '#3F51B5', '#2196F3', '#03A9F4', '#00BCD4', '#009688'],
+            galaxy: ['#0B3D91', '#1A237E', '#311B92', '#4A148C', '#6A1B9A', '#880E4F', '#B71C1C'],
+            coral: ['#FFCDD2', '#F8BBD0', '#E1BEE7', '#D1C4E9', '#C5CAE9', '#BBDEFB', '#B3E5FC'],
+            metallic: ['#C0C0C0', '#A8A8A8', '#909090', '#787878', '#606060', '#484848', '#303030'],
+            tropical: ['#FF6B6B', '#FFA3A3', '#FFD166', '#06D6A0', '#118AB2', '#073B4C', '#EF476F'],
+            hsv: 'hsv',
+        };
+
+        // 星期名称
+        const weekdays = ['星期日', '星期一', '星期二', '星期三', '星期四', '星期五', '星期六'];
+
+        // 默认设置
+        const defaultSettings = {
+            showTracks: true,
+            colorScheme: 'default',
+            gradientMode: false
+        };
+
+        // 从localStorage加载设置
+        function loadSettings() {
+            const savedSettings = localStorage.getItem('polarClockSettings');
+            if (savedSettings) {
+                return JSON.parse(savedSettings);
+            }
+            return { ...defaultSettings };
+        }
+
+        // 保存设置到localStorage
+        function saveSettings(settings) {
+            localStorage.setItem('polarClockSettings', JSON.stringify(settings));
+        }
+
+        // 当前设置
+        let settings = loadSettings();
+
+        // 应用加载的设置
+        function applySettings() {
+            showTracksCheckbox.checked = settings.showTracks;
+            gradientModeCheckbox.checked = settings.gradientMode; // 新增
+            document.querySelector(`.color-option[data-scheme="${settings.colorScheme}"]`).classList.add('selected');
+        }
 
         // 获取当前季度 (1-4)
         function getCurrentQuarter(month) {
@@ -62,40 +397,163 @@
         }
 
         // 获取季度进度 (0-1)
-        function getQuarterProgress(month) {
-            return (month % 3) / 3;
+        function getQuarterProgress(month, day, hours, minutes) {
+            const quarterStart = new Date(new Date().getFullYear(), Math.floor(month / 3) * 3, 1);
+            const nextQuarter = new Date(new Date().getFullYear(), Math.floor(month / 3) * 3 + 3, 1);
+            const totalMs = nextQuarter - quarterStart;
+            const elapsedMs = Date.now() - quarterStart.getTime();
+            return Math.min(elapsedMs / totalMs, 1);
         }
 
         // 获取一年中的进度 (0-1)
         function getYearProgress(date) {
-            const start = new Date(date.getFullYear(), 0, 0);
-            const diff = date - start;
-            const oneDay = 1000 * 60 * 60 * 24;
-            const dayOfYear = Math.floor(diff / oneDay);
-            return dayOfYear / 365;
+            const yearStart = new Date(date.getFullYear(), 0, 1);
+            const nextYear = new Date(date.getFullYear() + 1, 0, 1);
+            const totalMs = nextYear - yearStart;
+            const elapsedMs = date - yearStart;
+            return elapsedMs / totalMs;
+        }
+
+        // 获取一月中的进度 (0-1)
+        function getMonthProgress(date) {
+            const monthStart = new Date(date.getFullYear(), date.getMonth(), 1);
+            const nextMonth = new Date(date.getFullYear(), date.getMonth() + 1, 1);
+            const totalMs = nextMonth - monthStart;
+            const elapsedMs = date - monthStart;
+            return elapsedMs / totalMs;
         }
 
         // 获取一周中的进度 (0-1)
         function getWeekProgress(date) {
             const dayOfWeek = date.getDay(); // 0是周日
-            const hours = date.getHours();
-            const minutes = date.getMinutes();
-            const seconds = date.getSeconds();
-            
-            // 将周日调整为每周的最后一天
-            const adjustedDay = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
-            
-            return (adjustedDay + hours / 24 + minutes / (24 * 60) + seconds / (24 * 60 * 60)) / 7;
+            const weekStart = new Date(date);
+            weekStart.setDate(date.getDate() - dayOfWeek);
+            weekStart.setHours(0, 0, 0, 0);
+            const nextWeek = new Date(weekStart);
+            nextWeek.setDate(weekStart.getDate() + 7);
+            const totalMs = nextWeek - weekStart;
+            const elapsedMs = date - weekStart;
+            return elapsedMs / totalMs;
+        }
+
+        // 获取一天中的进度 (0-1)
+        function getDayProgress(date) {
+            const dayStart = new Date(date);
+            dayStart.setHours(0, 0, 0, 0);
+            const nextDay = new Date(dayStart);
+            nextDay.setDate(dayStart.getDate() + 1);
+            const totalMs = nextDay - dayStart;
+            const elapsedMs = date - dayStart;
+            return elapsedMs / totalMs;
+        }
+
+        // 获取一小时中的进度 (0-1)
+        function getHourProgress(date) {
+            const hourStart = new Date(date);
+            hourStart.setMinutes(0, 0, 0);
+            const nextHour = new Date(hourStart);
+            nextHour.setHours(hourStart.getHours() + 1);
+            const totalMs = nextHour - hourStart;
+            const elapsedMs = date - hourStart;
+            return elapsedMs / totalMs;
+        }
+
+        // 获取一分钟中的进度 (0-1)
+        function getMinuteProgress(date) {
+            const minuteStart = new Date(date);
+            minuteStart.setSeconds(0, 0);
+            const nextMinute = new Date(minuteStart);
+            nextMinute.setMinutes(minuteStart.getMinutes() + 1);
+            const totalMs = nextMinute - minuteStart;
+            const elapsedMs = date - minuteStart;
+            return elapsedMs / totalMs;
+        }
+
+        // 根据进度值从配色方案中插值获取颜色
+        function getInterpolatedColor(progress, scheme) {
+            // 如果是HSV模式
+            if (scheme === 'hsv') {
+                // 使用HSV色彩空间，色调从0°到360°循环
+                const hue = progress * 360;
+                // 固定饱和度和明度
+                return hsvToHex(hue, 100, 100);
+            }
+
+            const colors = colorSchemes[scheme];
+            const index = progress * (colors.length - 1);
+            const lowerIndex = Math.floor(index);
+            const upperIndex = Math.ceil(index);
+            const ratio = index - lowerIndex;
+
+            if (lowerIndex === upperIndex) {
+                return colors[lowerIndex];
+            }
+
+            // 简单的RGB颜色插值
+            const lowerColor = hexToRgb(colors[lowerIndex]);
+            const upperColor = hexToRgb(colors[upperIndex]);
+
+            const r = Math.round(lowerColor.r + (upperColor.r - lowerColor.r) * ratio);
+            const g = Math.round(lowerColor.g + (upperColor.g - lowerColor.g) * ratio);
+            const b = Math.round(lowerColor.b + (upperColor.b - lowerColor.b) * ratio);
+
+            return rgbToHex(r, g, b);
+        }
+
+        // HSV转Hex颜色函数
+        function hsvToHex(h, s, v) {
+            h = h % 360;
+            if (h < 0) h += 360;
+
+            s /= 100;
+            v /= 100;
+
+            const c = v * s;
+            const x = c * (1 - Math.abs((h / 60) % 2 - 1));
+            const m = v - c;
+
+            let r, g, b;
+            if (h >= 0 && h < 60) {
+                [r, g, b] = [c, x, 0];
+            } else if (h >= 60 && h < 120) {
+                [r, g, b] = [x, c, 0];
+            } else if (h >= 120 && h < 180) {
+                [r, g, b] = [0, c, x];
+            } else if (h >= 180 && h < 240) {
+                [r, g, b] = [0, x, c];
+            } else if (h >= 240 && h < 300) {
+                [r, g, b] = [x, 0, c];
+            } else {
+                [r, g, b] = [c, 0, x];
+            }
+
+            r = Math.round((r + m) * 255);
+            g = Math.round((g + m) * 255);
+            b = Math.round((b + m) * 255);
+
+            return `#${((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1)}`;
+        }
+
+        // 辅助函数：十六进制颜色转RGB
+        function hexToRgb(hex) {
+            const r = parseInt(hex.slice(1, 3), 16);
+            const g = parseInt(hex.slice(3, 5), 16);
+            const b = parseInt(hex.slice(5, 7), 16);
+            return { r, g, b };
+        }
+
+        // 辅助函数：RGB转十六进制
+        function rgbToHex(r, g, b) {
+            return `#${((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1)}`;
         }
 
         // 极地时钟类
         class PolarClock {
             constructor() {
-                this.centerX = canvas.width / 2;
-                this.centerY = canvas.height / 2;
-                this.radius = Math.min(canvas.width, canvas.height) * 0.35;
+                this.centerX = window.innerWidth / 2;
+                this.centerY = window.innerHeight / 2;
+                this.radius = Math.min(window.innerWidth, window.innerHeight) * 0.35;
                 this.ringWidth = this.radius / 7;
-                this.lastTime = '';
             }
 
             // 更新并绘制时钟
@@ -107,57 +565,74 @@
                 const minutes = now.getMinutes();
                 const seconds = now.getSeconds();
                 const milliseconds = now.getMilliseconds();
+                const weekday = now.getDay();
 
                 const timeData = {
+                    // 进度数据
                     year: getYearProgress(now),
-                    quarter: getQuarterProgress(month),
-                    month: (day - 1) / new Date(now.getFullYear(), month + 1, 0).getDate(),
+                    quarter: getQuarterProgress(month, day, hours, minutes),
+                    month: getMonthProgress(now),
                     week: getWeekProgress(now),
-                    hours: hours / 24,
-                    minutes: minutes / 60,
-                    seconds: (seconds + milliseconds / 1000) / 60,
-                    currentQuarter: getCurrentQuarter(month),
+                    day: getDayProgress(now),
+                    hour: getHourProgress(now),
+                    minute: getMinuteProgress(now),
+
+                    // 显示数据
+                    currentYear: now.getFullYear(),
                     currentMonth: month + 1,
+                    currentQuarter: getCurrentQuarter(month),
                     currentDay: day,
+                    currentWeekday: weekdays[weekday],
                     currentHours: hours,
                     currentMinutes: minutes,
                     currentSeconds: seconds
                 };
 
+                // 更新底部时间显示
+                timeDisplay.textContent = `${timeData.currentYear}年${timeData.currentMonth}月${timeData.currentDay}日 ${timeData.currentWeekday} ${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+
                 // 清除画布
                 ctx.fillStyle = 'rgba(0, 0, 0, 0.05)';
                 ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-                // 绘制七个环 (从外到内：秒/分/时/周/月/季/年)
-                this.drawRing(6, timeData.seconds, `${timeData.currentSeconds}秒`, colors[0]);
-                this.drawRing(5, timeData.minutes, `${timeData.currentMinutes}分`, colors[1]);
-                this.drawRing(4, timeData.hours, `${timeData.currentHours}时`, colors[2]);
-                this.drawRing(3, timeData.week, `周${Math.floor(timeData.week * 100)}%`, colors[3]);
-                this.drawRing(2, timeData.month, `${timeData.currentMonth}月`, colors[4]);
-                this.drawRing(1, timeData.quarter, `Q${timeData.currentQuarter}`, colors[5]);
-                this.drawRing(0, timeData.year, `年${Math.floor(timeData.year * 100)}%`, colors[6]);
+                // 获取当前颜色方案
+                const colors = colorSchemes[settings.colorScheme];
 
-                // 添加中心文本
-                this.drawCenterText(timeData);
+                // 绘制七个环 (从外到内：分/时/天/周/月/季/年)
+                this.drawRing(6, timeData.minute, `${timeData.currentSeconds}秒`, colors[0]);
+                this.drawRing(5, timeData.hour, `${timeData.currentMinutes}分`, colors[1]);
+                this.drawRing(4, timeData.day, `${timeData.currentHours}时`, colors[2]);
+                this.drawRing(3, timeData.week, timeData.currentWeekday, colors[3]);
+                this.drawRing(2, timeData.month, `${timeData.currentDay}日`, colors[4]);
+                this.drawRing(1, timeData.quarter, `Q${timeData.currentQuarter}`, colors[5]);
+                this.drawRing(0, timeData.year, `${timeData.currentMonth}月`, colors[6]);
             }
 
             // 绘制单个环
             drawRing(index, progress, label, color) {
                 const startAngle = -Math.PI / 2;
                 const endAngle = startAngle + (progress * Math.PI * 2);
-                const ringRadius = this.radius - (6 - index) * this.ringWidth; // 反向计算半径
+                const ringRadius = this.radius - (6 - index) * this.ringWidth;
 
                 // 绘制背景环
-                ctx.beginPath();
-                ctx.arc(this.centerX, this.centerY, ringRadius, 0, Math.PI * 2);
-                ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
-                ctx.lineWidth = this.ringWidth * 0.8;
-                ctx.stroke();
+                if (settings.showTracks) {
+                    ctx.beginPath();
+                    ctx.arc(this.centerX, this.centerY, ringRadius, 0, Math.PI * 2);
+                    ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
+                    ctx.lineWidth = this.ringWidth * 0.8;
+                    ctx.stroke();
+                }
 
                 // 绘制进度环
                 ctx.beginPath();
                 ctx.arc(this.centerX, this.centerY, ringRadius, startAngle, endAngle);
-                ctx.strokeStyle = color;
+
+                // 根据模式选择颜色
+                const strokeColor = settings.gradientMode
+                    ? getInterpolatedColor(progress, settings.colorScheme)
+                    : color;
+
+                ctx.strokeStyle = strokeColor;
                 ctx.lineWidth = this.ringWidth * 0.8;
                 ctx.lineCap = 'round';
                 ctx.stroke();
@@ -167,8 +642,8 @@
                 const labelX = this.centerX + ringRadius * Math.cos(endAngle);
                 const labelY = this.centerY + ringRadius * Math.sin(endAngle);
                 ctx.translate(labelX, labelY);
-                ctx.rotate(endAngle + Math.PI/2);
-                
+                ctx.rotate(endAngle + Math.PI / 2);
+
                 // 文字描边效果
                 ctx.font = `${Math.max(12, this.ringWidth * 0.4)}px Arial`;
                 ctx.textAlign = 'center';
@@ -178,30 +653,11 @@
                 ctx.strokeText(label, 0, 0);
                 ctx.fillStyle = 'black';
                 ctx.fillText(label, 0, 0);
-                
+
                 ctx.restore();
             }
-
-            // 绘制中心文本
-            drawCenterText(timeData) {
-                const timeStr = `${timeData.currentHours.toString().padStart(2, '0')}:${timeData.currentMinutes.toString().padStart(2, '0')}:${timeData.currentSeconds.toString().padStart(2, '0')}`;
-                const dateStr = `${timeData.currentMonth}月${timeData.currentDay}日 Q${timeData.currentQuarter}`;
-
-                // 绘制时间（带描边效果）
-                ctx.font = `bold ${this.radius * 0.15}px Arial`;
-                ctx.textAlign = 'center';
-                ctx.strokeStyle = 'white';
-                ctx.lineWidth = 3;
-                ctx.strokeText(timeStr, this.centerX, this.centerY - this.radius * 0.05);
-                ctx.fillStyle = 'black';
-                ctx.fillText(timeStr, this.centerX, this.centerY - this.radius * 0.05);
-
-                // 绘制日期（带描边效果）
-                ctx.font = `${this.radius * 0.08}px Arial`;
-                ctx.strokeText(dateStr, this.centerX, this.centerY + this.radius * 0.1);
-                ctx.fillText(dateStr, this.centerX, this.centerY + this.radius * 0.1);
-            }
         }
+
 
         // 创建并运行动画
         const polarClock = new PolarClock();
@@ -209,20 +665,57 @@
             polarClock.update();
             requestAnimationFrame(animate);
         }
-        animate();
 
-        // 显示/隐藏信息提示
-        let hideTimeout;
-        function showInfo() {
-            infoElement.style.opacity = '1';
-            clearTimeout(hideTimeout);
-            hideTimeout = setTimeout(() => {
-                infoElement.style.opacity = '0';
-            }, 3000);
+        // 初始化应用
+        function initApp() {
+            // 应用加载的设置
+            applySettings();
+
+            // 运行动画
+            animate();
+
+            // 设置面板交互
+            settingsBtn.addEventListener('click', () => {
+                settingsPanel.style.display = settingsPanel.style.display === 'block' ? 'none' : 'block';
+            });
+
+            // 显示/隐藏轨道
+            showTracksCheckbox.addEventListener('change', (e) => {
+                settings.showTracks = e.target.checked;
+                saveSettings(settings);
+            });
+
+            gradientModeCheckbox.addEventListener('change', (e) => {
+                settings.gradientMode = e.target.checked;
+                saveSettings(settings);
+            });
+
+            // 颜色方案选择
+            colorOptions.forEach(option => {
+                option.addEventListener('click', () => {
+                    colorOptions.forEach(opt => opt.classList.remove('selected'));
+                    option.classList.add('selected');
+                    settings.colorScheme = option.dataset.scheme;
+                    saveSettings(settings);
+                });
+
+                // 设置颜色预览
+                const scheme = option.dataset.scheme;
+                if (scheme != "hsv")
+                    option.style.background = `conic-gradient(${colorSchemes[scheme].join(', ')})`;
+            });
+
+            // 点击其他地方关闭设置面板
+            document.addEventListener('click', (e) => {
+                if (e.target !== settingsBtn && !settingsPanel.contains(e.target)) {
+                    settingsPanel.style.display = 'none';
+                }
+            });
         }
-        
-        showInfo();
-        canvas.addEventListener('click', showInfo);
+
+        // 启动应用
+        initApp();
     </script>
 </body>
+
 </html>
