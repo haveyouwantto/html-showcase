@@ -225,7 +225,7 @@
                 </div>
                 <div class="color-option-container">
                     <div class="color-option" data-scheme="hsv"></div>
-                    <div class="color-name">HSV光谱</div>
+                    <div class="color-name">光谱</div>
                 </div>
                 <div class="color-option-container">
                     <div class="color-option" data-scheme="monochrome"></div>
@@ -354,7 +354,7 @@
             coral: ['#FFCDD2', '#F8BBD0', '#E1BEE7', '#D1C4E9', '#C5CAE9', '#BBDEFB', '#B3E5FC'],
             metallic: ['#C0C0C0', '#A8A8A8', '#909090', '#787878', '#606060', '#484848', '#303030'],
             tropical: ['#FF6B6B', '#FFA3A3', '#FFD166', '#06D6A0', '#118AB2', '#073B4C', '#EF476F'],
-            hsv: 'hsv',
+            hsv: ['#FF0000', '#FFFF00', '#00FF00', '#00FFFF', '#007FFF', '#7F00FF', '#FF00FF'],
         };
 
         // 星期名称
@@ -618,7 +618,7 @@
                 if (settings.showTracks) {
                     ctx.beginPath();
                     ctx.arc(this.centerX, this.centerY, ringRadius, 0, Math.PI * 2);
-                    ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
+                    ctx.strokeStyle = 'rgba(255, 255, 255, 0.02)';
                     ctx.lineWidth = this.ringWidth * 0.8;
                     ctx.stroke();
                 }
