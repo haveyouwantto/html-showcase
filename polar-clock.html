@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>反向极地时钟</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #000;
+            font-family: 'Arial', sans-serif;
+        }
+        canvas {
+            display: block;
+        }
+        #info {
+            position: absolute;
+            bottom: 10px;
+            left: 10px;
+            color: white;
+            background: rgba(0, 0, 0, 0.5);
+            padding: 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            opacity: 0;
+            transition: opacity 0.5s;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="polarClock"></canvas>
+    <div id="info">极地时钟 | 秒/分/时/周/月/季/年</div>
+    
+    <script>
+        const canvas = document.getElementById('polarClock');
+        const ctx = canvas.getContext('2d');
+        const infoElement = document.getElementById('info');
+
+        // 设置canvas大小为窗口大小
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        resizeCanvas();
+        window.addEventListener('resize', resizeCanvas);
+
+        // 颜色配置 - 彩虹色系（从外到内）
+        const colors = [
+            '#FF1744', // 红色 - 秒
+            '#FF9100', // 橙色 - 分
+            '#FFEA00', // 黄色 - 时
+            '#00E676', // 绿色 - 星期
+            '#00B0FF', // 蓝色 - 月
+            '#651FFF', // 紫色 - 季度
+            '#F50057'  // 粉色 - 年
+        ];
+
+        // 获取当前季度 (1-4)
+        function getCurrentQuarter(month) {
+            return Math.floor(month / 3) + 1;
+        }
+
+        // 获取季度进度 (0-1)
+        function getQuarterProgress(month) {
+            return (month % 3) / 3;
+        }
+
+        // 获取一年中的进度 (0-1)
+        function getYearProgress(date) {
+            const start = new Date(date.getFullYear(), 0, 0);
+            const diff = date - start;
+            const oneDay = 1000 * 60 * 60 * 24;
+            const dayOfYear = Math.floor(diff / oneDay);
+            return dayOfYear / 365;
+        }
+
+        // 获取一周中的进度 (0-1)
+        function getWeekProgress(date) {
+            const dayOfWeek = date.getDay(); // 0是周日
+            const hours = date.getHours();
+            const minutes = date.getMinutes();
+            const seconds = date.getSeconds();
+            
+            // 将周日调整为每周的最后一天
+            const adjustedDay = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+            
+            return (adjustedDay + hours / 24 + minutes / (24 * 60) + seconds / (24 * 60 * 60)) / 7;
+        }
+
+        // 极地时钟类
+        class PolarClock {
+            constructor() {
+                this.centerX = canvas.width / 2;
+                this.centerY = canvas.height / 2;
+                this.radius = Math.min(canvas.width, canvas.height) * 0.35;
+                this.ringWidth = this.radius / 7;
+                this.lastTime = '';
+            }
+
+            // 更新并绘制时钟
+            update() {
+                const now = new Date();
+                const month = now.getMonth();
+                const day = now.getDate();
+                const hours = now.getHours();
+                const minutes = now.getMinutes();
+                const seconds = now.getSeconds();
+                const milliseconds = now.getMilliseconds();
+
+                const timeData = {
+                    year: getYearProgress(now),
+                    quarter: getQuarterProgress(month),
+                    month: (day - 1) / new Date(now.getFullYear(), month + 1, 0).getDate(),
+                    week: getWeekProgress(now),
+                    hours: hours / 24,
+                    minutes: minutes / 60,
+                    seconds: (seconds + milliseconds / 1000) / 60,
+                    currentQuarter: getCurrentQuarter(month),
+                    currentMonth: month + 1,
+                    currentDay: day,
+                    currentHours: hours,
+                    currentMinutes: minutes,
+                    currentSeconds: seconds
+                };
+
+                // 清除画布
+                ctx.fillStyle = 'rgba(0, 0, 0, 0.05)';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+                // 绘制七个环 (从外到内：秒/分/时/周/月/季/年)
+                this.drawRing(6, timeData.seconds, `${timeData.currentSeconds}秒`, colors[0]);
+                this.drawRing(5, timeData.minutes, `${timeData.currentMinutes}分`, colors[1]);
+                this.drawRing(4, timeData.hours, `${timeData.currentHours}时`, colors[2]);
+                this.drawRing(3, timeData.week, `周${Math.floor(timeData.week * 100)}%`, colors[3]);
+                this.drawRing(2, timeData.month, `${timeData.currentMonth}月`, colors[4]);
+                this.drawRing(1, timeData.quarter, `Q${timeData.currentQuarter}`, colors[5]);
+                this.drawRing(0, timeData.year, `年${Math.floor(timeData.year * 100)}%`, colors[6]);
+
+                // 添加中心文本
+                this.drawCenterText(timeData);
+            }
+
+            // 绘制单个环
+            drawRing(index, progress, label, color) {
+                const startAngle = -Math.PI / 2;
+                const endAngle = startAngle + (progress * Math.PI * 2);
+                const ringRadius = this.radius - (6 - index) * this.ringWidth; // 反向计算半径
+
+                // 绘制背景环
+                ctx.beginPath();
+                ctx.arc(this.centerX, this.centerY, ringRadius, 0, Math.PI * 2);
+                ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
+                ctx.lineWidth = this.ringWidth * 0.8;
+                ctx.stroke();
+
+                // 绘制进度环
+                ctx.beginPath();
+                ctx.arc(this.centerX, this.centerY, ringRadius, startAngle, endAngle);
+                ctx.strokeStyle = color;
+                ctx.lineWidth = this.ringWidth * 0.8;
+                ctx.lineCap = 'round';
+                ctx.stroke();
+
+                // 添加旋转文字标签
+                ctx.save();
+                const labelX = this.centerX + ringRadius * Math.cos(endAngle);
+                const labelY = this.centerY + ringRadius * Math.sin(endAngle);
+                ctx.translate(labelX, labelY);
+                ctx.rotate(endAngle + Math.PI/2);
+                
+                // 文字描边效果
+                ctx.font = `${Math.max(12, this.ringWidth * 0.4)}px Arial`;
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.strokeStyle = 'white';
+                ctx.lineWidth = 2;
+                ctx.strokeText(label, 0, 0);
+                ctx.fillStyle = 'black';
+                ctx.fillText(label, 0, 0);
+                
+                ctx.restore();
+            }
+
+            // 绘制中心文本
+            drawCenterText(timeData) {
+                const timeStr = `${timeData.currentHours.toString().padStart(2, '0')}:${timeData.currentMinutes.toString().padStart(2, '0')}:${timeData.currentSeconds.toString().padStart(2, '0')}`;
+                const dateStr = `${timeData.currentMonth}月${timeData.currentDay}日 Q${timeData.currentQuarter}`;
+
+                // 绘制时间（带描边效果）
+                ctx.font = `bold ${this.radius * 0.15}px Arial`;
+                ctx.textAlign = 'center';
+                ctx.strokeStyle = 'white';
+                ctx.lineWidth = 3;
+                ctx.strokeText(timeStr, this.centerX, this.centerY - this.radius * 0.05);
+                ctx.fillStyle = 'black';
+                ctx.fillText(timeStr, this.centerX, this.centerY - this.radius * 0.05);
+
+                // 绘制日期（带描边效果）
+                ctx.font = `${this.radius * 0.08}px Arial`;
+                ctx.strokeText(dateStr, this.centerX, this.centerY + this.radius * 0.1);
+                ctx.fillText(dateStr, this.centerX, this.centerY + this.radius * 0.1);
+            }
+        }
+
+        // 创建并运行动画
+        const polarClock = new PolarClock();
+        function animate() {
+            polarClock.update();
+            requestAnimationFrame(animate);
+        }
+        animate();
+
+        // 显示/隐藏信息提示
+        let hideTimeout;
+        function showInfo() {
+            infoElement.style.opacity = '1';
+            clearTimeout(hideTimeout);
+            hideTimeout = setTimeout(() => {
+                infoElement.style.opacity = '0';
+            }, 3000);
+        }
+        
+        showInfo();
+        canvas.addEventListener('click', showInfo);
+    </script>
+</body>
+</html>
