@@ -150,13 +150,19 @@
 
 <body>
     <div class="container">
-        <div class="flowers" id="flowers"></div>
-        <div class="heart" id="heart">❤️</div>
-        <div class="message" id="message">
-            <h1>妇女节快乐！</h1>
-            <pre>亲爱的妈妈：<br>在这个属于您的节日里，祝您节日快乐！<br>您是家庭的支柱，也是我们学习的榜样。<br>感谢您为我们创造的一切，愿您永远健康美丽！<br>💖 祝您妇女节快乐，永远爱您！ 💖</pre>
-        </div>
+    <div class="flowers" id="flowers"></div>
+    <div class="heart" id="heart">🎁️</div>
+    <div class="message" id="message">
+        <h1>Emoji雨</h1>
+        <p>欢迎使用Emoji雨！通过URL参数自定义体验：</p>
+        <ul>
+            <li><b>emoji:</b>  调整掉落的Emoji，使用逗号分隔，例如：<code>?emoji=😀,🎉,🎈</code></li>
+            <li><b>title:</b> 设置页面标题，例如：<code>?title=新年快乐</code></li>
+            <li><b>text:</b>  设置正文内容，例如：<code>?text=祝你万事如意</code></li>
+            <li><b>heart:</b> 设置开场显示的Emoji，例如：<code>?heart=💖</code></li>
+        </ul>
     </div>
+</div>
 
     <script>
         const heart = document.getElementById('heart');
@@ -207,7 +213,7 @@
             constructor() {
                 this.flowers = [];
                 this.gravityScale = 0.02;  
-                this.bounce = 0.5;
+                this.bounce = 1;
                 this.airResistance = 0.995;
                 this.canvasWidth = window.innerWidth;
                 this.canvasHeight = window.innerHeight;
