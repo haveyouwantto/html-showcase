@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Sinc 波形播放器</title>
+    <title>Sinc/Gaussian 波形播放器</title>
     <style>
     body {
         font-family: Arial, sans-serif;
@@ -50,6 +50,15 @@
         background-color: #45a049; /* Darker green */
     }
 
+    select {
+        padding: 8px;
+        border-radius: 5px;
+        border: 1px solid #333;
+        background-color: #333;
+        color: #fff;
+        margin-bottom: 10px;
+    }
+
     .center{
         margin: auto;
         width: fit-content;
@@ -60,14 +69,23 @@
 
 <body>
     <div class="center">
-        <h1>Sinc 波形播放器</h1>
-        <label for="frequencyInput">频率 (Hz): </label>
+        <h1>Sinc/Gaussian 波形播放器</h1>
+        <label for="waveType">波形类型: </label>
+        <select id="waveType">
+            <option value="sinc">Sinc 波形</option>
+            <option value="gaussian">高斯波包</option>
+        </select><br>
+        
+        <label for="bandwidthInput">带宽 (Hz): </label>
         <input type="number" id="bandwidthInput" min="1" value="8000"><br>
-        <label for="intervalFrequencyInput">间隔频率 (Hz): </label>
-        <input type="number" id="intervalFrequencyInput" min="1" max="100" value="2"><br>
+        
+        <label for="playbackRateInput">播放频率 (Hz): </label>
+        <input type="number" id="playbackRateInput" min="0.1" max="100" step="0.1" value="2"><br>
+        
         <label for="upconverterInput">上变频频率 (Hz): </label>
         <input type="number" id="upconverterInput" min="0" max="20000" value="0"><br>
-        <button id="playSincWaveButton">播放 Sinc 波形</button>
+        
+        <button id="playWaveButton">播放波形</button>
     </div>
 
     <script>
@@ -90,58 +108,92 @@
             return window;
         }
 
-        // 播放 Sinc 波形
-        function playSincWave() {
-            // 获取输入的频率、持续时间和上变频值
-            const frequency = parseFloat(document.getElementById('bandwidthInput').value);
-            const duration = 1 / parseFloat(document.getElementById('intervalFrequencyInput').value); // 音频持续时间（秒）
+        // 生成高斯波包
+        function generateGaussianWave(bufferLength, bandwidth, playbackRate, upconversion, sampleRate) {
+            const buffer = new Float32Array(bufferLength);
+            const sigma = 1/(2 * Math.PI * bandwidth); // 标准差
+            
+            // 计算每个样本的时间点
+            for (let i = 0; i < bufferLength; i++) {
+                const t = i/sampleRate;
+                // 高斯包络
+                const envelope = Math.exp(-0.5 * Math.pow((t - 0.5/playbackRate)/(sigma), 2));
+                // 载波频率
+                const carrier = upconversion > 0 ? Math.sin(2 * Math.PI * upconversion * t) : 1;
+                buffer[i] = envelope * carrier;
+            }
+            
+            return buffer;
+        }
+
+        // 播放波形
+        function playWave() {
+            // 获取输入的参数
+            const waveType = document.getElementById('waveType').value;
+            const bandwidth = parseFloat(document.getElementById('bandwidthInput').value);
+            const playbackRate = parseFloat(document.getElementById('playbackRateInput').value);
             const upconversion = parseFloat(document.getElementById('upconverterInput').value);
 
-            // 创建一个数组来存储 Sinc 波形样本
+            // 音频持续时间（秒）
+            const duration = playbackRate > 0 ? 1 / playbackRate : 1;
+            
+            // 创建一个数组来存储波形样本
             const bufferLength = Math.floor(ctx.sampleRate * duration);
-            const buffer = new Float32Array(bufferLength);
+            let buffer;
 
-            // 创建窗函数以平滑过渡信号
-            const filterWindow = createWindow(bufferLength);
-
-            // 生成 Sinc 波形样本
-            for (let i = 0; i < bufferLength; i++) {
-                const t = (i - bufferLength / 2) / ctx.sampleRate;
-                const x = 2 * Math.PI * frequency * t;
-                buffer[i] = ((t == 0 ? 1 : Math.sin(x) / x)) * filterWindow[i] *
-                    (upconversion != 0 ? Math.sin(2 * Math.PI * upconversion * t) : 1);
+            // 根据选择的波形类型生成不同的波形
+            if (waveType === 'gaussian') {
+                // 生成高斯波包
+                buffer = generateGaussianWave(bufferLength, bandwidth, playbackRate, upconversion, ctx.sampleRate);
+            } else {
+                // 生成 Sinc 波形
+                buffer = new Float32Array(bufferLength);
+                // 创建窗函数以平滑过渡信号
+                const filterWindow = createWindow(bufferLength);
+                
+                // 生成 Sinc 波形样本
+                for (let i = 0; i < bufferLength; i++) {
+                    const t = (i - bufferLength / 2) / ctx.sampleRate;
+                    const x = 2 * Math.PI * bandwidth * t;
+                    buffer[i] = ((t == 0 ? 1 : Math.sin(x) / x)) * filterWindow[i] *
+                        (upconversion != 0 ? Math.sin(2 * Math.PI * upconversion * t) : 1);
+                }
             }
 
             // 创建一个 AudioBufferSourceNode
+            if (bufferSource) {
+                bufferSource.stop();
+            }
+            
             bufferSource = ctx.createBufferSource();
             const audioBuffer = ctx.createBuffer(1, bufferLength, ctx.sampleRate);
             audioBuffer.copyToChannel(buffer, 0);
             bufferSource.buffer = audioBuffer;
             
-			// 设置循环播放
-			bufferSource.loop = true;
+            // 设置循环播放
+            bufferSource.loop = true;
 
-			// 连接源到输出
-			bufferSource.connect(ctx.destination);
+            // 连接源到输出
+            bufferSource.connect(ctx.destination);
 
-			// 开始播放声音
-			bufferSource.start();
-		}
+            // 开始播放声音
+            bufferSource.start();
+        }
 
-		let isPlaying = false;
-		let playButton = document.getElementById('playSincWaveButton');
+        let isPlaying = false;
+        let playButton = document.getElementById('playWaveButton');
 
-		playButton.addEventListener("click", () => {
-			if (isPlaying) {
-				bufferSource?.stop();
-				playButton.textContent = "播放 Sinc 波形";
-			} else {
-				playSincWave();
-				playButton.textContent = "停止 Sinc 波形";
-			}
-			isPlaying = !isPlaying;
-		});
-	</script>
+        playButton.addEventListener("click", () => {
+            if (isPlaying) {
+                bufferSource?.stop();
+                playButton.textContent = "播放波形";
+            } else {
+                playWave();
+                playButton.textContent = "停止波形";
+            }
+            isPlaying = !isPlaying;
+        });
+    </script>
 </body>
 
 </html>
