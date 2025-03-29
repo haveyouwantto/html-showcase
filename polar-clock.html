@@ -690,11 +690,11 @@
                 const labelX = this.centerX + ringRadius * Math.cos(endAngle);
                 const labelY = this.centerY + ringRadius * Math.sin(endAngle);
                 ctx.translate(labelX, labelY);
-                ctx.rotate(endAngle + Math.PI / 2);
+                ctx.rotate(endAngle + Math.PI / 2 - this.ringWidth * 0.4 / ringRadius);
 
                 // 文字描边效果
                 ctx.font = `${Math.max(12, this.ringWidth * 0.4)}px Arial`;
-                ctx.textAlign = 'center';
+                ctx.textAlign = 'right';
                 ctx.textBaseline = 'middle';
                 ctx.strokeStyle = 'white';
                 ctx.lineWidth = 2;
