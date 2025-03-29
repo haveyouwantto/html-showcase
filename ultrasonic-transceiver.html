@@ -53,6 +53,11 @@
             /* Pink for receive button */
         }
 
+        .btn.exit {
+            background-color: #ff5555;
+            /* Red for exit button */
+        }
+
         .btn:hover {
             background-color: #2d9b2d;
             /* Darker green on hover */
@@ -66,6 +71,11 @@
         .btn.receive:hover {
             background-color: rgb(190, 74, 150);
             /* Darker pink on hover */
+        }
+
+        .btn.exit:hover {
+            background-color: #cc4444;
+            /* Darker red on hover */
         }
 
         select {
@@ -139,10 +149,12 @@
         或
         <button class="btn" id="microphone">麦克风</button>
         <audio controls id="tx-audio"></audio>
+        <button class="btn exit" id="tx-exit">退出</button>
     </div>
     <div id="rx">
         <h1>接收模式</h1>
         <button class="btn" id="mute-btn">静音</button>
+        <button class="btn exit" id="rx-exit">退出</button>
     </div>
     <div id="channels">
         选择频道：
@@ -217,6 +229,8 @@
         const main = document.getElementById('main');
         const txBtn = document.getElementById('tx-btn');
         const rxBtn = document.getElementById('rx-btn');
+        const txExitBtn = document.getElementById('tx-exit');
+        const rxExitBtn = document.getElementById('rx-exit');
 
         const microphoneBtn = document.getElementById('microphone');
         const audioInput = document.getElementById('audio-input');
@@ -232,13 +246,64 @@
 
         const signalStrength = document.getElementById('signal-strength')
 
-
         const analyser = ctx.createAnalyser()
         let analyser2;
 
         let dataArray = new Float32Array(analyser.fftSize);
 
         let _osc;
+        let _audioNodes = []; // To store audio nodes for cleanup
+        let _animationFrame; // To store animation frame for cleanup
+        let eventInited = false;
+
+        function cleanupAudioNodes() {
+            // Clean up microphone
+            microphone?.mediaStream.getTracks().forEach(track => track.stop());
+
+            // Disconnect and clean up all audio nodes
+            _audioNodes.forEach(node => {
+                if (node.disconnect) node.disconnect();
+                if (node.stop) node.stop();
+            });
+            _audioNodes = [];
+
+            // Stop any ongoing animation
+            if (_animationFrame) {
+                cancelAnimationFrame(_animationFrame);
+                _animationFrame = null;
+            }
+
+            // Clear canvas
+            canvasCtx.fillStyle = "#333333";
+            canvasCtx.fillRect(0, 0, canvas.width, canvas.height);
+            waveformCtx.fillStyle = "#333333";
+            waveformCtx.fillRect(0, 0, waveform.width, waveform.height);
+
+            // Reset signal strength display
+            signalStrength.textContent = '';
+        }
+
+        function resetToInitialState() {
+            cleanupAudioNodes();
+            main.style.display = 'block';
+            tx.style.display = 'none';
+            rx.style.display = 'none';
+
+            // Reset audio elements
+            const txAudio = document.getElementById('tx-audio');
+            txAudio.pause();
+            txAudio.src = '';
+            txAudio.load();
+
+            // Reset file input
+            const txFile = document.getElementById('tx-file');
+            txFile.value = '';
+
+            // Release wake lock if needed
+            if ('wakeLock' in navigator && navigator.wakeLock.isActive) {
+                navigator.wakeLock.release();
+            }
+        }
 
         function createProcessorClass() {
             const AGC = class extends AudioWorkletProcessor {
@@ -281,7 +346,7 @@
                     const attackTime = parameters.attackTime[0];
                     const releaseTime = parameters.releaseTime[0];
 
-                    if (input[0].length <= 0) return true; // 如果输入为空，直接返回
+                    if (!input || !input[0] || input[0].length <= 0) return true; // 如果输入为空，直接返回
                     let sumOfSquares = 0;
                     let max = 0
 
@@ -349,7 +414,7 @@
         function draw() {
             canvasCtx.fillStyle = "#333333";
             canvasCtx.fillRect(0, 0, canvas.width, canvas.height);
-            requestAnimationFrame(draw)
+            _animationFrame = requestAnimationFrame(draw)
             analyser.getFloatFrequencyData(dataArray);
 
             canvasCtx.lineWidth = 1;
@@ -425,219 +490,240 @@
         let setupMicrophone;
         let microphone;
 
-        txBtn.addEventListener('click', e => {
-            acquireWakelock();
-            main.style.display = 'none';
-            tx.style.display = 'flex';
+        
+            txBtn.addEventListener('click', e => {
+                acquireWakelock();
+                main.style.display = 'none';
+                tx.style.display = 'flex';
 
-            const txFile = document.getElementById('tx-file');
-            const txAudio = document.getElementById('tx-audio');
+                const txFile = document.getElementById('tx-file');
+                const txAudio = document.getElementById('tx-audio');
 
-            const mediaNode = ctx.createMediaElementSource(txAudio);
+                const mediaNode = ctx.createMediaElementSource(txAudio);
+                _audioNodes.push(mediaNode);
 
-            const localOscillator = ctx.createOscillator()
+                const localOscillator = ctx.createOscillator()
+                _audioNodes.push(localOscillator);
 
-            const mixer = ctx.createGain()
-            mixer.gain.value = 0;
+                const mixer = ctx.createGain()
+                _audioNodes.push(mixer);
+                mixer.gain.value = 0;
 
-            const filter = ctx.createConvolver();
+                const filter = ctx.createConvolver();
+                _audioNodes.push(filter);
 
-            const gain = ctx.createGain()
-            gain.gain.value = 10;
+                const gain = ctx.createGain()
+                _audioNodes.push(gain);
+                gain.gain.value = 10;
 
-            function setFrequency(freq, bandwidth) {
-                reverse = freq < reverseFreq;
-                if (!reverse) {
-                    localOscillator.frequency.value = freq;
-                    filter.buffer = createFilter(taps, freq + (bandwidth - guardBw) / 2, bandwidth / 2 - guardBw);
-                } else {
-                    localOscillator.frequency.value = freq + bandwidth;
-                    filter.buffer = createFilter(taps, freq + (bandwidth + guardBw) / 2, bandwidth / 2 - guardBw);
-                }
-
-                // calucate the filter rms
-                let sum = 0;
-                for (let i = 0; i < filter.buffer.length; i++) {
-                    sum += filter.buffer.getChannelData(0)[i] ** 2;
-                }
-                const rms = Math.sqrt(sum / filter.buffer.length);
-                const gainValue = 1 / rms;
-                gain.gain.value = gainValue;
-                console.log('gain', gain.gain.value)
-            }
-            setFrequency(startFreq + bandwidth * (channelSelection.value - 1), bandwidth)
-
-            mediaNode.connect(mixer)
-            localOscillator.connect(mixer.gain)
-            mixer.connect(filter)
-            filter.connect(gain)
-            gain.connect(ctx.destination)
-
-            localOscillator.start()
-
-            gain.connect(analyser)
-            _osc = localOscillator;
-            resizeCanvas()
-            analyser2 = analyser;
-            requestAnimationFrame(draw)
-
-            canvas.addEventListener('click', e => {
-                const clickFreq = e.offsetX / canvas.clientWidth * ctx.sampleRate / 2;
-                if (clickFreq > startFreq) {
-                    const channel = parseInt((clickFreq - startFreq) / bandwidth);
-                    setFrequency(startFreq + bandwidth * (channel), bandwidth)
-                    channelSelection.value = channel + 1;
-                }
-            })
-
-            txFile.addEventListener('change', e => {
-                const file = e.target.files[0];
-                txAudio.src = URL.createObjectURL(file);
-            })
-
-            channelSelection.addEventListener('change', e => {
-                setFrequency(startFreq + bandwidth * (channelSelection.value - 1), bandwidth)
-            })
-
-            setupMicrophone = () => {
-                navigator.mediaDevices.getUserMedia(
-                    {
-                        audio: {
-                            sampleRate: 8000,
-                            deviceId: audioInput.value,
-                        },
-                        video: false
+                function setFrequency(freq, bandwidth) {
+                    reverse = freq < reverseFreq;
+                    if (!reverse) {
+                        localOscillator.frequency.value = freq;
+                        filter.buffer = createFilter(taps, freq + (bandwidth - guardBw) / 2, bandwidth / 2 - guardBw);
+                    } else {
+                        localOscillator.frequency.value = freq + bandwidth;
+                        filter.buffer = createFilter(taps, freq + (bandwidth + guardBw) / 2, bandwidth / 2 - guardBw);
                     }
-                ).then(stream => {
-                    microphone?.disconnect();
-                    microphone = ctx.createMediaStreamSource(stream);
-                    microphone.connect(mixer);
-                })
-            };
 
-            microphoneBtn.addEventListener('click', e => setupMicrophone());
-            audioInput.addEventListener('change', e => {
-                if (microphone) setupMicrophone();
-            })
-        })
-
-
-        rxBtn.addEventListener('click', async e => {
-            acquireWakelock();
-            main.style.display = 'none';
-            rx.style.display = 'flex';
-
-
-            await ctx.audioWorklet.addModule(workletData)
-
-            const bandpass = ctx.createConvolver();
-
-            const localOscillator = ctx.createOscillator()
-            localOscillator.frequency.value = startFreq;
-
-            const mixer = ctx.createGain()
-            mixer.gain.value = 0;
-
-            const lowpass = ctx.createConvolver();
-
-            const gain = ctx.createGain()
-            gain.gain.value = 1;
-
-            const agc = new AudioWorkletNode(ctx, 'agc');
-
-            agc.port.onmessage = (event) => {
-                const rmsValue = event.data.rms;
-                signalStrength.textContent = `信号强度：${(Math.log10(rmsValue) * 10).toFixed(1)} dB`
-            };
-            window.agc =agc
-
-            const compressor = ctx.createDynamicsCompressor();
-
-            const muteGain = ctx.createGain()
-            muteGain.gain.value = 1;
-
-            function setFrequency(freq, bandwidth) {
-                reverse = freq < reverseFreq;
-                if (!reverse) {
-                    localOscillator.frequency.value = freq;
-                    bandpass.buffer = createFilter(taps, freq + (bandwidth - guardBw) / 2, bandwidth / 2 - guardBw);
-                } else {
-                    localOscillator.frequency.value = freq + bandwidth;
-                    bandpass.buffer = createFilter(taps, freq + (bandwidth + guardBw) / 2, bandwidth / 2 - guardBw);
-                }
-                lowpass.buffer = createFilter(101, bandwidth / 2, bandwidth / 2);
-            }
-
-            setFrequency(startFreq + bandwidth * (channelSelection.value - 1), bandwidth)
-
-            bandpass.connect(mixer);
-            localOscillator.connect(mixer.gain);
-            mixer.connect(lowpass);
-            lowpass.connect(gain)
-            gain.connect(agc)
-            agc.connect(compressor)
-            compressor.connect(muteGain)
-            muteGain.connect(ctx.destination)
-            analyser2 = ctx.createAnalyser()
-            muteGain.connect(analyser2);
-
-            localOscillator.start()
-
-            _osc = localOscillator;
-            resizeCanvas()
-            requestAnimationFrame(draw)
-
-            let mute = false;
-            const muteBtn = document.getElementById('mute-btn');
-            muteBtn.addEventListener('click', e => {
-                mute = !mute;
-                if (mute) {
-                    muteBtn.innerText = '取消静音'
-                    muteGain.gain.value = 0;
-                } else {
-                    muteBtn.innerText = '静音'
-                    muteGain.gain.value = 1;
-                }
-            })
-
-            canvas.addEventListener('click', e => {
-                const clickFreq = e.offsetX / canvas.clientWidth * ctx.sampleRate / 2;
-                if (clickFreq > startFreq) {
-                    const channel = parseInt((clickFreq - startFreq) / bandwidth);
-                    setFrequency(startFreq + bandwidth * (channel), bandwidth)
-                    channelSelection.value = channel + 1;
-                }
-            })
-
-            channelSelection.addEventListener('change', e => {
-                setFrequency(startFreq + bandwidth * (channelSelection.value - 1), bandwidth)
-            })
-
-            setupMicrophone = () => {
-                navigator.mediaDevices.getUserMedia(
-                    {
-                        audio: {
-                            sampleRate: ctx.sampleRate,
-                            deviceId: audioInput.value,
-                            echoCancellation: false,
-                            noiseSuppression: false
-                        },
-                        video: false
+                    // calucate the filter rms
+                    let sum = 0;
+                    for (let i = 0; i < filter.buffer.length; i++) {
+                        sum += filter.buffer.getChannelData(0)[i] ** 2;
                     }
-                ).then(stream => {
-                    console.log(stream)
-                    microphone?.disconnect();
-                    microphone = ctx.createMediaStreamSource(stream);
-                    microphone.connect(bandpass);
-                    microphone.connect(analyser)
-                })
-            };
+                    const rms = Math.sqrt(sum / filter.buffer.length);
+                    const gainValue = 1 / rms;
+                    gain.gain.value = gainValue;
+                    console.log('gain', gain.gain.value)
+                }
+                setFrequency(startFreq + bandwidth * (channelSelection.value - 1), bandwidth)
 
-            setupMicrophone();
-            audioInput.addEventListener('change', e => {
+                mediaNode.connect(mixer)
+                localOscillator.connect(mixer.gain)
+                mixer.connect(filter)
+                filter.connect(gain)
+                gain.connect(ctx.destination)
+
+                localOscillator.start()
+
+                gain.connect(analyser)
+                _osc = localOscillator;
+                resizeCanvas()
+                analyser2 = analyser;
+                draw()
+
+                canvas.addEventListener('click', e => {
+                    const clickFreq = e.offsetX / canvas.clientWidth * ctx.sampleRate / 2;
+                    if (clickFreq > startFreq) {
+                        const channel = parseInt((clickFreq - startFreq) / bandwidth);
+                        setFrequency(startFreq + bandwidth * (channel), bandwidth)
+                        channelSelection.value = channel + 1;
+                    }
+                })
+
+                txFile.addEventListener('change', e => {
+                    const file = e.target.files[0];
+                    txAudio.src = URL.createObjectURL(file);
+                })
+
+                channelSelection.addEventListener('change', e => {
+                    setFrequency(startFreq + bandwidth * (channelSelection.value - 1), bandwidth)
+                })
+
+                setupMicrophone = () => {
+                    navigator.mediaDevices.getUserMedia(
+                        {
+                            audio: {
+                                sampleRate: 8000,
+                                deviceId: audioInput.value,
+                            },
+                            video: false
+                        }
+                    ).then(stream => {
+                        microphone?.mediaStream.getTracks().forEach(track => track.stop());
+                        microphone?.disconnect();
+                        microphone = ctx.createMediaStreamSource(stream);
+                        _audioNodes.push(microphone);
+                        microphone.connect(mixer);
+                    })
+                };
+
+                microphoneBtn.onclick = e => setupMicrophone();
+                audioInput.onchange = e => {
+                    if (microphone) setupMicrophone();
+                }
+            })
+
+            rxBtn.addEventListener('click', async e => {
+                acquireWakelock();
+                main.style.display = 'none';
+                rx.style.display = 'flex';
+
+                await ctx.audioWorklet.addModule(workletData)
+
+                const bandpass = ctx.createConvolver();
+                _audioNodes.push(bandpass);
+
+                const localOscillator = ctx.createOscillator()
+                _audioNodes.push(localOscillator);
+                localOscillator.frequency.value = startFreq;
+
+                const mixer = ctx.createGain()
+                _audioNodes.push(mixer);
+                mixer.gain.value = 0;
+
+                const lowpass = ctx.createConvolver();
+                _audioNodes.push(lowpass);
+
+                const gain = ctx.createGain()
+                _audioNodes.push(gain);
+                gain.gain.value = 1;
+
+                const agc = new AudioWorkletNode(ctx, 'agc');
+                _audioNodes.push(agc);
+
+                agc.port.onmessage = (event) => {
+                    const rmsValue = event.data.rms;
+                    signalStrength.textContent = `信号强度：${(Math.log10(rmsValue) * 10).toFixed(1)} dB`
+                };
+                window.agc = agc
+
+                const compressor = ctx.createDynamicsCompressor();
+                _audioNodes.push(compressor);
+
+                const muteGain = ctx.createGain()
+                _audioNodes.push(muteGain);
+                muteGain.gain.value = 1;
+
+                function setFrequency(freq, bandwidth) {
+                    reverse = freq < reverseFreq;
+                    if (!reverse) {
+                        localOscillator.frequency.value = freq;
+                        bandpass.buffer = createFilter(taps, freq + (bandwidth - guardBw) / 2, bandwidth / 2 - guardBw);
+                    } else {
+                        localOscillator.frequency.value = freq + bandwidth;
+                        bandpass.buffer = createFilter(taps, freq + (bandwidth + guardBw) / 2, bandwidth / 2 - guardBw);
+                    }
+                    lowpass.buffer = createFilter(101, bandwidth / 2, bandwidth / 2);
+                }
+
+                setFrequency(startFreq + bandwidth * (channelSelection.value - 1), bandwidth)
+
+                bandpass.connect(mixer);
+                localOscillator.connect(mixer.gain);
+                mixer.connect(lowpass);
+                lowpass.connect(gain)
+                gain.connect(agc)
+                agc.connect(compressor)
+                compressor.connect(muteGain)
+                muteGain.connect(ctx.destination)
+                analyser2 = ctx.createAnalyser()
+                _audioNodes.push(analyser2);
+                muteGain.connect(analyser2);
+
+                localOscillator.start()
+
+                _osc = localOscillator;
+                resizeCanvas()
+                draw()
+
+                let mute = false;
+                const muteBtn = document.getElementById('mute-btn');
+                muteBtn.addEventListener('click', e => {
+                    mute = !mute;
+                    if (mute) {
+                        muteBtn.innerText = '取消静音'
+                        muteGain.gain.value = 0;
+                    } else {
+                        muteBtn.innerText = '静音'
+                        muteGain.gain.value = 1;
+                    }
+                })
+
+                canvas.addEventListener('click', e => {
+                    const clickFreq = e.offsetX / canvas.clientWidth * ctx.sampleRate / 2;
+                    if (clickFreq > startFreq) {
+                        const channel = parseInt((clickFreq - startFreq) / bandwidth);
+                        setFrequency(startFreq + bandwidth * (channel), bandwidth)
+                        channelSelection.value = channel + 1;
+                    }
+                })
+
+                channelSelection.addEventListener('change', e => {
+                    setFrequency(startFreq + bandwidth * (channelSelection.value - 1), bandwidth)
+                })
+
+                setupMicrophone = () => {
+                    navigator.mediaDevices.getUserMedia(
+                        {
+                            audio: {
+                                sampleRate: ctx.sampleRate,
+                                deviceId: audioInput.value,
+                                echoCancellation: false,
+                                noiseSuppression: false
+                            },
+                            video: false
+                        }
+                    ).then(stream => {
+                        console.log(stream)
+                        microphone?.mediaStream.getTracks().forEach(track => track.stop());
+                        microphone?.disconnect();
+                        microphone = ctx.createMediaStreamSource(stream);
+                        _audioNodes.push(microphone);
+                        microphone.connect(bandpass);
+                        microphone.connect(analyser)
+                    })
+                };
+
                 setupMicrophone();
+                audioInput.onchange = e => {
+                    setupMicrophone();
+                }
             })
-        })
+
+            // Exit buttons
+            txExitBtn.addEventListener('click', resetToInitialState);
+            rxExitBtn.addEventListener('click', resetToInitialState);
 
         navigator.mediaDevices.enumerateDevices().then(devices => {
             devices.filter(device => device.kind === 'audioinput').forEach(device => {
@@ -667,6 +753,8 @@
                 acquireWakelock();
             }
         });
+
+        eventInited = true;
 
     </script>
 </body>
