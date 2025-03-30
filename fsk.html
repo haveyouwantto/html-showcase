@@ -417,7 +417,7 @@
             }
 
             function calculateAlpha(bd) {
-                return Math.min(0.5, 10 / bd);
+                return Math.min(0.2, 10 / bd);
             }
 
             function calculateBeta(bd) {
@@ -1918,6 +1918,10 @@
                 if (this.source) this.source.mediaStream.getTracks().forEach(track => track.stop());
                 if (this.onSample) this.onSample = null;
             }
+
+            get decidePoints() {
+                return []
+            }
         }
 
         class GFSKDemodulator extends Demodulator {
@@ -1956,6 +1960,16 @@
                 if (this.mixer) this.mixer.disconnect();
                 if (this.convolver) this.convolver.disconnect();
                 if (this.demod) this.demod.disconnect();
+            }
+
+            get decidePoints() {
+                return [
+                    {
+                        i: 1, q: 0, label: "1"
+                    },
+                    {
+                        i: -1, q: 0, label: "0"
+                    }]
             }
         }
 
@@ -2010,6 +2024,16 @@
                 if (this.mixer) this.mixer.disconnect();
                 if (this.convolver) this.convolver.disconnect();
                 if (this.demod) this.demod.disconnect();
+            }
+
+            get decidePoints() {
+                return [
+                    {
+                        i: 1, q: 0, label: "1"
+                    },
+                    {
+                        i: -1, q: 0, label: "0"
+                    }]
             }
         }
 
@@ -2070,6 +2094,22 @@
                 if (this.mixer) this.mixer.disconnect();
                 if (this.convolver) this.convolver.disconnect();
                 if (this.demod) this.demod.disconnect();
+            }
+
+            get decidePoints() {
+                return [
+                    {
+                        i: 0.7071, q: 0.7071, label: "00"
+                    },
+                    {
+                        i: -0.7071, q: 0.7071, label: "01"
+                    },
+                    {
+                        i: -0.7071, q: -0.7071, label: "10"
+                    },
+                    {
+                        i: 0.7071, q: -0.7071, label: "11"
+                    }]
             }
         }
 
@@ -2138,6 +2178,19 @@
                 if (this.mixer) this.mixer.disconnect();
                 if (this.convolver) this.convolver.disconnect();
                 if (this.demod) this.demod.disconnect();
+            }
+
+            get decidePoints() {
+                return [
+                    { "i": 0.9239, "q": 0.3827, "label": "001" },
+                    { "i": 0.3827, "q": 0.9239, "label": "010" },
+                    { "i": -0.3827, "q": 0.9239, "label": "011" },
+                    { "i": -0.9239, "q": 0.3827, "label": "100" },
+                    { "i": -0.9239, "q": -0.3827, "label": "101" },
+                    { "i": -0.3827, "q": -0.9239, "label": "110" },
+                    { "i": 0.3827, "q": -0.9239, "label": "111" },
+                    { "i": 0.9239, "q": -0.3827, "label": "000" }
+                ]
             }
         }
 
@@ -2418,11 +2471,23 @@
                 ctx.stroke();
 
 
-
-                // 绘制星座点
                 const centerX = canvas.width / 2;
                 const centerY = canvas.height / 2;
                 const plotSize = Math.min(canvas.width, canvas.height) * 0.3; // 使用画布短边的40%作为绘图区域
+
+                // 绘制判定点
+                ctx.fillStyle = 'gray';
+                for (let point of demodulator.decidePoints) {
+                    const x = centerX + point.i * plotSize;
+                    const y = centerY - point.q * plotSize;
+                    ctx.beginPath();
+                    ctx.arc(x, y, 4, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.fillText(point.label, x + 8, y - 8);
+                }
+
+
+                // 绘制星座点
 
                 ctx.strokeStyle = "gray"
                 ctx.beginPath();
@@ -2434,7 +2499,7 @@
                 for (let sample of constellation.getSamples()) {
                     // 将I/Q信号映射到绘图区域
                     const x = clamp(centerX + sample[0] * plotSize, 0, canvas.width);
-                    const y = clamp(centerY + sample[1] * plotSize, 0, canvas.height);
+                    const y = clamp(centerY - sample[1] * plotSize, 0, canvas.height);
 
                     ctx.beginPath();
                     ctx.arc(x, y, 4, 0, Math.PI * 2); // 使用准确的角度值
