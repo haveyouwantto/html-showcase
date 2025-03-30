@@ -550,6 +550,11 @@
         // 极地时钟类
         class PolarClock {
             constructor() {
+                this.updateSize();
+                window.addEventListener('resize', this.updateSize.bind(this));
+            }
+
+            updateSize() {
                 this.centerX = window.innerWidth / 2;
                 this.centerY = window.innerHeight / 2;
                 this.radius = Math.min(window.innerWidth, window.innerHeight) * 0.35;
