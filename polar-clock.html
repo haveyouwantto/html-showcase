@@ -299,6 +299,45 @@
                     <div class="color-option" data-scheme="tropical"></div>
                     <div class="color-name">热带</div>
                 </div>
+                <!-- 科学可视化方案 -->
+                <div class="color-option-container">
+                    <div class="color-option" data-scheme="viridis"></div>
+                    <div class="color-name">翠青</div>
+                </div>
+                <div class="color-option-container">
+                    <div class="color-option" data-scheme="plasma"></div>
+                    <div class="color-name">炽虹</div>
+                </div>
+                <div class="color-option-container">
+                    <div class="color-option" data-scheme="inferno"></div>
+                    <div class="color-name">焰狱</div>
+                </div>
+                <!-- 黑体辐射方案 -->
+                <div class="color-option-container">
+                    <div class="color-option" data-scheme="blackbody"></div>
+                    <div class="color-name">辐射</div>
+                </div>
+                <!-- 时间变化方案 -->
+                <div class="color-option-container">
+                    <div class="color-option" data-scheme="seasons"></div>
+                    <div class="color-name">四季</div>
+                </div>
+                <div class="color-option-container">
+                    <div class="color-option" data-scheme="fruit"></div>
+                    <div class="color-name">果实</div>
+                </div>
+                <div class="color-option-container">
+                    <div class="color-option" data-scheme="daylight"></div>
+                    <div class="color-name">昼夜</div>
+                </div>
+                <div class="color-option-container">
+                    <div class="color-option" data-scheme="rust"></div>
+                    <div class="color-name">铁锈</div>
+                </div>
+                <div class="color-option-container">
+                    <div class="color-option" data-scheme="patina"></div>
+                    <div class="color-name">铜绿</div>
+                </div>
             </div>
         </div>
     </div>
@@ -355,6 +394,15 @@
             metallic: ['#C0C0C0', '#A8A8A8', '#909090', '#787878', '#606060', '#484848', '#303030'],
             tropical: ['#FF6B6B', '#FFA3A3', '#FFD166', '#06D6A0', '#118AB2', '#073B4C', '#EF476F'],
             hsv: ['#FF0000', '#FFFF00', '#00FF00', '#00FFFF', '#007FFF', '#7F00FF', '#FF00FF'],
+            viridis: ['#440154', '#3B528B', '#21918C', '#35B779', '#90D743', '#FDE725', '#FFFFA0'],
+            plasma: ['#0D0887', '#47039F', '#7301A8', '#9C179E', '#BD3786', '#D8576B', '#ED7953'],
+            inferno: ['#000004', '#1B0C41', '#4B0C6B', '#781C6D', '#A52C60', '#CF4446', '#ED6925'],
+            blackbody: ['#202020', '#5E0000', '#D30000', '#FF6000', '#FFD700', '#FFFFFF', '#9AD4FF'],
+            seasons: ['#C8E4B2', '#2E8B57', '#00B5E2', '#FFD700', '#CD5C5C', '#8B4513', '#F0F8FF'],
+            fruit: ['#008585', '#00A572', '#5DBE62', '#FBF2C4', '#E5C185', '#C7522A', '#6F3019'],
+            daylight: ['#0F0C29', '#000080', '#FF7F50', '#87CEEB', '#FF8C00', '#483D8B', '#1A1A4B',],
+            rust: ['#F8F8FF', '#E5E4E2', '#D3D3D3', '#BEBEBE', '#A0522D', '#8B4513', '#654321'],
+            patina: ['#B87333', '#C88039', '#D18A42', '#DA9452', '#6B8E23', '#556B2F', '#2E8B57']
         };
 
         // 星期名称
@@ -623,7 +671,7 @@
                 if (settings.showTracks) {
                     ctx.beginPath();
                     ctx.arc(this.centerX, this.centerY, ringRadius, 0, Math.PI * 2);
-                    ctx.strokeStyle = 'rgba(255, 255, 255, 0.02)';
+                    ctx.strokeStyle = 'rgba(128, 128, 128, 0.02)';
                     ctx.lineWidth = this.ringWidth * 0.8;
                     ctx.stroke();
                 }
@@ -647,11 +695,11 @@
                 const labelX = this.centerX + ringRadius * Math.cos(endAngle);
                 const labelY = this.centerY + ringRadius * Math.sin(endAngle);
                 ctx.translate(labelX, labelY);
-                ctx.rotate(endAngle + Math.PI / 2);
+                ctx.rotate(endAngle + Math.PI / 2 - this.ringWidth * 0.4 / ringRadius);
 
                 // 文字描边效果
                 ctx.font = `${Math.max(12, this.ringWidth * 0.4)}px Arial`;
-                ctx.textAlign = 'center';
+                ctx.textAlign = 'right';
                 ctx.textBaseline = 'middle';
                 ctx.strokeStyle = 'white';
                 ctx.lineWidth = 2;

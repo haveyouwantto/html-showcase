@@ -1,0 +1,512 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>图片色彩分析工具</title>
+    <style>
+        :root {
+            --bg-primary: #121212;
+            --bg-secondary: #1e1e1e;
+            --bg-tertiary: #2d2d2d;
+            --text-primary: #e0e0e0;
+            --text-secondary: #a0a0a0;
+            --accent-color: #bb86fc;
+            --accent-secondary: #03dac6;
+            --border-color: #333;
+            --shadow-color: rgba(0, 0, 0, 0.5);
+        }
+
+        @media (prefers-color-scheme: light) {
+            :root {
+                --bg-primary: #f5f5f5;
+                --bg-secondary: #ffffff;
+                --bg-tertiary: #f0f0f0;
+                --text-primary: #333333;
+                --text-secondary: #666666;
+                --accent-color: #6200ee;
+                --accent-secondary: #018786;
+                --border-color: #ddd;
+                --shadow-color: rgba(0, 0, 0, 0.1);
+            }
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            transition: background-color 0.3s, color 0.3s;
+        }
+
+        body {
+            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+            background-color: var(--bg-primary);
+            color: var(--text-primary);
+            line-height: 1.6;
+            padding: 20px;
+            min-height: 100vh;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        header {
+            text-align: center;
+            margin-bottom: 2rem;
+            padding-bottom: 1rem;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        h1 {
+            font-size: 2rem;
+            font-weight: 600;
+            margin-bottom: 0.5rem;
+            background: linear-gradient(90deg, var(--accent-color), var(--accent-secondary));
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
+        }
+
+        .subtitle {
+            color: var(--text-secondary);
+            font-size: 1rem;
+        }
+
+        .upload-area {
+            background-color: var(--bg-secondary);
+            border: 2px dashed var(--border-color);
+            border-radius: 12px;
+            padding: 2rem;
+            text-align: center;
+            cursor: pointer;
+            margin-bottom: 2rem;
+            transition: all 0.3s;
+            box-shadow: 0 4px 6px var(--shadow-color);
+        }
+
+        .upload-area:hover {
+            border-color: var(--accent-color);
+            transform: translateY(-2px);
+            box-shadow: 0 6px 12px var(--shadow-color);
+        }
+
+        .upload-area.active {
+            border-color: var(--accent-secondary);
+            background-color: var(--bg-tertiary);
+        }
+
+        .upload-icon {
+            font-size: 3rem;
+            margin-bottom: 1rem;
+            color: var(--accent-color);
+        }
+
+        .file-input {
+            display: none;
+        }
+
+        .results {
+            display: none;
+            margin-top: 2rem;
+        }
+
+        .section-title {
+            font-size: 1.5rem;
+            margin: 1.5rem 0;
+            color: var(--accent-secondary);
+            position: relative;
+            padding-left: 1rem;
+        }
+
+        .section-title::before {
+            content: '';
+            position: absolute;
+            left: 0;
+            top: 0;
+            height: 100%;
+            width: 4px;
+            background: linear-gradient(to bottom, var(--accent-color), var(--accent-secondary));
+            border-radius: 2px;
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 1.5rem;
+            margin-bottom: 2rem;
+        }
+
+        .card {
+            background-color: var(--bg-secondary);
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 4px 6px var(--shadow-color);
+            transition: transform 0.3s;
+        }
+
+        .card:hover {
+            transform: translateY(-5px);
+        }
+
+        .card-header {
+            padding: 1rem;
+            background-color: var(--bg-tertiary);
+            border-bottom: 1px solid var(--border-color);
+            font-weight: 600;
+        }
+
+        .card-content {
+            padding: 1rem;
+        }
+
+        canvas {
+            width: 100%;
+            height: auto;
+            border-radius: 8px;
+            background-color: var(--bg-primary);
+        }
+
+        .histogram {
+            height: 150px;
+            background-color: var(--bg-tertiary);
+            border-radius: 8px;
+            margin-top: 1rem;
+        }
+
+        @media (max-width: 768px) {
+            .grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .upload-area {
+                padding: 1.5rem;
+            }
+            
+            h1 {
+                font-size: 1.5rem;
+            }
+        }
+
+        /* 加载动画 */
+        .loader {
+            display: none;
+            text-align: center;
+            margin: 1rem 0;
+        }
+
+        .spinner {
+            width: 40px;
+            height: 40px;
+            margin: 0 auto;
+            border: 4px solid var(--bg-tertiary);
+            border-top: 4px solid var(--accent-color);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        /* 工具提示 */
+        .tooltip {
+            position: relative;
+            display: inline-block;
+            cursor: help;
+        }
+
+        .tooltip .tooltiptext {
+            visibility: hidden;
+            width: 200px;
+            background-color: var(--bg-tertiary);
+            color: var(--text-primary);
+            text-align: center;
+            border-radius: 6px;
+            padding: 8px;
+            position: absolute;
+            z-index: 1;
+            bottom: 125%;
+            left: 50%;
+            transform: translateX(-50%);
+            opacity: 0;
+            transition: opacity 0.3s;
+            font-size: 0.9rem;
+            box-shadow: 0 2px 8px var(--shadow-color);
+        }
+
+        .tooltip:hover .tooltiptext {
+            visibility: visible;
+            opacity: 1;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>现代化色彩分析工具</h1>
+            <p class="subtitle">上传图片分析YUV色彩通道</p>
+        </header>
+
+        <div class="upload-area" id="uploadArea">
+            <div class="upload-icon">📁</div>
+            <h3>拖放图片或点击上传</h3>
+            <p class="text-secondary">支持JPG, PNG, WEBP格式</p>
+            <input type="file" id="fileInput" class="file-input" accept="image/*">
+        </div>
+
+        <div class="loader" id="loader">
+            <div class="spinner"></div>
+            <p>分析中...</p>
+        </div>
+
+        <div class="results" id="results">
+            <h2 class="section-title">原始图片</h2>
+            <div class="grid">
+                <div class="card">
+                    <div class="card-header">原始图像</div>
+                    <div class="card-content">
+                        <canvas id="originalCanvas"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <h2 class="section-title">YUV通道分解</h2>
+            <div class="grid">
+                <div class="card">
+                    <div class="card-header">Y (亮度) 通道 <span class="tooltip">ℹ️<span class="tooltiptext">亮度通道，表示图像的明暗信息</span></span></div>
+                    <div class="card-content">
+                        <canvas id="yCanvas"></canvas>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-header">U (蓝色差) 通道 <span class="tooltip">ℹ️<span class="tooltiptext">蓝色与亮度的差异信息</span></span></div>
+                    <div class="card-content">
+                        <canvas id="uCanvas"></canvas>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-header">V (红色差) 通道 <span class="tooltip">ℹ️<span class="tooltiptext">红色与亮度的差异信息</span></span></div>
+                    <div class="card-content">
+                        <canvas id="vCanvas"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <h2 class="section-title">单通道效果</h2>
+            <div class="grid">
+                <div class="card">
+                    <div class="card-header">仅 Y 通道 (U/V=128)</div>
+                    <div class="card-content">
+                        <canvas id="yOnlyCanvas"></canvas>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-header">仅 U 通道 (Y/V=128)</div>
+                    <div class="card-content">
+                        <canvas id="uOnlyCanvas"></canvas>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-header">仅 V 通道 (Y/U=128)</div>
+                    <div class="card-content">
+                        <canvas id="vOnlyCanvas"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const fileInput = document.getElementById('fileInput');
+            const uploadArea = document.getElementById('uploadArea');
+            const loader = document.getElementById('loader');
+            const results = document.getElementById('results');
+            
+            // 拖放功能
+            uploadArea.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                uploadArea.classList.add('active');
+            });
+            
+            uploadArea.addEventListener('dragleave', () => {
+                uploadArea.classList.remove('active');
+            });
+            
+            uploadArea.addEventListener('drop', (e) => {
+                e.preventDefault();
+                uploadArea.classList.remove('active');
+                if (e.dataTransfer.files.length) {
+                    fileInput.files = e.dataTransfer.files;
+                    handleImageUpload(e.dataTransfer.files[0]);
+                }
+            });
+            
+            // 点击上传
+            uploadArea.addEventListener('click', () => {
+                fileInput.click();
+            });
+            
+            fileInput.addEventListener('change', () => {
+                if (fileInput.files.length) {
+                    handleImageUpload(fileInput.files[0]);
+                }
+            });
+            
+            function handleImageUpload(file) {
+                if (!file.type.match('image.*')) {
+                    alert('请选择有效的图片文件');
+                    return;
+                }
+                
+                // 显示加载动画
+                loader.style.display = 'block';
+                results.style.display = 'none';
+                
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    const img = new Image();
+                    img.onload = function() {
+                        processImage(img);
+                        loader.style.display = 'none';
+                        results.style.display = 'block';
+                        
+                        // 平滑滚动到结果
+                        setTimeout(() => {
+                            results.scrollIntoView({ behavior: 'smooth' });
+                        }, 100);
+                    };
+                    img.src = e.target.result;
+                };
+                reader.readAsDataURL(file);
+            }
+            
+            function processImage(img) {
+                // 设置画布大小 (响应式)
+                const maxWidth = Math.min(800, window.innerWidth - 40);
+                const scale = Math.min(maxWidth / img.width, 1);
+                const width = img.width * scale;
+                const height = img.height * scale;
+                
+                // 初始化所有画布
+                const canvases = [
+                    'originalCanvas', 'yCanvas', 'uCanvas', 'vCanvas',
+                    'yOnlyCanvas', 'uOnlyCanvas', 'vOnlyCanvas'
+                ].map(id => {
+                    const canvas = document.getElementById(id);
+                    canvas.width = width;
+                    canvas.height = height;
+                    return canvas;
+                });
+                
+                // 绘制原始图像
+                const originalCtx = document.getElementById('originalCanvas').getContext('2d');
+                originalCtx.drawImage(img, 0, 0, width, height);
+                const imageData = originalCtx.getImageData(0, 0, width, height);
+                const data = imageData.data;
+                
+                // 准备通道数据
+                const channels = {
+                    y: new Uint8ClampedArray(data.length),
+                    u: new Uint8ClampedArray(data.length),
+                    v: new Uint8ClampedArray(data.length),
+                    yOnly: new Uint8ClampedArray(data.length),
+                    uOnly: new Uint8ClampedArray(data.length),
+                    vOnly: new Uint8ClampedArray(data.length)
+                };
+                
+                // 处理每个像素
+                for (let i = 0; i < data.length; i += 4) {
+                    const r = data[i];
+                    const g = data[i + 1];
+                    const b = data[i + 2];
+                    
+                    // RGB 转 YUV
+                    const y = 0.299 * r + 0.587 * g + 0.114 * b;
+                    const u = -0.14713 * r - 0.28886 * g + 0.436 * b + 128;
+                    const v = 0.615 * r - 0.51499 * g - 0.10001 * b + 128;
+                    
+                    // 存储各通道
+                    channels.y[i] = channels.y[i+1] = channels.y[i+2] = y;
+                    channels.y[i+3] = 255;
+                    
+                    channels.u[i] = channels.u[i+1] = channels.u[i+2] = u;
+                    channels.u[i+3] = 255;
+                    
+                    channels.v[i] = channels.v[i+1] = channels.v[i+2] = v;
+                    channels.v[i+3] = 255;
+                    
+                    // 单通道效果 (其他通道设为128)
+                    const yOnly = yuvToRgb(y, 128, 128);
+                    channels.yOnly[i] = yOnly[0];
+                    channels.yOnly[i+1] = yOnly[1];
+                    channels.yOnly[i+2] = yOnly[2];
+                    channels.yOnly[i+3] = 255;
+                    
+                    const uOnly = yuvToRgb(128, u, 128);
+                    channels.uOnly[i] = uOnly[0];
+                    channels.uOnly[i+1] = uOnly[1];
+                    channels.uOnly[i+2] = uOnly[2];
+                    channels.uOnly[i+3] = 255;
+                    
+                    const vOnly = yuvToRgb(128, 128, v);
+                    channels.vOnly[i] = vOnly[0];
+                    channels.vOnly[i+1] = vOnly[1];
+                    channels.vOnly[i+2] = vOnly[2];
+                    channels.vOnly[i+3] = 255;
+                }
+                
+                // 绘制各通道
+                document.getElementById('yCanvas').getContext('2d')
+                    .putImageData(new ImageData(channels.y, width, height), 0, 0);
+                
+                document.getElementById('uCanvas').getContext('2d')
+                    .putImageData(new ImageData(channels.u, width, height), 0, 0);
+                
+                document.getElementById('vCanvas').getContext('2d')
+                    .putImageData(new ImageData(channels.v, width, height), 0, 0);
+                
+                // 绘制单通道效果
+                document.getElementById('yOnlyCanvas').getContext('2d')
+                    .putImageData(new ImageData(channels.yOnly, width, height), 0, 0);
+                
+                document.getElementById('uOnlyCanvas').getContext('2d')
+                    .putImageData(new ImageData(channels.uOnly, width, height), 0, 0);
+                
+                document.getElementById('vOnlyCanvas').getContext('2d')
+                    .putImageData(new ImageData(channels.vOnly, width, height), 0, 0);
+            }
+            
+            function yuvToRgb(y, u, v) {
+                // YUV 转 RGB
+                const r = y + 1.13983 * (v - 128);
+                const g = y - 0.39465 * (u - 128) - 0.58060 * (v - 128);
+                const b = y + 2.03211 * (u - 128);
+                
+                return [
+                    Math.max(0, Math.min(255, r)),
+                    Math.max(0, Math.min(255, g)),
+                    Math.max(0, Math.min(255, b))
+                ];
+            }
+            
+            // 响应式调整
+            window.addEventListener('resize', function() {
+                if (results.style.display === 'block') {
+                    const originalCanvas = document.getElementById('originalCanvas');
+                    if (originalCanvas && originalCanvas.width > 0) {
+                        const img = new Image();
+                        img.src = originalCanvas.toDataURL();
+                        img.onload = function() {
+                            processImage(img);
+                        };
+                    }
+                }
+            });
+        });
+    </script>
+</body>
+</html>
