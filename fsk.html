@@ -832,7 +832,7 @@
                     this.gain = 1;
 
                     this.phaseRef = Array.from({ length: 8 }, (_, k) => {
-                        const angle = 2 * Math.PI * k / 8;
+                        const angle = 2 * Math.PI * k / 8+(Math.PI/8);
                         return [Math.cos(angle), Math.sin(angle)];
                     });
 
