@@ -1422,11 +1422,14 @@
                             this.setIter(delta.x, delta.y, delta.it, delta.w, delta.h);
                         }
                         this.counter--;
-                        console.log(this.counter)
-                        this.showInfo();
-                        if (this.counter % CPU_CORES == 0) this.context.putImageData(this.image, 0, 0);
+                        // if (this.counter % CPU_CORES == 0) {
+                        // };
 
-                        if (this.counter <= 0) this.resolveFunc();
+                        if (this.counter <= 0) {
+                            this.showInfo();
+                            this.context.putImageData(this.image, 0, 0)
+                            this.resolveFunc();
+                        }
                     }
                 }
 
@@ -1657,9 +1660,9 @@
                 console.log(performance.now() + " perturbation")
 
                 let workerRef = this.ref.map(e => [e.re, e.im]);
-                let workerBla =  this.blaTable.map(e => e.map(e2 => {
-                                    return { A: [e2.A.re, e2.A.im], B: [e2.B.re, e2.B.im], radius: e2.radius }
-                                }))
+                let workerBla = this.blaTable.map(e => e.map(e2 => {
+                    return { A: [e2.A.re, e2.A.im], B: [e2.B.re, e2.B.im], radius: e2.radius }
+                }))
 
                 let computePixel = (x, y, w, h) => {
                     let newIter;
@@ -1692,7 +1695,7 @@
                             let data = {
                                 deltas: [],
                                 ref: workerRef,
-                                bla:workerBla,
+                                bla: workerBla,
                                 maxIter: this.iterations,
                                 bailout: this.bailout,
                             }
@@ -1731,7 +1734,7 @@
                             let data = {
                                 deltas: [],
                                 ref: workerRef,
-                                bla:workerBla,
+                                bla: workerBla,
                                 maxIter: this.iterations,
                                 bailout: this.bailout,
                             }
@@ -1775,7 +1778,7 @@
                             let data = {
                                 deltas: [],
                                 ref: workerRef,
-                                bla:workerBla,
+                                bla: workerBla,
                                 maxIter: this.iterations,
                                 bailout: this.bailout,
                             }
