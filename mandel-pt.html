@@ -1424,10 +1424,10 @@
                         this.counter--;
                         // if (this.counter % CPU_CORES == 0) {
                         // };
+                        this.showInfo();
+                        this.context.putImageData(this.image, 0, 0)
 
                         if (this.counter <= 0) {
-                            this.showInfo();
-                            this.context.putImageData(this.image, 0, 0)
                             this.resolveFunc();
                         }
                     }
@@ -1833,7 +1833,7 @@
                             }
                         }
 
-                        
+
 
                         // 将deltas均分到每个核心
                         const chunkSize = Math.ceil(allDeltas.length / CPU_CORES);
