@@ -1685,43 +1685,59 @@
                 }
 
                 let p1 = () => {
-
                     return new Promise(async (r, j) => {
                         this.counter = 0;
                         this.workerCounter = 0;
                         this.resolveFunc = r;
 
+                        // 收集所有需要计算的deltas
+                        const allDeltas = [];
                         for (let y = 0; y < this.canvas.height; y += 2) {
-                            let data = {
-                                deltas: [],
-                                ref: workerRef,
-                                bla: workerBla,
-                                maxIter: this.iterations,
-                                bailout: this.bailout,
-                            }
                             for (let x = 0; x < this.canvas.width; x += 2) {
                                 if (this.iterMap[y][x] != 0) {
-                                    this.setIter(x, y, this.iterMap[y][x], 2, 2)
-                                    continue
+                                    this.setIter(x, y, this.iterMap[y][x], 2, 2);
+                                    continue;
                                 }
-
-                                // computePixel(x, y, 2, 2);
+                                // 计算并收集delta
                                 let delta = this.getDelta(x, y);
-                                data.deltas.push({
+                                allDeltas.push({
                                     re: delta.re,
                                     im: delta.im,
                                     x: x,
                                     y: y,
                                     w: 2,
                                     h: 2
-                                })
+                                });
                             }
-                            this.workers[this.workerCounter % CPU_CORES].postMessage(data);
-                            this.counter++;
+                        }
+
+                        // 将deltas均分到每个核心
+                        const chunkSize = Math.ceil(allDeltas.length / CPU_CORES);
+                        for (let i = 0; i < CPU_CORES; i++) {
+                            const start = i * chunkSize;
+                            const end = start + chunkSize;
+                            const deltasChunk = allDeltas.slice(start, end);
+
+                            if (deltasChunk.length === 0) continue; // 跳过空数据
+
+                            const data = {
+                                deltas: deltasChunk,
+                                ref: workerRef,
+                                bla: workerBla,
+                                maxIter: this.iterations,
+                                bailout: this.bailout,
+                            };
+
+                            // 轮询分配Worker
+                            const workerIndex = this.workerCounter % CPU_CORES;
+                            this.workers[workerIndex].postMessage(data);
+
+                            this.counter++; // 追踪发送的任务总数
                             this.workerCounter++;
                         }
-                    })
-                }
+
+                    });
+                };
 
                 let p2 = () => {
                     return new Promise(async (r, j) => {
@@ -1730,14 +1746,9 @@
                         this.workerCounter = 0;
                         this.resolveFunc = r;
 
+                        // 收集所有需要计算的deltas
+                        const allDeltas = [];
                         for (let y = 0; y < this.canvas.height; y += 2) {
-                            let data = {
-                                deltas: [],
-                                ref: workerRef,
-                                bla: workerBla,
-                                maxIter: this.iterations,
-                                bailout: this.bailout,
-                            }
                             for (let x = 1; x < this.canvas.width; x += 2) {
                                 if (this.iterMap[y][x] != 0) {
                                     this.setIter(x, y, this.iterMap[y][x], 1, 2)
@@ -1750,7 +1761,7 @@
                                     this.stats.guess++;
                                 } else {
                                     let delta = this.getDelta(x, y);
-                                    data.deltas.push({
+                                    allDeltas.push({
                                         re: delta.re,
                                         im: delta.im,
                                         x: x,
@@ -1760,9 +1771,30 @@
                                     })
                                 }
                             }
+                        }
 
-                            this.workers[this.workerCounter % CPU_CORES].postMessage(data);
-                            this.counter++;
+                        // 将deltas均分到每个核心
+                        const chunkSize = Math.ceil(allDeltas.length / CPU_CORES);
+                        for (let i = 0; i < CPU_CORES; i++) {
+                            const start = i * chunkSize;
+                            const end = start + chunkSize;
+                            const deltasChunk = allDeltas.slice(start, end);
+
+                            if (deltasChunk.length === 0) continue; // 跳过空数据
+
+                            const data = {
+                                deltas: deltasChunk,
+                                ref: workerRef,
+                                bla: workerBla,
+                                maxIter: this.iterations,
+                                bailout: this.bailout,
+                            };
+
+                            // 轮询分配Worker
+                            const workerIndex = this.workerCounter % CPU_CORES;
+                            this.workers[workerIndex].postMessage(data);
+
+                            this.counter++; // 追踪发送的任务总数
                             this.workerCounter++;
                         }
                     })
@@ -1774,14 +1806,8 @@
                         this.workerCounter = 0;
                         this.resolveFunc = r;
 
+                        const allDeltas = [];
                         for (let y = 1; y < this.canvas.height; y += 2) {
-                            let data = {
-                                deltas: [],
-                                ref: workerRef,
-                                bla: workerBla,
-                                maxIter: this.iterations,
-                                bailout: this.bailout,
-                            }
                             for (let x = 0; x < this.canvas.width; x++) {
                                 if (this.iterMap[y][x] != 0) {
                                     this.setIter(x, y, this.iterMap[y][x])
@@ -1795,7 +1821,7 @@
                                     this.stats.guess++;
                                 } else {
                                     let delta = this.getDelta(x, y);
-                                    data.deltas.push({
+                                    allDeltas.push({
                                         re: delta.re,
                                         im: delta.im,
                                         x: x,
@@ -1805,11 +1831,34 @@
                                     })
                                 }
                             }
-                            this.workers[this.workerCounter % CPU_CORES].postMessage(data);
-                            this.counter++;
+                        }
+
+                        
+
+                        // 将deltas均分到每个核心
+                        const chunkSize = Math.ceil(allDeltas.length / CPU_CORES);
+                        for (let i = 0; i < CPU_CORES; i++) {
+                            const start = i * chunkSize;
+                            const end = start + chunkSize;
+                            const deltasChunk = allDeltas.slice(start, end);
+
+                            if (deltasChunk.length === 0) continue; // 跳过空数据
+
+                            const data = {
+                                deltas: deltasChunk,
+                                ref: workerRef,
+                                bla: workerBla,
+                                maxIter: this.iterations,
+                                bailout: this.bailout,
+                            };
+
+                            // 轮询分配Worker
+                            const workerIndex = this.workerCounter % CPU_CORES;
+                            this.workers[workerIndex].postMessage(data);
+
+                            this.counter++; // 追踪发送的任务总数
                             this.workerCounter++;
                         }
-                        r();
                     })
                 }
 
