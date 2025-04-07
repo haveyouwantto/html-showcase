@@ -133,6 +133,10 @@
             gap: 8px;
         }
 
+        .running {
+            outline: var(--theme-color) 4px solid;
+        }
+
 
         @media (max-width: 600px) {
             .container {
@@ -1582,7 +1586,12 @@
             showInfo() {
                 let totalPixels = this.canvas.width * this.canvas.height;
                 let statusText = `Reference: ${this.stats.ref}it\nApproximation: ${this.blaTable?.length ?? 0} levels\nCalculation: ${this.stats.calc} (${(this.stats.calc / totalPixels * 100).toFixed(2)}%)\nGuessed: ${this.stats.guess} (${(this.stats.guess / totalPixels * 100).toFixed(2)}%)\nTime: ${((performance.now() - this.stats.time) / 1000).toFixed(3)}s`;
-                if (!this.rendering) statusText += "\nDone!";
+                if (!this.rendering) {
+                    statusText += "\nDone!";
+                    canvas.classList.remove('running')
+                } else {
+                    canvas.classList.add('running')
+                }
                 statsLabel.innerText = statusText;
             }
 
