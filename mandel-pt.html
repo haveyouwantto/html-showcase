@@ -219,6 +219,8 @@
         const floatView = new Float64Array(buffer); // Float64 view for the double
         const int32View = new Int32Array(buffer); // Int32 view to access 64 bits as two 32-bit chunks
 
+        const CPU_CORES = Math.max(navigator.hardwareConcurrency ?? 1, 1);
+
         class FloatExp {
             static expTable = [];
             static LOG2_10 = Math.log2(10);
@@ -1255,6 +1257,75 @@
             return [color[0], color[1], color[2], 255];
         }
 
+        // ============================
+        function createWorker() {
+
+            function constructRef(refArray) {
+                let ref = [];
+                for (let i = 0; i < refArray.length; i++) {
+                    ref.push(new Complex(refArray[i][0], refArray[i][1]));
+                }
+                return ref;
+            }
+
+            function constructBla(blaArray) {
+                let out = []
+                for (let i = 0; i < blaArray.length; i++) {
+                    out.push([])
+                    for (let j = 0; j < blaArray[i].length; j++) {
+                        out[i].push({
+                            A: new Complex(blaArray[i][j].A[0], blaArray[i][j].A[1]),
+                            B: new Complex(blaArray[i][j].B[0], blaArray[i][j].B[1]),
+                            radius: blaArray[i][j].radius
+                        })
+                    }
+                }
+                return out
+            }
+            self.onmessage = function (event) {
+                let calc = []
+                let refArray = constructRef(event.data.ref);
+                let blaArray = constructBla(event.data.bla);
+                for (let delta of event.data.deltas) {
+                    let it = getPTBLA(
+                        new Complex(
+                            delta.re, delta.im
+                        ),
+                        refArray,
+                        blaArray,
+                        event.data.maxIter,
+                        event.data.bailout,
+                    );
+                    calc.push({
+                        it: it,
+                        x: delta.x,
+                        y: delta.y,
+                        w: delta.w,
+                        h: delta.h
+                    });
+                }
+                self.postMessage(calc);
+            };
+        }
+
+
+        function arrayBufferToBase64(buffer) {
+            let binary = '';
+            const bytes = new Uint8Array(buffer);
+            const len = bytes.byteLength;
+            for (let i = 0; i < len; i++) {
+                binary += String.fromCharCode(bytes[i]);
+            }
+            return btoa(binary);
+        }
+
+        const code = new TextEncoder().encode(`
+    ${Complex.toString()}${lookup.toString()};${getPTBLA.toString()}
+        (
+        ${createWorker.toString()}
+        )();`);
+        const workerData = 'data:application/javascript;base64,' + arrayBufferToBase64(code)
+
         /**
          * Represents a Mandelbrot set visualization.
          */
@@ -1337,6 +1408,28 @@
                     approx: 0,
                     time: performance.now()
                 }
+
+
+                this.counter = 0;
+                this.workerCounter = 0;
+                this.resolveFunc = null;
+                this.workers = []
+                for (let i = 0; i < CPU_CORES; i++) {
+                    this.workers[i] = new Worker(workerData);
+                    this.workers[i].onmessage = event => {
+                        this.stats.calc += event.data.length;
+                        for (let delta of event.data) {
+                            this.setIter(delta.x, delta.y, delta.it, delta.w, delta.h);
+                        }
+                        this.counter--;
+                        console.log(this.counter)
+                        this.showInfo();
+                        if (this.counter % CPU_CORES == 0) this.context.putImageData(this.image, 0, 0);
+
+                        if (this.counter <= 0) this.resolveFunc();
+                    }
+                }
+
             }
 
             click(x, y) {
@@ -1563,6 +1656,10 @@
 
                 console.log(performance.now() + " perturbation")
 
+                let workerRef = this.ref.map(e => [e.re, e.im]);
+                let workerBla =  this.blaTable.map(e => e.map(e2 => {
+                                    return { A: [e2.A.re, e2.A.im], B: [e2.B.re, e2.B.im], radius: e2.radius }
+                                }))
 
                 let computePixel = (x, y, w, h) => {
                     let newIter;
@@ -1585,34 +1682,59 @@
                 }
 
                 let p1 = () => {
+
                     return new Promise(async (r, j) => {
+                        this.counter = 0;
+                        this.workerCounter = 0;
+                        this.resolveFunc = r;
+
                         for (let y = 0; y < this.canvas.height; y += 2) {
+                            let data = {
+                                deltas: [],
+                                ref: workerRef,
+                                bla:workerBla,
+                                maxIter: this.iterations,
+                                bailout: this.bailout,
+                            }
                             for (let x = 0; x < this.canvas.width; x += 2) {
                                 if (this.iterMap[y][x] != 0) {
                                     this.setIter(x, y, this.iterMap[y][x], 2, 2)
                                     continue
                                 }
 
-                                computePixel(x, y, 2, 2);
+                                // computePixel(x, y, 2, 2);
+                                let delta = this.getDelta(x, y);
+                                data.deltas.push({
+                                    re: delta.re,
+                                    im: delta.im,
+                                    x: x,
+                                    y: y,
+                                    w: 2,
+                                    h: 2
+                                })
                             }
-                            if (y % 100 == 0 && !this.videoRendering && this.deep) {
-                                this.showInfo();
-                                this.context.putImageData(this.image, 0, 0);
-                                await delay(1)
-                            }
+                            this.workers[this.workerCounter % CPU_CORES].postMessage(data);
+                            this.counter++;
+                            this.workerCounter++;
                         }
-                        if (!this.videoRendering) {
-                            this.context.putImageData(this.image, 0, 0);
-                            this.showInfo();
-                            await delay(10);
-                        }
-                        r();
                     })
                 }
 
                 let p2 = () => {
                     return new Promise(async (r, j) => {
+
+                        this.counter = 0;
+                        this.workerCounter = 0;
+                        this.resolveFunc = r;
+
                         for (let y = 0; y < this.canvas.height; y += 2) {
+                            let data = {
+                                deltas: [],
+                                ref: workerRef,
+                                bla:workerBla,
+                                maxIter: this.iterations,
+                                bailout: this.bailout,
+                            }
                             for (let x = 1; x < this.canvas.width; x += 2) {
                                 if (this.iterMap[y][x] != 0) {
                                     this.setIter(x, y, this.iterMap[y][x], 1, 2)
@@ -1624,27 +1746,39 @@
                                     this.setIter(x, y, (leftColor + rightColor) / 2);
                                     this.stats.guess++;
                                 } else {
-                                    computePixel(x, y, 1, 2);
+                                    let delta = this.getDelta(x, y);
+                                    data.deltas.push({
+                                        re: delta.re,
+                                        im: delta.im,
+                                        x: x,
+                                        y: y,
+                                        w: 1,
+                                        h: 2
+                                    })
                                 }
                             }
-                            if (y % 100 == 0 && !this.videoRendering && this.deep) {
-                                this.context.putImageData(this.image, 0, 0);
-                                this.showInfo();
-                                await delay(1)
-                            }
+
+                            this.workers[this.workerCounter % CPU_CORES].postMessage(data);
+                            this.counter++;
+                            this.workerCounter++;
                         }
-                        if (!this.videoRendering) {
-                            this.context.putImageData(this.image, 0, 0);
-                            this.showInfo();
-                            await delay(10);
-                        }
-                        r();
                     })
                 }
 
                 let p3 = () => {
                     return new Promise(async (r, j) => {
+                        this.counter = 0;
+                        this.workerCounter = 0;
+                        this.resolveFunc = r;
+
                         for (let y = 1; y < this.canvas.height; y += 2) {
+                            let data = {
+                                deltas: [],
+                                ref: workerRef,
+                                bla:workerBla,
+                                maxIter: this.iterations,
+                                bailout: this.bailout,
+                            }
                             for (let x = 0; x < this.canvas.width; x++) {
                                 if (this.iterMap[y][x] != 0) {
                                     this.setIter(x, y, this.iterMap[y][x])
@@ -1657,19 +1791,21 @@
                                     this.setIter(x, y, (upColor + downColor) / 2);
                                     this.stats.guess++;
                                 } else {
-                                    computePixel(x, y);
+                                    let delta = this.getDelta(x, y);
+                                    data.deltas.push({
+                                        re: delta.re,
+                                        im: delta.im,
+                                        x: x,
+                                        y: y,
+                                        w: 1,
+                                        h: 1
+                                    })
                                 }
                             }
-
-                            if (y % 100 == 1 && !this.videoRendering && this.deep) {
-                                this.context.putImageData(this.image, 0, 0);
-                                this.showInfo();
-                                await delay(1)
-                            }
+                            this.workers[this.workerCounter % CPU_CORES].postMessage(data);
+                            this.counter++;
+                            this.workerCounter++;
                         }
-                        this.context.putImageData(this.image, 0, 0);
-                        this.showInfo();
-                        await delay(10);
                         r();
                     })
                 }
