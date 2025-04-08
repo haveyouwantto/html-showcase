@@ -1254,18 +1254,62 @@
             let color = colorTrans(palette, it / colorStep);
             return [color[0], color[1], color[2], 255];
         }
-        
-        function groupArray(arr, groupSize = 3) {
-  if (!arr || arr.length === 0 || groupSize <= 0) {
-    return [];
-  }
 
-  const result = [];
-  for (let i = 0; i < arr.length; i += groupSize) {
-    result.push(arr.slice(i, i + groupSize));
-  }
-  return result;
-}
+        function groupArray(arr, groupSize = 3) {
+            if (!arr || arr.length === 0 || groupSize <= 0) {
+                return [];
+            }
+
+            const result = [];
+            for (let i = 0; i < arr.length; i += groupSize) {
+                result.push(arr.slice(i, i + groupSize));
+            }
+            return result;
+        }
+
+        function base64ToByteArray(base64String) {
+            try {
+                // 还原字符并将URL安全的Base64转换为标准Base64
+                let base64 = base64String.replace(/-/g, '+').replace(/_/g, '/');
+
+                // 添加 padding (确保长度是4的倍数)
+                const padLength = (4 - (base64.length % 4)) % 4;
+                base64 += '='.repeat(padLength);
+
+                const binaryString = atob(base64); // 解码Base64
+                const byteArray = new Uint8Array(binaryString.length);
+
+                for (let i = 0; i < binaryString.length; i++) {
+                    byteArray[i] = binaryString.charCodeAt(i);
+                }
+
+                return Array.from(byteArray);
+            } catch (error) {
+                throw new Error("输入不是一个有效的URL安全Base64字符串。");
+            }
+        }
+
+        function byteArrayToBase64(byteArray) {
+            if (!Array.isArray(byteArray)) {
+                throw new Error("输入必须是一个数组。");
+            }
+
+            // 验证字节数组
+            if (byteArray.some(v => typeof v !== 'number' || !Number.isInteger(v) || v < 0 || v > 255)) {
+                throw new Error("数组中的每个元素必须是0-255之间的整数。");
+            }
+
+            // 构建二进制字符串
+            const binaryString = String.fromCharCode(...byteArray);
+
+            // 编码并转换为URL安全格式
+            const base64 = btoa(binaryString)
+                .replace(/\+/g, '-')
+                .replace(/\//g, '_')
+                .replace(/=+$/, '');
+
+            return base64;
+        }
 
         /**
          * Represents a Mandelbrot set visualization.
@@ -1716,15 +1760,18 @@
                 this.showInfo();
                 const params = new URLSearchParams(window.location.hash.substring(1));
 
-// 更新或添加新的参数
-params.set("rec", compressDecimal(this.center.re.toString()));
-params.set("imc", compressDecimal(this.center.im.toString()));
-params.set("zmc", compressDecimal(new FloatExp(4).div(this.size).toString()));
-params.set("itc", compressDecimal(this.iterations.toString()));
+                // 更新或添加新的参数
+                params.set("rec", compressDecimal(this.center.re.toString()));
+                params.set("imc", compressDecimal(this.center.im.toString()));
+                params.set("zmc", compressDecimal(new FloatExp(4).div(this.size).toString()));
+                params.set("itc", compressDecimal(this.iterations.toString()));
+                params.set("bailout", Math.sqrt(this.bailout).toString());
+                params.set("colorc", byteArrayToBase64(palette.flat(1)));
+                params.set("colorstep", colorStep);
 
-// 重建哈希字符串
-window.location.hash = params.toString();
-}
+                // 重建哈希字符串
+                window.location.hash = params.toString();
+            }
 
             /**
              * Initiates the download of the Mandelbrot set visualization as a PNG image.
@@ -1993,41 +2040,57 @@ window.location.hash = params.toString();
 
         const params = new URLSearchParams(window.location.hash.substring(1));
 
-params.forEach((value, key) => {
-  switch (key) {
-    case "rec":
-      c.re = new Decimal(decompressDecimal(value));
-      break;
-    case "imc":
-      c.im = new Decimal(decompressDecimal(value));
-      break;
-    case "zmc":
-      size = new FloatExp(4).div(parseFloatExp(decompressDecimal(value)));
-      break;
-    case "itc":
-      iterations = parseInt(decompressDecimal(value));
-      break;
-    case "re":
-      c.re = new Decimal(value);
-      break;
-    case "im":
-      c.im = new Decimal(value);
-      break;
-    case "zoom":
-      size = new FloatExp(4).div(getFloatExp(value));
-      break;
-    case "iter":
-      iterations = parseInt(value);
-      break;
-    case "bailout":
-      bailout = parseFloat(value);
-      break;
-    case "colors":
-    palette=groupArray(value.split(",").map(e => parseInt(e)))
-      alert(palette);
-      break;
-  }
-});
+        params.forEach((value, key) => {
+            switch (key) {
+
+                // readable values
+                case "re":
+                    c.re = new Decimal(value);
+                    params.delete(key);
+                    break;
+                case "im":
+                    c.im = new Decimal(value);
+                    params.delete(key);
+                    break;
+                case "zoom":
+                    size = new FloatExp(4).div(getFloatExp(value));
+                    params.delete(key);
+                    break;
+                case "iter":
+                    iterations = parseInt(value);
+                    params.delete(key);
+                    break;
+                case "bailout":
+                    bailout = parseFloat(value);
+                    params.delete(key);
+                    break;
+                case "colors":
+                    palette = groupArray(value.split(",").map(e => parseInt(e)))
+                    params.delete(key);
+                    break;
+                case "colorstep":
+                    colorStep = parseFloat(value)
+                    break;
+
+                // compressed values
+                case "rec":
+                    c.re = new Decimal(decompressDecimal(value));
+                    break;
+                case "imc":
+                    c.im = new Decimal(decompressDecimal(value));
+                    break;
+                case "zmc":
+                    size = new FloatExp(4).div(parseFloatExp(decompressDecimal(value)));
+                    break;
+                case "itc":
+                    iterations = parseInt(decompressDecimal(value));
+                    break;
+                case "colorc":
+                    palette = groupArray(base64ToByteArray(value));
+                    break;
+            }
+        });
+        location.hash = params.toString();
 
         const mandelbrot = new Mandelbrot(canvas, c, iterations, bailout)
         mandelbrot.zoom(size)
