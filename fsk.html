@@ -316,6 +316,7 @@
             <label>模式：</label>
             <select id="mode">
                 <option value="gfsk" selected>GFSK</option>
+                <option value="fsk4">4FSK</option>
                 <option value="bpsk">BPSK</option>
                 <option value="qpsk">QPSK</option>
                 <option value="psk8">8PSK</option>
@@ -343,6 +344,9 @@
         </div>
         <canvas id="constellation" width="500" height="500"></canvas>
     </div>
+    <!-- <script src="//cdn.jsdelivr.net/npm/eruda"></script>
+        <script>eruda.init();</script>
+        -->
     <script>
 
         let baudRate = 50; // 波特率
@@ -1692,6 +1696,67 @@
                 if (this.oscillator) this.oscillator.stop();
             }
         }
+        
+        class FSK4Modulator extends Modulator {
+            constructor() {
+                super();
+            }
+
+            transmit(audioCtx, bitArray) {
+            	let packed = packBitArray(bitArray, 2)
+            	
+                const mod = new AudioWorkletNode(audioCtx, 'mod')
+                mod.port.postMessage({ type: "baudRate", baudRate: this.baudRate })
+                mod.port.postMessage({ type: "data", data: packed })
+                mod.port.postMessage({
+                    type: "symbolMap", symbolMap: {
+                        0: [-1, 0],
+                        1: [-0.333, 0],
+                        2: [0.333, 0],
+                        3: [1, 0]
+                    }
+                })
+                this.bits = bitArray.length
+
+                const convolver = audioCtx.createConvolver();
+                const filter = createGFSKFilter(this.baudRate);
+                convolver.buffer = filter;
+
+                const freqDeviation = audioCtx.createGain();
+                freqDeviation.gain.value = 170.778026716646371 * this.baudRate * 0.25;
+                const oscillator = audioCtx.createOscillator();
+                oscillator.frequency.value = this.carrierFreq;
+                const gainNode = audioCtx.createGain();
+                gainNode.gain.value = 0.5;
+
+                mod.connect(convolver)
+                convolver.connect(freqDeviation);
+                freqDeviation.connect(oscillator.frequency);
+                oscillator.connect(gainNode);
+                gainNode.connect(audioCtx.destination);
+                oscillator.start();
+
+                let symbolTime = 1 / this.baudRate;
+
+                oscillator.stop(audioCtx.currentTime + symbolTime * packed.length);
+
+                oscillator.onended = () => {
+                    if (this.onStop) this.onStop();
+                }
+
+                this.oscillator = oscillator;
+                return oscillator;
+            }
+
+            stop() {
+                super.stop();
+                if (this.oscillator) this.oscillator.stop();
+            }
+            
+            get bitsPerSymbol() {
+                return 2;
+            }
+        }
 
         class BPSKModulator extends Modulator {
             transmit(audioCtx, bitArray) {
@@ -1969,6 +2034,75 @@
                     },
                     {
                         i: -1, q: 0, label: "0"
+                    }]
+            }
+        }
+        
+        class FSK4Demodulator extends Demodulator {
+            setBaudRate(baudRate) {
+                this.baudRate = baudRate;
+                const filter = createGFSKFilter(this.baudRate)
+                if (this.convolver) this.convolver.buffer = filter;
+                if (this.demod) this.demod.port.postMessage({ type: "baudRate", baudRate: baudRate })
+            }
+            setCarrierFreq(carrierFreq) {
+                this.carrierFreq = carrierFreq;
+                if (this.mixer) this.mixer.parameters.get('frequency').value = carrierFreq;
+            }
+            receive(source) {
+                super.receive(source)
+                this.mixer = new AudioWorkletNode(audioCtx, 'mixer', { outputChannelCount: [2] });
+                this.convolver = audioCtx.createConvolver()
+                this.demod = new AudioWorkletNode(audioCtx, 'demod')
+                this.setBaudRate(this.baudRate)
+                this.setCarrierFreq(this.carrierFreq)
+
+                source.connect(this.mixer, 0)
+                this.mixer.connect(this.convolver);
+                this.convolver.connect(this.demod)
+
+                this.demod.port.onmessage = (event) => {
+                	let phase =event.data.phase;
+                	let bit1,bit2
+                	if (phase<-0.5){
+                		bit1=bit2=0;
+                	}else if (phase <0){
+                		bit1=0;
+                		bit2=1;
+                	}else if(phase<0.5){
+                		bit1=1
+                		bit2=0
+                	}else{
+                		bit1=bit2=1
+                	}
+                	
+                    if (this.onSample) this.onSample({
+                        sample: [event.data.phase, 0],
+                        bits: [bit1,bit2]
+                    })
+                }
+            }
+
+            stop() {
+                super.stop();
+                if (this.mixer) this.mixer.disconnect();
+                if (this.convolver) this.convolver.disconnect();
+                if (this.demod) this.demod.disconnect();
+            }
+
+            get decidePoints() {
+                return [
+                    {
+                        i: -1, q: 0, label: "00"
+                    },
+                    {
+                        i: -0.333, q: 0, label: "01"
+                    },
+                    {
+                        i: 0.333, q: 0, label: "10"
+                    },
+                    {
+                        i: 1, q: 0, label: "11"
                     }]
             }
         }
@@ -2348,6 +2482,11 @@
                 name: 'GFSK',
                 modulate: GFSKModulator,
                 demodulate: GFSKDemodulator
+            },
+            fsk4: {
+                name: '4FSK',
+                modulate: FSK4Modulator,
+                demodulate: FSK4Demodulator
             },
             bpsk: {
                 name: 'BPSK',
