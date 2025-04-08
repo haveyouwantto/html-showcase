@@ -1697,25 +1697,22 @@
             }
         }
         
-        class FSK4Modulator extends Modulator {
-            constructor() {
+        class MFSKModulator extends Modulator {
+            constructor(order) {
                 super();
+                this.order=order;
+                this.bitsPer=Math.log2(order)
             }
 
             transmit(audioCtx, bitArray) {
-            	let packed = packBitArray(bitArray, 2)
+            	let packed = packBitArray(bitArray, this.bitsPer)
             	
                 const mod = new AudioWorkletNode(audioCtx, 'mod')
                 mod.port.postMessage({ type: "baudRate", baudRate: this.baudRate })
                 mod.port.postMessage({ type: "data", data: packed })
                 mod.port.postMessage({
-                    type: "symbolMap", symbolMap: {
-                        0: [-1, 0],
-                        1: [-0.333, 0],
-                        2: [0.333, 0],
-                        3: [1, 0]
-                    }
-                })
+                    type: "symbolMap", symbolMap: this.distributePoints(this.order,-1,1)
+                    })
                 this.bits = bitArray.length
 
                 const convolver = audioCtx.createConvolver();
@@ -1723,7 +1720,7 @@
                 convolver.buffer = filter;
 
                 const freqDeviation = audioCtx.createGain();
-                freqDeviation.gain.value = 170.778026716646371 * this.baudRate * 0.25;
+                freqDeviation.gain.value = 170.778026716646371* this.baudRate * 0.25;
                 const oscillator = audioCtx.createOscillator();
                 oscillator.frequency.value = this.carrierFreq;
                 const gainNode = audioCtx.createGain();
@@ -1754,8 +1751,44 @@
             }
             
             get bitsPerSymbol() {
-                return 2;
+                return this.bitsPer;
             }
+            
+            distributePoints(numPoints, start, end) {
+  // 如果点的数量小于2，直接返回空数组
+  if (numPoints < 2) {
+    return {};
+  }
+
+  // 如果点的数量为2，直接返回起始点和结束点
+  if (numPoints === 2) {
+    return {0:[-1,0],1:[1,0]};
+  }
+
+  // 计算每个区间的长度
+  const intervalLength = (end - start) / (numPoints - 1);
+
+  // 创建一个数组来存储分割点
+  const points = {0:[start,0]}; // 第一个点是起始点
+
+  // 计算中间的分割点
+  for (let i = 1; i < numPoints - 1; i++) {
+    const point = start + intervalLength * i;
+    points[i]=[point,0];
+  }
+
+  // 最后一个点是结束点
+  points[numPoints-1]=[end,0];
+
+  return points;
+}
+
+        }
+        
+        class FSK4Modulator extends MFSKModulator{
+        	constructor (){
+        		super(4);
+        	}
         }
 
         class BPSKModulator extends Modulator {
@@ -2077,7 +2110,7 @@
                 	}
                 	
                     if (this.onSample) this.onSample({
-                        sample: [event.data.phase, 0],
+                        sample: [phase, 0],
                         bits: [bit1,bit2]
                     })
                 }
