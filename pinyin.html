@@ -39,19 +39,22 @@
         }
 
         .candidates {
-            display: flex;
-            flex-wrap: wrap;
+            display: grid;
+            grid-template-columns: repeat(9, 1fr);
+            max-width: fit-content;
             gap: 5px;
             margin-top: 20px;
+            margin-bottom:16px;
         }
 
         .candidate {
-            padding: 8px 12px;
+            padding: 2px 4px; 
             border: 1px solid #333;
             background-color: #fff;
             cursor: pointer;
             font-size: 18px;
             position: relative;
+            grid-column: span 1;
         }
 
         .candidate:hover,
@@ -64,7 +67,7 @@
             position: absolute;
             bottom: -15px;
             right: 0;
-            font-size: 10px;
+            font-size: 8px;
             color: #999;
         }
 
@@ -510,11 +513,11 @@
 
             // 如果没有候选字，隐藏候选区域
             if (allCandidates.length === 0) {
-                candidatesDiv.style.display = 'none';
-                document.querySelector('.page-nav').style.display = 'none';
+                candidatesDiv.style.visibility= 'hidden'; 
+                document.querySelector('.page-nav').style.visibility = 'hidden';
             } else {
-                candidatesDiv.style.display = 'flex';
-                document.querySelector('.page-nav').style.display = 'flex';
+                candidatesDiv.style.visibility = 'visible';
+                document.querySelector('.page-nav').style.visibility = 'visible';
             }
 
             // 更新状态栏
