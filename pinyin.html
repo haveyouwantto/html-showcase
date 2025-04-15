@@ -512,7 +512,7 @@
             cursor.style.visibility = cursor.style.visibility === 'hidden' ? 'visible' : 'hidden';
 
             // 如果没有候选字，隐藏候选区域
-            if (allCandidates.length === 0) {
+            if (allCandidates.length === 0 || currentPinyin.length === 0) {
                 candidatesDiv.style.visibility= 'hidden'; 
                 document.querySelector('.page-nav').style.visibility = 'hidden';
             } else {
