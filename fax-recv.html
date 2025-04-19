@@ -1,0 +1,516 @@
+<html>
+
+<head>
+    <title>FAX Receiver</title>
+
+    <meta http-equiv="Content-Type" content="text/html; charset=utf8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        :root {
+            --bg-gradient: linear-gradient(45deg, #0a0e1a, #1a1f2c);
+            --neon-cyan: #00f3ff;
+            --neon-purple: #bd00ff;
+            --dark-bg: #0d1117;
+            --text-primary: #e1e7f0;
+            --text-secondary: #b6becc;
+            --border-radius: 8px;
+            --border-width: 2px;
+            --glow: 0 0 15px;
+        }
+
+        body {
+            background: var(--bg-gradient);
+            color: var(--text-primary);
+            font-family: 'Segoe UI', system-ui, sans-serif;
+            line-height: 1.6;
+            min-height: 100vh;
+            margin: 0;
+            padding: 2rem;
+            box-sizing: border-box;
+        }
+
+        #title {
+            text-align: center;
+            font-size: 2.5rem;
+            background: linear-gradient(135deg, var(--neon-cyan), var(--neon-purple));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            text-shadow: var(--glow) rgba(0, 243, 255, 0.2);
+            margin-bottom: 2rem;
+        }
+
+        textarea {
+            background: var(--dark-bg);
+            border: var(--border-width) solid #2d3746;
+            border-radius: var(--border-radius);
+            color: var(--text-primary);
+            padding: 1rem;
+            font-size: 1rem;
+            transition: all 0.3s ease;
+            width: 100%;
+            height: 50vh;
+            resize: vertical;
+        }
+
+        textarea:focus {
+            border-color: var(--neon-cyan);
+            box-shadow: 0 0 15px rgba(0, 243, 255, 0.2);
+            outline: none;
+        }
+
+        button {
+            background: linear-gradient(135deg, #1a2333, #0d1117);
+            border: var(--border-width) solid #2d3746;
+            color: var(--text-secondary);
+            padding: 0.8rem 1.5rem;
+            border-radius: var(--border-radius);
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+            margin: 8px;
+        }
+
+        button:hover {
+            color: var(--neon-cyan);
+            border-color: var(--neon-cyan);
+            box-shadow: var(--glow) rgba(0, 243, 255, 0.3);
+        }
+
+        button:disabled {
+            color: #1a2333;
+            border-color: #2d3746
+        }
+
+        button::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg,
+                    transparent,
+                    rgba(0, 243, 255, 0.1),
+                    transparent);
+            transition: 0.5s;
+        }
+
+        button:hover::before {
+            left: 100%;
+        }
+
+        #audio-inputs {
+            margin: 1.5rem 0;
+        }
+
+        select {
+            background: var(--dark-bg);
+            border: var(--border-width) solid #2d3746;
+            color: var(--text-primary);
+            padding: 0.5rem;
+            border-radius: 6px;
+            margin-left: 1rem;
+        }
+
+        input[type="number"] {
+            background: var(--dark-bg);
+            border: var(--border-width) solid #2d3746;
+            color: var(--text-primary);
+            padding: 0.5rem;
+            border-radius: 6px;
+            margin-left: 1rem;
+        }
+
+        input[type="number"]:focus {
+            border-color: var(--neon-cyan);
+            outline: none;
+        }
+
+        select:focus {
+            border-color: var(--neon-cyan);
+            outline: none;
+        }
+
+        hr {
+            border: 1px solid #2d3746;
+            margin: 2rem 0;
+        }
+
+        #atv {
+            border: var(--border-width) solid #2d3746;
+            border-radius: var(--border-radius);
+            margin: 1rem 0;
+            width: 50vw;
+            image-rendering: pixelated;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 2rem;
+        }
+
+        .btn-container {
+            display: flex;
+            justify-content: center;
+            align-items: stretch;
+        }
+
+        .controls {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .title-text {
+            text-align: center;
+            font-size: 1.5rem;
+            font-weight: 600;
+            background: linear-gradient(135deg, var(--neon-cyan), var(--neon-purple));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            text-shadow: var(--glow) rgba(0, 243, 255, 0.2);
+            margin-bottom: 1rem;
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+    <h1 id='title'>模拟传真接收器</h1>
+    <div class="container">
+        <div>
+            <div class="title-text">接收</div>
+            <div class="btn-container">
+                <button id='start'>接收</button>
+            </div>
+            <div id="audio-inputs">
+                <label for="audio-input">选择音频输入设备：</label>
+                <select id="audio-input"></select>
+            </div>
+        </div>
+    </div>
+    <hr>
+    <div class="controls">
+        <canvas id="waveform" width="1500" height="300"></canvas>
+        <div class="title-text">解调数据</div>
+        <canvas id="atv" width="1500" height="2300"></canvas>
+    </div>
+    <script>
+        const sampleRate = 48000; // 采样率
+        let carrierFreq = 1900; // 载波频率
+        const freqDeviation = 800
+        let width = 1500;
+        let height = 2300;
+
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: sampleRate, latencyHint: "balanced" });
+
+
+        class ATVDisplay {
+            constructor(canvas) {
+                this.canvas = canvas;
+                this.canvas.width = width;
+                this.canvas.height = height;
+                this.ctx = this.canvas.getContext('2d')
+                this.imageData = this.ctx.createImageData(width, height);
+                this.pos = 0;
+            }
+
+            draw(data) {
+                let startPos = this.pos
+                for (let pixel of data) {
+                    let x = this.pos % this.canvas.width;
+                    let y = Math.floor(this.pos / this.canvas.width);
+                    let ord = (y * this.canvas.width + x) * 4;
+                    this.imageData.data[ord] = pixel;
+                    this.imageData.data[ord + 1] = pixel;
+                    this.imageData.data[ord + 2] = pixel;
+                    this.imageData.data[ord + 3] = 255;
+                    this.pos++;
+                    if (this.pos >= this.canvas.width * this.canvas.height) {
+                        this.pos = 0;
+                    }
+                }
+
+                let dirtyY1 = Math.floor(startPos / this.canvas.width)
+                let dirtyY2 = Math.ceil(this.pos / this.canvas.width)
+                console.log(dirtyY1, dirtyY2)
+                this.ctx.putImageData(this.imageData, 0, 0, 0, dirtyY1, this.canvas.width, dirtyY2);
+            }
+        }
+
+        function secondsToHms(seconds) {
+            if (typeof seconds !== 'number' || seconds < 0) {
+                return "00:00:00"; // 或者抛出错误，取决于你的需求
+            }
+
+            const hours = Math.floor(seconds / 3600);
+            const minutes = Math.floor((seconds % 3600) / 60);
+            const remainingSeconds = Math.floor(seconds % 60);
+
+            const formattedHours = String(hours).padStart(2, '0');
+            const formattedMinutes = String(minutes).padStart(2, '0');
+            const formattedSeconds = String(remainingSeconds).padStart(2, '0');
+
+            return `${formattedHours}:${formattedMinutes}:${formattedSeconds}`;
+        }
+
+        function createDemodulator(sampleRate) {
+            const mixer = class extends AudioWorkletProcessor {
+                static get parameterDescriptors() {
+                    return [{
+                        name: 'frequency',
+                        defaultValue: 440,
+                        minValue: 20,
+                        maxValue: 20000,
+                        automationRate: 'a-rate' // 关键：指定 automationRate 为 'a-rate'
+                    }];
+                }
+
+                constructor() {
+                    super();
+                    this.phase = 0;
+                    this.sampleRate = sampleRate;
+                }
+
+                process(inputs, outputs, parameters) {
+                    // 确保有一个输入通道
+                    const input = inputs[0];
+                    const output = outputs[0];
+
+                    // 确保是双声道输出
+                    const leftChannel = output[0]; // 实部
+                    const rightChannel = output[1]; // 虚部
+                    const frequencies = parameters.frequency; // 获取频率数组，因为是 a-rate
+
+                    for (let i = 0; i < leftChannel.length; i++) {
+                        const frequency = frequencies[i] ?? frequencies[0]; // 获取当前帧的频率
+                        const omega = 2 * Math.PI * frequency / this.sampleRate;
+
+                        const real = Math.cos(this.phase);
+                        const imag = Math.sin(this.phase);
+
+                        // 处理左声道输入，如果未连接则乘以1
+                        const leftInputValue = input && input[0] ? input[0][i] : 1;
+
+                        // 处理右声道输入，如果未连接则乘以1
+                        const rightInputValue = input && input[1] ? input[1][i] : 1;
+
+                        leftChannel[i] = real * leftInputValue;
+                        rightChannel[i] = imag * rightInputValue;
+
+                        this.phase += omega;
+                        //this.phase %= (2 * Math.PI); // 周期重置
+                    }
+
+                    return true;
+                }
+            }
+
+
+            const demod = class extends AudioWorkletProcessor {
+                constructor(options) {
+                    super();
+                    this.count = 0;
+                    this.spp = 16;
+                    this.pixelArr = new Uint8ClampedArray(1500);
+                    this.pixelCount = 0;
+                }
+
+                process(inputs, outputs, parameters) {
+                    // 获取输入信号和固定解调频率参数
+                    const input = inputs[0];
+
+                    const filteredI = input[0]
+                    const filteredQ = input[1]
+
+                    if (!filteredI || !filteredQ) return true;
+
+                    // FM解调
+                    const phase = new Float32Array(filteredI.length);
+                    for (let j = 0; j < filteredI.length - 1; ++j) {
+                        // 计算相邻样本的共轭乘积（用于相位差检测）
+                        const real1 = filteredI[j], imag1 = filteredQ[j];
+                        const real2 = filteredI[j + 1], imag2 = filteredQ[j + 1];
+                        const resultReal = real1 * real2 + imag1 * imag2;  // 实部
+                        const resultImag = real1 * -imag2 + imag1 * real2;  // 虚部
+
+                        // 计算瞬时相位差（arctan(虚部/实部））
+                        phase[j] = -Math.atan2(resultImag, resultReal) * (sampleRate / 800) / Math.PI;
+
+                        if ((this.count++) >= this.spp) {
+                            this.pixelArr[this.pixelCount++] = Math.round(255 - (phase[j] + 1) * 128);
+                            if (this.pixelCount >= this.pixelArr.length) {
+                                this.pixelCount = 0;
+                                this.port.postMessage({ phase: this.pixelArr });
+                            }
+                            this.count -= this.spp;
+                        }
+
+                    }
+
+                    phase[phase.length - 1] = phase[phase.length - 2];  // 边界处理
+
+                    // 将相位数据输出到指定端口
+                    outputs[0][0].set(phase);
+                    return true;
+                }
+            }
+
+            registerProcessor('demod', demod);
+            registerProcessor('mixer', mixer)
+        }
+
+        function arrayBufferToBase64(buffer) {
+            let binary = '';
+            const bytes = new Uint8Array(buffer);
+            const len = bytes.byteLength;
+            for (let i = 0; i < len; i++) {
+                binary += String.fromCharCode(bytes[i]);
+            }
+            return btoa(binary);
+        }
+
+        function createHannWindow(length) {
+            return [...Array(length)].map((v, i) => {
+                return 0.5 * (1 - Math.cos((2 * Math.PI * i) / (length - 1)));
+            });
+        }
+
+        function createFilter(taps, bw) {
+            const buffer = audioCtx.createBuffer(1, taps, audioCtx.sampleRate);
+            const window = createHannWindow(taps);
+
+            buffer.getChannelData(0).set(
+                [...Array(taps)].map((v, i) => {
+                    const t = (i - taps / 2) / audioCtx.sampleRate;
+                    const x = 2 * Math.PI * bw * t;
+                    return t == 0 ? 1 : Math.sin(x) / x * window[i];
+                })
+            )
+            return buffer;
+        }
+
+        const code = new TextEncoder().encode(`(${createDemodulator.toString()})(${sampleRate});`);
+        const workletData = 'data:application/javascript;base64,' + arrayBufferToBase64(code)
+        console.log(workletData)
+
+        const audioInput = document.getElementById('audio-input');
+        const received = document.getElementById('received');
+
+
+        navigator.mediaDevices?.enumerateDevices().then(devices => {
+            devices.filter(device => device.kind === 'audioinput').forEach(device => {
+                const option = document.createElement('option');
+                option.value = device.deviceId;
+                option.innerText = device.label || `设备 ${audioInput.options.length + 1}`;
+                audioInput.appendChild(option);
+            })
+        })
+
+        let rxBtn = document.getElementById('start')
+        let rxUpdate = null;
+
+        const atv = new ATVDisplay(document.getElementById('atv'));
+
+
+        rxBtn.addEventListener('click', async () => {
+            rxBtn.disabled = true;
+            audioCtx.resume()
+
+            await audioCtx.audioWorklet.addModule(workletData)
+            let stream = await navigator.mediaDevices.getUserMedia(
+                {
+                    audio: {
+                        sampleRate: audioCtx.sampleRate,
+                        deviceId: audioInput.value,
+                        echoCancellation: false,
+                        noiseSuppression: false
+                    },
+                    video: false
+                }
+            )
+
+
+            const source = audioCtx.createMediaStreamSource(stream)
+            const mixer = new AudioWorkletNode(audioCtx, 'mixer', { outputChannelCount: [2] })
+            const filter = audioCtx.createConvolver()
+            const demod = new AudioWorkletNode(audioCtx, 'demod', { outputChannelCount: [1] })
+
+            const analyser = audioCtx.createAnalyser();
+            analyser.fftSize = 32768;
+
+            const filterData = createFilter(101, freqDeviation);
+            filter.buffer = filterData;
+
+            mixer.parameters.get('frequency').setValueAtTime(carrierFreq, audioCtx.currentTime);
+
+            source.connect(mixer, 0).connect(filter).connect(demod).connect(analyser)
+
+            let waveData = new Float32Array(waveformWidth * 16)
+
+            demod.port.onmessage = (e) => {
+                atv.draw(e.data.phase);
+            }
+
+            setInterval(() => {
+                analyser.getFloatTimeDomainData(waveData)
+                drawWaveform(waveData)
+            }, 32)
+        })
+
+
+        const waveform = document.getElementById('waveform');
+        const waveformCtx = waveform.getContext('2d');
+        const waveformWidth = waveform.width;
+        const waveformHeight = waveform.height;
+        function drawWaveform(data) {
+            waveformCtx.clearRect(0, 0, waveformWidth, waveformHeight);
+            waveformCtx.beginPath();
+            waveformCtx.moveTo(0, waveformHeight / 2);
+            const step = 0.0625;
+            for (let i = 0; i < data.length; i += 64) {
+                const x = i * step;
+                const y = data[i] * waveformHeight / 2 + waveformHeight / 2;
+                waveformCtx.lineTo(x, y);
+            }
+            waveformCtx.strokeStyle = 'rgba(231, 243, 255, 1)';
+            waveformCtx.lineWidth = 2;
+            waveformCtx.stroke();
+        }
+
+        function acquireWakelock() {
+            if ('wakeLock' in navigator) {
+                try {
+                    navigator.wakeLock.request('screen').then(lock => {
+                        lock.addEventListener('release', e => {
+                            console.log("wakelock released");
+                        })
+                    });
+                } catch (error) {
+                    console.error(error);
+                }
+            }
+        }
+
+        document.addEventListener("visibilitychange", function () {
+            if (document.visibilityState === 'visible') {
+                acquireWakelock();
+            }
+        });
+        acquireWakelock();
+
+    </script>
+</body>
+
+</html>
