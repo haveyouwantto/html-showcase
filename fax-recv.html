@@ -426,7 +426,6 @@
 
                 let dirtyY1 = Math.floor(startPos / this.canvas.width)
                 let dirtyY2 = Math.ceil(this.pos / this.canvas.width)
-                console.log(dirtyY1, dirtyY2)
                 this.ctx.putImageData(this.imageData, 0, 0, 0, dirtyY1, this.canvas.width, dirtyY2);
             }
 
@@ -438,6 +437,11 @@
         }
 
         function createDemodulator(sampleRate) {
+            function checkRange(n, center, range) {
+                const lowerBound = center - range;
+                const upperBound = center + range;
+                return n >= lowerBound && n <= upperBound;
+            }
             const mixer = class extends AudioWorkletProcessor {
                 static get parameterDescriptors() {
                     return [{
@@ -499,6 +503,10 @@
                     this.pixelCount = 0;
                     this.accumulated = 0;
 
+                    this.syncTime = 20; // ms
+                    this.syncSamples = 3000 * (this.syncTime / 1000)
+                    this.blackSamples = 0;
+
                     this.setLineTime(0.5)
 
                     this.port.onmessage = (event) => {
@@ -506,11 +514,8 @@
                             case "lineTime":
                                 this.setLineTime(event.data.lineTime);
                                 break;
-                            case "data":
-                                this.setData(event.data.data);
+                            case "syncTime":
                                 break;
-                            case "symbolMap":
-                                this.symbolMap = event.data.symbolMap;
                         }
                     };
                 }
@@ -539,12 +544,13 @@
                         const resultImag = real1 * -imag2 + imag1 * real2;  // 虚部
 
                         // 计算瞬时相位差（arctan(虚部/实部））
-                        phase[j] = -Math.atan2(resultImag, resultReal) * (sampleRate / 800) / Math.PI;
+                        phase[j] = Math.atan2(resultImag, resultReal) * (sampleRate / 800) / Math.PI;
                         this.accumulated += phase[j]
 
                         if ((this.count++) >= this.spp) {
                             let avgPhase = this.accumulated / this.spp;
-                            this.pixelArr[this.pixelCount++] = Math.round(255 - (avgPhase + 1) * 128);
+
+                            this.pixelArr[this.pixelCount++] = Math.round((avgPhase + 1) * 128);
                             if (this.pixelCount >= this.pixelArr.length) {
                                 this.pixelCount = 0;
                                 this.port.postMessage({ phase: this.pixelArr });
@@ -715,7 +721,7 @@
             waveformCtx.moveTo(0, waveformHeight / 2);
             for (let i = 0; i < data.length; i++) {
                 const x = i;
-                const y = data[i] * waveformHeight / 3 + waveformHeight / 2;
+                const y = -data[i] * waveformHeight / 3 + waveformHeight / 2;
                 waveformCtx.lineTo(x, y);
             }
             waveformCtx.strokeStyle = 'rgba(231, 243, 255, 1)';
