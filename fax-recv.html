@@ -358,6 +358,7 @@
                         }
 
                     }
+                    this.count++;
 
                     phase[phase.length - 1] = phase[phase.length - 2];  // 边界处理
 
@@ -448,7 +449,7 @@
             const demod = new AudioWorkletNode(audioCtx, 'demod', { outputChannelCount: [1] })
 
             const analyser = audioCtx.createAnalyser();
-            analyser.fftSize = 32768;
+            analyser.fftSize = 2048;
 
             const filterData = createFilter(101, freqDeviation);
             filter.buffer = filterData;
@@ -457,7 +458,7 @@
 
             source.connect(mixer, 0).connect(filter).connect(demod).connect(analyser)
 
-            let waveData = new Float32Array(waveformWidth * 16)
+            let waveData = new Float32Array(waveformWidth)
 
             demod.port.onmessage = (e) => {
                 atv.draw(e.data.phase);
@@ -478,9 +479,8 @@
             waveformCtx.clearRect(0, 0, waveformWidth, waveformHeight);
             waveformCtx.beginPath();
             waveformCtx.moveTo(0, waveformHeight / 2);
-            const step = 0.0625;
-            for (let i = 0; i < data.length; i += 64) {
-                const x = i * step;
+            for (let i = 0; i < data.length; i++) {
+                const x = i;
                 const y = data[i] * waveformHeight / 2 + waveformHeight / 2;
                 waveformCtx.lineTo(x, y);
             }
