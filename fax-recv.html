@@ -145,7 +145,7 @@
             box-shadow: 0 0 15px rgba(212, 175, 55, 0.2);
         }
 
-        #waveform {
+        #waveform, #spectrum {
             width: 50%;
             background-color: rgba(26, 42, 58, 0.7);
             border: 1px solid var(--accent-gold);
@@ -214,7 +214,7 @@
                 width: 100%;
             }
 
-            #waveform {
+            #waveform, #spectrum {
                 width: 100%;
             }
 
@@ -334,6 +334,7 @@
     <div class="result">
         <div class="title-text">魔法信号波形</div>
         <canvas id="waveform" width="1500" height="300"></canvas>
+        <canvas id="spectrum" width="512" height="256"></canvas>
         <div class="title-text">解译的古老卷轴</div>
         <div class="btn-group">
             <button id='startRec'>开始记录</button>
@@ -662,6 +663,9 @@
 
             const analyser = audioCtx.createAnalyser();
             analyser.fftSize = 2048;
+            const analyser2 = audioCtx.createAnalyser();
+            analyser2.fftSize = 2048;
+            analyser2.smoothingTimeConstant = 0;
 
             const filterData = createGaussianFilter(freqDeviation);
             filter.buffer = filterData;
@@ -669,8 +673,10 @@
             mixer.parameters.get('frequency').setValueAtTime(carrierFreq, audioCtx.currentTime);
 
             source.connect(mixer, 0).connect(filter).connect(demod).connect(analyser)
+            source.connect(analyser2)
 
             let waveData = new Float32Array(waveformWidth)
+            let spectrumData=new Uint8Array(analyser.frequencyBinCount)
 
             demod.port.onmessage = (e) => {
                 atv.draw(e.data.phase);
@@ -681,6 +687,8 @@
             setInterval(() => {
                 analyser.getFloatTimeDomainData(waveData)
                 drawWaveform(waveData)
+                analyser2.getByteFrequencyData(spectrumData)
+                drawSpectrum(spectrumData) 
             }, 32)
 
             // enable recording
@@ -728,6 +736,33 @@
             waveformCtx.lineWidth = 2;
             waveformCtx.stroke();
         }
+        
+        const spectrum = document.getElementById('spectrum');
+        const spectrumCtx = spectrum.getContext('2d');
+        const spectrumWidth = spectrum.width;
+        const spectrumHeight = spectrum.height;
+        
+        function relFreq(f){
+        	return f/(sampleRate*0.5)
+        }
+        
+        function mapFreq(f){
+        	const startFreq=relFreq(1200);
+            const endFreq=relFreq(2500);
+        	return (f-startFreq)/(endFreq-startFreq)
+        }
+        
+        function drawSpectrum(data){
+        spectrumCtx.drawImage(spectrum, 0, 1, spectrumWidth, spectrumHeight);
+         
+         for(let i=0;i<spectrumWidth;i++){
+         	const idx=Math.floor((i/spectrumWidth)*data.length)
+         	const val=data[idx]
+         	spectrumCtx.fillStyle=`rgb(${val},${val},${val})`
+         	spectrumCtx.fillRect(i, 0, 1, 1);
+         }
+        }
+       
 
         function acquireWakelock() {
             if ('wakeLock' in navigator) {
