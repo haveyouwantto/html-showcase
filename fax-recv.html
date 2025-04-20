@@ -1,47 +1,55 @@
 <html>
 
 <head>
-    <title>FAX Receiver</title>
+    <title>冒险家协会传真接收器</title>
 
     <meta http-equiv="Content-Type" content="text/html; charset=utf8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <style>
         :root {
-            --bg-gradient: linear-gradient(45deg, #0a0e1a, #1a1f2c);
-            --neon-cyan: #00f3ff;
-            --neon-purple: #bd00ff;
-            --dark-bg: #0d1117;
-            --text-primary: #e1e7f0;
-            --text-secondary: #b6becc;
-            --border-radius: 8px;
-            --border-width: 2px;
-            --glow: 0 0 15px;
+            --bg-color: #0a0c12;
+            --primary-color: #1a2a3a;
+            --secondary-color: #2a3b4d;
+            --accent-gold: #d4af37;
+            --accent-blue: #5d8aa8;
+            --text-primary: #e8e6e3;
+            --text-secondary: #b8b6b3;
+            --border-radius: 4px;
+            --parchment: #f0e6d2;
+            --old-paper: #e6d8b5;
         }
 
         body {
-            background: var(--bg-gradient);
+            background-color: var(--bg-color);
             color: var(--text-primary);
-            font-family: 'Segoe UI', system-ui, sans-serif;
+            font-family: 'Bookman Old Style', 'Times New Roman', serif;
             line-height: 1.6;
             min-height: 100vh;
             margin: 0;
             padding: 2rem;
             box-sizing: border-box;
+            background-image: 
+                radial-gradient(circle at 10% 20%, rgba(26, 42, 58, 0.8) 0%, transparent 20%),
+                radial-gradient(circle at 90% 80%, rgba(26, 42, 58, 0.8) 0%, transparent 20%),
+                linear-gradient(to bottom, rgba(10, 12, 18, 0.9), rgba(10, 12, 18, 1));
         }
 
         #title {
             text-align: center;
             font-size: 2.5rem;
-            background: linear-gradient(135deg, var(--neon-cyan), var(--neon-purple));
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            text-shadow: var(--glow) rgba(0, 243, 255, 0.2);
+            color: var(--accent-gold);
+            text-shadow: 0 0 5px rgba(212, 175, 55, 0.5);
             margin-bottom: 2rem;
+            letter-spacing: 1px;
+            font-weight: normal;
+            border-bottom: 1px solid var(--accent-gold);
+            padding-bottom: 0.5rem;
+            font-family: 'Cinzel Decorative', 'Bookman Old Style', serif;
         }
 
         textarea {
-            background: var(--dark-bg);
-            border: var(--border-width) solid #2d3746;
+            background-color: rgba(26, 42, 58, 0.7);
+            border: 1px solid var(--secondary-color);
             border-radius: var(--border-radius);
             color: var(--text-primary);
             padding: 1rem;
@@ -50,108 +58,91 @@
             width: 100%;
             height: 50vh;
             resize: vertical;
+            font-family: 'Courier New', monospace;
+            box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.5);
         }
 
         textarea:focus {
-            border-color: var(--neon-cyan);
-            box-shadow: 0 0 15px rgba(0, 243, 255, 0.2);
+            border-color: var(--accent-blue);
             outline: none;
+            box-shadow: inset 0 0 10px rgba(93, 138, 168, 0.3);
         }
 
         button {
-            background: linear-gradient(135deg, #1a2333, #0d1117);
-            border: var(--border-width) solid #2d3746;
-            color: var(--text-secondary);
+            background: linear-gradient(to bottom, #2a3b4d, #1a2a3a);
+            border: 1px solid var(--accent-gold);
+            color: var(--accent-gold);
             padding: 0.8rem 1.5rem;
             border-radius: var(--border-radius);
-            font-weight: 600;
+            font-family: 'Cinzel', 'Bookman Old Style', serif;
             cursor: pointer;
             transition: all 0.3s ease;
             position: relative;
             overflow: hidden;
             margin: 8px;
+            letter-spacing: 1px;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.3);
         }
 
         button:hover {
-            color: var(--neon-cyan);
-            border-color: var(--neon-cyan);
-            box-shadow: var(--glow) rgba(0, 243, 255, 0.3);
+            background: linear-gradient(to bottom, #3a4b5d, #2a3a4a);
+            box-shadow: 0 0 10px rgba(212, 175, 55, 0.3);
         }
 
         button:disabled {
-            color: #1a2333;
-            border-color: #2d3746
-        }
-
-        button::before {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: -100%;
-            width: 100%;
-            height: 100%;
-            background: linear-gradient(90deg,
-                    transparent,
-                    rgba(0, 243, 255, 0.1),
-                    transparent);
-            transition: 0.5s;
-        }
-
-        button:hover::before {
-            left: 100%;
+            color: #6d6d6d;
+            border-color: #6d6d6d;
+            background: linear-gradient(to bottom, #1a2a3a, #0a1a2a);
         }
 
         #audio-inputs {
             margin: 1.5rem 0;
+            background-color: rgba(26, 42, 58, 0.5);
+            padding: 1rem;
+            border-radius: var(--border-radius);
+            border: 1px solid var(--secondary-color);
         }
 
-        select {
-            background: var(--dark-bg);
-            border: var(--border-width) solid #2d3746;
+        select, input[type="number"] {
+            background-color: rgba(26, 42, 58, 0.8);
+            border: 1px solid var(--accent-gold);
             color: var(--text-primary);
             padding: 0.5rem;
-            border-radius: 6px;
+            border-radius: var(--border-radius);
             margin-left: 1rem;
+            font-family: 'Bookman Old Style', serif;
+            box-shadow: inset 0 0 5px rgba(0, 0, 0, 0.3);
         }
 
-        input[type="number"] {
-            background: var(--dark-bg);
-            border: var(--border-width) solid #2d3746;
-            color: var(--text-primary);
-            padding: 0.5rem;
-            border-radius: 6px;
-            margin-left: 1rem;
-        }
-
-        input[type="number"]:focus {
-            border-color: var(--neon-cyan);
-            outline: none;
-        }
-
-        select:focus {
-            border-color: var(--neon-cyan);
+        select:focus, input[type="number"]:focus {
+            border-color: var(--accent-blue);
             outline: none;
         }
 
         hr {
-            border: 1px solid #2d3746;
+            border: none;
+            height: 1px;
+            background: linear-gradient(to right, transparent, var(--accent-gold), transparent);
             margin: 2rem 0;
         }
 
         #atv {
-            border: var(--border-width) solid #2d3746;
+            border: 1px solid var(--accent-gold);
             border-radius: var(--border-radius);
             margin: 1rem 0;
             width: 50%;
             image-rendering: pixelated;
+            background-color: var(--old-paper);
+            box-shadow: 0 0 15px rgba(212, 175, 55, 0.2);
         }
 
         #waveform {
             width: 50%;
-            background: var(--dark-bg);
-            border: var(--border-width) solid #2d3746;
+            background-color: rgba(26, 42, 58, 0.7);
+            border: 1px solid var(--accent-gold);
             border-radius: var(--border-radius);
             color: var(--text-primary);
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.3);
         }
 
         .container {
@@ -168,7 +159,7 @@
             align-items: stretch;
         }
 
-        .controls {
+        .controls, .result {
             display: flex;
             flex-direction: column;
             align-items: center;
@@ -177,12 +168,21 @@
         .title-text {
             text-align: center;
             font-size: 1.5rem;
-            font-weight: 600;
-            background: linear-gradient(135deg, var(--neon-cyan), var(--neon-purple));
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            text-shadow: var(--glow) rgba(0, 243, 255, 0.2);
+            font-weight: normal;
+            color: var(--accent-gold);
             margin-bottom: 1rem;
+            font-family: 'Cinzel', 'Bookman Old Style', serif;
+            letter-spacing: 1px;
+            text-shadow: 0 0 5px rgba(212, 175, 55, 0.3);
+            border-bottom: 1px solid var(--accent-gold);
+            padding-bottom: 0.5rem;
+            width: 50%;
+        }
+
+        label {
+            color: var(--accent-gold);
+            font-family: 'Cinzel', 'Bookman Old Style', serif;
+            letter-spacing: 0.5px;
         }
 
         @media (max-width: 768px) {
@@ -197,31 +197,62 @@
             .container {
                 grid-template-columns: 1fr;
             }
+            
+            .title-text {
+                width: 100%;
+            }
+        }
+
+        /* 航海风格装饰元素 */
+        .nautical-decoration {
+            position: fixed;
+            opacity: 0.1;
+            z-index: -1;
+        }
+        
+        .compass {
+            top: 20px;
+            right: 20px;
+            font-size: 3rem;
+        }
+        
+        .anchor {
+            bottom: 20px;
+            left: 20px;
+            font-size: 3rem;
         }
     </style>
+    <link href="https://fonts.googleapis.com/css2?family=Cinzel&family=Cinzel+Decorative&display=swap" rel="stylesheet">
 </head>
 
 <body>
+    <!-- 航海装饰元素 -->
+    <div class="nautical-decoration compass">🧭</div>
+    <div class="nautical-decoration anchor">⚓</div>
 
-    <h1 id='title'>模拟传真接收器</h1>
+    <h1 id='title'>冒险家协会传真接收器</h1>
     <div class="container">
-        <div>
-            <div class="title-text">接收</div>
+        <div class="controls">
+            <div class="title-text">神秘信号接收</div>
             <div class="btn-container">
-                <button id='start'>接收</button>
+                <button id='start'>启动接收仪式</button>
             </div>
             <div id="audio-inputs">
-                <label for="audio-input">选择音频输入设备：</label>
+                <label for="audio-input">选择魔法共鸣装置：</label>
                 <select id="audio-input"></select>
             </div>
         </div>
     </div>
     <hr>
-    <div class="controls">
+    <div class="result">
+        <div class="title-text">魔法信号波形</div>
         <canvas id="waveform" width="1500" height="300"></canvas>
-        <div class="title-text">解调图片</div>
-        <button id='startRec'>开始</button>
-        <button id="download">下载</button>
+        <div class="title-text">解译的古老卷轴</div>
+        <div>
+            <button id='startRec'>开始记录</button>
+            <button id="download">保存卷轴</button>
+            <button id="clearRx">清除卷轴</button>
+        </div>
         <canvas id="atv" width="1500" height="2300"></canvas>
     </div>
     <script>
@@ -267,6 +298,12 @@
                 let dirtyY2 = Math.ceil(this.pos / this.canvas.width)
                 console.log(dirtyY1, dirtyY2)
                 this.ctx.putImageData(this.imageData, 0, 0, 0, dirtyY1, this.canvas.width, dirtyY2);
+            }
+
+            clear() {
+                this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+                this.imageData.data.fill(0);
+                this.pos = 0;
             }
         }
         
@@ -501,6 +538,10 @@
             link.download = 'fax.png';
             link.href = atv.canvas.toDataURL();
             link.click();
+        });
+
+        document.getElementById('clearRx').addEventListener('click', () => {
+            atv.clear();
         });
 
 
