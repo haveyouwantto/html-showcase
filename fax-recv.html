@@ -335,7 +335,7 @@
         <div class="title-text">魔法信号波形</div>
         <canvas id="waveform" width="1500" height="300"></canvas>
         <canvas id="spectrum" width="256" height="128"></canvas> 
-        <div class="title-text">解译的古老卷轴</div>
+        <div class="title-text">解译的卷轴</div>
         <div class="btn-group">
             <button id='startRec'>开始记录</button>
             <button id="download">保存卷轴</button>
@@ -352,6 +352,49 @@
 
         const audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: sampleRate, latencyHint: "balanced" });
 
+        function add(v1, v2) {
+            return [v1[0] + v2[0], v1[1] + v2[1], v1[2] + v2[2]];
+        }
+
+        function sub(v1, v2) {
+            return [v1[0] - v2[0], v1[1] - v2[1], v1[2] - v2[2]];
+        }
+
+        function mul(v1, mul) {
+            return [v1[0] * mul, v1[1] * mul, v1[2] * mul];
+        }
+
+        function colorTrans(pal, prog) {
+            if (prog < 0) return formatColor(pal[0]);
+            else if (prog >= 1) return formatColor(pal[pal.length - 1]);
+            let i = parseInt(prog * (pal.length - 1));
+            let v1 = pal[i];
+            let v2 = pal[i + 1];
+
+            try {
+                let delta = sub(v2, v1);
+                let percent = (prog / (1 / (pal.length - 1)));
+                let int = parseInt(percent);
+                percent -= int;
+                let adv = mul(delta, percent);
+                let result = add(v1, adv);
+                return formatColor(result);
+            } catch (error) {
+                // console.log(i, v1, v2);
+                // console.error(error);
+            }
+        }
+        
+        function formatColor(v) {
+            return `rgb(${v[0]},${v[1]},${v[2]})`;
+        }
+        
+        let palette=[
+        [0,0,0],
+        [26,42,58],
+        [0xd4,0xaf,0x37],
+        [255,255,255]
+        ]
 
         class ATVDisplay {
             constructor(canvas) {
@@ -732,7 +775,7 @@
                 const y = -data[i] * waveformHeight / 3 + waveformHeight / 2;
                 waveformCtx.lineTo(x, y);
             }
-            waveformCtx.strokeStyle = 'rgba(231, 243, 255, 1)';
+            waveformCtx.strokeStyle = 'rgba(212,175,55, 1)';
             waveformCtx.lineWidth = 2;
             waveformCtx.stroke();
         }
@@ -753,15 +796,24 @@
         }
         
         function drawSpectrum(data){
-        spectrumCtx.drawImage(spectrum, 0, 1, spectrumWidth, spectrumHeight);
+        spectrumCtx.drawImage(spectrum, 0, 1, spectrumWidth, spectrumHeight);//move down by one pixel
          
          for(let i=0;i<spectrumWidth;i++){
          	const idx=Math.floor(mapFreq(i/spectrumWidth)*data.length)
-         	const val=data[idx]
-         	spectrumCtx.fillStyle=`rgb(${val},${val},${val})`
+         	const val=data[idx]/255 
+         	spectrumCtx.fillStyle=colorTrans(palette,val)
          	spectrumCtx.fillRect(i, 0, 1, 1);
          }
-        }
+         
+         let freqDiff=2600-1200;
+         let x1=((1500-1200)/freqDiff*spectrumWidth)
+       let x2=((2300-1200)/freqDiff*spectrumWidth)
+       spectrumCtx.fillStyle=`white`
+       
+         spectrumCtx.fillRect(x1, 0, 1, 1);
+       spectrumCtx.fillRect(x2, 0, 1, 1);
+       
+         }
        
 
         function acquireWakelock() {
