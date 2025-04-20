@@ -28,7 +28,7 @@
             margin: 0;
             padding: 2rem;
             box-sizing: border-box;
-            background-image: 
+            background-image:
                 radial-gradient(circle at 10% 20%, rgba(26, 42, 58, 0.8) 0%, transparent 20%),
                 radial-gradient(circle at 90% 80%, rgba(26, 42, 58, 0.8) 0%, transparent 20%),
                 linear-gradient(to bottom, rgba(10, 12, 18, 0.9), rgba(10, 12, 18, 1));
@@ -103,7 +103,8 @@
             border: 1px solid var(--secondary-color);
         }
 
-        select, input[type="number"] {
+        select,
+        input[type="number"] {
             background-color: rgba(26, 42, 58, 0.8);
             border: 1px solid var(--accent-gold);
             color: var(--text-primary);
@@ -114,7 +115,8 @@
             box-shadow: inset 0 0 5px rgba(0, 0, 0, 0.3);
         }
 
-        select:focus, input[type="number"]:focus {
+        select:focus,
+        input[type="number"]:focus {
             border-color: var(--accent-blue);
             outline: none;
         }
@@ -159,10 +161,17 @@
             align-items: stretch;
         }
 
-        .controls, .result {
+        .controls,
+        .result {
             display: flex;
             flex-direction: column;
             align-items: center;
+        }
+
+        .btn-group {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
         }
 
         .title-text {
@@ -197,7 +206,7 @@
             .container {
                 grid-template-columns: 1fr;
             }
-            
+
             .title-text {
                 width: 100%;
             }
@@ -209,13 +218,13 @@
             opacity: 0.1;
             z-index: -1;
         }
-        
+
         .compass {
             top: 20px;
             right: 20px;
             font-size: 3rem;
         }
-        
+
         .anchor {
             bottom: 20px;
             left: 20px;
@@ -248,7 +257,7 @@
         <div class="title-text">魔法信号波形</div>
         <canvas id="waveform" width="1500" height="300"></canvas>
         <div class="title-text">解译的古老卷轴</div>
-        <div>
+        <div class="btn-group">
             <button id='startRec'>开始记录</button>
             <button id="download">保存卷轴</button>
             <button id="clearRx">清除卷轴</button>
@@ -278,7 +287,7 @@
 
             draw(data) {
                 if (!this.recording) return;
-                
+
                 let startPos = this.pos
                 for (let pixel of data) {
                     let x = this.pos % this.canvas.width;
@@ -306,7 +315,7 @@
                 this.pos = 0;
             }
         }
-        
+
         function createDemodulator(sampleRate) {
             const mixer = class extends AudioWorkletProcessor {
                 static get parameterDescriptors() {
@@ -493,7 +502,7 @@
                     video: false
                 }
             )
-            
+
 
 
             const source = audioCtx.createMediaStreamSource(stream)
