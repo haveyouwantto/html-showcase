@@ -45,7 +45,7 @@
             padding-bottom: 0.5rem;
             font-family: 'Cinzel Decorative', 'Bookman Old Style', serif;
         }
-        
+
         #title::after {
             content: "";
             height: 1px;
@@ -391,6 +391,7 @@
                     this.spp = 16;
                     this.pixelArr = new Uint8ClampedArray(1500);
                     this.pixelCount = 0;
+                    this.accumulated = 0;
                 }
 
                 process(inputs, outputs, parameters) {
@@ -413,15 +414,18 @@
 
                         // 计算瞬时相位差（arctan(虚部/实部））
                         phase[j] = -Math.atan2(resultImag, resultReal) * (sampleRate / 800) / Math.PI;
+                        this.accumulated += phase[j]
 
                         if ((this.count++) >= this.spp) {
-                            this.pixelArr[this.pixelCount++] = Math.round(255 - (phase[j] + 1) * 128);
+                            let avgPhase = this.accumulated / this.spp;
+                            this.pixelArr[this.pixelCount++] = Math.round(255 - (avgPhase + 1) * 128);
                             if (this.pixelCount >= this.pixelArr.length) {
                                 this.pixelCount = 0;
                                 this.port.postMessage({ phase: this.pixelArr });
                             }
                             this.count -= this.spp;
-                        }
+                            this.accumulated = 0;
+                        } 
 
                     }
                     this.count++;
