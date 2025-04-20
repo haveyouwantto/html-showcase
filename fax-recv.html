@@ -334,7 +334,7 @@
     <div class="result">
         <div class="title-text">魔法信号波形</div>
         <canvas id="waveform" width="1500" height="300"></canvas>
-        <canvas id="spectrum" width="512" height="256"></canvas>
+        <canvas id="spectrum" width="256" height="128"></canvas> 
         <div class="title-text">解译的古老卷轴</div>
         <div class="btn-group">
             <button id='startRec'>开始记录</button>
@@ -664,7 +664,7 @@
             const analyser = audioCtx.createAnalyser();
             analyser.fftSize = 2048;
             const analyser2 = audioCtx.createAnalyser();
-            analyser2.fftSize = 2048;
+            analyser2.fftSize = 8192;
             analyser2.smoothingTimeConstant = 0;
 
             const filterData = createGaussianFilter(freqDeviation);
@@ -676,7 +676,7 @@
             source.connect(analyser2)
 
             let waveData = new Float32Array(waveformWidth)
-            let spectrumData=new Uint8Array(analyser.frequencyBinCount)
+            let spectrumData=new Uint8Array(analyser2.frequencyBinCount)
 
             demod.port.onmessage = (e) => {
                 atv.draw(e.data.phase);
@@ -746,17 +746,17 @@
         	return f/(sampleRate*0.5)
         }
         
-        function mapFreq(f){
+        function mapFreq(percent){
         	const startFreq=relFreq(1200);
-            const endFreq=relFreq(2500);
-        	return (f-startFreq)/(endFreq-startFreq)
+            const endFreq=relFreq(2600); 
+        	return startFreq+(endFreq-startFreq)*percent
         }
         
         function drawSpectrum(data){
         spectrumCtx.drawImage(spectrum, 0, 1, spectrumWidth, spectrumHeight);
          
          for(let i=0;i<spectrumWidth;i++){
-         	const idx=Math.floor((i/spectrumWidth)*data.length)
+         	const idx=Math.floor(mapFreq(i/spectrumWidth)*data.length)
          	const val=data[idx]
          	spectrumCtx.fillStyle=`rgb(${val},${val},${val})`
          	spectrumCtx.fillRect(i, 0, 1, 1);
