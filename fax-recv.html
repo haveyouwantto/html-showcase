@@ -39,12 +39,19 @@
             font-size: 2.5rem;
             color: var(--accent-gold);
             text-shadow: 0 0 5px rgba(212, 175, 55, 0.5);
-            margin-bottom: 2rem;
+            margin-bottom: 1rem;
             letter-spacing: 1px;
             font-weight: normal;
-            border-bottom: 1px solid var(--accent-gold);
             padding-bottom: 0.5rem;
             font-family: 'Cinzel Decorative', 'Bookman Old Style', serif;
+        }
+        
+        #title::after {
+            content: "";
+            height: 1px;
+            width: 100%;
+            background: linear-gradient(to right, transparent, var(--accent-gold), transparent);
+            display: block;
         }
 
         textarea {
@@ -125,7 +132,7 @@
             border: none;
             height: 1px;
             background: linear-gradient(to right, transparent, var(--accent-gold), transparent);
-            margin: 2rem 0;
+            margin: 1rem 0;
         }
 
         #atv {
@@ -180,12 +187,20 @@
             font-weight: normal;
             color: var(--accent-gold);
             margin-bottom: 1rem;
+            margin-top: 1rem;
             font-family: 'Cinzel', 'Bookman Old Style', serif;
             letter-spacing: 1px;
             text-shadow: 0 0 5px rgba(212, 175, 55, 0.3);
-            border-bottom: 1px solid var(--accent-gold);
             padding-bottom: 0.5rem;
             width: 50%;
+        }
+
+        .title-text::after {
+            content: "";
+            height: 1px;
+            width: 100%;
+            background: linear-gradient(to right, transparent, var(--accent-gold), transparent);
+            display: block;
         }
 
         label {
@@ -239,7 +254,7 @@
     <div class="nautical-decoration compass">🧭</div>
     <div class="nautical-decoration anchor">⚓</div>
 
-    <h1 id='title'>冒险家协会传真接收器</h1>
+    <h1 id='title'>冒险家协会奥术传真仪</h1>
     <div class="container">
         <div class="controls">
             <div class="title-text">神秘信号接收</div>
