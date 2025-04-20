@@ -298,6 +298,49 @@
                 this.imageData = this.ctx.createImageData(width, height);
                 this.pos = 0;
                 this.recording = false;
+
+                // 点击画布进入全屏
+                this.canvas.addEventListener('click', () => this.toggleFullscreen());
+
+                // 监听全屏变化
+                document.addEventListener('fullscreenchange', () => {
+                    if (!document.fullscreenElement) {
+                        this.exitFullscreen();
+                    }
+                });
+            }
+
+
+            toggleFullscreen() {
+                if (!document.fullscreenElement) {
+                    this.enterFullscreen();
+                } else {
+                    this.exitFullscreen();
+                }
+            }
+
+            enterFullscreen() {
+                this.canvas.requestFullscreen().catch(err => {
+                    console.error(`全屏错误: ${err.message}`);
+                });
+
+                // 调整全屏样式
+                this.canvas.style.width = '100%';
+                this.canvas.style.height = '100%';
+                this.canvas.style.objectFit = 'contain';
+                this.canvas.style.backgroundColor = '#0a0c12';
+            }
+
+            exitFullscreen() {
+                if (document.fullscreenElement) {
+                    document.exitFullscreen();
+                }
+
+                // 恢复原始样式
+                this.canvas.style.width = '';
+                this.canvas.style.height = '';
+                this.canvas.style.objectFit = '';
+                this.canvas.style.backgroundColor = '';
             }
 
             draw(data) {
@@ -425,7 +468,7 @@
                             }
                             this.count -= this.spp;
                             this.accumulated = 0;
-                        } 
+                        }
 
                     }
                     this.count++;
