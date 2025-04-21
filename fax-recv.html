@@ -145,7 +145,8 @@
             box-shadow: 0 0 15px rgba(212, 175, 55, 0.2);
         }
 
-        #waveform, #spectrum {
+        #waveform,
+        #spectrum {
             width: 50%;
             background-color: rgba(26, 42, 58, 0.7);
             border: 1px solid var(--accent-gold);
@@ -214,7 +215,8 @@
                 width: 100%;
             }
 
-            #waveform, #spectrum {
+            #waveform,
+            #spectrum {
                 width: 100%;
             }
 
@@ -334,7 +336,7 @@
     <div class="result">
         <div class="title-text">魔法信号波形</div>
         <canvas id="waveform" width="1500" height="300"></canvas>
-        <canvas id="spectrum" width="256" height="128"></canvas> 
+        <canvas id="spectrum" width="256" height="128"></canvas>
         <div class="title-text">解译的卷轴</div>
         <div class="btn-group">
             <button id='startRec'>开始记录</button>
@@ -384,16 +386,16 @@
                 // console.error(error);
             }
         }
-        
+
         function formatColor(v) {
             return `rgb(${v[0]},${v[1]},${v[2]})`;
         }
-        
-        let palette=[
-        [0,0,0],
-        [26,42,58],
-        [0xd4,0xaf,0x37],
-        [255,255,255]
+
+        let palette = [
+            [0, 0, 0],
+            [26, 42, 58],
+            [0xd4, 0xaf, 0x37],
+            [255, 255, 255]
         ]
 
         class ATVDisplay {
@@ -550,6 +552,8 @@
                     this.syncTime = 20; // ms
                     this.syncSamples = 3000 * (this.syncTime / 1000)
                     this.blackSamples = 0;
+                    this.syncBuffer = new Float32Array(this.syncSamples);
+                    this.lastSync = 0;
 
                     this.setLineTime(0.5)
 
@@ -593,6 +597,17 @@
 
                         if ((this.count++) >= this.spp) {
                             let avgPhase = this.accumulated / this.spp;
+
+                            // 同步处理
+                            this.syncBuffer[(this.blackSamples++) % this.syncSamples] = avgPhase;
+                            const syncAvg = this.syncBuffer.reduce((a, b) => a + b, 0) / this.syncSamples;
+
+                            let threshold = -0.96; // 设定阈值
+                            if (syncAvg > threshold && this.lastSync < threshold) {
+                                // 同步点检测，黑色像素点
+                                this.pixelCount = 0;
+                            }
+                            this.lastSync = syncAvg;
 
                             this.pixelArr[this.pixelCount++] = Math.round((avgPhase + 1) * 128);
                             if (this.pixelCount >= this.pixelArr.length) {
@@ -719,7 +734,7 @@
             source.connect(analyser2)
 
             let waveData = new Float32Array(waveformWidth)
-            let spectrumData=new Uint8Array(analyser2.frequencyBinCount)
+            let spectrumData = new Uint8Array(analyser2.frequencyBinCount)
 
             demod.port.onmessage = (e) => {
                 atv.draw(e.data.phase);
@@ -731,7 +746,7 @@
                 analyser.getFloatTimeDomainData(waveData)
                 drawWaveform(waveData)
                 analyser2.getByteFrequencyData(spectrumData)
-                drawSpectrum(spectrumData) 
+                drawSpectrum(spectrumData)
             }, 32)
 
             // enable recording
@@ -779,42 +794,42 @@
             waveformCtx.lineWidth = 2;
             waveformCtx.stroke();
         }
-        
+
         const spectrum = document.getElementById('spectrum');
         const spectrumCtx = spectrum.getContext('2d');
         const spectrumWidth = spectrum.width;
         const spectrumHeight = spectrum.height;
-        
-        function relFreq(f){
-        	return f/(sampleRate*0.5)
+
+        function relFreq(f) {
+            return f / (sampleRate * 0.5)
         }
-        
-        function mapFreq(percent){
-        	const startFreq=relFreq(1200);
-            const endFreq=relFreq(2600); 
-        	return startFreq+(endFreq-startFreq)*percent
+
+        function mapFreq(percent) {
+            const startFreq = relFreq(1200);
+            const endFreq = relFreq(2600);
+            return startFreq + (endFreq - startFreq) * percent
         }
-        
-        function drawSpectrum(data){
-        spectrumCtx.drawImage(spectrum, 0, 1, spectrumWidth, spectrumHeight);//move down by one pixel
-         
-         for(let i=0;i<spectrumWidth;i++){
-         	const idx=Math.floor(mapFreq(i/spectrumWidth)*data.length)
-         	const val=data[idx]/255 
-         	spectrumCtx.fillStyle=colorTrans(palette,val)
-         	spectrumCtx.fillRect(i, 0, 1, 1);
-         }
-         
-         let freqDiff=2600-1200;
-         let x1=((1500-1200)/freqDiff*spectrumWidth)
-       let x2=((2300-1200)/freqDiff*spectrumWidth)
-       spectrumCtx.fillStyle=`white`
-       
-         spectrumCtx.fillRect(x1, 0, 1, 1);
-       spectrumCtx.fillRect(x2, 0, 1, 1);
-       
-         }
-       
+
+        function drawSpectrum(data) {
+            spectrumCtx.drawImage(spectrum, 0, 1, spectrumWidth, spectrumHeight);//move down by one pixel
+
+            for (let i = 0; i < spectrumWidth; i++) {
+                const idx = Math.floor(mapFreq(i / spectrumWidth) * data.length)
+                const val = data[idx] / 255
+                spectrumCtx.fillStyle = colorTrans(palette, val)
+                spectrumCtx.fillRect(i, 0, 1, 1);
+            }
+
+            let freqDiff = 2600 - 1200;
+            let x1 = ((1500 - 1200) / freqDiff * spectrumWidth)
+            let x2 = ((2300 - 1200) / freqDiff * spectrumWidth)
+            spectrumCtx.fillStyle = `white`
+
+            spectrumCtx.fillRect(x1, 0, 1, 1);
+            spectrumCtx.fillRect(x2, 0, 1, 1);
+
+        }
+
 
         function acquireWakelock() {
             if ('wakeLock' in navigator) {
