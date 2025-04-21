@@ -673,6 +673,34 @@
             return buffer;
         }
 
+        function isFrequencyDominant(frequencyData, sampleRate, targetFrequency) {
+            // 计算每个频带的宽度(Hz)
+            const binWidth = sampleRate * 0.5 / frequencyData.length;
+
+            // 找到目标频率对应的频带索引
+            const targetBinIndex = Math.round(targetFrequency / binWidth);
+
+            // 确保索引在有效范围内
+            if (targetBinIndex < 0 || targetBinIndex >= frequencyData.length) {
+                return false;
+            }
+
+            // 计算目标频率的能量(转换为线性标度的功率值)
+            const targetEnergy = Math.pow(10, frequencyData[targetBinIndex] / 10);
+
+            // 计算总能量
+            let totalEnergy = 0;
+            for (let i = 0; i < frequencyData.length; i++) {
+                totalEnergy += Math.pow(10, frequencyData[i] / 10);
+            }
+
+            // 计算目标频率能量占比
+            const energyRatio = targetEnergy / totalEnergy;
+
+            // 判断是否超过95%
+            return energyRatio > 0.5;
+        }
+
         const code = new TextEncoder().encode(`(${createDemodulator.toString()})(${sampleRate});`);
         const workletData = 'data:application/javascript;base64,' + arrayBufferToBase64(code)
         console.log(workletData)
@@ -735,6 +763,7 @@
 
             let waveData = new Float32Array(waveformWidth)
             let spectrumData = new Uint8Array(analyser2.frequencyBinCount)
+            let demodData = new Float32Array(analyser.frequencyBinCount)
 
             demod.port.onmessage = (e) => {
                 atv.draw(e.data.phase);
@@ -748,6 +777,26 @@
                 analyser2.getByteFrequencyData(spectrumData)
                 drawSpectrum(spectrumData)
             }, 32)
+
+            setInterval(() => {
+                analyser.getFloatFrequencyData(demodData)
+                if (!atv.recording) {
+                    let startSignal = isFrequencyDominant(demodData, sampleRate, 300);
+                    if (startSignal) {
+                        // enable recording
+                        atv.recording = true;
+                        document.getElementById('startRec').innerText = '停止';
+                    }
+                } else {
+                    let endSignal = isFrequencyDominant(demodData, sampleRate, 450);
+                    if (endSignal) {
+                        // stop recording
+                        atv.recording = false;
+                        document.getElementById('startRec').innerText = '开始';
+                        downloadImage();
+                    }
+                }
+            }, 250)
 
             // enable recording
             atv.recording = true;
@@ -765,11 +814,15 @@
             document.getElementById('startRec').innerText = atv.recording ? '停止' : '开始';
         });
 
-        document.getElementById('download').addEventListener('click', () => {
+        function downloadImage() {
             const link = document.createElement('a');
-            link.download = 'fax.png';
+            link.download = `fax-${new Date().toISOString()}`
             link.href = atv.canvas.toDataURL();
             link.click();
+        }
+
+        document.getElementById('download').addEventListener('click', () => {
+            downloadImage()
         });
 
         document.getElementById('clearRx').addEventListener('click', () => {
