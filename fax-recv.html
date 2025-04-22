@@ -605,7 +605,7 @@
                             let threshold = -0.96; // 设定阈值
                             if (syncAvg > threshold && this.lastSync < threshold) {
                                 // 同步点检测，黑色像素点
-                                this.pixelCount = 0;
+                                //this.pixelCount = 0;
                             }
                             this.lastSync = syncAvg;
 
@@ -678,7 +678,7 @@
             const binWidth = sampleRate * 0.5 / frequencyData.length;
 
             // 找到目标频率对应的频带索引
-            const targetBinIndex = Math.round(targetFrequency / binWidth);
+            const targetBinIndex = Math.floor(targetFrequency / binWidth);
 
             // 确保索引在有效范围内
             if (targetBinIndex < 0 || targetBinIndex >= frequencyData.length) {
@@ -686,7 +686,8 @@
             }
 
             // 计算目标频率的能量(转换为线性标度的功率值)
-            const targetEnergy = Math.pow(10, frequencyData[targetBinIndex] / 10);
+            const targetEnergy = Math.pow(10, frequencyData[targetBinIndex] / 10)+
+             Math.pow(10, frequencyData[targetBinIndex+1] / 10);
 
             // 计算总能量
             let totalEnergy = 0;
@@ -697,8 +698,8 @@
             // 计算目标频率能量占比
             const energyRatio = targetEnergy / totalEnergy;
 
-            // 判断是否超过95%
-            return energyRatio > 0.5;
+            // 判断是否超过
+            return energyRatio > 0.1;
         }
 
         const code = new TextEncoder().encode(`(${createDemodulator.toString()})(${sampleRate});`);
