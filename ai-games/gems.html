@@ -1,0 +1,863 @@
+<!DOCTYPE html>
+<html lang="zh">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>宝石三消</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            -webkit-tap-highlight-color: transparent;
+            -webkit-user-select: none;
+            user-select: none;
+        }
+
+        body {
+            font-family: 'Arial Rounded MT Bold', 'Arial', sans-serif;
+            background-color: #0a0e17;
+            color: #fff;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            padding: 20px;
+            touch-action: manipulation;
+        }
+
+        h1 {
+            color: #ffd700;
+            text-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
+            margin-bottom: 20px;
+            font-size: 2.2rem;
+        }
+
+        .game-container {
+            position: relative;
+            width: 100%;
+            max-width: 400px;
+            background-color: #121a2a;
+            border-radius: 16px;
+            padding: 15px;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+            border: 2px solid #1e2a4a;
+        }
+
+        .game-board {
+            display: grid;
+            grid-template-columns: repeat(8, 1fr);
+            gap: 4px;
+            width: 100%;
+            aspect-ratio: 1/1;
+            margin-bottom: 20px;
+        }
+
+        .tile {
+            position: relative;
+            background-color: #1a233a;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 28px;
+            cursor: pointer;
+            transition: transform 0.1s, background-color 0.2s;
+            box-shadow: inset 0 -4px 0 rgba(0, 0, 0, 0.3);
+            overflow: hidden;
+        }
+
+        .tile:active {
+            transform: scale(0.95);
+        }
+
+        .tile.selected {
+            background-color: #3a4a7a;
+            box-shadow: 0 0 15px rgba(255, 215, 0, 0.7);
+            z-index: 10;
+        }
+
+        .tile.swapping {
+            z-index: 20;
+            transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+
+        .tile.matched {
+            background-color: rgb(59, 227, 163);
+            animation: matched 0.5s forwards;
+            z-index: 30;
+        }
+
+        .tile.falling {
+            z-index: 5;
+            transition: transform 0.4s cubic-bezier(0.55, 0.085, 0.68, 0.53);
+        }
+
+        @keyframes matched {
+            0% {
+                transform: scale(1);
+                opacity: 1;
+            }
+
+            50% {
+                transform: scale(1.2);
+                opacity: 0.8;
+            }
+
+            100% {
+                transform: scale(0);
+                opacity: 0;
+            }
+        }
+
+        .game-info {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 15px;
+        }
+
+        .info-box {
+            background-color: #1a233a;
+            padding: 10px 15px;
+            border-radius: 10px;
+            font-size: 1.1rem;
+            font-weight: bold;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+            display: flex;
+            align-items: center;
+        }
+
+        .info-box span {
+            color: #ffd700;
+            margin-left: 5px;
+        }
+
+        .timer {
+            color: #ff6b6b;
+        }
+
+        .controls {
+            display: flex;
+            justify-content: center;
+            margin-top: 20px;
+        }
+
+        button {
+            background: linear-gradient(to bottom, #3a4a7a, #1a233a);
+            color: white;
+            border: none;
+            padding: 12px 25px;
+            font-size: 1rem;
+            font-weight: bold;
+            border-radius: 30px;
+            cursor: pointer;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+            transition: all 0.2s;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 12px rgba(0, 0, 0, 0.4);
+        }
+
+        button:active {
+            transform: translateY(0);
+        }
+
+        .game-over {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: rgba(0, 0, 0, 0.85);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            border-radius: 14px;
+            z-index: 100;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.3s;
+        }
+
+        .game-over.active {
+            opacity: 1;
+            pointer-events: all;
+        }
+
+        .game-over h2 {
+            color: #ffd700;
+            font-size: 2rem;
+            margin-bottom: 10px;
+            text-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
+        }
+
+        .game-over p {
+            font-size: 1.5rem;
+            margin-bottom: 30px;
+        }
+
+        @media (max-width: 480px) {
+            .tile {
+                font-size: 24px;
+            }
+
+            h1 {
+                font-size: 1.8rem;
+            }
+
+            .info-box {
+                font-size: 1rem;
+                padding: 8px 12px;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <h1>宝石三消</h1>
+
+    <div class="game-container">
+        <div class="game-info">
+            <div class="info-box">分数: <span id="score">0</span></div>
+            <div class="info-box timer">时间: <span id="time">60</span>秒</div>
+        </div>
+
+        <div class="game-board" id="gameBoard"></div>
+
+        <div class="controls">
+            <button id="restartBtn">重新开始</button>
+        </div>
+
+        <div class="game-over" id="gameOver">
+            <h2>游戏结束!</h2>
+            <p>最终分数: <span id="finalScore">0</span></p>
+            <button id="playAgainBtn">再玩一次</button>
+        </div>
+    </div>
+
+    <script>
+        // 游戏配置
+        const config = {
+            rows: 8,
+            cols: 8,
+            emojis: ['💎', '🔮', '💍', '👑', '💰', '🔱', '💠', '🪙'],
+            gameTime: 60,
+            swipeThreshold: 30 // 滑动阈值(像素)
+        };
+
+        // 游戏状态
+        let state = {
+            board: [],
+            score: 0,
+            timeLeft: config.gameTime,
+            gameOver: false,
+            timer: null,
+            isAnimating: false,
+            touchStart: null
+        };
+
+        // DOM元素
+        const gameBoard = document.getElementById('gameBoard');
+        const scoreElement = document.getElementById('score');
+        const timeElement = document.getElementById('time');
+        const restartBtn = document.getElementById('restartBtn');
+        const playAgainBtn = document.getElementById('playAgainBtn');
+        const gameOverElement = document.getElementById('gameOver');
+        const finalScoreElement = document.getElementById('finalScore');
+
+        // 初始化游戏
+        function initGame() {
+            // 清除之前的定时器
+            if (state.timer) {
+                clearInterval(state.timer);
+            }
+
+            // 重置状态
+            state = {
+                board: [],
+                score: 0,
+                timeLeft: config.gameTime,
+                gameOver: false,
+                timer: null,
+                isAnimating: false,
+                touchStart: null
+            };
+
+            // 更新UI
+            scoreElement.textContent = state.score;
+            timeElement.textContent = state.timeLeft;
+            gameOverElement.classList.remove('active');
+
+            // 创建游戏板
+            createBoard();
+
+            // 开始计时器
+            state.timer = setInterval(updateTimer, 1000);
+        }
+
+        // 创建游戏板
+        function createBoard() {
+            gameBoard.innerHTML = '';
+            state.board = [];
+
+            // 设置网格布局
+            gameBoard.style.gridTemplateRows = `repeat(${config.rows}, 1fr)`;
+            gameBoard.style.gridTemplateColumns = `repeat(${config.cols}, 1fr)`;
+
+            // 创建格子
+            for (let row = 0; row < config.rows; row++) {
+                state.board[row] = [];
+                for (let col = 0; col < config.cols; col++) {
+                    state.board[row][col] = getRandomEmoji();
+
+                    const tile = createTile(row, col);
+                    gameBoard.appendChild(tile);
+                }
+            }
+
+            // 确保初始板没有匹配项
+            while (findMatches().length > 0) {
+                for (let match of findMatches()) {
+                    for (let cell of match) {
+                        state.board[cell.row][cell.col] = getRandomEmoji();
+                        updateTile(cell.row, cell.col);
+                    }
+                }
+            }
+        }
+
+        // 创建单个格子
+        function createTile(row, col) {
+            const tile = document.createElement('div');
+            tile.className = 'tile';
+            tile.dataset.row = row;
+            tile.dataset.col = col;
+            tile.textContent = state.board[row][col];
+
+            // 添加触摸/鼠标事件
+            tile.addEventListener('touchstart', handleTouchStart, { passive: false });
+            tile.addEventListener('touchmove', handleTouchMove, { passive: false });
+            tile.addEventListener('touchend', handleTouchEnd);
+            tile.addEventListener('mousedown', handleMouseDown);
+
+            return tile;
+        }
+
+        // 更新格子显示
+        function updateTile(row, col) {
+            const tile = document.querySelector(`.tile[data-row="${row}"][data-col="${col}"]`);
+            if (tile) {
+                tile.textContent = state.board[row][col];
+            }
+        }
+
+        // 获取随机emoji
+        function getRandomEmoji() {
+            const randomIndex = Math.floor(Math.random() * config.emojis.length);
+            return config.emojis[randomIndex];
+        }
+
+        // 触摸开始
+        function handleTouchStart(e) {
+            if (state.gameOver || state.isAnimating) return;
+
+            e.preventDefault();
+            const tile = e.currentTarget;
+            state.touchStart = {
+                x: e.touches[0].clientX,
+                y: e.touches[0].clientY,
+                tile: tile,
+                row: parseInt(tile.dataset.row),
+                col: parseInt(tile.dataset.col)
+            };
+        }
+
+        // 触摸移动
+        function handleTouchMove(e) {
+            if (!state.touchStart || state.gameOver || state.isAnimating) return;
+            e.preventDefault();
+        }
+
+        // 触摸结束
+        function handleTouchEnd(e) {
+            if (!state.touchStart || state.gameOver || state.isAnimating) return;
+
+            const touch = e.changedTouches[0];
+            const dx = touch.clientX - state.touchStart.x;
+            const dy = touch.clientY - state.touchStart.y;
+
+            // 检查滑动距离是否超过阈值
+            if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > config.swipeThreshold) {
+                // 水平滑动
+                const direction = dx > 0 ? 'right' : 'left';
+                handleSwipe(state.touchStart.row, state.touchStart.col, direction);
+            } else if (Math.abs(dy) > config.swipeThreshold) {
+                // 垂直滑动
+                const direction = dy > 0 ? 'down' : 'up';
+                handleSwipe(state.touchStart.row, state.touchStart.col, direction);
+            }
+
+            state.touchStart = null;
+        }
+
+        // 鼠标按下
+        function handleMouseDown(e) {
+            if (state.gameOver || state.isAnimating) return;
+
+            const tile = e.currentTarget;
+            const row = parseInt(tile.dataset.row);
+            const col = parseInt(tile.dataset.col);
+
+            state.touchStart = {
+                x: e.clientX,
+                y: e.clientY,
+                tile: tile,
+                row: row,
+                col: col
+            };
+
+            document.addEventListener('mousemove', handleMouseMove);
+            document.addEventListener('mouseup', handleMouseUp);
+        }
+
+        // 鼠标移动
+        function handleMouseMove(e) {
+            if (!state.touchStart || state.gameOver || state.isAnimating) return;
+
+            const dx = e.clientX - state.touchStart.x;
+            const dy = e.clientY - state.touchStart.y;
+
+            // 检查滑动距离是否超过阈值
+            if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > config.swipeThreshold) {
+                // 水平滑动
+                const direction = dx > 0 ? 'right' : 'left';
+                handleSwipe(state.touchStart.row, state.touchStart.col, direction);
+                cleanupMouseEvents();
+            } else if (Math.abs(dy) > config.swipeThreshold) {
+                // 垂直滑动
+                const direction = dy > 0 ? 'down' : 'up';
+                handleSwipe(state.touchStart.row, state.touchStart.col, direction);
+                cleanupMouseEvents();
+            }
+        }
+
+        // 鼠标抬起
+        function handleMouseUp() {
+            cleanupMouseEvents();
+            state.touchStart = null;
+        }
+
+        // 清理鼠标事件
+        function cleanupMouseEvents() {
+            document.removeEventListener('mousemove', handleMouseMove);
+            document.removeEventListener('mouseup', handleMouseUp);
+        }
+
+        // 处理滑动
+        function handleSwipe(row, col, direction) {
+            let targetRow = row;
+            let targetCol = col;
+
+            switch (direction) {
+                case 'up': targetRow--; break;
+                case 'down': targetRow++; break;
+                case 'left': targetCol--; break;
+                case 'right': targetCol++; break;
+            }
+
+            // 检查目标位置是否有效
+            if (targetRow >= 0 && targetRow < config.rows && targetCol >= 0 && targetCol < config.cols) {
+                swapTiles(row, col, targetRow, targetCol);
+            }
+        }
+
+        // 交换两个格子
+        function swapTiles(row1, col1, row2, col2) {
+            state.isAnimating = true;
+
+            const tile1 = document.querySelector(`.tile[data-row="${row1}"][data-col="${col1}"]`);
+            const tile2 = document.querySelector(`.tile[data-row="${row2}"][data-col="${col2}"]`);
+
+            // 添加交换动画类
+            tile1.classList.add('swapping');
+            tile2.classList.add('swapping');
+
+            // 临时交换UI位置
+            tile1.style.transform = `translate(${(col2 - col1) * 100}%, ${(row2 - row1) * 100}%)`;
+            tile2.style.transform = `translate(${(col1 - col2) * 100}%, ${(row1 - row2) * 100}%)`;
+
+            // 动画结束后更新数据
+            setTimeout(() => {
+                // 交换数据
+                const temp = state.board[row1][col1];
+                state.board[row1][col1] = state.board[row2][col2];
+                state.board[row2][col2] = temp;
+
+                // 更新UI
+                tile1.textContent = state.board[row1][col1];
+                tile2.textContent = state.board[row2][col2];
+
+                // 重置transform
+                tile1.style.transform = '';
+                tile2.style.transform = '';
+
+                // 移除动画类
+                tile1.classList.remove('swapping');
+                tile2.classList.remove('swapping');
+
+                // 检查是否有匹配
+                const matches = findMatches();
+                if (matches.length > 0) {
+                    // 有匹配，处理匹配
+                    processMatches(matches);
+                } else {
+                    // 没有匹配，交换回来
+                    setTimeout(() => {
+                        tile1.classList.add('swapping');
+                        tile2.classList.add('swapping');
+
+                        tile1.style.transform = `translate(${(col2 - col1) * 100}%, ${(row2 - row1) * 100}%)`;
+                        tile2.style.transform = `translate(${(col1 - col2) * 100}%, ${(row1 - row2) * 100}%)`;
+
+                        setTimeout(() => {
+                            // 交换回数据
+                            const temp = state.board[row1][col1];
+                            state.board[row1][col1] = state.board[row2][col2];
+                            state.board[row2][col2] = temp;
+
+                            // 更新UI
+                            tile1.textContent = state.board[row1][col1];
+                            tile2.textContent = state.board[row2][col2];
+
+                            // 重置transform
+                            tile1.style.transform = '';
+                            tile2.style.transform = '';
+
+                            // 移除动画类
+                            tile1.classList.remove('swapping');
+                            tile2.classList.remove('swapping');
+
+                            state.isAnimating = false;
+                        }, 300);
+                    }, 100);
+                }
+            }, 300);
+        }
+
+        // 查找所有匹配项
+        function findMatches() {
+            const matches = [];
+            const matchedCells = new Set();
+
+            // 检查水平匹配
+            for (let row = 0; row < config.rows; row++) {
+                for (let col = 0; col < config.cols - 2; col++) {
+                    const emoji = state.board[row][col];
+                    if (emoji === state.board[row][col + 1] && emoji === state.board[row][col + 2]) {
+                        const match = [{ row, col }, { row, col: col + 1 }, { row, col: col + 2 }];
+
+                        // 检查是否有更长的匹配
+                        let extendCol = col + 3;
+                        while (extendCol < config.cols && state.board[row][extendCol] === emoji) {
+                            match.push({ row, col: extendCol });
+                            extendCol++;
+                        }
+
+                        // 添加到匹配列表
+                        matches.push(match);
+                        match.forEach(cell => matchedCells.add(`${cell.row},${cell.col}`));
+                        col = extendCol - 1; // 跳过已匹配的部分
+                    }
+                }
+            }
+
+            // 检查垂直匹配
+            for (let col = 0; col < config.cols; col++) {
+                for (let row = 0; row < config.rows - 2; row++) {
+                    const emoji = state.board[row][col];
+                    if (emoji === state.board[row + 1][col] && emoji === state.board[row + 2][col]) {
+                        const match = [{ row, col }, { row: row + 1, col }, { row: row + 2, col }];
+
+                        // 检查是否有更长的匹配
+                        let extendRow = row + 3;
+                        while (extendRow < config.rows && state.board[extendRow][col] === emoji) {
+                            match.push({ row: extendRow, col });
+                            extendRow++;
+                        }
+
+                        // 只添加未被水平匹配包含的单元格
+                        const newCells = match.filter(cell => !matchedCells.has(`${cell.row},${cell.col}`));
+                        if (newCells.length >= 3) {
+                            matches.push(newCells);
+                        }
+
+                        row = extendRow - 1; // 跳过已匹配的部分
+                    }
+                }
+            }
+
+            return matches;
+        }
+
+        // 处理匹配项
+        function processMatches(matches) {
+            // 计算分数
+            let score = 0
+            for (const match of matches) {
+                switch (match.length) {
+                    case 3:
+                        score += 30;
+                        break
+                    case 4:
+                        score += 60;
+                        break
+                    case 5:
+                        score += 120;
+                        break
+                    default:
+                        score += match.length * 10;
+                }
+            }
+            if (matches.length > 1) score += matches.length * 10; // 每个匹配额外加10分
+            // 更新分数
+            state.score += score;
+            scoreElement.textContent = state.score;
+
+            // 标记匹配的格子
+            const matchedTiles = [];
+            for (const match of matches) {
+                for (const cell of match) {
+                    const tile = document.querySelector(`.tile[data-row="${cell.row}"][data-col="${cell.col}"]`);
+                    if (tile) {
+                        tile.classList.add('matched');
+                        matchedTiles.push(tile);
+                    }
+                }
+            }
+
+            // 动画结束后移除匹配的格子
+            setTimeout(() => {
+                // 清除匹配的格子
+                for (const tile of matchedTiles) {
+                    tile.classList.remove('matched');
+                    tile.textContent = '';
+                }
+
+                // 下落格子填充空白
+                dropTiles();
+            }, 500);
+        }
+
+        // 格子下落填充空白
+        function dropTiles() {
+            const fallingTiles = [];
+
+            // 从下往上处理每一列
+            for (let col = 0; col < config.cols; col++) {
+                let emptySpaces = 0;
+
+                for (let row = config.rows - 1; row >= 0; row--) {
+                    const tile = document.querySelector(`.tile[data-row="${row}"][data-col="${col}"]`);
+
+                    if (tile.textContent === '') {
+                        emptySpaces++;
+                    } else if (emptySpaces > 0) {
+                        // 需要下落的格子
+                        const targetRow = row + emptySpaces;
+                        state.board[targetRow][col] = state.board[row][col];
+                        state.board[row][col] = '';
+
+                        tile.dataset.row = targetRow;
+                        tile.classList.add('falling');
+                        tile.style.transform = `translateY(${emptySpaces * 100}%)`;
+
+                        fallingTiles.push({
+                            tile: tile,
+                            targetRow: targetRow,
+                            col: col
+                        });
+                    }
+                }
+
+                // 在顶部创建新的格子
+                for (let i = 0; i < emptySpaces; i++) {
+                    const row = i;
+                    state.board[row][col] = getRandomEmoji();
+
+                    const tile = document.querySelector(`.tile[data-row="${row}"][data-col="${col}"]`);
+                    if (tile) {
+                        tile.textContent = state.board[row][col];
+                        tile.classList.add('falling');
+                        tile.style.transform = `translateY(-${(emptySpaces - i) * 100}%)`;
+
+                        fallingTiles.push({
+                            tile: tile,
+                            targetRow: row,
+                            col: col
+                        });
+                    }
+                }
+            }
+
+            // 下落动画结束后
+            setTimeout(() => {
+                // 清除所有现有tile
+                gameBoard.innerHTML = '';
+
+                // 从state.board重新生成所有tile
+                for (let row = 0; row < config.rows; row++) {
+                    for (let col = 0; col < config.cols; col++) {
+                        const tile = createTile(row, col);
+                        gameBoard.appendChild(tile);
+                    }
+                }
+
+                // 检查是否有新的匹配
+                const newMatches = findMatches();
+                if (newMatches.length > 0) {
+                    // 递归处理连锁反应
+                    setTimeout(() => {
+                        processMatches(newMatches);
+                    }, 100);
+                } else {
+                    // 检查是否有可交换的组合
+                    if (!hasPossibleMoves()) {
+                        // 如果没有可交换的组合，重新生成整个游戏板
+                        reshuffleBoard();
+                    } else {
+                        state.isAnimating = false;
+                    }
+                }
+            }, 400);
+        }
+
+        // 检查是否有可交换的组合
+        function hasPossibleMoves() {
+            // 检查水平方向可能的交换
+            for (let row = 0; row < config.rows; row++) {
+                for (let col = 0; col < config.cols - 1; col++) {
+                    // 尝试交换相邻的两个emoji
+                    [state.board[row][col], state.board[row][col + 1]] =
+                        [state.board[row][col + 1], state.board[row][col]];
+
+                    // 检查是否会产生匹配
+                    const matches = findMatches();
+
+                    // 交换回来
+                    [state.board[row][col], state.board[row][col + 1]] =
+                        [state.board[row][col + 1], state.board[row][col]];
+
+                    if (matches.length > 0) {
+                        return true;
+                    }
+                }
+            }
+
+            // 检查垂直方向可能的交换
+            for (let col = 0; col < config.cols; col++) {
+                for (let row = 0; row < config.rows - 1; row++) {
+                    // 尝试交换相邻的两个emoji
+                    [state.board[row][col], state.board[row + 1][col]] =
+                        [state.board[row + 1][col], state.board[row][col]];
+
+                    // 检查是否会产生匹配
+                    const matches = findMatches();
+
+                    // 交换回来
+                    [state.board[row][col], state.board[row + 1][col]] =
+                        [state.board[row + 1][col], state.board[row][col]];
+
+                    if (matches.length > 0) {
+                        return true;
+                    }
+                }
+            }
+
+            return false;
+        }
+
+        // 重新生成游戏板
+        function reshuffleBoard() {
+            // 添加重排动画
+            const tiles = document.querySelectorAll('.tile');
+            tiles.forEach(tile => {
+                tile.classList.add('falling');
+                tile.style.transform = 'scale(0)';
+                tile.style.opacity = '0';
+            });
+
+            setTimeout(() => {
+                // 清除所有现有tile
+                gameBoard.innerHTML = '';
+
+                // 重新生成游戏板数据
+                for (let row = 0; row < config.rows; row++) {
+                    for (let col = 0; col < config.cols; col++) {
+                        state.board[row][col] = getRandomEmoji();
+                    }
+                }
+
+                // 确保没有初始匹配
+                while (findMatches().length > 0) {
+                    for (let match of findMatches()) {
+                        for (let cell of match) {
+                            state.board[cell.row][cell.col] = getRandomEmoji();
+                        }
+                    }
+                }
+
+                // 确保有可交换的组合
+                if (!hasPossibleMoves()) {
+                    // 如果没有可交换的组合，递归调用自身
+                    setTimeout(reshuffleBoard, 100);
+                    return;
+                }
+
+                // 重新生成所有tile
+                for (let row = 0; row < config.rows; row++) {
+                    for (let col = 0; col < config.cols; col++) {
+                        const tile = createTile(row, col);
+                        gameBoard.appendChild(tile);
+                    }
+                }
+
+                state.isAnimating = false;
+            }, 400);
+        }
+
+        // 更新计时器
+        function updateTimer() {
+            state.timeLeft--;
+            timeElement.textContent = state.timeLeft;
+
+            if (state.timeLeft <= 0) {
+                endGame();
+            }
+        }
+
+        // 结束游戏
+        function endGame() {
+            state.gameOver = true;
+            clearInterval(state.timer);
+
+            finalScoreElement.textContent = state.score;
+            gameOverElement.classList.add('active');
+        }
+
+        // 事件监听
+        restartBtn.addEventListener('click', initGame);
+        playAgainBtn.addEventListener('click', initGame);
+
+        // 开始游戏
+        initGame();
+    </script>
+</body>
+
+</html>
