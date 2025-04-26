@@ -92,7 +92,9 @@
             transform: scale(1.05);
         }
 
-        .file-input { display: none; }
+        .file-input {
+            display: none;
+        }
 
         .player-controls {
             display: none;
@@ -148,32 +150,95 @@
             transform: scale(1.1);
         }
 
-        .progress-container { position: relative; margin-top: 20px; height: 40px; }
-        .progress-bar {
-            width: 100%; height: 8px; background-color: var(--progress-bg);
-            border-radius: 4px; cursor: pointer; position: relative;
-            overflow: visible; margin-top: 20px;
+        .progress-container {
+            position: relative;
+            margin-top: 20px;
+            height: 40px;
         }
-        .progress-fill { height: 100%; background-color: var(--progress-fill);
-            border-radius: 4px; width: 0%; }
-        .marker-container { position: absolute; left: 0; width: 100%; height: 20px; }
-        .marker { position: absolute; top: 0; width: 0; height: 0;
-            border-left: 6px solid transparent; border-right: 6px solid transparent;
+
+        .progress-bar {
+            width: 100%;
+            height: 8px;
+            background-color: var(--progress-bg);
+            border-radius: 4px;
+            cursor: pointer;
+            position: relative;
+            overflow: visible;
+            margin-top: 20px;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background-color: var(--progress-fill);
+            border-radius: 4px;
+            width: 0%;
+        }
+
+        .marker-container {
+            position: absolute;
+            left: 0;
+            width: 100%;
+            height: 20px;
+        }
+
+        .marker {
+            position: absolute;
+            top: 0;
+            width: 0;
+            height: 0;
+            border-left: 6px solid transparent;
+            border-right: 6px solid transparent;
             transform: translateX(-6px);
         }
-        .marker-start { border-top: 12px solid var(--marker-start); }
-        .marker-end { border-top: 12px solid var(--marker-end); }
-        .marker-label { position: absolute; top: -16px; transform: translateX(-50%);
-            font-size: 10px; white-space: nowrap; }
-        .marker-start-label { color: var(--marker-start); }
-        .marker-end-label { color: var(--marker-end); }
-        .time-display { display: flex; justify-content: space-between;
-            margin-top: 5px; font-size: 14px; color: var(--text-color); }
-        .file-info { margin-top: 30px; text-align: center;
-            font-size: 14px; color: var(--text-color); opacity: 0.8; }
-        .loop-info { display: flex; justify-content: space-between;
-            margin-top: 5px; font-size: 12px;
-            color: var(--text-color); opacity: 0.7; }
+
+        .marker-start {
+            border-top: 12px solid var(--marker-start);
+        }
+
+        .marker-end {
+            border-top: 12px solid var(--marker-end);
+        }
+
+        .marker-label {
+            position: absolute;
+            top: -16px;
+            transform: translateX(-50%);
+            font-size: 10px;
+            white-space: nowrap;
+        }
+
+        .marker-start-label {
+            color: var(--marker-start);
+        }
+
+        .marker-end-label {
+            color: var(--marker-end);
+        }
+
+        .time-display {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 5px;
+            font-size: 14px;
+            color: var(--text-color);
+        }
+
+        .file-info {
+            margin-top: 30px;
+            text-align: center;
+            font-size: 14px;
+            color: var(--text-color);
+            opacity: 0.8;
+        }
+
+        .loop-info {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 5px;
+            font-size: 12px;
+            color: var(--text-color);
+            opacity: 0.7;
+        }
     </style>
 </head>
 
@@ -264,7 +329,7 @@
 
         function handleFile(file) {
             if (!file) return;
-            fileInfoEl.textContent = `文件: ${file.name} | ${(sampleRate/1000).toFixed(1)}kHz`;
+            fileInfoEl.textContent = `文件: ${file.name} | ${(sampleRate / 1000).toFixed(1)}kHz`;
             const reader = new FileReader();
             reader.onload = async () => {
                 const arr = new Uint8Array(reader.result);
@@ -283,6 +348,8 @@
                 source && source.stop();
                 updateUI(loopStartSec, loopEndSec, loopEndSample);
                 reset(); playerControls.style.display = 'flex';
+                // autoplay
+                playAudio();
             };
             reader.readAsArrayBuffer(file);
         }
