@@ -306,6 +306,7 @@
             e.preventDefault(); dropArea.classList.remove('hover');
             handleFile(e.dataTransfer.files[0]);
         });
+        dropArea.addEventListener('click', () => fileInput.click());
 
         fileButton.addEventListener('click', () => fileInput.click());
         fileInput.addEventListener('change', e => handleFile(e.target.files[0]));
