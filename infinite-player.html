@@ -294,7 +294,7 @@
         const fileInfoEl = document.getElementById('fileInfo');
 
         let audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-        let buffer, source;
+        let audioBuffer, audioSource;
         let sampleRate = audioCtx.sampleRate;
         let loopStartSample = 0, loopLengthSample = 0;
         let loopStartSec = 0, loopEndSec = 0;
@@ -311,20 +311,20 @@
         fileInput.addEventListener('change', e => handleFile(e.target.files[0]));
 
         goStartBtn.addEventListener('click', () => {
-            if (!buffer) return;
+            if (!audioBuffer) return;
             seek(0);
         });
 
         playPauseBtn.addEventListener('click', () => {
-            if (!buffer) return;
+            if (!audioBuffer) return;
             isPlaying ? pauseAudio() : playAudio();
         });
 
         progressBar.addEventListener('click', e => {
-            if (!buffer) return;
+            if (!audioBuffer) return;
             const rect = progressBar.getBoundingClientRect();
             const pct = (e.clientX - rect.left) / rect.width;
-            seek(pct * buffer.duration);
+            seek(pct * audioBuffer.duration);
         });
 
         function handleFile(file) {
@@ -338,14 +338,14 @@
                 const llMatch = /looplength\s*=\s*(\d+)/i.exec(text);
                 loopStartSample = lsMatch ? parseInt(lsMatch[1]) : 0;
                 loopLengthSample = llMatch ? parseInt(llMatch[1]) : -1;
-                buffer = await audioCtx.decodeAudioData(reader.result);
+                audioBuffer = await audioCtx.decodeAudioData(reader.result);
                 if (loopLengthSample < 0) {
-                    loopLengthSample = buffer.length - loopStartSample;
+                    loopLengthSample = audioBuffer.length - loopStartSample;
                 }
                 loopStartSec = loopStartSample / sampleRate;
                 loopEndSec = (loopStartSample + loopLengthSample) / sampleRate;
                 const loopEndSample = loopStartSample + loopLengthSample;
-                source && source.stop();
+                audioSource && audioSource.stop();
                 updateUI(loopStartSec, loopEndSec, loopEndSample);
                 reset(); playerControls.style.display = 'flex';
                 // autoplay
@@ -356,7 +356,7 @@
 
         function createSource(offset = 0) {
             const src = audioCtx.createBufferSource();
-            src.buffer = buffer;
+            src.buffer = audioBuffer;
             src.loop = true;
             src.loopStart = loopStartSec;
             src.loopEnd = loopEndSec;
@@ -366,26 +366,26 @@
         }
 
         function playAudio() {
-            source = createSource(pauseOffset);
+            audioSource = createSource(pauseOffset);
             startTime = audioCtx.currentTime - pauseOffset;
             isPlaying = true; playPauseBtn.textContent = '⏸';
             requestAnimationFrame(updateProgress);
         }
 
         function pauseAudio() {
-            source.stop();
-            pauseOffset = (audioCtx.currentTime - startTime) % buffer.duration;
+            audioSource.stop();
+            pauseOffset = (audioCtx.currentTime - startTime) % audioBuffer.duration;
             isPlaying = false; playPauseBtn.textContent = '▶';
         }
 
         function seek(time) {
-            source && source.stop();
+            audioSource && audioSource.stop();
             pauseOffset = time;
             if (isPlaying) playAudio(); else updateDisplay(time);
         }
 
         function reset() {
-            source && source.stop();
+            audioSource && audioSource.stop();
             isPlaying = false; pauseOffset = 0;
             playPauseBtn.textContent = '▶';
             progressFill.style.width = '0%';
@@ -393,10 +393,10 @@
         }
 
         function updateUI(loopStartSec, loopEndSec, loopEndSample) {
-            totalTimeEl.textContent = formatTime(buffer.duration);
+            totalTimeEl.textContent = formatTime(audioBuffer.duration);
             loopStartEl.textContent = `循环开始：${formatTime(loopStartSec)} (${loopStartSample} 采样点)`;
             loopEndEl.textContent = `循环结束：${formatTime(loopEndSec)} (${loopEndSample} 采样点)`;
-            renderMarkers(loopStartSec / buffer.duration, loopEndSec / buffer.duration);
+            renderMarkers(loopStartSec / audioBuffer.duration, loopEndSec / audioBuffer.duration);
         }
 
         function updateProgress() {
@@ -414,7 +414,7 @@
         }
 
         function updateDisplay(time) {
-            progressFill.style.width = `${(time / buffer.duration) * 100}%`;
+            progressFill.style.width = `${(time / audioBuffer.duration) * 100}%`;
             currentTimeEl.textContent = formatTime(time);
         }
 
