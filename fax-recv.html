@@ -817,7 +817,7 @@
 
         function downloadImage() {
             const link = document.createElement('a');
-            link.download = `fax-${new Date().toISOString()}`
+            link.download = `fax-${new Date().toISOString()}.png`
             link.href = atv.canvas.toDataURL();
             link.click();
         }
