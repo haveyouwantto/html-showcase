@@ -54,6 +54,13 @@
         }
 
         /* 滑杆样式 */
+        #sliders-container{
+            display: flex;
+            width: 100%;
+            flex-wrap: nowrap;
+            justify-content: space-between;
+        }
+
         .slider-container {
             display: inline-block;
             text-align: center;
@@ -92,9 +99,10 @@
         /* 钢琴键盘样式 */
         #keyboard-container {
             position: relative;
-            width: 480px;
+            width: 100%;
             height: 150px;
-            margin: auto;
+            margin-top: 20px;
+            background: #333;
         }
 
         .white-key,
@@ -104,36 +112,24 @@
         }
 
         .white-key {
-            float: left;
-            width: 60px;
+            width: 20px;
             height: 150px;
             background: white;
-            border: 1px solid black;
-            box-sizing: border-box;
-            text-align: center;
-            line-height: 150px;
-            font-weight: bold;
-        }
-
-        .black-key {
-            width: 40px;
-            height: 90px;
-            background: black;
-            position: absolute;
-            top: 0;
-            border: 1px solid #333;
-            margin-left: -20px;
+            border: 1px solid #ccc;
+            display: inline-block;
+            position: relative;
             z-index: 1;
         }
 
-        .black-key:after {
-            content: attr(data-note);
+        .black-key {
+            width: 20px;
+            height: 100px;
+            background: black;
             position: absolute;
-            bottom: -20px;
-            width: 100%;
-            text-align: center;
-            color: black;
-            font-size: 0.75em;
+            top: 0;
+            left: 0;
+            margin-left: -20px;
+            z-index: 2;
         }
     </style>
 </head>
@@ -169,6 +165,11 @@
             <div id="sliders-container">
                 <!-- 32 个滑杆将由脚本生成 -->
             </div>
+            <select id="random-mode">随机模式
+                <option value="random">随机</option>
+                <option value="decay">衰减</option>
+                <option value="odd-decay">奇数衰减</option>
+            </select>
             <button id="additive-random">随机</button>
         </div>
         <!-- 上传选项 -->
@@ -181,24 +182,7 @@
     <section id="keyboard">
         <h2>Piano Keyboard</h2>
         <div id="keyboard-container">
-            <!-- 白键 -->
-            <div class="white-key" data-freq="261.63" data-note="C4">C4</div>
-            <div class="black-key" data-freq="277.18" data-note="C#4" style="left:40px;"></div>
-            <div class="white-key" data-freq="293.66" data-note="D4">D4</div>
-            <div class="black-key" data-freq="311.13" data-note="D#4" style="left:100px;"></div>
-            <div class="white-key" data-freq="329.63" data-note="E4">E4</div>
-            <div class="white-key" data-freq="349.23" data-note="F4">F4</div>
-            <div class="black-key" data-freq="369.99" data-note="F#4" style="left:220px;"></div>
-            <div class="white-key" data-freq="392.00" data-note="G4">G4</div>
-            <div class="black-key" data-freq="415.30" data-note="G#4" style="left:280px;"></div>
-            <div class="white-key" data-freq="440.00" data-note="A4">A4</div>
-            <div class="black-key" data-freq="466.16" data-note="A#4" style="left:340px;"></div>
-            <div class="white-key" data-freq="493.88" data-note="B4">B4</div>
-            <div class="white-key" data-freq="523.25" data-note="C5">C5</div>
-            <div class="black-key" data-freq="554.37" data-note="C#5" style="left:400px;"></div>
-            <div class="white-key" data-freq="587.33" data-note="D5">D5</div>
-            <div class="black-key" data-freq="622.25" data-note="D#5" style="left:460px;"></div>
-            <div class="white-key" data-freq="659.25" data-note="E5">E5</div>
+            <!-- 动态生成 -->
         </div>
     </section>
 
@@ -216,6 +200,12 @@
         let currentExcitation = new Float32Array(1024);
         const previewCanvas = document.getElementById('preview');
         const previewCtx = previewCanvas.getContext('2d');
+
+        // 声音管理
+        const sounds = new Map(); // 格式: Frequency -> Set(AudioBufferSourceNode)
+
+
+
 
         // 压缩器
         const compressor = audioContext.createDynamicsCompressor();
@@ -257,23 +247,52 @@
             slider.dataset.harmonic = i;
             const label = document.createElement('div');
             label.className = 'slider-label';
-            label.textContent = slider.value + ' dB';
+            label.textContent = slider.value;
             container.appendChild(slider);
             container.appendChild(label);
             slidersContainer.appendChild(container);
             // 滑杆变化时更新标签并重生成信号
             slider.addEventListener('input', () => {
-                label.textContent = slider.value + ' dB';
+                label.textContent = slider.value;
                 generateExcitation();
             });
         }
         // 随机按钮事件
         document.getElementById('additive-random').addEventListener('click', () => {
+
+            // 获取当前随机模式
+            const randomMode = document.getElementById('random-mode').value;
+
+            /* random：随机滑块
+            decay：随机db数恒定衰减
+            odd-decay：随机db数奇数衰减，偶数为0
+            */
+
+            let randomFunc = {
+                random: (i) => {
+                    return Math.floor(Math.random() * -32);
+                },
+                decay: (i, decay) => {
+                    return -Math.floor(decay * i);
+                },
+                'odd-decay': (i, decay) => {
+                    return (i % 2) == 0 ? -32 : -Math.floor(decay * i);
+                }
+            }
+
+            let rand = Math.random() * 3
+
+            // 随机生成滑杆值
             slidersContainer.querySelectorAll('input[type=range]').forEach(input => {
-                const randomValue = Math.floor(Math.random() * -32);
+                const randomValue = randomFunc[randomMode](parseInt(input.dataset.harmonic), rand);
                 input.value = randomValue;
                 input.dispatchEvent(new Event('input'));
             });
+            // slidersContainer.querySelectorAll('input[type=range]').forEach(input => {
+            //     const randomValue = Math.floor(Math.random() * -32);
+            //     input.value = randomValue;
+            //     input.dispatchEvent(new Event('input'));
+            // });
         });
 
         // 噪声类型与波形选择事件监听
@@ -324,6 +343,17 @@
                 generateWaveform(wave);
             } else if (activeTab === 'additive') {
                 generateAdditive();
+            }
+
+            // 归一化
+            let maxVal = 0;
+            for (let i = 0; i < currentExcitation.length; i++) {
+                if (Math.abs(currentExcitation[i]) > maxVal) maxVal = Math.abs(currentExcitation[i]);
+            }
+            if (maxVal > 0) {
+                for (let i = 0; i < currentExcitation.length; i++) {
+                    currentExcitation[i] /= maxVal;
+                }
             }
             drawPreview();
         }
@@ -426,8 +456,8 @@
             for (let i = 0; i < N; i++) {
                 ringBuffer[i] = currentExcitation[i % currentExcitation.length];
             }
-            // 生成 1.5 秒的输出
-            const length = sampleRate * 1.5;
+            // 生成 4 秒的输出
+            const length = sampleRate * 4;
             let output = new Float32Array(length);
             let idx = 0;
             const decay = 0.998;
@@ -468,21 +498,39 @@
             source.playbackRate.value = playbackRate;
             source.connect(compressor);
             source.start();
+
+            // 把声音存储到 Map 中
+
+
         }
 
-        // 为钢琴键绑定点击事件
-        document.querySelectorAll('#keyboard-container .white-key, #keyboard-container .black-key')
-            .forEach(key => {
-                key.addEventListener('click', () => {
-                    const freq = parseFloat(key.dataset.freq);
-                    if (audioContext.state === 'suspended') {
-                        // 某些浏览器需在用户交互后恢复 AudioContext
-                        audioContext.resume().then(() => playNote(freq));
-                    } else {
-                        playNote(freq);
-                    }
-                });
-            });
+        // 生成88钢琴键盘
+        // const keyboardContainer = document.getElementById('keyboard-container');
+        // const notes = [
+        //     'C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'
+        // ];
+        // for (let i = 0; i < 88; i++) {
+        //     const note = notes[i % 12];
+        //     const octave = Math.floor(i / 12) - 1;
+        //     const key = document.createElement('div');
+        //     key.className = 'white-key';
+        //     key.textContent = note + octave;
+        //     key.dataset.note = note + octave;
+        //     key.onclick = () => {
+        //         const freq = 440 * Math.pow(2, (i - 69) / 12);
+        //         playNote(freq);
+        //     };
+        //     keyboardContainer.appendChild(key);
+        //     // 添加黑键
+        //     if (note !== 'E' && note !== 'B') {
+        //         const blackKey = document.createElement('div');
+        //         blackKey.className = 'black-key';
+        //         blackKey.style.left = `${i * 60 - 20}px`;
+        //         blackKey.dataset.note = note + octave;
+        //         keyboardContainer.appendChild(blackKey);
+        //     }
+        // }
+
 
         // 初始生成激励信号波形
         generateExcitation();
