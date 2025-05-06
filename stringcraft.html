@@ -137,27 +137,28 @@
 <body>
     <h1>StringCraft H5 Playground</h1>
     <section id="excitation">
-        <h2>Excitation Source</h2>
+        <h2>激励源</h2>
         <div class="source-tabs">
-            <button id="tab-noise" class="active">Noise</button>
-            <button id="tab-waveform">Waveform</button>
-            <button id="tab-additive">Additive</button>
-            <button id="tab-upload">Upload</button>
+            <button id="tab-noise" class="active">噪声</button>
+            <button id="tab-waveform">波形</button>
+            <button id="tab-additive">加法合成</button>
+            <button id="tab-upload">上传音频</button>
         </div>
         <!-- 噪声选项 -->
         <div id="noise-options">
-            <label><input type="radio" name="noise-type" value="white" checked> White Noise</label>
-            <label><input type="radio" name="noise-type" value="pink"> Pink Noise</label>
-            <label><input type="radio" name="noise-type" value="brown"> Brown Noise</label>
+            <label><input type="radio" name="noise-type" value="white" checked>白噪声</label>
+            <label><input type="radio" name="noise-type" value="pink">粉噪声</label>
+            <label><input type="radio" name="noise-type" value="brown">布朗噪声</label>
+            <button id="noise-random">刷新</button>
         </div>
         <!-- 波形选项 -->
         <div id="waveform-options" class="hidden">
-            <label for="waveform-select">Waveform:</label>
+            <label for="waveform-select">波形:</label>
             <select id="waveform-select">
-                <option value="sine">Sine</option>
-                <option value="triangle">Triangle</option>
-                <option value="square">Square</option>
-                <option value="sawtooth">Sawtooth</option>
+                <option value="sine">正弦波</option>
+                <option value="triangle">三角波</option>
+                <option value="square">方波</option>
+                <option value="sawtooth">锯齿波</option>
             </select>
         </div>
         <!-- 加法合成选项 -->
@@ -177,20 +178,21 @@
             <input type="file" id="file-input" accept="audio/*">
         </div>
         <!-- 波形预览 Canvas -->
-        <canvas id="preview"></canvas>
+        <canvas id="preview" width="1200" height="300"></canvas>
+        <button id="download-excitation">下载激励信号</button>
     </section>
     <section id="keyboard">
-        <h2>Piano Keyboard</h2>
+        <h2>键盘</h2>
         <div id="keyboard-container">
             <!-- 动态生成 -->
         </div>
     </section>
 
     <section id="midi-input-select">
-        <h2>MIDI Input</h2>
-        <p>Connect a MIDI device to play notes.</p>
+        <h2>MIDI 输入设备</h2>
+        <p>选择一个midi设备来自动播放音符。</p>
         <select id="midi-inputs">
-            <option value="">Select MIDI Input</option>
+            <option value="">选择输入设备：</option>
             <!-- 这里将动态填充可用的 MIDI 输入设备 -->
         </select>
     </section>
@@ -258,6 +260,15 @@
             });
         }
         // 随机按钮事件
+
+        document.getElementById('noise-random').addEventListener('click', () => {
+            // 随机生成噪声
+            const type = document.querySelector('input[name="noise-type"]:checked').value;
+            generateNoise(type);
+            normalizeExcitation();
+            drawPreview();
+        });
+
         document.getElementById('additive-random').addEventListener('click', () => {
 
             // 获取当前随机模式
@@ -321,6 +332,18 @@
                             currentExcitation[i] = input[i];
                         }
                     }
+
+                    // 归一化
+                    let maxVal = 0;
+                    for (let i = 0; i < length; i++) {
+                        if (Math.abs(currentExcitation[i]) > maxVal) maxVal = Math.abs(currentExcitation[i]);
+                    }
+                    if (maxVal > 0) {
+                        for (let i = 0; i < length; i++) {
+                            currentExcitation[i] /= maxVal;
+                        }
+                    }
+
                     // 如果文件音频较短，补零
                     for (let i = length; i < currentExcitation.length; i++) {
                         currentExcitation[i] = 0;
@@ -330,6 +353,19 @@
             };
             reader.readAsArrayBuffer(file);
         });
+
+        function normalizeExcitation() {
+            // 归一化当前激励信号
+            let maxVal = 0;
+            for (let i = 0; i < currentExcitation.length; i++) {
+                if (Math.abs(currentExcitation[i]) > maxVal) maxVal = Math.abs(currentExcitation[i]);
+            }
+            if (maxVal > 0) {
+                for (let i = 0; i < currentExcitation.length; i++) {
+                    currentExcitation[i] /= maxVal;
+                }
+            }
+        }
 
         // 根据当前设置生成激励信号
         function generateExcitation() {
@@ -344,17 +380,7 @@
             } else if (activeTab === 'additive') {
                 generateAdditive();
             }
-
-            // 归一化
-            let maxVal = 0;
-            for (let i = 0; i < currentExcitation.length; i++) {
-                if (Math.abs(currentExcitation[i]) > maxVal) maxVal = Math.abs(currentExcitation[i]);
-            }
-            if (maxVal > 0) {
-                for (let i = 0; i < currentExcitation.length; i++) {
-                    currentExcitation[i] /= maxVal;
-                }
-            }
+            normalizeExcitation();
             drawPreview();
         }
 
@@ -419,15 +445,48 @@
                     currentExcitation[i] += amp * Math.sin(2 * Math.PI * k * i / N);
                 }
             });
-            // 归一化到 [-1,1]
-            let maxVal = 0;
-            for (let i = 0; i < N; i++) {
-                if (Math.abs(currentExcitation[i]) > maxVal) maxVal = Math.abs(currentExcitation[i]);
+            normalizeExcitation();
+        }
+
+        function downloadExcitation() {
+            // 下载当前激励信号为 WAV 文件
+            const length = currentExcitation.length;
+            const buffer = new ArrayBuffer(44 + length * 2);
+            const view = new DataView(buffer);
+            const sampleRate = audioContext.sampleRate;
+
+            // WAV 文件头
+            writeString(view, 0, 'RIFF');
+            view.setUint32(4, 36 + length * 2, true);
+            writeString(view, 8, 'WAVE');
+            writeString(view, 12, 'fmt ');
+            view.setUint32(16, 16, true);
+            view.setUint16(20, 1, true);
+            view.setUint16(22, 1, true);
+            view.setUint32(24, sampleRate, true);
+            view.setUint32(28, sampleRate * 2, true);
+            view.setUint16(32, 2, true);
+            view.setUint16(34, 16, true);
+            writeString(view, 36, 'data');
+            view.setUint32(40, length * 2, true);
+
+            // 写入数据
+            for (let i = 0; i < length; i++) {
+                view.setInt16(44 + i * 2, currentExcitation[i] * 32767.5 - 0.5, true);
             }
-            if (maxVal > 0) {
-                for (let i = 0; i < N; i++) {
-                    currentExcitation[i] /= maxVal;
-                }
+
+            // 创建 Blob 并下载
+            const blob = new Blob([buffer], { type: 'audio/wav' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'excitation.wav';
+            a.click();
+        }
+
+        function writeString(view, offset, str) {
+            for (let i = 0; i < str.length; i++) {
+                view.setUint8(offset + i, str.charCodeAt(i));
             }
         }
 
@@ -445,6 +504,13 @@
             }
             previewCtx.strokeStyle = '#3f51b5';
             previewCtx.stroke();
+        }
+
+        class Sound {
+            constructor(buffer, envelope){
+                this.buffer = buffer;
+                this.envelope = envelope;
+            }
         }
 
         // Karplus-Strong 合成：生成拨弦效果并播放
@@ -496,12 +562,51 @@
             // 根据采样率计算频率舍入误差补偿
             const playbackRate = frequency / (sampleRate / N);
             source.playbackRate.value = playbackRate;
-            source.connect(compressor);
+
+            // 包络
+            const envelope = audioContext.createGain();
+            envelope.gain.setValueAtTime(1, audioContext.currentTime);
+
+            const sound = new Sound(buffer, envelope);
+            source.connect(envelope).connect(compressor);
             source.start();
 
             // 把声音存储到 Map 中
+            let id = frequency.toFixed(2);
+
+            if (!sounds.has(id)) {
+                sounds.set(id, new Set());
+            }
+            sounds.get(id).add(sound);
+            source.onended = () => {
+                sounds.get(id).delete(sound);
+                if (sounds.get(id).size === 0) {
+                    sounds.delete(id);
+                }
+            };
+        }
+
+        // 停止播放某个频率的声音
+        function stopNote(frequency) {
+            let id = frequency.toFixed(2);
+
+            console.log("stopNote", id);
+            if (sounds.has(id)) {
+                console.log("stopNote", sounds.get(id));
+                sounds.get(id).forEach(sound => {
+                    sound.envelope.gain.setTargetAtTime(0, audioContext.currentTime, 0.3);
+                });
+            }
+        }
 
 
+        function stopAllNotes() {
+            sounds.forEach((soundSet, id) => {
+                soundSet.forEach(sound => {
+                    sound.envelope.gain.setTargetAtTime(0, audioContext.currentTime, 0.3);
+                });
+            });
+            sounds.clear();
         }
 
         // 生成88钢琴键盘
@@ -555,14 +660,21 @@
                             if (status === 144 && velocity > 0) { // Note On
                                 const freq = 440 * Math.pow(2, (note - 69) / 12);
                                 playNote(freq);
+                            } else if (status === 128 || (status === 144 && velocity === 0)) { // Note Off
+                                const freq = 440 * Math.pow(2, (note - 69) / 12);
+                                stopNote(freq);
                             }
                         };
                     }
                 });
+
+                // stopAllNotes()
             });
         } else {
             console.log("MIDI not supported");
         }
+
+        document.getElementById('download-excitation').addEventListener('click', downloadExcitation);
     </script>
 </body>
 
