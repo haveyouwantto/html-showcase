@@ -462,6 +462,10 @@
             buffer.copyToChannel(output, 0);
             const source = audioContext.createBufferSource();
             source.buffer = buffer;
+
+            // 根据采样率计算频率舍入误差补偿
+            const playbackRate = frequency / (sampleRate / N);
+            source.playbackRate.value = playbackRate;
             source.connect(compressor);
             source.start();
         }
