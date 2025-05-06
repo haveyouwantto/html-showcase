@@ -1,0 +1,517 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="UTF-8">
+    <title>StringCraft H5 Playground</title>
+    <style>
+        /* 基本样式（仿 Material Design 风格） */
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f5f5f5;
+            margin: 0;
+            padding: 20px;
+        }
+
+        h1 {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+
+        section {
+            background: white;
+            padding: 16px;
+            margin-bottom: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+        }
+
+        h2 {
+            margin-top: 0;
+            font-size: 1.2em;
+            border-bottom: 1px solid #ccc;
+            padding-bottom: 8px;
+        }
+
+        /* 激励源选项卡 */
+        .source-tabs button {
+            margin: 4px;
+            padding: 8px 16px;
+            border: none;
+            background: #e0e0e0;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.9em;
+        }
+
+        .source-tabs button.active {
+            background: #3f51b5;
+            color: white;
+        }
+
+        .hidden {
+            display: none;
+        }
+
+        /* 滑杆样式 */
+        .slider-container {
+            display: inline-block;
+            text-align: center;
+            margin: 4px;
+        }
+
+        .slider-container input[type=range] {
+            display: block;
+            margin: auto;
+            /* 默认水平样式 */
+        }
+
+        /* 竖直滑杆样式尝试 */
+        .slider-vertical {
+            writing-mode: vertical-lr;
+            /* IE/Firefox */
+            -webkit-appearance: slider-vertical;
+            /* Chrome/Safari */
+            width: 8px;
+            height: 100px;
+        }
+
+        .slider-label {
+            font-size: 0.8em;
+            margin-top: 4px;
+        }
+
+        /* 波形预览 Canvas */
+        #preview {
+            width: 100%;
+            height: 200px;
+            border: 1px solid #ccc;
+            margin-top: 10px;
+        }
+
+        /* 钢琴键盘样式 */
+        #keyboard-container {
+            position: relative;
+            width: 480px;
+            height: 150px;
+            margin: auto;
+        }
+
+        .white-key,
+        .black-key {
+            cursor: pointer;
+            user-select: none;
+        }
+
+        .white-key {
+            float: left;
+            width: 60px;
+            height: 150px;
+            background: white;
+            border: 1px solid black;
+            box-sizing: border-box;
+            text-align: center;
+            line-height: 150px;
+            font-weight: bold;
+        }
+
+        .black-key {
+            width: 40px;
+            height: 90px;
+            background: black;
+            position: absolute;
+            top: 0;
+            border: 1px solid #333;
+            margin-left: -20px;
+            z-index: 1;
+        }
+
+        .black-key:after {
+            content: attr(data-note);
+            position: absolute;
+            bottom: -20px;
+            width: 100%;
+            text-align: center;
+            color: black;
+            font-size: 0.75em;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>StringCraft H5 Playground</h1>
+    <section id="excitation">
+        <h2>Excitation Source</h2>
+        <div class="source-tabs">
+            <button id="tab-noise" class="active">Noise</button>
+            <button id="tab-waveform">Waveform</button>
+            <button id="tab-additive">Additive</button>
+            <button id="tab-upload">Upload</button>
+        </div>
+        <!-- 噪声选项 -->
+        <div id="noise-options">
+            <label><input type="radio" name="noise-type" value="white" checked> White Noise</label>
+            <label><input type="radio" name="noise-type" value="pink"> Pink Noise</label>
+            <label><input type="radio" name="noise-type" value="brown"> Brown Noise</label>
+        </div>
+        <!-- 波形选项 -->
+        <div id="waveform-options" class="hidden">
+            <label for="waveform-select">Waveform:</label>
+            <select id="waveform-select">
+                <option value="sine">Sine</option>
+                <option value="triangle">Triangle</option>
+                <option value="square">Square</option>
+                <option value="sawtooth">Sawtooth</option>
+            </select>
+        </div>
+        <!-- 加法合成选项 -->
+        <div id="additive-options" class="hidden">
+            <div id="sliders-container">
+                <!-- 32 个滑杆将由脚本生成 -->
+            </div>
+            <button id="additive-random">随机</button>
+        </div>
+        <!-- 上传选项 -->
+        <div id="upload-options" class="hidden">
+            <input type="file" id="file-input" accept="audio/*">
+        </div>
+        <!-- 波形预览 Canvas -->
+        <canvas id="preview"></canvas>
+    </section>
+    <section id="keyboard">
+        <h2>Piano Keyboard</h2>
+        <div id="keyboard-container">
+            <!-- 白键 -->
+            <div class="white-key" data-freq="261.63" data-note="C4">C4</div>
+            <div class="black-key" data-freq="277.18" data-note="C#4" style="left:40px;"></div>
+            <div class="white-key" data-freq="293.66" data-note="D4">D4</div>
+            <div class="black-key" data-freq="311.13" data-note="D#4" style="left:100px;"></div>
+            <div class="white-key" data-freq="329.63" data-note="E4">E4</div>
+            <div class="white-key" data-freq="349.23" data-note="F4">F4</div>
+            <div class="black-key" data-freq="369.99" data-note="F#4" style="left:220px;"></div>
+            <div class="white-key" data-freq="392.00" data-note="G4">G4</div>
+            <div class="black-key" data-freq="415.30" data-note="G#4" style="left:280px;"></div>
+            <div class="white-key" data-freq="440.00" data-note="A4">A4</div>
+            <div class="black-key" data-freq="466.16" data-note="A#4" style="left:340px;"></div>
+            <div class="white-key" data-freq="493.88" data-note="B4">B4</div>
+            <div class="white-key" data-freq="523.25" data-note="C5">C5</div>
+            <div class="black-key" data-freq="554.37" data-note="C#5" style="left:400px;"></div>
+            <div class="white-key" data-freq="587.33" data-note="D5">D5</div>
+            <div class="black-key" data-freq="622.25" data-note="D#5" style="left:460px;"></div>
+            <div class="white-key" data-freq="659.25" data-note="E5">E5</div>
+        </div>
+    </section>
+
+    <section id="midi-input-select">
+        <h2>MIDI Input</h2>
+        <p>Connect a MIDI device to play notes.</p>
+        <select id="midi-inputs">
+            <option value="">Select MIDI Input</option>
+            <!-- 这里将动态填充可用的 MIDI 输入设备 -->
+        </select>
+    </section>
+    <script>
+        // 全局变量
+        const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        let currentExcitation = new Float32Array(1024);
+        const previewCanvas = document.getElementById('preview');
+        const previewCtx = previewCanvas.getContext('2d');
+
+        // 压缩器
+        const compressor = audioContext.createDynamicsCompressor();
+        compressor.connect(audioContext.destination);
+
+        // 激励源选项卡切换逻辑
+        const tabs = {
+            noise: document.getElementById('noise-options'),
+            waveform: document.getElementById('waveform-options'),
+            additive: document.getElementById('additive-options'),
+            upload: document.getElementById('upload-options')
+        };
+        document.getElementById('tab-noise').onclick = () => switchTab('noise');
+        document.getElementById('tab-waveform').onclick = () => switchTab('waveform');
+        document.getElementById('tab-additive').onclick = () => switchTab('additive');
+        document.getElementById('tab-upload').onclick = () => switchTab('upload');
+
+        function switchTab(tabName) {
+            // 切换按钮和内容的显示/隐藏
+            Object.keys(tabs).forEach(name => {
+                document.getElementById('tab-' + name).classList.toggle('active', name === tabName);
+                tabs[name].classList.toggle('hidden', name !== tabName);
+            });
+            // 选项变更后重新生成激励信号
+            generateExcitation();
+        }
+
+        // 初始化加法合成滑杆
+        const slidersContainer = document.getElementById('sliders-container');
+        for (let i = 1; i <= 32; i++) {
+            const container = document.createElement('div');
+            container.className = 'slider-container';
+            const slider = document.createElement('input');
+            slider.type = 'range';
+            slider.min = -32;
+            slider.max = 0;
+            slider.value = (i === 1 ? 0 : -32); // 默认第一个谐波 0dB，其余 -32dB
+            slider.className = 'slider-vertical';
+            slider.dataset.harmonic = i;
+            const label = document.createElement('div');
+            label.className = 'slider-label';
+            label.textContent = slider.value + ' dB';
+            container.appendChild(slider);
+            container.appendChild(label);
+            slidersContainer.appendChild(container);
+            // 滑杆变化时更新标签并重生成信号
+            slider.addEventListener('input', () => {
+                label.textContent = slider.value + ' dB';
+                generateExcitation();
+            });
+        }
+        // 随机按钮事件
+        document.getElementById('additive-random').addEventListener('click', () => {
+            slidersContainer.querySelectorAll('input[type=range]').forEach(input => {
+                const randomValue = Math.floor(Math.random() * -32);
+                input.value = randomValue;
+                input.dispatchEvent(new Event('input'));
+            });
+        });
+
+        // 噪声类型与波形选择事件监听
+        document.getElementsByName('noise-type').forEach(radio => {
+            radio.addEventListener('change', generateExcitation);
+        });
+        document.getElementById('waveform-select').addEventListener('change', generateExcitation);
+
+        // 文件上传处理
+        document.getElementById('file-input').addEventListener('change', function () {
+            const file = this.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = function () {
+                audioContext.decodeAudioData(reader.result, function (buffer) {
+                    // 解码后取第一声道数据，或双声道平均
+                    const input = buffer.getChannelData(0);
+                    const length = Math.min(input.length, currentExcitation.length);
+                    if (buffer.numberOfChannels > 1) {
+                        const input2 = buffer.getChannelData(1);
+                        for (let i = 0; i < length; i++) {
+                            currentExcitation[i] = 0.5 * (input[i] + input2[i]);
+                        }
+                    } else {
+                        for (let i = 0; i < length; i++) {
+                            currentExcitation[i] = input[i];
+                        }
+                    }
+                    // 如果文件音频较短，补零
+                    for (let i = length; i < currentExcitation.length; i++) {
+                        currentExcitation[i] = 0;
+                    }
+                    drawPreview();
+                });
+            };
+            reader.readAsArrayBuffer(file);
+        });
+
+        // 根据当前设置生成激励信号
+        function generateExcitation() {
+            const activeTab = Object.keys(tabs).find(name => !tabs[name].classList.contains('hidden'));
+            if (!activeTab) return;
+            if (activeTab === 'noise') {
+                const type = document.querySelector('input[name="noise-type"]:checked').value;
+                generateNoise(type);
+            } else if (activeTab === 'waveform') {
+                const wave = document.getElementById('waveform-select').value;
+                generateWaveform(wave);
+            } else if (activeTab === 'additive') {
+                generateAdditive();
+            }
+            drawPreview();
+        }
+
+        function generateNoise(type) {
+            // 根据选定类型生成对应噪声
+            if (type === 'white') {
+                for (let i = 0; i < currentExcitation.length; i++) {
+                    currentExcitation[i] = Math.random() * 2 - 1;
+                }
+            } else if (type === 'pink') {
+                // Paul Kellet 的粉噪声算法
+                let b0 = 0, b1 = 0, b2 = 0, b3 = 0, b4 = 0, b5 = 0, b6 = 0;
+                for (let i = 0; i < currentExcitation.length; i++) {
+                    const white = Math.random() * 2 - 1;
+                    b0 = 0.99886 * b0 + white * 0.0555179;
+                    b1 = 0.99332 * b1 + white * 0.0750759;
+                    b2 = 0.96900 * b2 + white * 0.1538520;
+                    b3 = 0.86650 * b3 + white * 0.3104856;
+                    b4 = 0.55000 * b4 + white * 0.5329522;
+                    b5 = -0.7616 * b5 - white * 0.0168980;
+                    currentExcitation[i] = b0 + b1 + b2 + b3 + b4 + b5 + b6 + white * 0.5362;
+                    currentExcitation[i] *= 0.11; // 补偿增益
+                    b6 = white * 0.115926;
+                }
+            } else if (type === 'brown') {
+                let lastOut = 0;
+                for (let i = 0; i < currentExcitation.length; i++) {
+                    const white = Math.random() * 2 - 1;
+                    lastOut = (lastOut + (0.02 * white)) / 1.02;
+                    currentExcitation[i] = lastOut * 3.5; // 补偿增益
+                }
+            }
+        }
+
+        function generateWaveform(wave) {
+            // 生成选定基础波形的一个周期
+            for (let i = 0; i < currentExcitation.length; i++) {
+                const phase = i / currentExcitation.length;
+                if (wave === 'sine') {
+                    currentExcitation[i] = Math.sin(2 * Math.PI * phase);
+                } else if (wave === 'triangle') {
+                    currentExcitation[i] = 2 * Math.abs(2 * (phase - Math.floor(phase + 0.5))) - 1;
+                } else if (wave === 'square') {
+                    currentExcitation[i] = phase < 0.5 ? 1 : -1;
+                } else if (wave === 'sawtooth') {
+                    currentExcitation[i] = 2 * (phase - Math.floor(phase + 0.5));
+                }
+            }
+        }
+
+        function generateAdditive() {
+            // 根据 32 个滑杆的值合成谐波
+            const N = currentExcitation.length;
+            // 初始化为零
+            for (let i = 0; i < N; i++) currentExcitation[i] = 0;
+            // 叠加正弦波
+            slidersContainer.querySelectorAll('input[type=range]').forEach(input => {
+                const ampDB = parseFloat(input.value);
+                const amp = Math.pow(10, ampDB / 20);
+                const k = parseInt(input.dataset.harmonic);
+                for (let i = 0; i < N; i++) {
+                    currentExcitation[i] += amp * Math.sin(2 * Math.PI * k * i / N);
+                }
+            });
+            // 归一化到 [-1,1]
+            let maxVal = 0;
+            for (let i = 0; i < N; i++) {
+                if (Math.abs(currentExcitation[i]) > maxVal) maxVal = Math.abs(currentExcitation[i]);
+            }
+            if (maxVal > 0) {
+                for (let i = 0; i < N; i++) {
+                    currentExcitation[i] /= maxVal;
+                }
+            }
+        }
+
+        function drawPreview() {
+            // 在 Canvas 上绘制当前激励信号的波形
+            const width = previewCanvas.width;
+            const height = previewCanvas.height;
+            previewCtx.clearRect(0, 0, width, height);
+            previewCtx.beginPath();
+            previewCtx.moveTo(0, height / 2);
+            for (let i = 0; i < currentExcitation.length; i++) {
+                const x = (i / (currentExcitation.length - 1)) * width;
+                const y = (1 - (currentExcitation[i] + 1) / 2) * height;
+                previewCtx.lineTo(x, y);
+            }
+            previewCtx.strokeStyle = '#3f51b5';
+            previewCtx.stroke();
+        }
+
+        // Karplus-Strong 合成：生成拨弦效果并播放
+        function playNote(frequency) {
+            const sampleRate = audioContext.sampleRate;
+            const N = Math.floor(sampleRate / frequency);
+            // 初始化延迟环缓冲区
+            let ringBuffer = new Float32Array(N);
+            for (let i = 0; i < N; i++) {
+                ringBuffer[i] = currentExcitation[i % currentExcitation.length];
+            }
+            // 生成 1.5 秒的输出
+            const length = sampleRate * 1.5;
+            let output = new Float32Array(length);
+            let idx = 0;
+            const decay = 0.998;
+            for (let i = 0; i < length; i++) {
+                const first = ringBuffer[idx];
+                const second = ringBuffer[(idx + 1) % N];
+                const newSample = decay * 0.5 * (first + second);
+                output[i] = first;
+                ringBuffer[idx] = newSample;
+                idx = (idx + 1) % N;
+            }
+
+            // 规范化
+            let maxVal = 0;
+            for (let i = 0; i < length; i++) {
+                if (Math.abs(output[i]) > maxVal) maxVal = Math.abs(output[i]);
+            }
+            if (maxVal > 0) {
+                for (let i = 0; i < length; i++) {
+                    output[i] /= maxVal;
+                }
+            }
+
+            // 衰减10dB
+            const gain = Math.pow(10, -10 / 20);
+            for (let i = 0; i < length; i++) {
+                output[i] *= gain;
+            }
+
+            // 创建并播放 AudioBuffer
+            const buffer = audioContext.createBuffer(1, length, sampleRate);
+            buffer.copyToChannel(output, 0);
+            const source = audioContext.createBufferSource();
+            source.buffer = buffer;
+            source.connect(compressor);
+            source.start();
+        }
+
+        // 为钢琴键绑定点击事件
+        document.querySelectorAll('#keyboard-container .white-key, #keyboard-container .black-key')
+            .forEach(key => {
+                key.addEventListener('click', () => {
+                    const freq = parseFloat(key.dataset.freq);
+                    if (audioContext.state === 'suspended') {
+                        // 某些浏览器需在用户交互后恢复 AudioContext
+                        audioContext.resume().then(() => playNote(freq));
+                    } else {
+                        playNote(freq);
+                    }
+                });
+            });
+
+        // 初始生成激励信号波形
+        generateExcitation();
+
+        // midi输入支持
+
+        if (navigator.requestMIDIAccess) {
+            navigator.requestMIDIAccess().then(midiAccess => {
+                const inputs = midiAccess.inputs;
+                const midiSelect = document.getElementById('midi-inputs');
+                inputs.forEach(input => {
+                    const option = document.createElement('option');
+                    option.value = input.id;
+                    option.textContent = input.name;
+                    midiSelect.appendChild(option);
+                });
+                midiSelect.addEventListener('change', () => {
+                    const selectedInput = midiAccess.inputs.get(midiSelect.value);
+                    if (selectedInput) {
+                        selectedInput.onmidimessage = event => {
+                            const [status, note, velocity] = event.data;
+                            if (status === 144 && velocity > 0) { // Note On
+                                const freq = 440 * Math.pow(2, (note - 69) / 12);
+                                playNote(freq);
+                            }
+                        };
+                    }
+                });
+            });
+        } else {
+            console.log("MIDI not supported");
+        }
+    </script>
+</body>
+
+</html>
