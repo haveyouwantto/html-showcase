@@ -516,6 +516,9 @@
             _audioNodes.push(gain);
             gain.gain.value = 10;
 
+            const compressor = ctx.createDynamicsCompressor();
+            _audioNodes.push(compressor);
+
             function setFrequency(freq, bandwidth) {
                 reverse = freq < reverseFreq;
                 if (!reverse) {
@@ -542,11 +545,12 @@
             localOscillator.connect(mixer.gain)
             mixer.connect(filter)
             filter.connect(gain)
-            gain.connect(ctx.destination)
+            gain.connect(compressor)
+            compressor.connect(ctx.destination)
 
             localOscillator.start()
 
-            gain.connect(analyser)
+            compressor.connect(analyser)
             _osc = localOscillator;
             resizeCanvas()
             analyser2 = analyser;
@@ -622,9 +626,16 @@
             const agc = new AudioWorkletNode(ctx, 'agc');
             _audioNodes.push(agc);
 
+            let sigavgBuffer = new Float32Array(256);
+            let i = 0;
+
             agc.port.onmessage = (event) => {
                 const rmsValue = event.data.rms;
-                signalStrength.textContent = `信号强度：${(Math.log10(rmsValue) * 10).toFixed(1)} dB`
+                sigavgBuffer[(i++) % sigavgBuffer.length] = rmsValue;
+
+                const sum = sigavgBuffer.reduce((a, b) => a + b, 0);
+                const avg = sum / sigavgBuffer.length;
+                signalStrength.textContent = `信号强度：${(Math.log10(avg) * 10).toFixed(1)} dB`
             };
             window.agc = agc
 
