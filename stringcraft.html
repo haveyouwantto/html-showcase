@@ -54,7 +54,7 @@
         }
 
         /* 滑杆样式 */
-        #sliders-container{
+        #sliders-container {
             display: flex;
             width: 100%;
             flex-wrap: nowrap;
@@ -112,13 +112,14 @@
         }
 
         .white-key {
+            position: absolute;
             width: 20px;
             height: 150px;
             background: white;
             border: 1px solid #ccc;
-            display: inline-block;
-            position: relative;
             z-index: 1;
+            cursor: pointer;
+            user-select: none;
         }
 
         .black-key {
@@ -206,12 +207,13 @@
         // 声音管理
         const sounds = new Map(); // 格式: Frequency -> Set(AudioBufferSourceNode)
 
-
-
-
-        // 压缩器
+        // 效果器
         const compressor = audioContext.createDynamicsCompressor();
-        compressor.connect(audioContext.destination);
+        const filter = audioContext.createBiquadFilter(); // 消除低频
+        filter.type = 'highpass';
+        filter.frequency.setValueAtTime(20, audioContext.currentTime);
+        compressor.connect(filter).connect(audioContext.destination);
+        // compressor.connect(audioContext.destination);
 
         // 激励源选项卡切换逻辑
         const tabs = {
@@ -507,7 +509,7 @@
         }
 
         class Sound {
-            constructor(buffer, envelope){
+            constructor(buffer, envelope) {
                 this.buffer = buffer;
                 this.envelope = envelope;
             }
@@ -610,32 +612,50 @@
         }
 
         // 生成88钢琴键盘
-        // const keyboardContainer = document.getElementById('keyboard-container');
-        // const notes = [
-        //     'C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'
-        // ];
-        // for (let i = 0; i < 88; i++) {
-        //     const note = notes[i % 12];
-        //     const octave = Math.floor(i / 12) - 1;
-        //     const key = document.createElement('div');
-        //     key.className = 'white-key';
-        //     key.textContent = note + octave;
-        //     key.dataset.note = note + octave;
-        //     key.onclick = () => {
-        //         const freq = 440 * Math.pow(2, (i - 69) / 12);
-        //         playNote(freq);
-        //     };
-        //     keyboardContainer.appendChild(key);
-        //     // 添加黑键
-        //     if (note !== 'E' && note !== 'B') {
-        //         const blackKey = document.createElement('div');
-        //         blackKey.className = 'black-key';
-        //         blackKey.style.left = `${i * 60 - 20}px`;
-        //         blackKey.dataset.note = note + octave;
-        //         keyboardContainer.appendChild(blackKey);
-        //     }
-        // }
+        const keyboardContainer = document.getElementById('keyboard-container');
+        const whiteKeyWidth = 20;
+        const blackKeyWidth = 12;
+        const blackKeyHeight = 100;
+        const whiteKeyHeight = 150;
+        const keys = [
+            { note: 'C', octave: 4 }, { note: 'C#', octave: 4 }, { note: 'D', octave: 4 },
+            { note: 'D#', octave: 4 }, { note: 'E', octave: 4 }, { note: 'F', octave: 4 },
+            { note: 'F#', octave: 4 }, { note: 'G', octave: 4 }, { note: 'G#', octave: 4 },
+            { note: 'A', octave: 4 }, { note: 'A#', octave: 4 }, { note: 'B', octave: 4 },
+            // Octave 5
+            { note: 'C', octave: 5 }, { note: 'C#', octave: 5 }, { note: 'D', octave: 5 },
+            { note: 'D#', octave: 5 }, { note: 'E', octave: 5 }, { note: 'F', octave: 5 },
+            { note: 'F#', octave: 5 }, { note: 'G', octave: 5 }, { note: 'G#', octave: 5 },
+            { note: 'A', octave: 5 }, { note: 'A#', octave: 5 }, { note: 'B', octave: 5 },
+            // Octave 6
+            { note: 'C', octave: 6 }, { note: 'C#', octave: 6 }, { note: 'D', octave: 6 },
+            { note: 'D#', octave: 6 }, { note: 'E', octave: 6 }, { note: 'F', octave: 6 },
+            // Octave 7
+            { note: 'C', octave: 7 }
+        ];
+        const keyOffsets = [0, 1, 3, 4, 5, 7, 8, 10]; // 白键相对位置
+        keys.forEach((key, index) => {
+            const isBlackKey = key.note.includes('#');
+            const keyElement = document.createElement('div');
+            keyElement.className = isBlackKey ? 'black-key' : 'white-key';
+            keyElement.style.left = `${(index - Math.floor(index / 7) * 7) * whiteKeyWidth}px`;
+            if (isBlackKey) {
+                keyElement.style.width = `${blackKeyWidth}px`;
+                keyElement.style.height = `${blackKeyHeight}px`;
+                keyElement.style.marginLeft = `${(whiteKeyWidth - blackKeyWidth) / 2}px`;
+            } else {
+                keyElement.style.width = `${whiteKeyWidth}px`;
+                keyElement.style.height = `${whiteKeyHeight}px`;
+            }
+            keyElement.dataset.note = `${key.note}${key.octave}`;
+            keyboardContainer.appendChild(keyElement);
 
+            // 鼠标点击事件
+            keyElement.addEventListener('mousedown', () => {
+                const freq = 440 * Math.pow(2, (key.note.charCodeAt(0) - 69) / 12);
+                playNote(freq);
+            });
+        });
 
         // 初始生成激励信号波形
         generateExcitation();
