@@ -212,7 +212,21 @@
         const filter = audioContext.createBiquadFilter(); // 消除低频
         filter.type = 'highpass';
         filter.frequency.setValueAtTime(20, audioContext.currentTime);
-        compressor.connect(filter).connect(audioContext.destination);
+        const reverb = audioContext.createConvolver();
+
+        // 创建一个混响
+        const impulseResponse = audioContext.createBuffer(2, audioContext.sampleRate, audioContext.sampleRate);
+        for (let ch = 0; ch < 2; ch++) {
+            const channelData = impulseResponse.getChannelData(ch);
+            for (let i = 0; i < channelData.length; i++) {
+                const t = i / audioContext.sampleRate;
+                channelData[i] = (Math.random() * 2 - 1) * Math.pow(Math.E, -t * 32); // 指数衰减
+            }
+        }
+        reverb.normalize = true; // 归一化
+        reverb.buffer = impulseResponse;
+
+        reverb.connect(compressor).connect(filter).connect(audioContext.destination);
         // compressor.connect(audioContext.destination);
 
         // 激励源选项卡切换逻辑
@@ -549,12 +563,6 @@
                 }
             }
 
-            // 衰减10dB
-            const gain = Math.pow(10, -10 / 20);
-            for (let i = 0; i < length; i++) {
-                output[i] *= gain;
-            }
-
             // 创建并播放 AudioBuffer
             const buffer = audioContext.createBuffer(1, length, sampleRate);
             buffer.copyToChannel(output, 0);
@@ -570,7 +578,7 @@
             envelope.gain.setValueAtTime(1, audioContext.currentTime);
 
             const sound = new Sound(buffer, envelope);
-            source.connect(envelope).connect(compressor);
+            source.connect(envelope).connect(reverb);
             source.start();
 
             // 把声音存储到 Map 中
