@@ -5,358 +5,359 @@
     <meta charset="UTF-8">
     <title>StringCraft H5 Playground</title>
     <style>
-       :root {
-  --primary: #7c4dff;
-  --primary-light: #b47cff;
-  --primary-dark: #3a1ab6;
-  --secondary: #00e5ff;
-  --background: #121212;
-  --surface: #1e1e1e;
-  --surface-light: #2a2a2a;
-  --surface-dark: #121212;
-  --text-primary: rgba(255, 255, 255, 0.87);
-  --text-secondary: rgba(255, 255, 255, 0.6);
-  --error: #ff5252;
-  --success: #69f0ae;
-}
+        :root {
+            --primary: #7c4dff;
+            --primary-light: #b47cff;
+            --primary-dark: #3a1ab6;
+            --secondary: #00e5ff;
+            --background: #121212;
+            --surface: #1e1e1e;
+            --surface-light: #2a2a2a;
+            --surface-dark: #121212;
+            --text-primary: rgba(255, 255, 255, 0.87);
+            --text-secondary: rgba(255, 255, 255, 0.6);
+            --error: #ff5252;
+            --success: #69f0ae;
+        }
 
-body {
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-  background-color: var(--background);
-  color: var(--text-primary);
-  margin: 0;
-  padding: 24px;
-  line-height: 1.5;
-}
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background-color: var(--background);
+            color: var(--text-primary);
+            margin: 0;
+            padding: 24px;
+            line-height: 1.5;
+        }
 
-h1 {
-  text-align: center;
-  margin-bottom: 32px;
-  font-weight: 600;
-  font-size: 2.5rem;
-  background: linear-gradient(90deg, var(--primary), var(--secondary));
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-  text-shadow: 0 0 8px rgba(124, 77, 255, 0.3);
-}
+        h1 {
+            text-align: center;
+            margin-bottom: 32px;
+            font-weight: 600;
+            font-size: 2.5rem;
+            background: linear-gradient(90deg, var(--primary), var(--secondary));
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
+            text-shadow: 0 0 8px rgba(124, 77, 255, 0.3);
+        }
 
-section {
-  background: var(--surface);
-  padding: 24px;
-  margin-bottom: 24px;
-  border-radius: 12px;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
-  border: 1px solid rgba(255, 255, 255, 0.05);
-  transition: transform 0.2s, box-shadow 0.2s;
-}
+        section {
+            background: var(--surface);
+            padding: 24px;
+            margin-bottom: 24px;
+            border-radius: 12px;
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
 
-section:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4);
-}
+        section:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4);
+        }
 
-h2 {
-  margin-top: 0;
-  font-size: 1.4rem;
-  padding-bottom: 12px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-  color: var(--primary-light);
-  font-weight: 500;
-}
+        h2 {
+            margin-top: 0;
+            font-size: 1.4rem;
+            padding-bottom: 12px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            color: var(--primary-light);
+            font-weight: 500;
+        }
 
-/* Excitation Source Tabs */
-.source-tabs {
-  display: flex;
-  gap: 8px;
-  margin-bottom: 16px;
-  flex-wrap: wrap;
-}
+        /* Excitation Source Tabs */
+        .source-tabs {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 16px;
+            flex-wrap: wrap;
+        }
 
-.source-tabs button {
-  margin: 0;
-  padding: 10px 20px;
-  border: none;
-  background: var(--surface-light);
-  border-radius: 8px;
-  cursor: pointer;
-  font-size: 0.9rem;
-  color: var(--text-secondary);
-  transition: all 0.2s ease;
-  font-weight: 500;
-  letter-spacing: 0.5px;
-}
+        .source-tabs button {
+            margin: 0;
+            padding: 10px 20px;
+            border: none;
+            background: var(--surface-light);
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            color: var(--text-secondary);
+            transition: all 0.2s ease;
+            font-weight: 500;
+            letter-spacing: 0.5px;
+        }
 
-.source-tabs button:hover {
-  background: rgba(124, 77, 255, 0.2);
-  color: var(--primary-light);
-}
+        .source-tabs button:hover {
+            background: rgba(124, 77, 255, 0.2);
+            color: var(--primary-light);
+        }
 
-.source-tabs button.active {
-  background: var(--primary);
-  color: white;
-  box-shadow: 0 2px 8px rgba(124, 77, 255, 0.4);
-}
+        .source-tabs button.active {
+            background: var(--primary);
+            color: white;
+            box-shadow: 0 2px 8px rgba(124, 77, 255, 0.4);
+        }
 
-/* Noise Options */
-#noise-options {
-  display: flex;
-  gap: 16px;
-  align-items: center;
-  flex-wrap: wrap;
-  margin-bottom: 16px;
-}
+        /* Noise Options */
+        #noise-options {
+            display: flex;
+            gap: 16px;
+            align-items: center;
+            flex-wrap: wrap;
+            margin-bottom: 16px;
+        }
 
-#noise-options label {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  cursor: pointer;
-  color: var(--text-secondary);
-  transition: color 0.2s;
-}
+        #noise-options label {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            cursor: pointer;
+            color: var(--text-secondary);
+            transition: color 0.2s;
+        }
 
-#noise-options label:hover {
-  color: var(--text-primary);
-}
+        #noise-options label:hover {
+            color: var(--text-primary);
+        }
 
-#noise-options input[type="radio"] {
-  accent-color: var(--primary);
-}
+        #noise-options input[type="radio"] {
+            accent-color: var(--primary);
+        }
 
-#noise-random {
-  background: var(--surface-light);
-  border: none;
-  padding: 8px 16px;
-  border-radius: 6px;
-  color: var(--text-primary);
-  cursor: pointer;
-  transition: all 0.2s;
-}
+        #noise-random {
+            background: var(--surface-light);
+            border: none;
+            padding: 8px 16px;
+            border-radius: 6px;
+            color: var(--text-primary);
+            cursor: pointer;
+            transition: all 0.2s;
+        }
 
-#noise-random:hover {
-  background: rgba(124, 77, 255, 0.2);
-}
+        #noise-random:hover {
+            background: rgba(124, 77, 255, 0.2);
+        }
 
-/* Sliders */
-#sliders-container {
-  display: flex;
-  gap: 8px;
-  padding: 16px 0;
-  overflow-x: auto;
-  scrollbar-width: thin;
-  scrollbar-color: var(--primary) var(--surface-light);
-}
+        /* Sliders */
+        #sliders-container {
+            display: flex;
+            gap: 8px;
+            padding: 16px 0;
+            overflow-x: auto;
+            scrollbar-width: thin;
+            scrollbar-color: var(--primary) var(--surface-light);
+        }
 
-#sliders-container::-webkit-scrollbar {
-  height: 6px;
-}
+        #sliders-container::-webkit-scrollbar {
+            height: 6px;
+        }
 
-#sliders-container::-webkit-scrollbar-track {
-  background: var(--surface-light);
-  border-radius: 3px;
-}
+        #sliders-container::-webkit-scrollbar-track {
+            background: var(--surface-light);
+            border-radius: 3px;
+        }
 
-#sliders-container::-webkit-scrollbar-thumb {
-  background: var(--primary);
-  border-radius: 3px;
-}
+        #sliders-container::-webkit-scrollbar-thumb {
+            background: var(--primary);
+            border-radius: 3px;
+        }
 
-.slider-container {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 8px;
-}
+        .slider-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 8px;
+        }
 
-.slider-container input[type="range"] {
-  -webkit-appearance: slider-vertical;
-  width: 8px;
-  height: 100px;
-  background: transparent;
-  cursor: pointer;
-}
+        .slider-container input[type="range"] {
+            -webkit-appearance: slider-vertical;
+            width: 8px;
+            height: 100px;
+            background: transparent;
+            cursor: pointer;
+        }
 
-.slider-container input[type="range"]::-webkit-slider-thumb {
-  -webkit-appearance: none;
-  width: 16px;
-  height: 16px;
-  border-radius: 50%;
-  background: var(--primary);
-  box-shadow: 0 0 0 2px var(--surface), 0 2px 4px rgba(0, 0, 0, 0.3);
-}
+        .slider-container input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background: var(--primary);
+            box-shadow: 0 0 0 2px var(--surface), 0 2px 4px rgba(0, 0, 0, 0.3);
+        }
 
-.slider-label {
-  font-size: 0.75rem;
-  color: var(--text-secondary);
-  background: var(--surface-light);
-  padding: 2px 6px;
-  border-radius: 4px;
-}
+        .slider-label {
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+            background: var(--surface-light);
+            padding: 2px 6px;
+            border-radius: 4px;
+        }
 
-/* Preview Canvas */
-#preview {
-  width: 100%;
-  height: 200px;
-  background: var(--surface-light);
-  border-radius: 8px;
-  border: 1px solid rgba(255, 255, 255, 0.05);
-  margin-top: 16px;
-}
+        /* Preview Canvas */
+        #preview {
+            width: 100%;
+            height: 200px;
+            background: var(--surface-light);
+            border-radius: 8px;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            margin-top: 16px;
+        }
 
-/* Keyboard */
-#keyboard-container {
-  position: relative;
-  width: 100%;
-  height: 180px;
-  margin-top: 24px;
-  background: var(--surface-light);
-  border-radius: 8px;
-  overflow: hidden;
-  box-shadow: inset 0 0 16px rgba(0, 0, 0, 0.3);
-}
+        /* Keyboard */
+        #keyboard-container {
+            display: flex;
+            width: calc(52 * 30px);
+            /* 52个白键 * 每个30px */
+            height: 180px;
+            margin: 24px auto;
+            background: var(--surface-light);
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: inset 0 0 16px rgba(0, 0, 0, 0.3);
+            user-select: none;
+        }
 
-.white-key {
-  position: absolute;
-  width: 24px;
-  height: 180px;
-  background: linear-gradient(to bottom, #fff, #e0e0e0);
-  border: 1px solid rgba(0, 0, 0, 0.2);
-  border-bottom: 4px solid rgba(0, 0, 0, 0.2);
-  border-radius: 0 0 4px 4px;
-  z-index: 1;
-  cursor: pointer;
-  transition: all 0.1s;
-}
+        .white-key {
+            position: relative;
+            width: 30px;
+            background: linear-gradient(to bottom, #fff, #e0e0e0);
+            border: 1px solid rgba(0, 0, 0, 0.2);
+            border-bottom: 4px solid rgba(0, 0, 0, 0.2);
+            border-radius: 0 0 6px 6px;
+            z-index: 1;
+            cursor: pointer;
+            transition: all 0.1s;
+        }
 
-.white-key:hover {
-  background: linear-gradient(to bottom, #f5f5f5, #d0d0d0);
-}
+        .black-key {
+            position: absolute;
+            width: 18px;
+            height: 110px;
+            top: 0;
+            right: 0;
+            transform: translateX(50%);
+            background: linear-gradient(to bottom, #333, #000);
+            z-index: 2;
+            border-radius: 0 0 4px 4px;
+            cursor: pointer;
+            transition: all 0.1s;
+        }
 
-.white-key:active {
-  background: linear-gradient(to bottom, #e0e0e0, #c0c0c0);
-  border-bottom-width: 2px;
-  transform: translateY(2px);
-}
+        .white-key:hover {
+            background: linear-gradient(to bottom, #f5f5f5, #d0d0d0);
+        }
 
-.black-key {
-  width: 16px;
-  height: 110px;
-  background: linear-gradient(to bottom, #333, #000);
-  position: absolute;
-  top: 0;
-  left: 0;
-  margin-left: -16px;
-  z-index: 2;
-  border-radius: 0 0 3px 3px;
-  cursor: pointer;
-  transition: all 0.1s;
-}
+        .white-key:active {
+            background: linear-gradient(to bottom, #e0e0e0, #c0c0c0);
+            border-bottom-width: 2px;
+            transform: translateY(2px);
+        }
 
-.black-key:hover {
-  background: linear-gradient(to bottom, #444, #111);
-}
+        .black-key:hover {
+            background: linear-gradient(to bottom, #444, #111);
+        }
 
-.black-key:active {
-  background: linear-gradient(to bottom, #222, #000);
-  height: 108px;
-}
+        .black-key:active {
+            background: linear-gradient(to bottom, #222, #000);
+            height: 108px;
+        }
 
-/* Buttons */
-button {
-  background: var(--primary);
-  color: white;
-  border: none;
-  padding: 12px 24px;
-  border-radius: 8px;
-  cursor: pointer;
-  font-weight: 500;
-  transition: all 0.2s;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  font-size: 0.8rem;
-}
+        /* Buttons */
+        button {
+            background: var(--primary);
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 500;
+            transition: all 0.2s;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            font-size: 0.8rem;
+        }
 
-button:hover {
-  background: var(--primary-light);
-  box-shadow: 0 4px 12px rgba(124, 77, 255, 0.3);
-}
+        button:hover {
+            background: var(--primary-light);
+            box-shadow: 0 4px 12px rgba(124, 77, 255, 0.3);
+        }
 
-button:active {
-  transform: translateY(1px);
-}
+        button:active {
+            transform: translateY(1px);
+        }
 
-/* Dropdowns */
-select {
-  background: var(--surface-light);
-  color: var(--text-primary);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  padding: 8px 12px;
-  border-radius: 6px;
-  cursor: pointer;
-  margin-right: 8px;
-}
+        /* Dropdowns */
+        select {
+            background: var(--surface-light);
+            color: var(--text-primary);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            padding: 8px 12px;
+            border-radius: 6px;
+            cursor: pointer;
+            margin-right: 8px;
+        }
 
-/* File Input */
-input[type="file"] {
-  color: var(--text-primary);
-}
+        /* File Input */
+        input[type="file"] {
+            color: var(--text-primary);
+        }
 
-input[type="file"]::file-selector-button {
-  background: var(--primary);
-  color: white;
-  border: none;
-  padding: 8px 16px;
-  border-radius: 6px;
-  cursor: pointer;
-  margin-right: 8px;
-  transition: all 0.2s;
-}
+        input[type="file"]::file-selector-button {
+            background: var(--primary);
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            margin-right: 8px;
+            transition: all 0.2s;
+        }
 
-input[type="file"]::file-selector-button:hover {
-  background: var(--primary-light);
-}
+        input[type="file"]::file-selector-button:hover {
+            background: var(--primary-light);
+        }
 
-/* Hidden elements */
-.hidden {
-  display: none !important;
-}
+        /* Hidden elements */
+        .hidden {
+            display: none !important;
+        }
 
-/* MIDI Select */
-#midi-inputs {
-  width: 100%;
-  max-width: 400px;
-  padding: 10px 16px;
-  margin-top: 8px;
-  background: var(--surface-light);
-  color: var(--text-primary);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 8px;
-}
+        /* MIDI Select */
+        #midi-inputs {
+            width: 100%;
+            max-width: 400px;
+            padding: 10px 16px;
+            margin-top: 8px;
+            background: var(--surface-light);
+            color: var(--text-primary);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 8px;
+        }
 
-/* Responsive adjustments */
-@media (max-width: 768px) {
-  body {
-    padding: 16px;
-  }
-  
-  h1 {
-    font-size: 1.8rem;
-  }
-  
-  section {
-    padding: 16px;
-  }
-  
-  .source-tabs {
-    gap: 4px;
-  }
-  
-  .source-tabs button {
-    padding: 8px 12px;
-    font-size: 0.8rem;
-  }
-}
+        /* Responsive adjustments */
+        @media (max-width: 768px) {
+            body {
+                padding: 16px;
+            }
+
+            h1 {
+                font-size: 1.8rem;
+            }
+
+            section {
+                padding: 16px;
+            }
+
+            .source-tabs {
+                gap: 4px;
+            }
+
+            .source-tabs button {
+                padding: 8px 12px;
+                font-size: 0.8rem;
+            }
+        }
     </style>
 </head>
 
@@ -845,50 +846,45 @@ input[type="file"]::file-selector-button:hover {
         }
 
         // 生成88钢琴键盘
-        const keyboardContainer = document.getElementById('keyboard-container');
-        const whiteKeyWidth = 20;
-        const blackKeyWidth = 12;
-        const blackKeyHeight = 100;
-        const whiteKeyHeight = 150;
-        const keys = [
-            { note: 'C', octave: 4 }, { note: 'C#', octave: 4 }, { note: 'D', octave: 4 },
-            { note: 'D#', octave: 4 }, { note: 'E', octave: 4 }, { note: 'F', octave: 4 },
-            { note: 'F#', octave: 4 }, { note: 'G', octave: 4 }, { note: 'G#', octave: 4 },
-            { note: 'A', octave: 4 }, { note: 'A#', octave: 4 }, { note: 'B', octave: 4 },
-            // Octave 5
-            { note: 'C', octave: 5 }, { note: 'C#', octave: 5 }, { note: 'D', octave: 5 },
-            { note: 'D#', octave: 5 }, { note: 'E', octave: 5 }, { note: 'F', octave: 5 },
-            { note: 'F#', octave: 5 }, { note: 'G', octave: 5 }, { note: 'G#', octave: 5 },
-            { note: 'A', octave: 5 }, { note: 'A#', octave: 5 }, { note: 'B', octave: 5 },
-            // Octave 6
-            { note: 'C', octave: 6 }, { note: 'C#', octave: 6 }, { note: 'D', octave: 6 },
-            { note: 'D#', octave: 6 }, { note: 'E', octave: 6 }, { note: 'F', octave: 6 },
-            // Octave 7
-            { note: 'C', octave: 7 }
-        ];
-        const keyOffsets = [0, 1, 3, 4, 5, 7, 8, 10]; // 白键相对位置
-        keys.forEach((key, index) => {
-            const isBlackKey = key.note.includes('#');
-            const keyElement = document.createElement('div');
-            keyElement.className = isBlackKey ? 'black-key' : 'white-key';
-            keyElement.style.left = `${(index - Math.floor(index / 7) * 7) * whiteKeyWidth}px`;
-            if (isBlackKey) {
-                keyElement.style.width = `${blackKeyWidth}px`;
-                keyElement.style.height = `${blackKeyHeight}px`;
-                keyElement.style.marginLeft = `${(whiteKeyWidth - blackKeyWidth) / 2}px`;
-            } else {
-                keyElement.style.width = `${whiteKeyWidth}px`;
-                keyElement.style.height = `${whiteKeyHeight}px`;
-            }
-            keyElement.dataset.note = `${key.note}${key.octave}`;
-            keyboardContainer.appendChild(keyElement);
+        function pressKey(note) {
+            document.getElementById(`key-${note}`).dispatchEvent('mousedown')
+        }
 
-            // 鼠标点击事件
-            keyElement.addEventListener('mousedown', () => {
-                const freq = 440 * Math.pow(2, (key.note.charCodeAt(0) - 69) / 12);
-                playNote(freq);
-            });
-        });
+        function generatePianoKeyboard() {
+            const keyboard = document.getElementById('keyboard-container');
+
+            const notes = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+
+            for (let i = 21; i <= 108; i++) {
+                const freq = 440 * Math.pow(2, (i - 69) / 12);
+                const key = document.createElement('div');
+                key.classList.add('key');
+                key.id = "key-" + i;
+                key.addEventListener('mousedown', e => {
+                    e.stopPropagation();
+                    playNote(freq);
+                });
+                key.addEventListener('mouseup', e => {
+                    e.stopPropagation();
+                    stopNote(freq);
+                });
+                key.addEventListener('mouseleave', e => {
+                    e.stopPropagation();
+                    stopNote(freq);
+                });
+                if ([1, 3, 6, 8, 10].includes(i % 12)) {
+                    key.classList.add('black-key');
+                    key.innerHTML = `<div class="key-label">${notes[i % 12]}</div>`;
+                    keyboard.lastChild.appendChild(key);
+                } else {
+                    key.classList.add('white-key');
+                    key.innerHTML = `<div class="key-label">${notes[i % 12]}</div>`;
+                    keyboard.appendChild(key);
+                }
+            }
+        }
+        generatePianoKeyboard()
+
 
         // 初始生成激励信号波形
         generateExcitation();
