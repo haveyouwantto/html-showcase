@@ -755,8 +755,16 @@
             }
         }
 
+        function mapMidiVelocityToGain(midiVelocity, curve = 1) {
+            const clamped = Math.max(0, Math.min(midiVelocity, 127));
+            const normalized = clamped / 127;
+            return curve === 1
+                ? normalized
+                : Math.pow(normalized, curve);
+        }
+
         // Karplus-Strong 合成：生成拨弦效果并播放
-        function playNote(frequency) {
+        function playNote(frequency, volume = 1) {
             const sampleRate = audioContext.sampleRate;
             const N = Math.floor(sampleRate / frequency);
             // 初始化延迟环缓冲区
@@ -801,7 +809,7 @@
 
             // 包络
             const envelope = audioContext.createGain();
-            envelope.gain.setValueAtTime(1, audioContext.currentTime);
+            envelope.gain.setValueAtTime(volume, audioContext.currentTime);
 
             const sound = new Sound(buffer, envelope);
             source.connect(envelope).connect(reverb);
@@ -908,7 +916,7 @@
                             const [status, note, velocity] = event.data;
                             if (status === 144 && velocity > 0) { // Note On
                                 const freq = 440 * Math.pow(2, (note - 69) / 12);
-                                playNote(freq);
+                                playNote(freq, mapMidiVelocityToGain(velocity, 1));
                             } else if (status === 128 || (status === 144 && velocity === 0)) { // Note Off
                                 const freq = 440 * Math.pow(2, (note - 69) / 12);
                                 stopNote(freq);
