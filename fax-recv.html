@@ -408,6 +408,10 @@
                 this.pos = 0;
                 this.recording = false;
 
+                // Median filter buffers
+                this.medianBuffer = new Uint8ClampedArray(5);
+                this.medianIndex = 0;
+
                 // 点击画布进入全屏
                 this.canvas.addEventListener('click', () => this.toggleFullscreen());
 
@@ -457,12 +461,20 @@
 
                 let startPos = this.pos
                 for (let pixel of data) {
+
+                    // 应用中值滤波器
+                    this.medianBuffer[this.medianIndex] = pixel;
+                    this.medianIndex = (this.medianIndex + 1) % this.medianBuffer.length;
+                    // 计算中值
+                    let sortedBuffer = Array.from(this.medianBuffer).sort((a, b) => a - b);
+                    let pixelFiltered = sortedBuffer[Math.floor(this.medianBuffer.length / 2)];
+
                     let x = this.pos % this.canvas.width;
                     let y = Math.floor(this.pos / this.canvas.width);
                     let ord = (y * this.canvas.width + x) * 4;
-                    this.imageData.data[ord] = pixel;
-                    this.imageData.data[ord + 1] = pixel;
-                    this.imageData.data[ord + 2] = pixel;
+                    this.imageData.data[ord] = pixelFiltered;
+                    this.imageData.data[ord + 1] = pixelFiltered;
+                    this.imageData.data[ord + 2] = pixelFiltered;
                     this.imageData.data[ord + 3] = 255;
                     this.pos++;
                     if (this.pos >= this.canvas.width * this.canvas.height) {
