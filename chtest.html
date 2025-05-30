@@ -217,6 +217,7 @@
         const channelTestInterval = 0.5; // seconds between testing different channels
 
         const speakerEmojis = ['🔈', '🔉', '🔊'];
+        const lfeEmoji = '🥁';
 
         // --- Sound Definitions ---
         // Frequencies for notes (Hz)
@@ -426,7 +427,7 @@
                 
                 const icon = document.createElement('span');
                 icon.classList.add('icon');
-                icon.textContent = speakerEmojis[0]; // Default emoji
+                icon.textContent = speakerInfo.isLFE ? lfeEmoji : speakerEmojis[0]; // Default emoji
                 speakerElement.dataset.defaultIcon = speakerEmojis[0];
 
 
