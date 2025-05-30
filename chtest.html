@@ -232,13 +232,12 @@
             // Standard Channels (Bell Sound)
             FL: [[notes.C4], [notes.E4], [notes.G4]],
             FR: [[notes.G4], [notes.E4], [notes.C4]],
-            C:  [[notes.E4], [notes.G4], [notes.C5]], // Center channel often gets a distinct sequence
+            C:  [[notes.E4], [notes.G4], [notes.E4]], // Center channel often gets a distinct sequence
             SL: [[notes.D4], [notes.F4], [notes.A4]], // Side Left
             SR: [[notes.A4], [notes.F4], [notes.D4]], // Side Right
             RL: [[notes.F4], [notes.A4], [notes.C5]], // Rear Left (or Back Left)
             RR: [[notes.C5], [notes.A4], [notes.F4]], // Rear Right (or Back Right)
-            M:  [[notes.G4], [notes.E4], [notes.G4]], // Mono
-            // LFE Channel (Drum Sound)
+           // LFE Channel (Drum Sound) 
             LFE: [[notes.LFE1, 2], [notes.LFE2, 1.5], [notes.LFE3, 2]] // Longer duration for LFE
         };
         
@@ -253,9 +252,9 @@
         const channelLayouts = {
             'mono': { 
                 name: '单声道 (Mono)', 
-                speakers: [{ id: 'M', label: 'M', x: '50%', y: '30%', chIndex: 0 }], 
+                speakers: [{ id: 'C', label: 'C', x: '50%', y: '30%', chIndex: 0 }], 
                 channels: 1,
-                channelOrder: ['M']
+                channelOrder: ['C']
             },
             'stereo': { 
                 name: '立体声 (Stereo)', 
@@ -283,7 +282,7 @@
                     { id: 'FL', label: 'FL', x: '25%', y: '30%', chIndex: 0 }, 
                     { id: 'FR', label: 'FR', x: '75%', y: '30%', chIndex: 1 },
                     { id: 'C',  label: 'C',  x: '50%', y: '20%', chIndex: 2 }, 
-                    { id: 'LFE',label: 'LFE',x: '50%', y: '50%', chIndex: 3, isLFE: true },
+                    { id: 'LFE',label: 'LFE',x: '50%', y: '90%', chIndex: 3, isLFE: true },
                     { id: 'SL', label: 'SL', x: '20%', y: '70%', chIndex: 4 }, // Surround Left
                     { id: 'SR', label: 'SR', x: '80%', y: '70%', chIndex: 5 }  // Surround Right
                 ], 
@@ -296,7 +295,7 @@
                     { id: 'FL', label: 'FL', x: '25%', y: '30%', chIndex: 0 }, 
                     { id: 'FR', label: 'FR', x: '75%', y: '30%', chIndex: 1 },
                     { id: 'C',  label: 'C',  x: '50%', y: '20%', chIndex: 2 }, 
-                    { id: 'LFE',label: 'LFE',x: '50%', y: '50%', chIndex: 3, isLFE: true },
+                    { id: 'LFE',label: 'LFE',x: '50%', y: '90%', chIndex: 3, isLFE: true },
                     { id: 'RL', label: 'RL', x: '20%', y: '80%', chIndex: 4 }, // Rear Left
                     { id: 'RR', label: 'RR', x: '80%', y: '80%', chIndex: 5 }, // Rear Right
                     { id: 'SL', label: 'SL', x: '15%', y: '55%', chIndex: 6 }, // Side Left
