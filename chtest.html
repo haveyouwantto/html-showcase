@@ -212,8 +212,8 @@
         let activeSounds = {}; // { channelId: { oscillator, gainNode, animationInterval, element } }
         let isTestingAll = false;
         let testAllAbortController = null; // To stop "Test All" sequence
-        const noteDuration = 0.3; // seconds per note
-        const noteInterval = 0.1; // seconds between notes in a sequence
+        const noteDuration = 0.25; // seconds per note
+        const noteInterval = 0.0; // seconds between notes in a sequence
         const channelTestInterval = 0.5; // seconds between testing different channels
 
         const speakerEmojis = ['🔈', '🔉', '🔊'];
@@ -231,13 +231,13 @@
         const channelNoteSequences = {
             // Standard Channels (Bell Sound)
             FL: [[notes.C4], [notes.E4], [notes.G4]],
-            FR: [[notes.C5], [notes.A4], [notes.F4]],
+            FR: [[notes.G4], [notes.E4], [notes.C4]],
             C:  [[notes.E4], [notes.G4], [notes.C5]], // Center channel often gets a distinct sequence
             SL: [[notes.D4], [notes.F4], [notes.A4]], // Side Left
-            SR: [[notes.D5], [notes.B4], [notes.G4]], // Side Right
+            SR: [[notes.A4], [notes.F4], [notes.D4]], // Side Right
             RL: [[notes.F4], [notes.A4], [notes.C5]], // Rear Left (or Back Left)
-            RR: [[notes.G4], [notes.B4], [notes.D5]], // Rear Right (or Back Right)
-            M:  [[notes.A4], [notes.A4], [notes.A4]], // Mono
+            RR: [[notes.C5], [notes.A4], [notes.F4]], // Rear Right (or Back Right)
+            M:  [[notes.G4], [notes.E4], [notes.G4]], // Mono
             // LFE Channel (Drum Sound)
             LFE: [[notes.LFE1, 2], [notes.LFE2, 1.5], [notes.LFE3, 2]] // Longer duration for LFE
         };
@@ -258,7 +258,7 @@
                 channelOrder: ['M']
             },
             'stereo': { 
-                name: '双声道 (Stereo)', 
+                name: '立体声 (Stereo)', 
                 speakers: [
                     { id: 'FL', label: 'FL', x: '30%', y: '35%', chIndex: 0 }, 
                     { id: 'FR', label: 'FR', x: '70%', y: '35%', chIndex: 1 }
@@ -486,7 +486,7 @@
 
             const gainNode = audioContext.createGain();
             gainNode.gain.value = isLFE ? 1.0 : 0.6; // LFE can be louder, others softer
-
+            
             oscillator.connect(gainNode);
 
             // Connect this channel's gainNode to the correct input of the mainMerger
@@ -520,6 +520,8 @@
                 const currentNoteDuration = noteDuration * durationMult;
 
                 oscillator.frequency.setValueAtTime(freq, audioContext.currentTime + accumulatedDelay);
+                gainNode.gain.setValueAtTime(1.0, audioContext.currentTime+ accumulatedDelay);
+                gainNode.gain.exponentialRampToValueAtTime(0.1, audioContext.currentTime + accumulatedDelay+currentNoteDuration);
                 accumulatedDelay += currentNoteDuration;
                 oscillator.frequency.setValueAtTime(freq, audioContext.currentTime + accumulatedDelay); // Hold note
                 accumulatedDelay += noteInterval;
