@@ -248,6 +248,22 @@
             margin-top: 0.5rem;
         }
 
+        #progress-bar {
+            width: 100%;
+            background: #2d3746;
+            border-radius: var(--border-radius);
+            overflow: hidden;
+            margin-top: 1rem;
+            display: none; /* 默认隐藏进度条 */
+        }
+
+        #progress {
+            height: 4px;
+            width: 0;
+            background: linear-gradient(135deg, var(--neon-cyan), var(--neon-purple));
+            transition: width 0.3s ease;
+        }
+
 
         @media (max-width: 768px) {
             .container {
@@ -283,6 +299,9 @@
                 </div>
             </details>
             <div id="bits"></div>
+            <div id="progress-bar">
+                <div id="progress"></div>
+            </div>
 
         </div>
         <div>
@@ -2484,6 +2503,8 @@
         const received = document.getElementById('received');
 
         const bitDisplay = document.getElementById('bits');
+        const progressBar = document.getElementById('progress-bar');
+        const progressDiv = document.getElementById('progress');
 
         navigator.mediaDevices?.enumerateDevices().then(devices => {
             devices.filter(device => device.kind === 'audioinput').forEach(device => {
@@ -2714,6 +2735,8 @@
                     bitDisplay.textContent = '';
                     txBtn.textContent = '发送';
                     txStart = false;
+                    progressBar.style.display = 'none';
+                    progressDiv.style.width = '0%';
                 })
                 modulator.transmit(audioCtx, bits);
 
@@ -2722,12 +2745,14 @@
                     const sent = (audioCtx.currentTime - currentTime) * baudRate * modulator.bitsPerSymbol;
                     const remainingSeconds = (modulator.totalBits - sent) / (baudRate * modulator.bitsPerSymbol);
                     bitDisplay.textContent = `发送进度: ${toSI(sent / 8, true)}B / ${toSI(modulator.totalBits / 8, true)}B (剩余 ${secondsToHms(remainingSeconds)})`;
+                    progressDiv.style.width = `${Math.min(100, (sent / modulator.totalBits) * 100)}%`;
                 }, 100);
 
 
                 txStart = true;
                 txImageBtn.disabled = true;
                 txBtn.textContent = '中止';
+                progressBar.style.display = 'block';
             }
 
             txBtn.addEventListener('click', () => {
