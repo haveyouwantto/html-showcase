@@ -2724,6 +2724,7 @@
                 preparedArray.push(...sync);
 
                 const bits = fibonacciEncoding(preparedArray);
+                const baudRateFinal = baudRate;
 
                 modulator = new selectedMode.modulate();
                 modulator.setBaudRate(baudRate);
@@ -2742,8 +2743,8 @@
 
                 const currentTime = audioCtx.currentTime;
                 const interval = setInterval(() => {
-                    const sent = (audioCtx.currentTime - currentTime) * baudRate * modulator.bitsPerSymbol;
-                    const remainingSeconds = (modulator.totalBits - sent) / (baudRate * modulator.bitsPerSymbol);
+                    const sent = (audioCtx.currentTime - currentTime) * baudRateFinal * modulator.bitsPerSymbol;
+                    const remainingSeconds = (modulator.totalBits - sent) / (baudRateFinal * modulator.bitsPerSymbol);
                     bitDisplay.textContent = `发送进度: ${toSI(sent / 8, true)}B / ${toSI(modulator.totalBits / 8, true)}B (剩余 ${secondsToHms(remainingSeconds)})`;
                     progressDiv.style.width = `${Math.min(100, (sent / modulator.totalBits) * 100)}%`;
                 }, 100);
