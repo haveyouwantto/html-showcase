@@ -630,7 +630,7 @@
 
                     this.alpha = 0.007
                     this.beta = 0.00005
-                    this.gamma = 0.5
+                    this.gamma = 0.05
                     this.phase = 0;
                     this.freq = 0;
 
@@ -836,7 +836,7 @@
                     this.gain = 1;
 
                     this.phaseRef = Array.from({ length: 8 }, (_, k) => {
-                        const angle = 2 * Math.PI * k / 8+(Math.PI/8);
+                        const angle = 2 * Math.PI * k / 8 + (Math.PI / 8);
                         return [Math.cos(angle), Math.sin(angle)];
                     });
 
@@ -1676,7 +1676,7 @@
                 convolver.connect(freqDeviation);
                 freqDeviation.connect(oscillator.frequency);
                 oscillator.connect(gainNode);
-                gainNode.connect(audioCtx.destination);
+                gainNode.connect(audioCtx.destination, 0, 0);
                 oscillator.start();
 
                 let symbolTime = 1 / this.baudRate;
@@ -1696,23 +1696,23 @@
                 if (this.oscillator) this.oscillator.stop();
             }
         }
-        
+
         class MFSKModulator extends Modulator {
             constructor(order) {
                 super();
-                this.order=order;
-                this.bitsPer=Math.log2(order)
+                this.order = order;
+                this.bitsPer = Math.log2(order)
             }
 
             transmit(audioCtx, bitArray) {
-            	let packed = packBitArray(bitArray, this.bitsPer)
-            	
+                let packed = packBitArray(bitArray, this.bitsPer)
+
                 const mod = new AudioWorkletNode(audioCtx, 'mod')
                 mod.port.postMessage({ type: "baudRate", baudRate: this.baudRate })
                 mod.port.postMessage({ type: "data", data: packed })
                 mod.port.postMessage({
-                    type: "symbolMap", symbolMap: this.distributePoints(this.order,-1,1)
-                    })
+                    type: "symbolMap", symbolMap: this.distributePoints(this.order, -1, 1)
+                })
                 this.bits = bitArray.length
 
                 const convolver = audioCtx.createConvolver();
@@ -1720,7 +1720,7 @@
                 convolver.buffer = filter;
 
                 const freqDeviation = audioCtx.createGain();
-                freqDeviation.gain.value = 170.778026716646371* this.baudRate * 0.25;
+                freqDeviation.gain.value = 170.778026716646371 * this.baudRate * 0.25;
                 const oscillator = audioCtx.createOscillator();
                 oscillator.frequency.value = this.carrierFreq;
                 const gainNode = audioCtx.createGain();
@@ -1730,7 +1730,7 @@
                 convolver.connect(freqDeviation);
                 freqDeviation.connect(oscillator.frequency);
                 oscillator.connect(gainNode);
-                gainNode.connect(audioCtx.destination);
+                gainNode.connect(audioCtx.destination, 0, 0);
                 oscillator.start();
 
                 let symbolTime = 1 / this.baudRate;
@@ -1749,46 +1749,46 @@
                 super.stop();
                 if (this.oscillator) this.oscillator.stop();
             }
-            
+
             get bitsPerSymbol() {
                 return this.bitsPer;
             }
-            
+
             distributePoints(numPoints, start, end) {
-  // 如果点的数量小于2，直接返回空数组
-  if (numPoints < 2) {
-    return {};
-  }
+                // 如果点的数量小于2，直接返回空数组
+                if (numPoints < 2) {
+                    return {};
+                }
 
-  // 如果点的数量为2，直接返回起始点和结束点
-  if (numPoints === 2) {
-    return {0:[-1,0],1:[1,0]};
-  }
+                // 如果点的数量为2，直接返回起始点和结束点
+                if (numPoints === 2) {
+                    return { 0: [-1, 0], 1: [1, 0] };
+                }
 
-  // 计算每个区间的长度
-  const intervalLength = (end - start) / (numPoints - 1);
+                // 计算每个区间的长度
+                const intervalLength = (end - start) / (numPoints - 1);
 
-  // 创建一个数组来存储分割点
-  const points = {0:[start,0]}; // 第一个点是起始点
+                // 创建一个数组来存储分割点
+                const points = { 0: [start, 0] }; // 第一个点是起始点
 
-  // 计算中间的分割点
-  for (let i = 1; i < numPoints - 1; i++) {
-    const point = start + intervalLength * i;
-    points[i]=[point,0];
-  }
+                // 计算中间的分割点
+                for (let i = 1; i < numPoints - 1; i++) {
+                    const point = start + intervalLength * i;
+                    points[i] = [point, 0];
+                }
 
-  // 最后一个点是结束点
-  points[numPoints-1]=[end,0];
+                // 最后一个点是结束点
+                points[numPoints - 1] = [end, 0];
 
-  return points;
-}
+                return points;
+            }
 
         }
-        
-        class FSK4Modulator extends MFSKModulator{
-        	constructor (){
-        		super(4);
-        	}
+
+        class FSK4Modulator extends MFSKModulator {
+            constructor() {
+                super(4);
+            }
         }
 
         class BPSKModulator extends Modulator {
@@ -1829,7 +1829,7 @@
                 convolver.connect(gainNode);
                 this.mixer.connect(multiplier.gain);
                 gainNode.connect(multiplier);
-                multiplier.connect(audioCtx.destination);
+                multiplier.connect(audioCtx.destination, 0, 0);
 
                 this.mixer.start();
                 this.mixer.stop(audioCtx.currentTime + symbolTime * codedArray.length);
@@ -1901,7 +1901,7 @@
                 mod.connect(convolver)
                 convolver.connect(gainNode);
                 gainNode.connect(this.mixer);
-                merger.connect(audioCtx.destination)
+                merger.connect(audioCtx.destination, 0, 0)
                 this.mixer.connect(merger, 0, 0)
                 this.mixer.connect(merger, 0, 1)
 
@@ -1977,7 +1977,7 @@
                 mod.connect(convolver)
                 convolver.connect(gainNode);
                 gainNode.connect(this.mixer);
-                merger.connect(audioCtx.destination)
+                merger.connect(audioCtx.destination, 0, 0)
                 this.mixer.connect(merger, 0, 0)
                 this.mixer.connect(merger, 0, 1)
 
@@ -2070,7 +2070,7 @@
                     }]
             }
         }
-        
+
         class FSK4Demodulator extends Demodulator {
             setBaudRate(baudRate) {
                 this.baudRate = baudRate;
@@ -2095,23 +2095,23 @@
                 this.convolver.connect(this.demod)
 
                 this.demod.port.onmessage = (event) => {
-                	let phase =event.data.phase;
-                	let bit1,bit2
-                	if (phase<-0.5){
-                		bit1=bit2=0;
-                	}else if (phase <0){
-                		bit1=0;
-                		bit2=1;
-                	}else if(phase<0.5){
-                		bit1=1
-                		bit2=0
-                	}else{
-                		bit1=bit2=1
-                	}
-                	
+                    let phase = event.data.phase;
+                    let bit1, bit2
+                    if (phase < -0.5) {
+                        bit1 = bit2 = 0;
+                    } else if (phase < 0) {
+                        bit1 = 0;
+                        bit2 = 1;
+                    } else if (phase < 0.5) {
+                        bit1 = 1
+                        bit2 = 0
+                    } else {
+                        bit1 = bit2 = 1
+                    }
+
                     if (this.onSample) this.onSample({
                         sample: [phase, 0],
-                        bits: [bit1,bit2]
+                        bits: [bit1, bit2]
                     })
                 }
             }
