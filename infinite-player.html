@@ -327,17 +327,96 @@
             seek(pct * audioBuffer.duration);
         });
 
+        /**
+        * Parses OGG Vorbis comments from an ArrayBuffer.
+        * This is a simplified parser and might not cover all edge cases of OGG framing.
+        * It looks for the Vorbis comment header (packet type 0x03).
+        */
+        function parseOggVorbisComments(arrayBuffer) {
+            const view = new DataView(arrayBuffer);
+            const comments = {};
+            let offset = 0;
+            const textDecoder = new TextDecoder('utf-8');
+
+            // Iterate through OGG pages
+            while (offset < view.byteLength - 27) { // Minimum OGG page header size
+                // Find 'OggS' capture pattern
+                let oggSFound = false;
+                for (let i = offset; i < view.byteLength - 4; i++) {
+                    if (view.getUint32(i, false) === 0x4F676753 /* OggS */) {
+                        offset = i;
+                        oggSFound = true;
+                        break;
+                    }
+                }
+                if (!oggSFound) break; // No more OggS patterns
+
+                // const streamStructureVersion = view.getUint8(offset + 4);
+                // const headerTypeFlag = view.getUint8(offset + 5);
+                // const granulePosition = view.getBigUint64(offset + 6, true); // Requires BigInt support
+                // const streamSerialNumber = view.getUint32(offset + 14, true);
+                // const pageSequenceNumber = view.getUint32(offset + 18, true);
+                // const checksum = view.getUint32(offset + 22, true);
+                const pageSegments = view.getUint8(offset + 26);
+
+                let pageDataLength = 0;
+                const segmentTableOffset = offset + 27;
+                for (let i = 0; i < pageSegments; i++) {
+                    pageDataLength += view.getUint8(segmentTableOffset + i);
+                }
+
+                const packetDataStartOffset = segmentTableOffset + pageSegments;
+
+                // Check if this page contains a Vorbis comment header
+                // Packet type 0x03 ("vorbis")
+                if (pageDataLength > 7 &&
+                    view.getUint8(packetDataStartOffset) === 0x03 &&
+                    textDecoder.decode(new Uint8Array(arrayBuffer, packetDataStartOffset + 1, 6)) === "vorbis") {
+
+                    let currentPosInPacket = packetDataStartOffset + 7; // Skip type and "vorbis"
+
+                    const vendorLength = view.getUint32(currentPosInPacket, true); // true for little-endian
+                    currentPosInPacket += 4 + vendorLength; // Skip vendor length and vendor string
+
+                    const userCommentListLength = view.getUint32(currentPosInPacket, true);
+                    currentPosInPacket += 4;
+
+                    for (let i = 0; i < userCommentListLength; i++) {
+                        if (currentPosInPacket + 4 > view.byteLength) break; // Boundary check
+                        const commentLength = view.getUint32(currentPosInPacket, true);
+                        currentPosInPacket += 4;
+
+                        if (currentPosInPacket + commentLength > view.byteLength) break; // Boundary check
+
+                        const commentBytes = new Uint8Array(arrayBuffer, currentPosInPacket, commentLength);
+                        const commentString = textDecoder.decode(commentBytes);
+                        currentPosInPacket += commentLength;
+
+                        const [key, value] = commentString.split('=', 2);
+                        if (key && value) {
+                            comments[key.toUpperCase()] = value; // Store in uppercase for easier lookup
+                        }
+                    }
+                    // Found and parsed comments, we can stop searching.
+                    // A more robust parser would check stream serial numbers if multiple logical streams exist.
+                    return comments;
+                }
+                // Move to the start of the next potential page
+                offset += (27 + pageSegments + pageDataLength);
+            }
+            return comments; // Return any comments found, or empty if none/error
+        }
+
+
         function handleFile(file) {
             if (!file) return;
             fileInfoEl.textContent = `文件: ${file.name} | ${(sampleRate / 1000).toFixed(1)}kHz`;
             const reader = new FileReader();
             reader.onload = async () => {
-                const arr = new Uint8Array(reader.result);
-                const text = new TextDecoder().decode(arr);
-                const lsMatch = /loopstart\s*=\s*(\d+)/i.exec(text);
-                const llMatch = /looplength\s*=\s*(\d+)/i.exec(text);
-                loopStartSample = lsMatch ? parseInt(lsMatch[1]) : 0;
-                loopLengthSample = llMatch ? parseInt(llMatch[1]) : -1;
+                const comments = parseOggVorbisComments(reader.result);
+                console.log(comments);
+                loopStartSample = parseInt(comments['LOOPSTART'], 10) || 0;
+                loopLengthSample = parseInt(comments['LOOPLENGTH'], 10) || -1;
                 audioBuffer = await audioCtx.decodeAudioData(reader.result);
                 if (loopLengthSample < 0) {
                     loopLengthSample = audioBuffer.length - loopStartSample;

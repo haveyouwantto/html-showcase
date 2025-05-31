@@ -1,0 +1,662 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HTML5 声道测试器</title>
+    <style>
+        :root {
+            --bg-color: #1e1e2f;
+            --primary-color: #27293d;
+            --secondary-color: #3b3e5e;
+            --text-color: #c0c0ff;
+            --accent-color: #673ab7;
+            --highlight-color: #00ffff;
+            --speaker-default-color: #7878a3;
+            --speaker-active-color: var(--highlight-color);
+            --font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+
+        body {
+            font-family: var(--font-family);
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+            box-sizing: border-box;
+        }
+
+        .container {
+            background-color: var(--primary-color);
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 8px 16px rgba(0, 0, 0, 0.3);
+            width: 100%;
+            max-width: 700px;
+            text-align: center;
+        }
+
+        h1 {
+            color: var(--accent-color);
+            margin-bottom: 20px;
+        }
+
+        .controls {
+            margin-bottom: 25px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 15px;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .controls label, .controls select, .controls button, .controls input[type="checkbox"] {
+            font-size: 1em;
+            padding: 10px 15px;
+            border-radius: 8px;
+            border: none;
+            outline: none;
+        }
+
+        .controls select {
+            background-color: var(--secondary-color);
+            color: var(--text-color);
+            cursor: pointer;
+        }
+        
+        .controls select option {
+            background-color: var(--secondary-color);
+            color: var(--text-color);
+        }
+
+        .controls button {
+            background-color: var(--accent-color);
+            color: white;
+            cursor: pointer;
+            transition: background-color 0.3s ease, transform 0.1s ease;
+        }
+
+        .controls button:hover {
+            background-color: #552aa1;
+        }
+        .controls button:active {
+            transform: scale(0.95);
+        }
+
+        .controls .checkbox-label {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            cursor: pointer;
+            color: var(--text-color);
+        }
+        .controls input[type="checkbox"] {
+            accent-color: var(--accent-color);
+            width: 18px;
+            height: 18px;
+            cursor: pointer;
+        }
+
+
+        .speaker-layout-container {
+            position: relative;
+            width: 100%;
+            max-width: 500px; /* Max width for the speaker area */
+            height: 400px; /* Fixed height for the speaker area */
+            background-color: var(--secondary-color);
+            border-radius: 10px;
+            margin: 20px auto; /* Centering the container */
+            border: 2px solid var(--primary-color);
+            box-shadow: inset 0 0 10px rgba(0,0,0,0.5);
+        }
+
+        .speaker, .listener {
+            position: absolute;
+            font-size: 2.5em; /* Speaker icon size */
+            cursor: pointer;
+            transition: transform 0.2s ease, color 0.2s ease;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            color: var(--speaker-default-color);
+            user-select: none; /* Prevent text selection */
+        }
+        
+        .speaker:hover {
+            transform: scale(1.1);
+            color: var(--accent-color);
+        }
+
+        .speaker.glowing {
+            animation: glow 1.5s infinite alternate;
+            color: var(--speaker-active-color); /* Ensure active color during glow */
+        }
+        
+        .speaker .label {
+            font-size: 0.4em; /* Smaller label text */
+            margin-top: 2px;
+            color: var(--text-color);
+            background-color: rgba(0,0,0,0.3);
+            padding: 2px 5px;
+            border-radius: 4px;
+        }
+
+        @keyframes glow {
+            from {
+                text-shadow: 0 0 5px var(--speaker-active-color), 0 0 10px var(--speaker-active-color), 0 0 15px var(--speaker-active-color);
+            }
+            to {
+                text-shadow: 0 0 10px var(--speaker-active-color), 0 0 20px var(--speaker-active-color), 0 0 30px var(--speaker-active-color), 0 0 40px #40e0d0;
+            }
+        }
+
+        .listener {
+            font-size: 2em; /* Listener icon size */
+            left: 50%;
+            top: 50%;
+            transform: translate(-50%, -50%);
+            cursor: default;
+            color: var(--text-color);
+        }
+        
+        .front-indicator {
+            position: absolute;
+            top: 5px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 0.9em;
+            color: var(--text-color);
+            background-color: rgba(0,0,0,0.4);
+            padding: 3px 8px;
+            border-radius: 5px;
+        }
+
+        #status-message {
+            margin-top: 15px;
+            min-height: 20px; /* Reserve space for messages */
+            color: var(--highlight-color);
+        }
+
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>声道测试器</h1>
+
+        <div class="controls">
+            <label for="layout-select">选择声道布局:</label>
+            <select id="layout-select"></select>
+            <button id="test-all-btn">一键检测所有声道</button>
+            <label class="checkbox-label">
+                <input type="checkbox" id="loop-checkbox"> 无限循环
+            </label>
+        </div>
+
+        <div class="speaker-layout-container" id="speaker-layout">
+            <div class="front-indicator">前方 (Front)</div>
+            <div class="listener" id="listener">👤</div>
+            </div>
+        <div id="status-message">请选择布局并开始测试。</div>
+    </div>
+
+    <script>
+        // --- Audio Context and Global Variables ---
+        let audioContext;
+        let mainMerger;
+        let masterGain; // For overall volume control, if needed in future
+        let currentLayoutKey = null;
+        let activeSounds = {}; // { channelId: { oscillator, gainNode, animationInterval, element } }
+        let isTestingAll = false;
+        let testAllAbortController = null; // To stop "Test All" sequence
+        const noteDuration = 0.25; // seconds per note
+        const noteInterval = 0.0; // seconds between notes in a sequence
+        const channelTestInterval = 0.5; // seconds between testing different channels
+
+        const speakerEmojis = ['🔈', '🔉', '🔊'];
+        const lfeEmoji = '🥁';
+
+        // --- Sound Definitions ---
+        // Frequencies for notes (Hz)
+        const notes = {
+            C4: 261.63, D4: 293.66, E4: 329.63, F4: 349.23, G4: 392.00, A4: 440.00, B4: 493.88,
+            C5: 523.25, D5: 587.33, E5: 659.25, F5: 698.46, G5: 783.99,
+            LFE1: 40, LFE2: 60, LFE3: 80
+        };
+
+        // Note sequences for each channel type
+        // Using arrays of [frequency, durationMultiplier (optional, default 1)]
+        const channelNoteSequences = {
+            // Standard Channels (Bell Sound)
+            FL: [[notes.C4], [notes.E4], [notes.G4]],
+            FR: [[notes.G4], [notes.E4], [notes.C4]],
+            C:  [[notes.E4], [notes.G4], [notes.E4]], // Center channel often gets a distinct sequence
+            SL: [[notes.D4], [notes.F4], [notes.A4]], // Side Left
+            SR: [[notes.A4], [notes.F4], [notes.D4]], // Side Right
+            RL: [[notes.F4], [notes.A4], [notes.C5]], // Rear Left (or Back Left)
+            RR: [[notes.C5], [notes.A4], [notes.F4]], // Rear Right (or Back Right)
+           // LFE Channel (Drum Sound) 
+            LFE: [[notes.LFE1, 2], [notes.LFE2, 1.5], [notes.LFE3, 2]] // Longer duration for LFE
+        };
+        
+        // --- Channel Layout Definitions ---
+        // Standard channel ordering for Web Audio API:
+        // Mono: M
+        // Stereo: FL, FR
+        // Quad: FL, FR, RL, RR (This can vary, but we'll use this)
+        // 5.1: FL, FR, C, LFE, SL, SR (Common mapping)
+        // 7.1: FL, FR, C, LFE, RL, RR, SL, SR (One common mapping, others exist)
+        // We use SL/SR for 5.1 rears, and add RL/RR for 7.1 further rears/backs.
+        const channelLayouts = {
+            'mono': { 
+                name: '单声道 (Mono)', 
+                speakers: [{ id: 'C', label: 'C', x: '50%', y: '30%', chIndex: 0 }], 
+                channels: 1,
+                channelOrder: ['C']
+            },
+            'stereo': { 
+                name: '立体声 (Stereo)', 
+                speakers: [
+                    { id: 'FL', label: 'FL', x: '30%', y: '35%', chIndex: 0 }, 
+                    { id: 'FR', label: 'FR', x: '70%', y: '35%', chIndex: 1 }
+                ], 
+                channels: 2,
+                channelOrder: ['FL', 'FR']
+            },
+            'quad': { 
+                name: '四声道 (4.0)', 
+                speakers: [
+                    { id: 'FL', label: 'FL', x: '30%', y: '35%', chIndex: 0 }, 
+                    { id: 'FR', label: 'FR', x: '70%', y: '35%', chIndex: 1 },
+                    { id: 'RL', label: 'RL', x: '30%', y: '75%', chIndex: 2 }, 
+                    { id: 'RR', label: 'RR', x: '70%', y: '75%', chIndex: 3 }
+                ], 
+                channels: 4,
+                channelOrder: ['FL', 'FR', 'RL', 'RR']
+            },
+            '5.1': { 
+                name: '5.1声道', 
+                speakers: [
+                    { id: 'FL', label: 'FL', x: '25%', y: '30%', chIndex: 0 }, 
+                    { id: 'FR', label: 'FR', x: '75%', y: '30%', chIndex: 1 },
+                    { id: 'C',  label: 'C',  x: '50%', y: '20%', chIndex: 2 }, 
+                    { id: 'LFE',label: 'LFE',x: '50%', y: '90%', chIndex: 3, isLFE: true },
+                    { id: 'SL', label: 'SL', x: '20%', y: '70%', chIndex: 4 }, // Surround Left
+                    { id: 'SR', label: 'SR', x: '80%', y: '70%', chIndex: 5 }  // Surround Right
+                ], 
+                channels: 6,
+                channelOrder: ['FL', 'FR', 'C', 'LFE', 'SL', 'SR']
+            },
+            '7.1': { 
+                name: '7.1声道', 
+                speakers: [
+                    { id: 'FL', label: 'FL', x: '25%', y: '30%', chIndex: 0 }, 
+                    { id: 'FR', label: 'FR', x: '75%', y: '30%', chIndex: 1 },
+                    { id: 'C',  label: 'C',  x: '50%', y: '20%', chIndex: 2 }, 
+                    { id: 'LFE',label: 'LFE',x: '50%', y: '90%', chIndex: 3, isLFE: true },
+                    { id: 'RL', label: 'RL', x: '20%', y: '80%', chIndex: 4 }, // Rear Left
+                    { id: 'RR', label: 'RR', x: '80%', y: '80%', chIndex: 5 }, // Rear Right
+                    { id: 'SL', label: 'SL', x: '15%', y: '55%', chIndex: 6 }, // Side Left
+                    { id: 'SR', label: 'SR', x: '85%', y: '55%', chIndex: 7 }  // Side Right
+                ], 
+                channels: 8,
+                channelOrder: ['FL', 'FR', 'C', 'LFE', 'RL', 'RR', 'SL', 'SR']
+            }
+        };
+
+        // --- DOM Elements ---
+        const layoutSelect = document.getElementById('layout-select');
+        const speakerLayoutDiv = document.getElementById('speaker-layout');
+        const testAllBtn = document.getElementById('test-all-btn');
+        const loopCheckbox = document.getElementById('loop-checkbox');
+        const statusMessage = document.getElementById('status-message');
+
+        // --- Initialization ---
+        window.addEventListener('load', init);
+
+        function init() {
+            try {
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                masterGain = audioContext.createGain();
+                masterGain.gain.value = 0.7; // Set a master volume (0.0 to 1.0)
+                // Destination channel count will be set on layout change.
+                // masterGain.connect(audioContext.destination); // Connect masterGain to destination
+                statusMessage.textContent = '音频环境已就绪。请选择布局。';
+            } catch (e) {
+                statusMessage.textContent = '错误: 您的浏览器不支持Web Audio API。';
+                console.error('Web Audio API is not supported in this browser', e);
+                alert('错误: 您的浏览器不支持Web Audio API。测试器无法工作。');
+                // Disable controls if AudioContext fails
+                layoutSelect.disabled = true;
+                testAllBtn.disabled = true;
+                loopCheckbox.disabled = true;
+                return;
+            }
+
+            populateLayoutSelector();
+            layoutSelect.addEventListener('change', handleLayoutChange);
+            testAllBtn.addEventListener('click', () => {
+                if (isTestingAll) {
+                    stopAllSounds(true); // true to indicate user initiated stop
+                } else {
+                    startTestAllChannels();
+                }
+            });
+            
+            // Set initial layout (try to detect or default to stereo)
+            let initialLayout = 'stereo';
+            if (audioContext.destination.maxChannelCount >= 6 && channelLayouts['5.1']) {
+                 initialLayout = '5.1';
+            } else if (audioContext.destination.maxChannelCount >= 2 && channelLayouts['stereo']) {
+                 initialLayout = 'stereo';
+            } else if (channelLayouts['mono']) {
+                 initialLayout = 'mono';
+            }
+            layoutSelect.value = initialLayout;
+            handleLayoutChange(); // Trigger initial setup
+        }
+
+        function populateLayoutSelector() {
+            for (const key in channelLayouts) {
+                const option = document.createElement('option');
+                option.value = key;
+                option.textContent = channelLayouts[key].name;
+                layoutSelect.appendChild(option);
+            }
+        }
+
+        function handleLayoutChange() {
+            stopAllSounds(true); // Stop any ongoing tests
+            currentLayoutKey = layoutSelect.value;
+            const layout = channelLayouts[currentLayoutKey];
+
+            if (!layout) {
+                console.error('Selected layout not found:', currentLayoutKey);
+                statusMessage.textContent = '错误：选择的布局无效。';
+                return;
+            }
+            
+            statusMessage.textContent = `已选择: ${layout.name}。点击喇叭单独测试或点击按钮全部测试。`;
+
+            // Configure AudioContext destination and mainMerger for the selected layout
+            try {
+                if (mainMerger) {
+                    mainMerger.disconnect();
+                }
+                // Important: Set channelCount and channelCountMode on the destination
+                audioContext.destination.channelCount = layout.channels;
+                audioContext.destination.channelCountMode = 'explicit'; // Or 'max' if you want it to adapt up to maxChannelCount
+                audioContext.destination.channelInterpretation = 'speakers';
+
+                mainMerger = audioContext.createChannelMerger(layout.channels);
+                mainMerger.channelInterpretation = 'speakers'; // Ensure correct interpretation
+                mainMerger.connect(masterGain); // Connect merger to masterGain
+                masterGain.connect(audioContext.destination); // Then masterGain to final output
+
+            } catch (e) {
+                console.error("Error setting up ChannelMerger or destination:", e);
+                statusMessage.textContent = `错误: 设置声道 (${layout.channels}) 失败: ${e.message}`;
+                // Fallback or alert user
+                if (layout.channels > audioContext.destination.maxChannelCount) {
+                     alert(`警告: 您选择的布局 (${layout.channels}声道) 可能超过设备支持的最大声道数 (${audioContext.destination.maxChannelCount})。可能无法正常工作。`);
+                }
+                // Potentially disable further testing or revert to a safe layout
+                return;
+            }
+            
+            renderSpeakers(layout);
+        }
+
+        function renderSpeakers(layout) {
+            // Clear previous speakers, keeping listener and front indicator
+            speakerLayoutDiv.innerHTML = `
+                <div class="front-indicator">前方 (Front)</div>
+                <div class="listener" id="listener">👤</div>
+            `;
+
+            layout.speakers.forEach(speakerInfo => {
+                const speakerElement = document.createElement('div');
+                speakerElement.classList.add('speaker');
+                speakerElement.id = `speaker-${speakerInfo.id}`;
+                speakerElement.style.left = speakerInfo.x;
+                speakerElement.style.top = speakerInfo.y;
+                speakerElement.style.transform = 'translate(-50%, -50%)'; // Center the icon
+                
+                const icon = document.createElement('span');
+                icon.classList.add('icon');
+                icon.textContent = speakerInfo.isLFE ? lfeEmoji : speakerEmojis[0]; // Default emoji
+                speakerElement.dataset.defaultIcon = speakerEmojis[0];
+
+
+                const label = document.createElement('span');
+                label.classList.add('label');
+                label.textContent = `${speakerInfo.label} (${speakerInfo.chIndex})`;
+
+                speakerElement.appendChild(icon);
+                speakerElement.appendChild(label);
+                
+                speakerElement.addEventListener('click', () => {
+                    if (isTestingAll) { // If "Test All" is running, stop it first
+                        stopAllSounds(true);
+                    }
+                    playSequenceForChannel(speakerInfo, speakerElement);
+                });
+                speakerLayoutDiv.appendChild(speakerElement);
+            });
+        }
+
+        // --- Sound Creation ---
+        function createPeriodicWave(isLFE = false) {
+            // Bell sound (default)
+            let real = new Float32Array([0, 0.4, 0.4, 1, 1, 1, 0.3, 0.7, 0.6, 0.5, 0.9, 0.8]);
+            let imag = new Float32Array(real.length).fill(0);
+
+            if (isLFE) { // Drum sound for LFE
+                real = new Float32Array([0, 1, 0.8, 0.6, 0.3, 0.1]); // Strong fundamental, quick decay
+                imag = new Float32Array(real.length).fill(0);
+            }
+            return audioContext.createPeriodicWave(real, imag, { disableNormalization: false });
+        }
+
+
+        async function playSequenceForChannel(speakerInfo, speakerElement) {
+            if (activeSounds[speakerInfo.id]) { // If sound is already playing for this channel, stop it
+                stopChannelSound(speakerInfo.id);
+                return; // Or allow retrigger, for now, it stops.
+            }
+            if (Object.keys(activeSounds).length > 0 && !isTestingAll) {
+                stopAllSounds(false); // Stop other single channel tests
+            }
+
+
+            const sequence = channelNoteSequences[speakerInfo.id] || channelNoteSequences[speakerInfo.label];
+            if (!sequence) {
+                console.warn(`No note sequence defined for channel: ${speakerInfo.id}`);
+                return;
+            }
+
+            const isLFE = speakerInfo.isLFE || speakerInfo.id === 'LFE';
+            const customWave = createPeriodicWave(isLFE);
+            
+            const oscillator = audioContext.createOscillator();
+            oscillator.setPeriodicWave(customWave);
+
+            const gainNode = audioContext.createGain();
+            gainNode.gain.value = isLFE ? 1.0 : 0.6; // LFE can be louder, others softer
+            
+            oscillator.connect(gainNode);
+
+            // Connect this channel's gainNode to the correct input of the mainMerger
+            // Ensure mainMerger has enough inputs for the current layout.
+            if (speakerInfo.chIndex < mainMerger.numberOfInputs) {
+                 gainNode.connect(mainMerger, 0, speakerInfo.chIndex);
+            } else {
+                console.error(`Channel index ${speakerInfo.chIndex} is out of bounds for merger with ${mainMerger.numberOfInputs} inputs.`);
+                statusMessage.textContent = `错误: 声道索引 ${speakerInfo.chIndex} 超出范围。`;
+                return;
+            }
+
+            const iconElement = speakerElement.querySelector('.icon');
+            let emojiIndex = 0;
+            const animationInterval = setInterval(() => {
+                emojiIndex = (emojiIndex + 1) % speakerEmojis.length;
+                if (iconElement) iconElement.textContent = speakerEmojis[emojiIndex];
+            }, 150);
+
+            speakerElement.classList.add('glowing');
+            
+            activeSounds[speakerInfo.id] = { oscillator, gainNode, animationInterval, element: speakerElement };
+
+            oscillator.start(audioContext.currentTime);
+            statusMessage.textContent = `正在播放: ${speakerInfo.label}`;
+
+            let accumulatedDelay = 0;
+            for (const noteDef of sequence) {
+                const freq = noteDef[0];
+                const durationMult = noteDef[1] || 1;
+                const currentNoteDuration = noteDuration * durationMult;
+
+                oscillator.frequency.setValueAtTime(freq, audioContext.currentTime + accumulatedDelay);
+                gainNode.gain.setValueAtTime(1.0, audioContext.currentTime+ accumulatedDelay);
+                gainNode.gain.exponentialRampToValueAtTime(0.1, audioContext.currentTime + accumulatedDelay+currentNoteDuration);
+                accumulatedDelay += currentNoteDuration;
+                oscillator.frequency.setValueAtTime(freq, audioContext.currentTime + accumulatedDelay); // Hold note
+                accumulatedDelay += noteInterval;
+            }
+            
+            oscillator.stop(audioContext.currentTime + accumulatedDelay);
+
+            oscillator.onended = () => {
+                stopChannelSound(speakerInfo.id);
+                 if (!isTestingAll && Object.keys(activeSounds).length === 0) {
+                     statusMessage.textContent = `已完成: ${speakerInfo.label}。选择其他声道或再次测试。`;
+                 }
+            };
+        }
+        
+        function stopChannelSound(channelId, isUserInitiatedStop = false) {
+            const sound = activeSounds[channelId];
+            if (sound) {
+                sound.oscillator.onended = null; // Prevent re-triggering onended logic
+                sound.oscillator.stop(audioContext.currentTime); // Ensure it stops now
+                sound.oscillator.disconnect();
+                sound.gainNode.disconnect();
+                clearInterval(sound.animationInterval);
+                
+                const iconElement = sound.element.querySelector('.icon');
+                if (iconElement) iconElement.textContent = sound.element.dataset.defaultIcon;
+                sound.element.classList.remove('glowing');
+                
+                delete activeSounds[channelId];
+            }
+            // If this stop was part of "Test All" being aborted by user, update button
+            if (isUserInitiatedStop && isTestingAll) {
+                 testAllBtn.textContent = '一键检测所有声道';
+                 isTestingAll = false;
+                 if (testAllAbortController) {
+                    testAllAbortController.abort();
+                    testAllAbortController = null;
+                 }
+            }
+        }
+
+        function stopAllSounds(isUserInitiatedStop = false) {
+            Object.keys(activeSounds).forEach(id => stopChannelSound(id, isUserInitiatedStop));
+            if (isTestingAll) { // If "Test All" was running
+                isTestingAll = false;
+                testAllBtn.textContent = '一键检测所有声道';
+                if (testAllAbortController) {
+                    testAllAbortController.abort(); // Signal any ongoing async loop to stop
+                    testAllAbortController = null;
+                }
+            }
+             if (isUserInitiatedStop) {
+                statusMessage.textContent = '所有测试已停止。';
+            }
+        }
+
+        async function startTestAllChannels() {
+            if (isTestingAll) return; // Already testing
+
+            stopAllSounds(false); // Stop any individual tests
+            isTestingAll = true;
+            testAllBtn.textContent = '停止检测';
+            const loop = loopCheckbox.checked;
+            const layout = channelLayouts[currentLayoutKey];
+            
+            if (!layout || !layout.channelOrder || layout.channelOrder.length === 0) {
+                statusMessage.textContent = '错误: 当前布局没有可测试的声道。';
+                isTestingAll = false;
+                testAllBtn.textContent = '一键检测所有声道';
+                return;
+            }
+
+            testAllAbortController = new AbortController(); // Create a new controller for this run
+            const signal = testAllAbortController.signal;
+
+            do { // Loop for "infinite loop"
+                for (let i = 0; i < layout.channelOrder.length; i++) {
+                    if (signal.aborted) { // Check if aborted by user
+                        isTestingAll = false;
+                        testAllBtn.textContent = '一键检测所有声道';
+                        statusMessage.textContent = '测试已由用户停止。';
+                        return;
+                    }
+
+                    const channelIdToTest = layout.channelOrder[i];
+                    const speakerInfo = layout.speakers.find(s => s.id === channelIdToTest);
+                    const speakerElement = document.getElementById(`speaker-${speakerInfo.id}`);
+
+                    if (speakerInfo && speakerElement) {
+                        statusMessage.textContent = `测试中: ${speakerInfo.label}...`;
+                        await playSequenceForChannel(speakerInfo, speakerElement);
+                        
+                        // Calculate total duration of the sequence for this channel
+                        let sequenceDuration = 0;
+                        const sequence = channelNoteSequences[speakerInfo.id] || channelNoteSequences[speakerInfo.label];
+                        if(sequence){
+                            sequence.forEach(noteDef => {
+                                const durationMult = noteDef[1] || 1;
+                                sequenceDuration += (noteDuration * durationMult) + noteInterval;
+                            });
+                        } else {
+                            sequenceDuration = noteDuration + noteInterval; // Fallback if no sequence
+                        }
+
+
+                        // Wait for the current channel's sound to finish + inter-channel delay
+                        await new Promise(resolve => setTimeout(resolve, sequenceDuration * 1000 + channelTestInterval * 1000));
+                        if (signal.aborted) { // Check again after waiting
+                             isTestingAll = false;
+                             testAllBtn.textContent = '一键检测所有声道';
+                             statusMessage.textContent = '测试已由用户停止。';
+                             return;
+                        }
+                    }
+                }
+                if (loop && !signal.aborted) {
+                    statusMessage.textContent = '循环测试，等待下一轮...';
+                    await new Promise(resolve => setTimeout(resolve, 1000)); // Brief pause before restarting loop
+                }
+                 if (signal.aborted) { // Final check before potentially looping
+                     isTestingAll = false;
+                     testAllBtn.textContent = '一键检测所有声道';
+                     statusMessage.textContent = '测试已由用户停止。';
+                     return;
+                 }
+
+            } while (loop && isTestingAll && !signal.aborted);
+
+            isTestingAll = false;
+            testAllBtn.textContent = '一键检测所有声道';
+            if (!signal.aborted) { // Only set to "completed" if not aborted
+                statusMessage.textContent = '所有声道测试完成。';
+            }
+        }
+
+    </script>
+</body>
+</html>
