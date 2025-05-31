@@ -208,7 +208,7 @@
         <div class="controls">
             <label for="layout-select">选择声道布局:</label>
             <select id="layout-select"></select>
-            <button id="test-all-btn">一键检测所有声道</button>
+            <button id="test-all-btn">一键检测</button>
             <label class="checkbox-label">
                 <input type="checkbox" id="loop-checkbox"> 无限循环
             </label>
@@ -230,7 +230,7 @@
         let activeSounds = {}; // { channelId: { oscillator, gainNode, animationInterval, element } }
         let isTestingAll = false;
         let testAllAbortController = null; // To stop "Test All" sequence
-        const noteDuration = 0.25; // seconds per note
+        const noteDuration = 0.2; // seconds per note
         const noteInterval = 0.0; // seconds between notes in a sequence
         const channelTestInterval = 0.5; // seconds between testing different channels
 
@@ -240,8 +240,8 @@
         // --- Sound Definitions ---
         // Frequencies for notes (Hz)
         const notes = {
-            C4: 261.63, D4: 293.66, Eb4: 311.13, E4: 329.63, F4: 349.23, Gb4: 369.99, G4: 392.00, Ab4: 415.30,
-            C5: 523.25, Eb5: 622.25, Gb5: 739.99, G5: 783.99,
+            C4: 261.63, D4: 293.66, Eb4: 311.13, E4: 329.63, F4: 349.23, Gb4: 369.99, G4: 392.00, Ab4: 415.30, A4: 440,
+            C5: 523.25, Eb5: 622.25, E5: 659.26, Gb5: 739.99, G5: 783.99,
             LFE1: 40, LFE2: 60, LFE3: 80
         };
 
@@ -250,18 +250,18 @@
         const channelNoteSequences = {
             // Standard Channels (Bell Sound)
 
-            FL: [[notes.C4], [notes.E4], [notes.G4]],  // C Major (Ascending)
-            FR: [[notes.G4], [notes.E4], [notes.C4]],  // C Major (Descending)
+            FL: [[notes.C4], [notes.E4], [notes.G4], [notes.C5]],  // C Major (Ascending) - Adding C5
+            FR: [[notes.C5], [notes.G4], [notes.E4], [notes.C4]],  // C Major (Descending) - Adding C5
 
-            SL: [[notes.C4], [notes.Eb4], [notes.G4]],  // C Minor (Ascending)
-            SR: [[notes.G4], [notes.Eb4], [notes.C4]],  // C Minor (Descending)
+            SL: [[notes.C4], [notes.Eb4], [notes.G4], [notes.C5]],  // C Minor (Ascending) - Adding C5
+            SR: [[notes.C5], [notes.G4], [notes.Eb4], [notes.C4]],  // C Minor (Descending) - Adding C5
 
-            RL: [[notes.C4], [notes.Eb4], [notes.Gb4]],  // C Diminished (Ascending)
-            RR: [[notes.Gb4], [notes.Eb4], [notes.C4]],  // C Diminished (Descending)
+            RL: [[notes.C4], [notes.Eb4], [notes.Gb4], [notes.C5]],  // C Diminished (Ascending) - Adding C5
+            RR: [[notes.C5], [notes.Gb4], [notes.Eb4], [notes.C4]],  // C Diminished (Descending) - Adding C5
 
-            C: [[notes.E4], [notes.G4], [notes.E4]], // Center channel often gets a distinct sequence
+            C: [[notes.E4], [notes.C5], [notes.G4], [notes.E5]], // Center channel often gets a distinct sequence
             // LFE Channel (Bass Sound)
-            LFE: [[notes.LFE1, 2], [notes.LFE2, 1.5], [notes.LFE3, 2]] // Longer duration for LFE
+            LFE: [[notes.LFE1, 2], [notes.LFE2, 2], [notes.LFE3, 3]] // Longer duration for LFE
         };
 
         // --- Channel Layout Definitions ---
@@ -510,8 +510,10 @@
             const iconElement = speakerElement.querySelector('.icon');
             let emojiIndex = 0;
             const animationInterval = setInterval(() => {
-                emojiIndex = (emojiIndex + 1) % speakerEmojis.length;
-                if (iconElement) iconElement.textContent = speakerEmojis[emojiIndex];
+                if (!isLFE) {
+                    emojiIndex = (emojiIndex + 1) % speakerEmojis.length;
+                    if (iconElement) iconElement.textContent = speakerEmojis[emojiIndex];
+                }
             }, 150);
 
             speakerElement.classList.add('glowing');
@@ -552,7 +554,7 @@
                 oscillator.frequency.setValueAtTime(freq, t);
                 gainNode.gain.setValueAtTime(0.0, t);
                 gainNode.gain.linearRampToValueAtTime(1.0, t + 0.001); // Ramp up gain quickly
-                gainNode.gain.setTargetAtTime(0.0, t + 0.0012, currentNoteDuration / 2);
+                gainNode.gain.setTargetAtTime(0.0, t + 0.002, 0.2);
                 accumulatedDelay += currentNoteDuration;
                 oscillator.stop(t + 1);
                 oscillator.onended = () => {
@@ -583,7 +585,7 @@
             }
             // If this stop was part of "Test All" being aborted by user, update button
             if (isUserInitiatedStop && isTestingAll) {
-                testAllBtn.textContent = '一键检测所有声道';
+                testAllBtn.textContent = '一键检测';
                 isTestingAll = false;
                 if (testAllAbortController) {
                     testAllAbortController.abort();
@@ -596,7 +598,7 @@
             Object.keys(activeSounds).forEach(id => stopChannelSound(id, isUserInitiatedStop));
             if (isTestingAll) { // If "Test All" was running
                 isTestingAll = false;
-                testAllBtn.textContent = '一键检测所有声道';
+                testAllBtn.textContent = '一键检测';
                 if (testAllAbortController) {
                     testAllAbortController.abort(); // Signal any ongoing async loop to stop
                     testAllAbortController = null;
@@ -619,7 +621,7 @@
             if (!layout || !layout.channelOrder || layout.channelOrder.length === 0) {
                 statusMessage.textContent = '错误: 当前布局没有可测试的声道。';
                 isTestingAll = false;
-                testAllBtn.textContent = '一键检测所有声道';
+                testAllBtn.textContent = '一键检测';
                 return;
             }
 
@@ -630,7 +632,7 @@
                 for (let i = 0; i < layout.channelOrder.length; i++) {
                     if (signal.aborted) { // Check if aborted by user
                         isTestingAll = false;
-                        testAllBtn.textContent = '一键检测所有声道';
+                        testAllBtn.textContent = '一键检测';
                         statusMessage.textContent = '测试已由用户停止。';
                         return;
                     }
@@ -660,7 +662,7 @@
                         await new Promise(resolve => setTimeout(resolve, sequenceDuration * 1000 + channelTestInterval * 1000));
                         if (signal.aborted) { // Check again after waiting
                             isTestingAll = false;
-                            testAllBtn.textContent = '一键检测所有声道';
+                            testAllBtn.textContent = '一键检测';
                             statusMessage.textContent = '测试已由用户停止。';
                             return;
                         }
@@ -672,7 +674,7 @@
                 }
                 if (signal.aborted) { // Final check before potentially looping
                     isTestingAll = false;
-                    testAllBtn.textContent = '一键检测所有声道';
+                    testAllBtn.textContent = '一键检测';
                     statusMessage.textContent = '测试已由用户停止。';
                     return;
                 }
@@ -680,7 +682,7 @@
             } while (loop && isTestingAll && !signal.aborted);
 
             isTestingAll = false;
-            testAllBtn.textContent = '一键检测所有声道';
+            testAllBtn.textContent = '一键检测';
             if (!signal.aborted) { // Only set to "completed" if not aborted
                 statusMessage.textContent = '所有声道测试完成。';
             }
