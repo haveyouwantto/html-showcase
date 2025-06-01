@@ -669,9 +669,8 @@
                     }
                 }
                 if (loop && !signal.aborted) {
-                    statusMessage.textContent = '循环测试，等待下一轮...';
-                    await new Promise(resolve => setTimeout(resolve, 1000)); // Brief pause before restarting loop
-                }
+                    statusMessage.textContent = '循环测试，等待下一轮...';            
+                    }
                 if (signal.aborted) { // Final check before potentially looping
                     isTestingAll = false;
                     testAllBtn.textContent = '一键检测';
