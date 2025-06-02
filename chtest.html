@@ -534,12 +534,12 @@
         // --- Sound Creation ---
         function createPeriodicWave(isLFE = false) {
             // Bell sound (default)
-            let real = new Float32Array([1, 1.515e-2, 8.5e-3, 5.923e-3, 4.6e-3, 2.8e-2, 1.75e-2, 3.092e-3, 2.581e-3, 2.401e-3, 2.078e-3, 1.933e-3, 1.865e-3,
+            let real = new Float32Array([0, 1, 1.515e-2, 8.5e-3, 5.923e-3, 4.6e-3, 2.8e-2, 1.75e-2, 3.092e-3, 2.581e-3, 2.401e-3, 2.078e-3, 1.933e-3, 1.865e-3,
                 1.515e-2, 1.397e-3, 1.253e-3, 1.347e-3, 1.253e-3, 1.209e-3, 1.166e-3, 4.279e-3, 1.253e-3, 1.125e-3, 1.046e-3, 9.733e-4, 1.009e-3, 9.054e-4, 9.387e-4, 8.423e-4, 8.733e-4, 8.423e-4, 8.423e-4]);
             let imag = new Float32Array(real.length).fill(0);
 
             if (isLFE) { // Bass sound for LFE
-                real = new Float32Array([0, 1, 0.8, 0.6, 0.3, 0.1]); // Strong fundamental, quick decay
+                real = new Float32Array([0, 0.9303, 1, 0.9645, 0.522, 0.2116, 0.07423, 5.126e-3, 4.437e-3, 3.572e-3, 9.473e-3, 0.01359, 0.01882, 0.01311, 7.356e-3, 9.821e-3, 0.01135, 4.279e-3, 2.774e-3, 4.437e-3, 6.844e-3, 0.01176, 6.601e-3, 2.876e-3, 5.713e-3, 5.08e-4, 5.923e-3, 5.315e-3, 4.437e-3, 4.944e-3, 4.279e-3, 5.51e-3, 4.769e-3]);
                 imag = new Float32Array(real.length).fill(0);
             }
             return audioContext.createPeriodicWave(real, imag, { disableNormalization: false });
