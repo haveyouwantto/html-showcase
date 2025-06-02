@@ -590,8 +590,6 @@
 
 
                 const oscillator = audioContext.createOscillator();
-
-                oscillator.start(t);
                 oscillator.setPeriodicWave(customWave);
 
                 const gainNode = audioContext.createGain();
@@ -621,6 +619,7 @@
                     gainNode.disconnect();
                     oscillator.disconnect();
                 };
+                oscillator.start(t);
                 accumulatedDelay += noteInterval;
             }
             setTimeout(() => {
