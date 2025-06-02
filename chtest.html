@@ -341,7 +341,7 @@
 
         function init() {
             try {
-                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                audioContext = new (window.AudioContext || window.webkitAudioContext)({ latencyHint: 'playback' });
                 masterGain = audioContext.createGain();
                 masterGain.gain.value = 0.7; // Set a master volume (0.0 to 1.0)
                 // Destination channel count will be set on layout change.
@@ -373,6 +373,12 @@
                 return channelLayouts[key].channels <= audioContext.destination.maxChannelCount ? key : max;
             }, 'mono'); // Default to mono if nothing fits
             layoutSelect.value = initialLayout;
+
+            layoutSelect.querySelectorAll('option').forEach(option => {
+                if (channelLayouts[option.value].channels > audioContext.destination.maxChannelCount) {
+                    option.disabled = true; // Disable options that exceed max channel count
+                }
+            });
             handleLayoutChange(); // Trigger initial setup
         }
 
@@ -669,8 +675,8 @@
                     }
                 }
                 if (loop && !signal.aborted) {
-                    statusMessage.textContent = '循环测试，等待下一轮...';            
-                    }
+                    statusMessage.textContent = '循环测试，等待下一轮...';
+                }
                 if (signal.aborted) { // Final check before potentially looping
                     isTestingAll = false;
                     testAllBtn.textContent = '一键检测';
