@@ -238,30 +238,83 @@
         const lfeEmoji = '🎸';
 
         // --- Sound Definitions ---
-        // Frequencies for notes (Hz)
-        const notes = {
-            C4: 261.63, D4: 293.66, Eb4: 311.13, E4: 329.63, F4: 349.23, Gb4: 369.99, G4: 392.00, Ab4: 415.30, A4: 440,
-            C5: 523.25, Eb5: 622.25, E5: 659.26, Gb5: 739.99, G5: 783.99,
-            LFE1: 40, LFE2: 60, LFE3: 80
+        // 音符频率计算函数
+        function getFreq(noteStr) {
+            // 音符基名映射表
+            const baseNotes = { C: 0, 'C#': 1, Db: 1, D: 2, 'D#': 3, Eb: 3, E: 4, F: 5, 'F#': 6, Gb: 6, G: 7, 'G#': 8, Ab: 8, A: 9, 'A#': 10, Bb: 10, B: 11 };
+
+            // 解析音符字符串
+            const match = noteStr.match(/^([A-G])([b#])?(\d)$/);
+            if (!match) throw new Error(`Invalid note format: ${noteStr}`);
+
+            const [, base, accidental, octave] = match;
+            const noteName = base + (accidental || '');
+
+            // 验证有效音符
+            if (!(noteName in baseNotes)) throw new Error(`Invalid note: ${noteStr}`);
+
+            // 计算半音位置 (A4 = 69)
+            const semitones = baseNotes[noteName] + (parseInt(octave) + 1) * 12;
+            // 计算频率 (A4 = 440Hz)
+            return 440 * Math.pow(2, (semitones - 69) / 12);
+        }
+
+        // LFE特殊频率处理
+        const lfeFreqs = {
+            LFE1: 55.00,   // A1
+            LFE2: 61.74,   // B1
+            LFE3: 32.70    // C1
         };
 
-        // Note sequences for each channel type
-        // Using arrays of [frequency, durationMultiplier (optional, default 1)]
+        // 转换后的通道序列
         const channelNoteSequences = {
-            // Standard Channels (Bell Sound)
-
-            FL: [[notes.C4], [notes.E4], [notes.G4], [notes.C5]],  // C Major (Ascending) - Adding C5
-            FR: [[notes.C5], [notes.G4], [notes.E4], [notes.C4]],  // C Major (Descending) - Adding C5
-
-            SL: [[notes.C4], [notes.Eb4], [notes.G4], [notes.C5]],  // C Minor (Ascending) - Adding C5
-            SR: [[notes.C5], [notes.G4], [notes.Eb4], [notes.C4]],  // C Minor (Descending) - Adding C5
-
-            RL: [[notes.C4], [notes.Eb4], [notes.Gb4], [notes.C5]],  // C Diminished (Ascending) - Adding C5
-            RR: [[notes.C5], [notes.Gb4], [notes.Eb4], [notes.C4]],  // C Diminished (Descending) - Adding C5
-
-            C: [[notes.E4], [notes.C5], [notes.G4], [notes.E5]], // Center channel often gets a distinct sequence
-            // LFE Channel (Bass Sound)
-            LFE: [[notes.LFE1, 2], [notes.LFE2, 2], [notes.LFE3, 3]] // Longer duration for LFE
+            FL: [ // C大调上行
+                [getFreq("C4")],
+                [getFreq("E4")],
+                [getFreq("G4")],
+                [getFreq("C5")]
+            ],
+            FR: [ // C大调下行
+                [getFreq("C5")],
+                [getFreq("G4")],
+                [getFreq("E4")],
+                [getFreq("C4")]
+            ],
+            SL: [ // A小调上行
+                [getFreq("A3")],
+                [getFreq("C4")],
+                [getFreq("E4")],
+                [getFreq("A4")]
+            ],
+            SR: [ // A小调下行
+                [getFreq("A4")],
+                [getFreq("E4")],
+                [getFreq("C4")],
+                [getFreq("A3")]
+            ],
+            RL: [ // B减三和弦上行
+                [getFreq("B3")],
+                [getFreq("D4")],
+                [getFreq("F4")],
+                [getFreq("B4")]
+            ],
+            RR: [ // B减三和弦下行
+                [getFreq("B4")],
+                [getFreq("F4")],
+                [getFreq("D4")],
+                [getFreq("B3")]
+            ],
+            C: [ // 中央通道特殊序列
+                [getFreq("E4")],
+                [getFreq("C5")],
+                [getFreq("G4")],
+                [getFreq("E5")]
+            ],
+            LFE: [ // LFE低频效果通道
+                [getFreq("F1"), 2],
+                [getFreq("C2"), 2],
+                [getFreq("F2"), 3]
+            ]
         };
 
         // --- Channel Layout Definitions ---
