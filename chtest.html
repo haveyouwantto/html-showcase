@@ -613,13 +613,13 @@
                 gainNode.gain.linearRampToValueAtTime(1.0, t + 0.001); // Ramp up gain quickly
                 gainNode.gain.setTargetAtTime(0.0, t + 0.002, 0.2);
                 accumulatedDelay += currentNoteDuration;
-                oscillator.stop(t + 1);
                 oscillator.onended = () => {
                     // Cleanup after sound ends
                     gainNode.disconnect();
                     oscillator.disconnect();
                 };
                 oscillator.start(t);
+                oscillator.stop(t + 1);
                 accumulatedDelay += noteInterval;
             }
             setTimeout(() => {
