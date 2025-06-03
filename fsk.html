@@ -254,7 +254,8 @@
             border-radius: var(--border-radius);
             overflow: hidden;
             margin-top: 1rem;
-            display: none; /* 默认隐藏进度条 */
+            display: none;
+            /* 默认隐藏进度条 */
         }
 
         #progress {
@@ -263,9 +264,9 @@
             background: linear-gradient(135deg, var(--neon-cyan), var(--neon-purple));
             transition: width 0.3s ease;
         }
-        
+
         #demod-info {
-        	font-family: monospace;
+            font-family: monospace;
         }
 
 
@@ -451,12 +452,12 @@
             function calculateBeta(bd) {
                 return 0.0932// calculateAlpha(bd) / 8;
             }
-            
+
             function clamp(v, min, max) {
-            	if (isNaN(v)) return min;
-            	else if (v > max) return max;
-            	else if (v < min) return min;
-            	else return v;
+                if (isNaN(v)) return min;
+                else if (v > max) return max;
+                else if (v < min) return min;
+                else return v;
             }
 
             const mod = class extends AudioWorkletProcessor {
@@ -725,10 +726,10 @@
                             let out = this.out[0].mul(costas);
                             let error = out.real * out.imag;
                             this.freq += this.beta * error;
-                            
+
                             // Clamp freq
-                            this.freq = clamp(this.freq, -Math.PI * 0.5, Math.PI *0.5);
-                            
+                            this.freq = clamp(this.freq, -Math.PI * 0.5, Math.PI * 0.5);
+
                             this.phase += this.freq + this.alpha * error;
                             if (this.phase > 2 * Math.PI) this.phase -= 2 * Math.PI;
                             if (this.phase < 0) this.phase += 2 * Math.PI;
@@ -788,7 +789,7 @@
                     sum /= i.length;
                     const rms = Math.sqrt(sum)
 
-                    
+
                     let newGain = 1 / rms;
                     this.gain = clamp((this.gain + newGain) / 2, 1, 1e6);
 
@@ -820,7 +821,7 @@
                             let error = this.errorFunc(out); // errorFunc 需要根据实际情况进行修改
                             this.freq += this.beta * error;
 
-                            this.freq = clamp(this.freq, -Math.PI * 0.5, Math.PI *0.5);
+                            this.freq = clamp(this.freq, -Math.PI * 0.25, Math.PI * 0.25);
 
                             this.phase += this.freq + this.alpha * error;
                             if (this.phase > 2 * Math.PI) this.phase -= 2 * Math.PI;
@@ -908,7 +909,7 @@
                     }
                     sum /= i.length;
                     const rms = Math.sqrt(sum)
-                    
+
                     let newGain = 1 / rms;
                     this.gain = clamp((this.gain + newGain) / 2, 1, 1e6);
 
@@ -940,7 +941,7 @@
                             let out = this.out[0].mul(costas);
                             let error = this.phaseDetector8(out);
                             this.freq += this.beta * error;
-                            this.freq = clamp(this.freq, -Math.PI * 0.5, Math.PI *0.5);
+                            this.freq = clamp(this.freq, -Math.PI * 0.125, Math.PI * 0.125);
                             this.phase += this.freq + this.alpha * error;
                             if (this.phase > 2 * Math.PI) this.phase -= 2 * Math.PI;
                             if (this.phase < 0) this.phase += 2 * Math.PI;
@@ -1121,9 +1122,9 @@
             }
             return symbols
         }
-        
-        function formatSigned(v, significant){
-        	return v < 0? v.toFixed(significant):"+"+v.toFixed(significant);
+
+        function formatSigned(v, significant) {
+            return v < 0 ? v.toFixed(significant) : "+" + v.toFixed(significant);
         }
 
 
@@ -2024,7 +2025,7 @@
                 return 3;
             }
         }
-        
+
         // Demodulators
         const demodInfo = document.getElementById("demod-info");
 
@@ -2215,7 +2216,7 @@
                         bits: [current ^ this.lastBit]
                     })
                     this.lastBit = current;
-                    demodInfo.innerText = `Gain: ${(Math.log10(event.data.gain)*20).toFixed(0)} dB | Phase: ${formatSigned(event.data.freq/Math.PI, 4)}π`
+                    demodInfo.innerText = `Gain: ${(Math.log10(event.data.gain) * 20).toFixed(0)} dB | Phase: ${formatSigned(event.data.freq / Math.PI, 4)}π`
                 }
             }
 
@@ -2286,8 +2287,8 @@
                         bits: [bit1, bit2]
                     })
                     this.lastPhase = phase;
-                    demodInfo.innerText = `Gain: ${(Math.log10(event.data.gain)*20).toFixed(0)} dB | Phase: ${formatSigned(event.data.freq/Math.PI, 4)}π`
-               
+                    demodInfo.innerText = `Gain: ${(Math.log10(event.data.gain) * 20).toFixed(0)} dB | Phase: ${formatSigned(event.data.freq / Math.PI, 4)}π`
+
                 }
             }
 
@@ -2361,8 +2362,8 @@
                         bits: [bit1, bit2, bit3]
                     })
                     this.lastPhase = phase;
-                    demodInfo.innerText = `Gain: ${(Math.log10(event.data.gain)*20).toFixed(0)} dB | Phase: ${formatSigned(event.data.freq/Math.PI, 4)}π`
-               
+                    demodInfo.innerText = `Gain: ${(Math.log10(event.data.gain) * 20).toFixed(0)} dB | Phase: ${formatSigned(event.data.freq / Math.PI, 4)}π`
+
                 }
             }
 
