@@ -2219,7 +2219,7 @@
                         bits: [current ^ this.lastBit]
                     })
                     this.lastBit = current;
-                    demodInfo.innerText = `Gain: ${(Math.log10(event.data.gain)*10).toFixed(0)} dB | Phase: ${formatSigned(event.data.freq/Math.PI, 4)}π`
+                    demodInfo.innerText = `Gain: ${(Math.log10(event.data.gain)*20).toFixed(0)} dB | Phase: ${formatSigned(event.data.freq/Math.PI, 4)}π`
                 }
             }
 
