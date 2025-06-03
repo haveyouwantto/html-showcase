@@ -445,11 +445,11 @@
             }
 
             function calculateAlpha(bd) {
-                return 0.0132//Math.min(1, 8 / bd);
+                return 0.132//Math.min(1, 8 / bd);
             }
 
             function calculateBeta(bd) {
-                return 0.00932// calculateAlpha(bd) / 8;
+                return 0.0932// calculateAlpha(bd) / 8;
             }
             
             function clamp(v, min, max) {
@@ -1125,6 +1125,10 @@
                 symbols.push(phase)
             }
             return symbols
+        }
+        
+        function formatSigned(v, significant){
+        	return v < 0? v.toFixed(significant):"+"+v.toFixed(significant);
         }
 
 
@@ -2216,7 +2220,7 @@
                         bits: [current ^ this.lastBit]
                     })
                     this.lastBit = current;
-                    demodInfo.innerText = `Gain: ${(Math.log10(event.data.gain)*10).toFixed(0)} dB | Freq: ${(event.data.freq).toFixed(4)}`
+                    demodInfo.innerText = `Gain: ${(Math.log10(event.data.gain)*10).toFixed(0)} dB | Freq: ${formatSigned(event.data.freq, 4)}`
                 }
             }
 
