@@ -446,6 +446,13 @@
             function calculateBeta(bd) {
                 return 0.00932// calculateAlpha(bd) / 8;
             }
+            
+            function clamp(v, min, max) {
+            	if (isNaN(v)) return min;
+            	else if (v > max) return max;
+            	else if (v < min) return min;
+            	else return v;
+            }
 
             const mod = class extends AudioWorkletProcessor {
                 constructor() {
@@ -683,9 +690,8 @@
                     sum /= i.length;
                     const rms = Math.sqrt(sum)
 
-                    this.gain = 1 / rms;
-                    if (!isFinite(this.gain) || isNaN(this.gain)) this.gain = 1;
-
+                    let newGain = 1 / rms;
+                    this.gain = clamp((this.gain + newGain) / 2, 1, 1e6);
 
                     for (let j = 0; j < i.length; ++j) {
                         if (this.count >= 0) {
@@ -722,7 +728,7 @@
                             this.phase += this.freq + this.alpha * error;
                             if (this.phase > 2 * Math.PI) this.phase -= 2 * Math.PI;
                             if (this.phase < 0) this.phase += 2 * Math.PI;
-                            this.port.postMessage({ i: out.real, q: out.imag, bit: out.real > 0 ? 1 : 0 });
+                            this.port.postMessage({ i: out.real, q: out.imag, gain: this.gain, freq: this.freq });
                         }
 
                         this.count++;
@@ -778,9 +784,9 @@
                     sum /= i.length;
                     const rms = Math.sqrt(sum)
 
-                    this.gain = 1 / rms;
-                    if (!isFinite(this.gain) || isNaN(this.gain)) this.gain = 1;
-
+                    
+                    let newGain = 1 / rms;
+                    this.gain = clamp((this.gain + newGain) / 2, 1, 1e6);
 
                     for (let j = 0; j < i.length; ++j) {
                         if (this.count >= 0) {
@@ -900,9 +906,9 @@
                     }
                     sum /= i.length;
                     const rms = Math.sqrt(sum)
-
-                    this.gain = 1 / rms;
-                    if (!isFinite(this.gain) || isNaN(this.gain)) this.gain = 1;
+                    
+                    let newGain = 1 / rms;
+                    this.gain = clamp((this.gain + newGain) / 2, 1, 1e6);
 
 
                     for (let j = 0; j < i.length; ++j) {
