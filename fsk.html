@@ -334,9 +334,9 @@
         <div class="params">
             <label>模式：</label>
             <select id="mode">
-                <option value="gfsk" selected>GFSK</option>
+                <option value="gfsk">GFSK</option>
                 <option value="fsk4">4FSK</option>
-                <option value="bpsk">BPSK</option>
+                <option value="bpsk" selected>BPSK</option>
                 <option value="qpsk">QPSK</option>
                 <option value="psk8">8PSK</option>
             </select>
@@ -348,8 +348,8 @@
             <select id="baudrateInput">
                 <option value="2">2</option>
                 <option value="8">8</option>
-                <option value="32">32</option>
-                <option value="50" selected>50</option>
+                <option value="32" selected>32</option>
+                <option value="50">50</option>
                 <option value="80">80</option>
                 <option value="100">100</option>
                 <option value="125">125</option>
@@ -368,7 +368,7 @@
         -->
     <script>
 
-        let baudRate = 50; // 波特率
+        let baudRate = 32; // 波特率
         const sampleRate = 48000; // 采样率
         let carrierFreq = 16000; // 载波频率
         const freqMulti = 1; // 频率倍数
@@ -2558,7 +2558,7 @@
                 demodulate: PSK8Demodulator
             }
         }
-        let selectedMode = MODES['gfsk'];
+        let selectedMode = MODES['bpsk'];
 
         const constellation = new ConstellationRecorder(baudRate / 8);
 
