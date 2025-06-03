@@ -440,11 +440,11 @@
             }
 
             function calculateAlpha(bd) {
-                return Math.min(1, 8 / bd);
+                return 0.0132//Math.min(1, 8 / bd);
             }
 
             function calculateBeta(bd) {
-                return calculateAlpha(bd) / 8;
+                return 0.00932// calculateAlpha(bd) / 8;
             }
 
             const mod = class extends AudioWorkletProcessor {
