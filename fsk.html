@@ -820,14 +820,12 @@
                             let error = this.errorFunc(out); // errorFunc 需要根据实际情况进行修改
                             this.freq += this.beta * error;
 
-                            let absFreq = this.freq * this.sampleRate / (2 * Math.PI);
-                            if (Math.abs(absFreq) > this.baudRate) {
-                                //this.freq = 0;
-                            }
+                            this.freq = clamp(this.freq, -Math.PI * 0.5, Math.PI *0.5);
+
                             this.phase += this.freq + this.alpha * error;
                             if (this.phase > 2 * Math.PI) this.phase -= 2 * Math.PI;
                             if (this.phase < 0) this.phase += 2 * Math.PI;
-                            this.port.postMessage({ i: out.real, q: out.imag });
+                            this.port.postMessage({ i: out.real, q: out.imag, gain: this.gain, freq: this.freq });
                         }
 
                         this.count++;
@@ -942,13 +940,11 @@
                             let out = this.out[0].mul(costas);
                             let error = this.phaseDetector8(out);
                             this.freq += this.beta * error;
-                            if (Math.abs(absFreq) > this.baudRate) {
-                                //this.freq = 0;
-                            }
+                            this.freq = clamp(this.freq, -Math.PI * 0.5, Math.PI *0.5);
                             this.phase += this.freq + this.alpha * error;
                             if (this.phase > 2 * Math.PI) this.phase -= 2 * Math.PI;
                             if (this.phase < 0) this.phase += 2 * Math.PI;
-                            this.port.postMessage({ i: out.real, q: out.imag });
+                            this.port.postMessage({ i: out.real, q: out.imag, gain: this.gain, freq: this.freq });
                         }
 
                         this.count++;
@@ -2290,6 +2286,8 @@
                         bits: [bit1, bit2]
                     })
                     this.lastPhase = phase;
+                    demodInfo.innerText = `Gain: ${(Math.log10(event.data.gain)*20).toFixed(0)} dB | Phase: ${formatSigned(event.data.freq/Math.PI, 4)}π`
+               
                 }
             }
 
@@ -2363,6 +2361,8 @@
                         bits: [bit1, bit2, bit3]
                     })
                     this.lastPhase = phase;
+                    demodInfo.innerText = `Gain: ${(Math.log10(event.data.gain)*20).toFixed(0)} dB | Phase: ${formatSigned(event.data.freq/Math.PI, 4)}π`
+               
                 }
             }
 
