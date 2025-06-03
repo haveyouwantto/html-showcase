@@ -717,7 +717,7 @@
 
                             let absFreq = this.freq * this.sampleRate / (2 * Math.PI);
                             if (Math.abs(absFreq) > this.baudRate) {
-                                this.freq = 0;
+                               // this.freq = 0;
                             }
                             this.phase += this.freq + this.alpha * error;
                             if (this.phase > 2 * Math.PI) this.phase -= 2 * Math.PI;
@@ -812,7 +812,7 @@
 
                             let absFreq = this.freq * this.sampleRate / (2 * Math.PI);
                             if (Math.abs(absFreq) > this.baudRate) {
-                                this.freq = 0;
+                                //this.freq = 0;
                             }
                             this.phase += this.freq + this.alpha * error;
                             if (this.phase > 2 * Math.PI) this.phase -= 2 * Math.PI;
@@ -933,7 +933,7 @@
                             let error = this.phaseDetector8(out);
                             this.freq += this.beta * error;
                             if (Math.abs(absFreq) > this.baudRate) {
-                                this.freq = 0;
+                                //this.freq = 0;
                             }
                             this.phase += this.freq + this.alpha * error;
                             if (this.phase > 2 * Math.PI) this.phase -= 2 * Math.PI;
