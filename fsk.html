@@ -697,7 +697,7 @@
                     const rms = Math.sqrt(sum)
 
                     let newGain = 1 / rms;
-                    this.gain = clamp((this.gain*0.99 + newGain*0.01), 1, 1e6);
+                    this.gain = clamp((this.gain * 0.99 + newGain * 0.01), 1, 1e6);
 
                     for (let j = 0; j < i.length; ++j) {
                         if (this.count >= 0) {
@@ -791,7 +791,7 @@
 
 
                     let newGain = 1 / rms;
-                    this.gain = clamp((this.gain*0.99 + newGain*0.01), 1, 1e6);
+                    this.gain = clamp((this.gain * 0.99 + newGain * 0.01), 1, 1e6);
 
                     for (let j = 0; j < i.length; ++j) {
                         if (this.count >= 0) {
@@ -911,7 +911,7 @@
                     const rms = Math.sqrt(sum)
 
                     let newGain = 1 / rms;
-                    this.gain = clamp((this.gain*0.99 + newGain*0.01), 1, 1e6);
+                    this.gain = clamp((this.gain * 0.99 + newGain * 0.01), 1, 1e6);
 
                     for (let j = 0; j < i.length; ++j) {
                         if (this.count >= 0) {
@@ -1124,6 +1124,26 @@
 
         function formatSigned(v, significant) {
             return v < 0 ? v.toFixed(significant) : "+" + v.toFixed(significant);
+        }
+
+        function randomBits(len) {
+            if (len <= 0) return [];
+
+            const arr = new Array(len);
+            // 随机生成第一个元素（0或1）
+            arr[0] = Math.random() < 0.5 ? 0 : 1;
+
+            // 生成后续元素，确保不出现连续1
+            for (let i = 1; i < len; i++) {
+                if (arr[i - 1] === 1) {
+                    arr[i] = 0;  // 如果前一个是1，当前必须为0
+                } else {
+                    // 前一个是0时，随机生成0或1
+                    arr[i] = Math.random() < 0.5 ? 0 : 1;
+                }
+            }
+
+            return arr;
         }
 
 
@@ -2215,7 +2235,7 @@
                         bits: [current ^ this.lastBit]
                     })
                     this.lastBit = current;
-                    demodInfo.innerText = `Gain: ${(Math.log10(event.data.gain)*20).toFixed(0)} dB | Freq: ${formatSigned(-event.data.freq/Math.PI*baudRate/2, 4)} Hz`
+                    demodInfo.innerText = `Gain: ${(Math.log10(event.data.gain) * 20).toFixed(0)} dB | Freq: ${formatSigned(-event.data.freq / Math.PI * baudRate / 2, 4)} Hz`
                 }
             }
 
@@ -2286,8 +2306,8 @@
                         bits: [bit1, bit2]
                     })
                     this.lastPhase = phase;
-                    demodInfo.innerText = `Gain: ${(Math.log10(event.data.gain)*20).toFixed(0)} dB | Freq: ${formatSigned(-event.data.freq/Math.PI*baudRate/2, 4)} Hz`
-                
+                    demodInfo.innerText = `Gain: ${(Math.log10(event.data.gain) * 20).toFixed(0)} dB | Freq: ${formatSigned(-event.data.freq / Math.PI * baudRate / 2, 4)} Hz`
+
                 }
             }
 
@@ -2361,8 +2381,8 @@
                         bits: [bit1, bit2, bit3]
                     })
                     this.lastPhase = phase;
-                    demodInfo.innerText = `Gain: ${(Math.log10(event.data.gain)*20).toFixed(0)} dB | Freq: ${formatSigned(-event.data.freq/Math.PI*baudRate/2, 4)} Hz`
-                
+                    demodInfo.innerText = `Gain: ${(Math.log10(event.data.gain) * 20).toFixed(0)} dB | Freq: ${formatSigned(-event.data.freq / Math.PI * baudRate / 2, 4)} Hz`
+
                 }
             }
 
@@ -2603,6 +2623,31 @@
             imageRecvDiv.open = false;
         }
 
+        let rxBuffer = [];
+
+        function receivedChar(c) {
+            if (baudRate < 200) {
+                let textNode = document.createTextNode(c)
+
+                let isBottom = Math.abs(received.scrollHeight - received.clientHeight - received.scrollTop) < 48;
+                received.appendChild(textNode);
+                if (isBottom) {
+                    received.scrollTo(0, received.scrollHeight)
+                }
+            } else {
+                rxBuffer.push(c);
+                if (rxBuffer.length >= 16) {
+                    let str = rxBuffer.join('');
+                    let isBottom = Math.abs(received.scrollHeight - received.clientHeight - received.scrollTop) < 48;
+                    received.appendChild(document.createTextNode(str));
+                    if (isBottom) {
+                        received.scrollTo(0, received.scrollHeight)
+                    }
+                    rxBuffer = [];
+                }
+            }
+        }
+
         async function startRx() {
             rxBtn.textContent = '停止';
             audioCtx.resume()
@@ -2637,12 +2682,9 @@
                             startRxImage()
                         } else {
                             if (dec >= 2 && dec <= 129) {
-                                received.appendChild(document.createTextNode(VARICODE[dec - 2]))
+                                receivedChar(VARICODE[dec - 2])
                             } else {
-                                received.appendChild(document.createTextNode(String.fromCodePoint(dec - 2)))
-                            }
-                            if (Math.abs(received.scrollHeight - received.clientHeight - received.scrollTop) < 48) {
-                                received.scrollTo(0, received.scrollHeight)
+                                receivedChar(String.fromCodePoint(dec - 2))
                             }
                         }
                     }
