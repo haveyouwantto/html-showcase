@@ -2636,7 +2636,7 @@
                 }
             } else {
                 rxBuffer.push(c);
-                if (rxBuffer.length >= 16) {
+                if (rxBuffer.length >= baudRate / 16) {
                     let str = rxBuffer.join('');
                     let isBottom = Math.abs(received.scrollHeight - received.clientHeight - received.scrollTop) < 48;
                     received.appendChild(document.createTextNode(str));
