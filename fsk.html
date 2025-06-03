@@ -263,6 +263,10 @@
             background: linear-gradient(135deg, var(--neon-cyan), var(--neon-purple));
             transition: width 0.3s ease;
         }
+        
+        #demod-info {
+        	font-family: monospace;
+        }
 
 
         @media (max-width: 768px) {
@@ -362,6 +366,7 @@
             <!-- <input type="number" id="baudrateInput" value="50" min="30" max="4800"> -->
         </div>
         <canvas id="constellation" width="500" height="500"></canvas>
+        <div id="demod-info"></div>
     </div>
     <!-- <script src="//cdn.jsdelivr.net/npm/eruda"></script>
         <script>eruda.init();</script>
@@ -2020,6 +2025,9 @@
                 return 3;
             }
         }
+        
+        // Demodulators
+        const demodInfo = document.getElementById("demod-info");
 
         class Demodulator {
             constructor() {
@@ -2197,7 +2205,7 @@
                 this.convolver.connect(this.demod)
 
                 this.demod.port.onmessage = (event) => {
-                    let current = event.data.bit;
+                    let current = event.data.i > 0 ? 1 : 0;
                     this.debug.push(current)
                     if (this.debug.length >= 18) {
                         //console.log([...this.debug])
@@ -2208,6 +2216,7 @@
                         bits: [current ^ this.lastBit]
                     })
                     this.lastBit = current;
+                    demodInfo.innerText = `Gain: ${(Math.log10(event.data.gain)*10).toFixed(0)} dB | Freq: ${(event.data.freq).toFixed(4)}`
                 }
             }
 
