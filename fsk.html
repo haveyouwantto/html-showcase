@@ -2216,7 +2216,7 @@
                         bits: [current ^ this.lastBit]
                     })
                     this.lastBit = current;
-                    demodInfo.innerText = `Gain: ${(Math.log10(event.data.gain) * 20).toFixed(0)} dB | Phase: ${formatSigned(event.data.freq / Math.PI, 4)}π`
+                    demodInfo.innerText = `Gain: ${(Math.log10(event.data.gain)*20).toFixed(0)} dB | Freq: ${formatSigned(-event.data.freq/Math.PI*baudRate/2, 4)} Hz`
                 }
             }
 
@@ -2287,8 +2287,8 @@
                         bits: [bit1, bit2]
                     })
                     this.lastPhase = phase;
-                    demodInfo.innerText = `Gain: ${(Math.log10(event.data.gain) * 20).toFixed(0)} dB | Phase: ${formatSigned(event.data.freq / Math.PI, 4)}π`
-
+                    demodInfo.innerText = `Gain: ${(Math.log10(event.data.gain)*20).toFixed(0)} dB | Freq: ${formatSigned(-event.data.freq/Math.PI*baudRate/2, 4)} Hz`
+                
                 }
             }
 
@@ -2362,8 +2362,8 @@
                         bits: [bit1, bit2, bit3]
                     })
                     this.lastPhase = phase;
-                    demodInfo.innerText = `Gain: ${(Math.log10(event.data.gain) * 20).toFixed(0)} dB | Phase: ${formatSigned(event.data.freq / Math.PI, 4)}π`
-
+                    demodInfo.innerText = `Gain: ${(Math.log10(event.data.gain)*20).toFixed(0)} dB | Freq: ${formatSigned(-event.data.freq/Math.PI*baudRate/2, 4)} Hz`
+                
                 }
             }
 
