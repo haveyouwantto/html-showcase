@@ -680,6 +680,7 @@
                     this.samplesPerSymbol = Math.round(this.sampleRate / baudRate);
                     this.alpha = calculateAlpha(baudRate)
                     this.beta = calculateBeta(baudRate)
+                    this.gainAlpha = clamp((baudRate / 1200) * 0.01, 0.001, 0.1);
                 }
 
                 process(inputs, outputs, parameters) {
@@ -697,7 +698,12 @@
                     const rms = Math.sqrt(sum)
 
                     let newGain = 1 / rms;
-                    this.gain = clamp((this.gain * 0.99 + newGain * 0.01), 1, 1e6);
+
+                    // if diff > 10dB, set immediate gain
+                    if (Math.abs(this.gain - newGain) > 10) {
+                        this.gain = clamp(newGain, 1, 1e6);
+                    } else
+                        this.gain = clamp(this.gain * (1 - this.gainAlpha) + newGain * this.gainAlpha, 1, 1e6);
 
                     for (let j = 0; j < i.length; ++j) {
                         if (this.count >= 0) {
@@ -773,6 +779,7 @@
                     this.samplesPerSymbol = Math.round(this.sampleRate / baudRate);
                     this.alpha = calculateAlpha(this.baudRate) / 2
                     this.beta = calculateBeta(this.baudRate) / 2
+                    this.gainAlpha = clamp((baudRate / 1200) * 0.01, 0.001, 0.1);
                 }
 
                 process(inputs, outputs, parameters) {
@@ -791,7 +798,11 @@
 
 
                     let newGain = 1 / rms;
-                    this.gain = clamp((this.gain * 0.99 + newGain * 0.01), 1, 1e6);
+                    // if diff > 10dB, set immediate gain
+                    if (Math.abs(this.gain - newGain) > 10) {
+                        this.gain = clamp(newGain, 1, 1e6);
+                    } else
+                        this.gain = clamp(this.gain * (1 - this.gainAlpha) + newGain * this.gainAlpha, 1, 1e6);
 
                     for (let j = 0; j < i.length; ++j) {
                         if (this.count >= 0) {
@@ -880,6 +891,7 @@
                     this.samplesPerSymbol = Math.round(this.sampleRate / baudRate);
                     this.alpha = calculateAlpha(baudRate) / 4
                     this.beta = calculateBeta(baudRate) / 4
+                    this.gainAlpha = clamp((baudRate / 1200) * 0.01, 0.001, 0.1);
                 }
 
                 nearest8psk(sample) {
@@ -911,7 +923,11 @@
                     const rms = Math.sqrt(sum)
 
                     let newGain = 1 / rms;
-                    this.gain = clamp((this.gain * 0.99 + newGain * 0.01), 1, 1e6);
+                    // if diff > 10dB, set immediate gain
+                    if (Math.abs(this.gain - newGain) > 10) {
+                        this.gain = clamp(newGain, 1, 1e6);
+                    } else
+                        this.gain = clamp(this.gain * (1 - this.gainAlpha) + newGain * this.gainAlpha, 1, 1e6);
 
                     for (let j = 0; j < i.length; ++j) {
                         if (this.count >= 0) {
@@ -1850,6 +1866,7 @@
                 for (let i = 0; i < this.baudRate * 0.5; i++) {
                     startSync.push(...[1, 0])
                 }
+                startSync.push(...randomBits(baudRate * 5));
 
 
                 codedArray = startSync.concat(codedArray)
@@ -1907,6 +1924,7 @@
                 for (let i = 0; i < this.baudRate * 0.5; i++) {
                     startSync.push(...[0, 2])
                 }
+                startSync.push(...qpskEncode(randomBits(baudRate * 10)));
 
 
                 codedArray = startSync.concat(codedArray)
@@ -1980,6 +1998,7 @@
                 for (let i = 0; i < this.baudRate * 0.5; i++) {
                     startSync.push(...[0, 4])
                 }
+                startSync.push(...psk8Encode(randomBits(baudRate * 15)));
 
                 codedArray = startSync.concat(codedArray)
                 this.bits = codedArray.length * this.bitsPerSymbol
@@ -2669,24 +2688,32 @@
                 const dec = baudRate >= 200 ? decodeAndVerify(result) : result;//decodeAndVerify(result)
                 // console.log("解码结果:", dec);
                 if (dec > 0) {
-                    if (isRxImage) {
-                        if (dec < 0) imgParser.state = 0;
-                        else if (dec === 2000001) {
-                            isRxImage = false;
-                        } else {
-                            if (dec >= 2000002) dec -= 2;
-                            imgParser.feed(dec)
+
+                    if (dec >= 20000000 && dec <= 20001000) { // Control tokens
+
+                        switch (dec) {
+                            case 20000000: // Start image
+                                startRxImage();
+                                break;
+                            case 20000001: // End image
+                                if (isRxImage) {
+                                    isRxImage = false;
+                                } else {
+                                    console.warn("未开始图像接收");
+                                }
+                                break;
+                            default:
+                                console.warn("未知控制令牌:", dec);
                         }
-                    } else {
-                        if (dec == 2000000) {
-                            startRxImage()
-                        } else {
-                            if (dec >= 2 && dec <= 129) {
-                                receivedChar(VARICODE[dec - 2])
-                            } else {
-                                receivedChar(String.fromCodePoint(dec - 2))
-                            }
-                        }
+                    }
+                    else if (isRxImage) { // Image data
+                        if (dec >= 20001000) {
+                            imgParser.feed(dec - 20001000);
+                        } else imgParser.feed(dec);
+                    } else if (dec >= 2 && dec <= 129) { // Varicode characters
+                        receivedChar(VARICODE[dec - 2]);
+                    } else { // Regular characters
+                        receivedChar(String.fromCodePoint(dec - 2));
                     }
                 }
             })
@@ -3000,9 +3027,12 @@
                 const text = event.target.result;
                 // 简单判断是否为纯文本 (例如检查是否存在二进制数据)
                 if (!isPlainText(text)) {
-                    alert('请选择纯文本文件');
-                    uploadTextFile.value = ''; // 清空文件选择
-                    return;
+                    // 转dataurl
+                    reader.onload = function (e) {
+                        const dataUrl = e.target.result;
+                        document.getElementById('transmit').value = dataUrl;
+                    };
+                    reader.readAsDataURL(file);
                 }
 
                 // 文件验证通过，可以进行后续操作
@@ -3034,11 +3064,11 @@
 
                 if (sample.value != 0) {
                     let meta = sampleMetaToSymbol(sample);
-                    if (meta >= 2000000) meta += 2;
+                    if (meta >= 2000000) meta += 1000;
                     symbolList.push(meta)
 
                     let sampSymbol = sampleToSymbol(sample);
-                    if (sampSymbol >= 2000000) sampSymbol += 2;
+                    if (sampSymbol >= 2000000) sampSymbol += 1000;
                     symbolList.push(sampSymbol)
                 }
             }
