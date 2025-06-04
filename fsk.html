@@ -270,7 +270,7 @@
         }
 
         /* 消息模态框样式 */
-        #message-modal { 
+        #message-modal {
             position: fixed;
             top: 50%;
             left: 50%;
@@ -2513,15 +2513,29 @@
             }
 
             preview() {
+                if (this.data.length === 0) return '(Empty Message)';
+
                 let counter = 0;
-                let preview = []
-                while (counter < 20 && this.data.length > 0) {
-                    let str = this.data.shift();
-                    if (str.length + preview.join('').length > 20) break;
-                    preview.push(str);
-                    counter++;
+                let preview = "";
+                let idx = 0;
+
+                while (idx < this.data.length) { // Corrected loop condition to prevent infinite loops
+                    let str = this.data[idx];
+
+                    if (str != null) {
+                        if (counter + str.length >= 20) {
+                            preview += str.substring(0, 20 - counter);
+                            break; // Exit the loop after reaching the limit
+                        } else {
+                            preview += str;
+                            counter += str.length;
+                        }
+                    }
+
+                    idx++;
                 }
-                return preview.join('');
+
+                return preview;
             }
 
             toJSON() {
