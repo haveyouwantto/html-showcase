@@ -2560,7 +2560,7 @@
             messageList.innerHTML = '';
             messages.forEach((msg, index) => {
                 const li = document.createElement('li');
-                li.textContent = `${index + 1}: ${msg.toString()} (${msg.date.toLocaleTimeString()})`;
+                li.textContent = `${index + 1}: ${msg.toString().substr(0, 20)} (${msg.date.toLocaleTimeString()})`;
                 li.addEventListener('click', () => {
                     messageDate.textContent = `接收时间: ${msg.date.toLocaleString()}`;
                     messageContent.textContent = msg.toString();
@@ -2955,11 +2955,11 @@
             function transmitOrdArray(ordArray, delay = 1) {
                 audioCtx.resume();
                 const mod = new AudioWorkletNode(audioCtx, 'mod')
+                ordArray.unshift(2000002); // Start message token
+                ordArray.push(2000003); // End message token
                 const preparedArray = baudRate >= 200 ? ordArray.map(e => encodeWithParity(e)) : ordArray;
                 const sync = [2, 2, 2, 2, 2, 2, 2, 2];
 
-                preparedArray.unshift(2000002); // Start message token
-                preparedArray.push(2000003); // End message token
                 preparedArray.unshift(...sync);
                 preparedArray.push(...sync);
 
