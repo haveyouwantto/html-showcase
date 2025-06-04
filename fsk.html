@@ -2970,7 +2970,7 @@
                 ordArray.unshift(2000002); // Start message token
                 ordArray.push(2000003); // End message token
                 const preparedArray = baudRate >= 200 ? ordArray.map(e => encodeWithParity(e)) : ordArray;
-                const sync = [2, 2, 2, 2, 2, 2, 2, 2];
+                const sync = [2, 2];
 
                 preparedArray.unshift(...sync);
                 preparedArray.push(...sync);
