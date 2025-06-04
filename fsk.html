@@ -2512,6 +2512,18 @@
                 return this.data.join('');
             }
 
+            preview() {
+                let counter = 0;
+                let preview = []
+                while (counter < 20 && this.data.length > 0) {
+                    let str = this.data.shift();
+                    if (str.length + preview.join('').length > 20) break;
+                    preview.push(str);
+                    counter++;
+                }
+                return preview.join('');
+            }
+
             toJSON() {
                 return {
                     date: this.date.toISOString(),
@@ -2560,7 +2572,7 @@
             messageList.innerHTML = '';
             messages.forEach((msg, index) => {
                 const li = document.createElement('li');
-                li.textContent = `${index + 1}: ${msg.toString().substr(0, 20)} (${msg.date.toLocaleTimeString()})`;
+                li.textContent = `${index + 1}: ${msg.preview()} (${msg.date.toLocaleTimeString()})`;
                 li.addEventListener('click', () => {
                     messageDate.textContent = `接收时间: ${msg.date.toLocaleString()}`;
                     messageContent.textContent = msg.toString();
