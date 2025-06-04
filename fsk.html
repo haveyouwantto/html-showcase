@@ -426,7 +426,7 @@
     <dialog id="message-modal">
         <div id="message-date"></div>
         <textarea id="message-content" disabled></textarea>
-        <button id="copy-message">复制内容</button>
+        <button id="copy-message">复制</button>
         <button id="close-message">关闭</button>
     </dialog>
     <!-- <script src="//cdn.jsdelivr.net/npm/eruda"></script>
@@ -2556,31 +2556,17 @@
         const closeMessageButton = document.getElementById("close-message");
 
         copyMessageButton.addEventListener('click', () => {
-            if (rxMessage) {
-                navigator.clipboard.writeText(messageContent.innerText).then(() => {
-                    alert("内容已复制到剪贴板");
-                }).catch(err => {
-                    console.error("复制失败:", err);
-                });
-            }
+            navigator.clipboard.writeText(messageContent.value).then(() => {
+                alert("内容已复制到剪贴板");
+            }).catch(err => {
+                console.error("复制失败:", err);
+            });
         });
 
         closeMessageButton.addEventListener('click', () => {
             messageModal.close()
         });
 
-
-
-        /*
-        
-    <div id="message-modal">
-        <div id="message-date">
-
-        </div>
-        <div id="message-content"></div>
-        <button id="copy-message">复制内容</button>
-        <button id="close-message">关闭</button>
-    </div>*/
 
         function updateMessageList() {
             messageList.innerHTML = '';
