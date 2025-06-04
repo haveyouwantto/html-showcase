@@ -269,6 +269,55 @@
             font-family: monospace;
         }
 
+        /* 消息模态框样式 */
+        #message-modal { 
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: var(--dark-bg);
+            color: var(--text-primary);
+            border: var(--border-width) solid #2d3746;
+            border-radius: var(--border-radius);
+        }
+
+        /* backdrop */
+        dialog::backdrop {
+            background: rgba(0, 0, 0, 0.8);
+        }
+
+        #message-content {
+            margin-top: 1rem;
+            white-space: pre-wrap;
+            word-break: break-all;
+        }
+
+        #message-date {
+            font-size: 0.9rem;
+            color: var(--text-secondary);
+        }
+
+        #message-list {
+            max-height: 300px;
+            overflow-y: auto;
+            margin-top: 1rem;
+            background: var(--dark-bg);
+            border: var(--border-width) solid #2d3746;
+            border-radius: var(--border-radius);
+            padding: 1rem;
+        }
+
+        #message-list li {
+            margin-bottom: 0.5rem;
+            padding: 0.5rem;
+            border-bottom: var(--border-width) solid #2d3746;
+            cursor: pointer;
+        }
+
+        #message-list li:hover {
+            background: rgba(0, 243, 255, 0.1);
+        }
+
 
         @media (max-width: 768px) {
             .container {
@@ -277,6 +326,10 @@
 
             #constellation {
                 width: 100%;
+            }
+
+            #message-modal {
+                width: 90%;
             }
         }
     </style>
@@ -332,6 +385,7 @@
                 <label for="audio-input">音频输入：</label>
                 <select id="audio-input"></select>
             </div>
+            <div id="message-list"></div>
         </div>
     </div>
     <hr>
@@ -369,6 +423,12 @@
         <canvas id="constellation" width="500" height="500"></canvas>
         <div id="demod-info"></div>
     </div>
+    <dialog id="message-modal">
+        <div id="message-date"></div>
+        <textarea id="message-content" disabled></textarea>
+        <button id="copy-message">复制内容</button>
+        <button id="close-message">关闭</button>
+    </dialog>
     <!-- <script src="//cdn.jsdelivr.net/npm/eruda"></script>
         <script>eruda.init();</script>
         -->
@@ -2437,6 +2497,81 @@
             }
         }
 
+        // Message
+        class Message {
+            constructor() {
+                this.date = new Date();
+                this.data = [];
+            }
+
+            write(str) {
+                this.data.push(str)
+            }
+
+            toString() {
+                return this.data.join('');
+            }
+
+            toJSON() {
+                return {
+                    date: this.date.toISOString(),
+                    data: this.data
+                };
+            }
+        }
+
+        const messages = [];
+        let rxMessage = null;
+        const messageList = document.getElementById("message-list");
+        const messageModal = document.getElementById("message-modal");
+        const messageDate = document.getElementById("message-date");
+        const messageContent = document.getElementById("message-content");
+        const copyMessageButton = document.getElementById("copy-message");
+        const closeMessageButton = document.getElementById("close-message");
+
+        copyMessageButton.addEventListener('click', () => {
+            if (rxMessage) {
+                navigator.clipboard.writeText(messageContent.innerText).then(() => {
+                    alert("内容已复制到剪贴板");
+                }).catch(err => {
+                    console.error("复制失败:", err);
+                });
+            }
+        });
+
+        closeMessageButton.addEventListener('click', () => {
+            messageModal.close()
+        });
+
+
+
+        /*
+        
+    <div id="message-modal">
+        <div id="message-date">
+
+        </div>
+        <div id="message-content"></div>
+        <button id="copy-message">复制内容</button>
+        <button id="close-message">关闭</button>
+    </div>*/
+
+        function updateMessageList() {
+            messageList.innerHTML = '';
+            messages.forEach((msg, index) => {
+                const li = document.createElement('li');
+                li.textContent = `${index + 1}: ${msg.toString()} (${msg.date.toLocaleTimeString()})`;
+                li.addEventListener('click', () => {
+                    messageDate.textContent = `接收时间: ${msg.date.toLocaleString()}`;
+                    messageContent.textContent = msg.toString();
+                    messageModal.showModal()
+                });
+                messageList.appendChild(li);
+            });
+        }
+
+
+
         function isValidSample(sample) {
             if (sample.idx === 0) {
                 if (sample.type === 'Y') {
@@ -2686,34 +2821,50 @@
 
             const decoder = new FibonacciDecoder(result => {
                 const dec = baudRate >= 200 ? decodeAndVerify(result) : result;//decodeAndVerify(result)
-                // console.log("解码结果:", dec);
+                console.log("解码结果:", dec);
                 if (dec > 0) {
-
-                    if (dec >= 20000000 && dec <= 20001000) { // Control tokens
-
+                    if (dec >= 2000000 && dec <= 2001000) { // Control tokens
+                        console.log("控制令牌:", dec);
                         switch (dec) {
-                            case 20000000: // Start image
+                            case 2000000: // Start image
                                 startRxImage();
                                 break;
-                            case 20000001: // End image
+                            case 2000001: // End image
                                 if (isRxImage) {
                                     isRxImage = false;
                                 } else {
                                     console.warn("未开始图像接收");
                                 }
                                 break;
+                            case 2000002: // Start new message
+                                rxMessage = new Message();
+                                messages.push(rxMessage);
+                                updateMessageList();
+                                console.log("开始新消息");
+                                break;
+                            case 2000003: // End message
+                                rxMessage = null;
+                                updateMessageList();
+                                break;
+
                             default:
                                 console.warn("未知控制令牌:", dec);
                         }
                     }
                     else if (isRxImage) { // Image data
-                        if (dec >= 20001000) {
-                            imgParser.feed(dec - 20001000);
+                        if (dec >= 2001000) {
+                            imgParser.feed(dec - 2001000);
                         } else imgParser.feed(dec);
                     } else if (dec >= 2 && dec <= 129) { // Varicode characters
                         receivedChar(VARICODE[dec - 2]);
+                        if (rxMessage) {
+                            rxMessage.write(VARICODE[dec - 2]);
+                        }
                     } else { // Regular characters
                         receivedChar(String.fromCodePoint(dec - 2));
+                        if (rxMessage) {
+                            rxMessage.write(String.fromCodePoint(dec - 2));
+                        }
                     }
                 }
             })
@@ -2807,8 +2958,12 @@
                 const preparedArray = baudRate >= 200 ? ordArray.map(e => encodeWithParity(e)) : ordArray;
                 const sync = [2, 2, 2, 2, 2, 2, 2, 2];
 
+                preparedArray.unshift(2000002); // Start message token
+                preparedArray.push(2000003); // End message token
                 preparedArray.unshift(...sync);
                 preparedArray.push(...sync);
+
+                console.log("发送数据:", preparedArray);
 
                 const bits = fibonacciEncoding(preparedArray);
                 const baudRateFinal = baudRate;
