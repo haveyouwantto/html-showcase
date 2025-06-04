@@ -506,11 +506,11 @@
             }
 
             function calculateAlpha(bd) {
-                return Math.min(0.1, 1.6 / bd);
+                return 0.0128//Math.min(0.1, 1.6 / bd);
             }
 
             function calculateBeta(bd) {
-                return Math.min(0.1, 0.012 / bd);
+                return 0.00096//Math.min(0.1, 0.12 / bd);
             }
 
             function clamp(v, min, max) {
