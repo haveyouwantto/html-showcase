@@ -346,7 +346,7 @@
                 <button id="start-tx">发送</button>
                 <button id="clearTx">清空</button>
                 <button id="uploadText">上传</button>
-                <input type="file" id="uploadTextFile" accept="text/*" hidden>
+                <input type="file" id="uploadTextFile" hidden>
             </div>
             <details>
                 <summary>图片发送</summary>
@@ -3183,9 +3183,9 @@
             }
 
             // 检查文件大小
-            const maxSize = 256 * 1024; // 256KB
+            const maxSize = 512 * 1024; // 256KB
             if (file.size > maxSize) {
-                alert('文件大小不能超过 256KB');
+                alert('文件大小不能超过 512KB');
                 uploadTextFile.value = ''; // 清空文件选择
                 return;
             }
