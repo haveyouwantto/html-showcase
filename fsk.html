@@ -760,7 +760,7 @@
                     let newGain = 1 / rms;
 
                     // if diff > 10dB, set immediate gain
-                    if (Math.abs(this.gain - newGain) > 10) {
+                    if (Math.abs(this.gain - newGain) > 100) {
                         this.gain = clamp(newGain, 1, 1e6);
                     } else
                         this.gain = clamp(this.gain * (1 - this.gainAlpha) + newGain * this.gainAlpha, 1, 1e6);
@@ -859,7 +859,7 @@
 
                     let newGain = 1 / rms;
                     // if diff > 10dB, set immediate gain
-                    if (Math.abs(this.gain - newGain) > 10) {
+                    if (Math.abs(this.gain - newGain) > 100) {
                         this.gain = clamp(newGain, 1, 1e6);
                     } else
                         this.gain = clamp(this.gain * (1 - this.gainAlpha) + newGain * this.gainAlpha, 1, 1e6);
@@ -984,7 +984,7 @@
 
                     let newGain = 1 / rms;
                     // if diff > 10dB, set immediate gain
-                    if (Math.abs(this.gain - newGain) > 10) {
+                    if (Math.abs(this.gain - newGain) > 100) {
                         this.gain = clamp(newGain, 1, 1e6);
                     } else
                         this.gain = clamp(this.gain * (1 - this.gainAlpha) + newGain * this.gainAlpha, 1, 1e6);
