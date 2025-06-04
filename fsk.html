@@ -506,11 +506,11 @@
             }
 
             function calculateAlpha(bd) {
-                return Math.min(0.1, 16 / bd);
+                return Math.min(0.1, 1.6 / bd);
             }
 
             function calculateBeta(bd) {
-                return Math.min(0.1, 12 / bd);
+                return Math.min(0.1, 0.012 / bd);
             }
 
             function clamp(v, min, max) {
@@ -794,7 +794,9 @@
                             this.freq += this.beta * error;
 
                             // Clamp freq
-                            this.freq = clamp(this.freq, -Math.PI * 0.5, Math.PI * 0.5);
+                            let radianPerHz = Math.PI * 2 / this.baudRate;
+                            let maxRadian = 4 * radianPerHz;
+                            this.freq = clamp(this.freq, -maxRadian, maxRadian);
 
                             this.phase += this.freq + this.alpha * error;
                             if (this.phase > 2 * Math.PI) this.phase -= 2 * Math.PI;
