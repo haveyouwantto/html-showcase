@@ -1,0 +1,532 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Data URL净化工具</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+
+        body {
+            background: linear-gradient(135deg, #1a2980, #26d0ce);
+            min-height: 100vh;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            color: #333;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 1000px;
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 20px;
+            box-shadow: 0 15px 40px rgba(0, 0, 0, 0.25);
+            overflow: hidden;
+            margin: 40px 0;
+        }
+
+        header {
+            background: linear-gradient(to right, #2c3e50, #4a6491);
+            color: white;
+            padding: 30px;
+            text-align: center;
+            position: relative;
+            overflow: hidden;
+        }
+
+        header::before {
+            content: "";
+            position: absolute;
+            top: -50%;
+            left: -50%;
+            width: 200%;
+            height: 200%;
+            background: radial-gradient(circle, rgba(255,255,255,0.1) 0%, rgba(255,255,255,0) 70%);
+        }
+
+        h1 {
+            font-size: 2.8rem;
+            margin-bottom: 10px;
+            position: relative;
+            text-shadow: 0 2px 4px rgba(0,0,0,0.3);
+        }
+
+        .subtitle {
+            font-size: 1.2rem;
+            opacity: 0.9;
+            max-width: 700px;
+            margin: 0 auto;
+            position: relative;
+        }
+
+        .content {
+            display: flex;
+            padding: 30px;
+            gap: 30px;
+        }
+
+        .main-content {
+            flex: 3;
+        }
+
+        .info-panel {
+            flex: 2;
+            background: #f0f7ff;
+            border-radius: 15px;
+            padding: 25px;
+            border-left: 5px solid #3498db;
+        }
+
+        .input-group {
+            margin-bottom: 25px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 12px;
+            font-weight: 600;
+            color: #2c3e50;
+            font-size: 1.1rem;
+        }
+
+        textarea {
+            width: 100%;
+            height: 180px;
+            padding: 18px;
+            border: 2px solid #ddd;
+            border-radius: 12px;
+            font-family: monospace;
+            font-size: 0.95rem;
+            resize: vertical;
+            transition: all 0.3s;
+            background: #f9f9f9;
+        }
+
+        textarea:focus {
+            outline: none;
+            border-color: #3498db;
+            box-shadow: 0 0 0 4px rgba(52, 152, 219, 0.25);
+        }
+
+        .button-group {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 25px;
+            flex-wrap: wrap;
+        }
+
+        .btn {
+            flex: 1;
+            min-width: 120px;
+            padding: 16px 25px;
+            border: none;
+            border-radius: 10px;
+            font-size: 1.1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+        }
+
+        .btn-primary {
+            background: linear-gradient(to right, #2ecc71, #27ae60);
+            color: white;
+            box-shadow: 0 4px 12px rgba(46, 204, 113, 0.3);
+        }
+
+        .btn-primary:hover {
+            background: linear-gradient(to right, #27ae60, #219653);
+            transform: translateY(-3px);
+            box-shadow: 0 6px 15px rgba(39, 174, 96, 0.4);
+        }
+
+        .btn-secondary {
+            background: linear-gradient(to right, #e74c3c, #c0392b);
+            color: white;
+            box-shadow: 0 4px 12px rgba(231, 76, 60, 0.3);
+        }
+
+        .btn-secondary:hover {
+            background: linear-gradient(to right, #c0392b, #a93226);
+            transform: translateY(-3px);
+            box-shadow: 0 6px 15px rgba(192, 57, 43, 0.4);
+        }
+
+        .result-group {
+            margin-top: 30px;
+            position: relative;
+        }
+
+        .result-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+
+        .result-box {
+            background: #f8f9fa;
+            border: 2px solid #e9ecef;
+            border-radius: 12px;
+            padding: 25px;
+            min-height: 150px;
+            font-family: monospace;
+            white-space: pre-wrap;
+            word-break: break-all;
+            position: relative;
+            overflow: auto;
+            max-height: 300px;
+        }
+
+        .result-label {
+            font-weight: 700;
+            color: #3498db;
+            font-size: 1.2rem;
+        }
+
+        .copy-btn {
+            background: linear-gradient(to right, #3498db, #2980b9);
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            transition: all 0.3s;
+        }
+
+        .copy-btn:hover {
+            background: linear-gradient(to right, #2980b9, #2573a7);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 10px rgba(52, 152, 219, 0.3);
+        }
+
+        .status {
+            padding: 15px;
+            border-radius: 10px;
+            margin-top: 20px;
+            display: none;
+            font-weight: 500;
+        }
+
+        .error {
+            background: #ffebee;
+            color: #c62828;
+            border: 1px solid #ffcdd2;
+        }
+
+        .success {
+            background: #e8f5e9;
+            color: #2e7d32;
+            border: 1px solid #c8e6c9;
+        }
+
+        .warning {
+            background: #fff8e1;
+            color: #f57f17;
+            border: 1px solid #ffecb3;
+        }
+
+        .info-panel h3 {
+            color: #2c3e50;
+            font-size: 1.4rem;
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #3498db;
+        }
+
+        .info-list {
+            list-style-type: none;
+        }
+
+        .info-list li {
+            padding: 12px 0;
+            border-bottom: 1px dashed #d1e7ff;
+            display: flex;
+            align-items: flex-start;
+        }
+
+        .info-list li:last-child {
+            border-bottom: none;
+        }
+
+        .info-list i {
+            color: #3498db;
+            margin-right: 12px;
+            font-size: 1.2rem;
+            min-width: 24px;
+            margin-top: 3px;
+        }
+
+        .example {
+            background: #e3f2fd;
+            padding: 15px;
+            border-radius: 10px;
+            margin-top: 20px;
+            font-size: 0.9rem;
+        }
+
+        .example-title {
+            font-weight: 700;
+            color: #0d47a1;
+            margin-bottom: 8px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        footer {
+            text-align: center;
+            color: rgba(255, 255, 255, 0.85);
+            margin-top: 20px;
+            font-size: 1rem;
+            padding: 20px;
+        }
+
+        /* 响应式设计 */
+        @media (max-width: 900px) {
+            .content {
+                flex-direction: column;
+            }
+            
+            .info-panel {
+                order: -1;
+                margin-bottom: 30px;
+            }
+        }
+
+        @media (max-width: 600px) {
+            header {
+                padding: 20px 15px;
+            }
+            
+            h1 {
+                font-size: 2.2rem;
+            }
+            
+            .subtitle {
+                font-size: 1rem;
+            }
+            
+            .content {
+                padding: 20px;
+            }
+            
+            .btn {
+                padding: 14px 20px;
+                font-size: 1rem;
+                flex: 100%;
+            }
+            
+            .button-group {
+                gap: 10px;
+            }
+        }
+
+        /* 动画效果 */
+        @keyframes pulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+            100% { transform: scale(1); }
+        }
+        
+        .pulse {
+            animation: pulse 0.5s ease;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1><i class="fas fa-filter"></i> Data URL 净化工具</h1>
+            <p class="subtitle">验证Data URL格式并移除base64部分中的无效字符，一键复制净化结果</p>
+        </header>
+        
+        <div class="content">
+            <div class="main-content">
+                <div class="input-group">
+                    <label for="dataurl-input"><i class="fas fa-pen"></i> 输入Data URL:</label>
+                    <textarea id="dataurl-input" placeholder="例如: data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAUAAAAFCAYAAACNbyblAAAAHElEQVQI12P4//8/w38GIAXDIBKE0DHxgljNBAAO9TXL0Y4OHwAAAABJRU5ErkJggg==">data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMDAlIiBoZWlnaHQ9IjEwMCUiPjxyZWN0IHdpZHRoPSIxMDAlIiBoZWlnaHQ9IjEwMCUiIGZpbGw9IiMzNDk4ZGIiIC8+PHRleHQgeD0iNTAlIiB5PSI1MCUiIGZvbnQtZmFtaWx5PSJBcmlhbCIgZm9udC1zaXplPSIyNCIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZmlsbD0id2hpdGUiPkRhdGEgVVJMIFRlc3Q8L3RleHQ+PC9zdmc+</textarea>
+                </div>
+                
+                <div class="button-group">
+                    <button class="btn btn-primary" id="sanitize-btn">
+                        <i class="fas fa-filter"></i> 净化Data URL
+                    </button>
+                    <button class="btn btn-secondary" id="clear-btn">
+                        <i class="fas fa-broom"></i> 清空输入
+                    </button>
+                </div>
+                
+                <div id="status" class="status"></div>
+                
+                <div class="result-group">
+                    <div class="result-header">
+                        <div class="result-label"><i class="fas fa-check-circle"></i> 净化结果:</div>
+                        <button class="copy-btn" id="copy-btn">
+                            <i class="fas fa-copy"></i> 复制结果
+                        </button>
+                    </div>
+                    <div class="result-box" id="result-output"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <footer>
+        <p>Data URL净化工具</p>
+    </footer>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const input = document.getElementById('dataurl-input');
+            const output = document.getElementById('result-output');
+            const sanitizeBtn = document.getElementById('sanitize-btn');
+            const clearBtn = document.getElementById('clear-btn');
+            const copyBtn = document.getElementById('copy-btn');
+            const statusDiv = document.getElementById('status');
+            
+            // 净化Data URL函数
+            function sanitizeDataURL(dataurl) {
+                // 重置状态显示
+                statusDiv.style.display = 'none';
+                
+                // 验证是否为空
+                if (!dataurl.trim()) {
+                    showStatus('请输入Data URL', 'error');
+                    return null;
+                }
+                
+                // 验证是否以"data:"开头
+                if (!dataurl.toLowerCase().startsWith('data:')) {
+                    showStatus('错误：Data URL必须以"data:"开头', 'error');
+                    return null;
+                }
+                
+                // 查找第一个逗号的位置（分隔头部和数据部分）
+                const commaIndex = dataurl.indexOf(',');
+                if (commaIndex === -1) {
+                    showStatus('错误：Data URL中缺少逗号分隔符', 'error');
+                    return null;
+                }
+                
+                // 分割头部和数据部分
+                const header = dataurl.substring(0, commaIndex + 1);
+                const dataPart = dataurl.substring(commaIndex + 1);
+                
+                // 验证头部是否包含MIME类型
+                const mimePart = header.substring(5, header.length - 1);
+                if (!mimePart) {
+                    showStatus('警告：未指定MIME类型，使用默认值', 'warning');
+                }
+                
+                // 检查是否包含base64标记
+                const isBase64 = header.toLowerCase().includes(';base64');
+                
+                if (isBase64) {
+                    // 净化base64数据部分
+                    let cleanData = dataPart.replace(/[^A-Za-z0-9+/=]/g, '');
+                    
+                    // 处理填充字符（=）的位置
+                    // 找到最后一个非=字符的位置
+                    let lastNonEqual = -1;
+                    for (let i = cleanData.length - 1; i >= 0; i--) {
+                        if (cleanData[i] !== '=') {
+                            lastNonEqual = i;
+                            break;
+                        }
+                    }
+                    
+                    // 如果找到非=字符
+                    if (lastNonEqual !== -1) {
+                        // 提取非=部分并移除其中的所有=
+                        const mainPart = cleanData.substring(0, lastNonEqual + 1).replace(/=/g, '');
+                        // 提取末尾的=部分（最多保留2个）
+                        const padding = cleanData.substring(lastNonEqual + 1);
+                        const cleanPadding = padding.substring(0, Math.min(padding.length, 2));
+                        
+                        cleanData = mainPart + cleanPadding;
+                    } else {
+                        // 如果整个字符串都是=，则保留最多2个
+                        cleanData = cleanData.substring(0, Math.min(cleanData.length, 2));
+                    }
+                    
+                    showStatus('成功：Data URL已净化，base64部分无效字符已移除', 'success');
+                    return header + cleanData;
+                } else {
+                    // 非base64的Data URL，不做处理
+                    showStatus('提示：非base64格式的Data URL，已返回原始内容', 'warning');
+                    return dataurl;
+                }
+            }
+            
+            // 显示状态信息
+            function showStatus(message, type) {
+                statusDiv.textContent = message;
+                statusDiv.className = 'status ' + type;
+                statusDiv.style.display = 'block';
+                
+                // 3秒后自动隐藏
+                setTimeout(() => {
+                    statusDiv.style.display = 'none';
+                }, 5000);
+            }
+            
+            // 复制结果到剪贴板
+            function copyToClipboard(text) {
+                navigator.clipboard.writeText(text).then(() => {
+                    showStatus('净化结果已复制到剪贴板！', 'success');
+                    copyBtn.innerHTML = '<i class="fas fa-check"></i> 已复制';
+                    copyBtn.classList.add('pulse');
+                    
+                    setTimeout(() => {
+                        copyBtn.innerHTML = '<i class="fas fa-copy"></i> 复制结果';
+                        copyBtn.classList.remove('pulse');
+                    }, 2000);
+                }).catch(err => {
+                    showStatus('复制失败，请手动复制结果', 'error');
+                    console.error('复制失败:', err);
+                });
+            }
+            
+            // 事件监听
+            sanitizeBtn.addEventListener('click', function() {
+                const result = sanitizeDataURL(input.value);
+                if (result) {
+                    output.textContent = result;
+                } else {
+                    output.textContent = '';
+                }
+            });
+            
+            clearBtn.addEventListener('click', function() {
+                input.value = '';
+                output.textContent = '';
+                statusDiv.style.display = 'none';
+            });
+            
+            copyBtn.addEventListener('click', function() {
+                if (output.textContent.trim()) {
+                    copyToClipboard(output.textContent);
+                } else {
+                    showStatus('没有可复制的内容，请先净化Data URL', 'warning');
+                }
+            });
+        });
+    </script>
+</body>
+</html>
