@@ -2821,7 +2821,7 @@
 
             const decoder = new FibonacciDecoder(result => {
                 const dec = baudRate >= 200 ? decodeAndVerify(result) : result;//decodeAndVerify(result)
-                console.log("解码结果:", dec);
+                // console.log("解码结果:", dec);
                 if (dec > 0) {
                     if (dec >= 2000000 && dec <= 2001000) { // Control tokens
                         console.log("控制令牌:", dec);
