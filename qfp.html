@@ -1166,6 +1166,11 @@
 
                 return [L, R, this.ptr - start]; // 返回重建的左右声道数据和帧大小
             }
+            
+            reset() {
+                this.ptr = 0;
+                this.read = 0;
+            }
         }
 
         function qfpFactory(arrayBuffer) {
