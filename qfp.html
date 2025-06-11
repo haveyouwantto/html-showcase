@@ -547,6 +547,241 @@
         }
 
 
+        /* QFP2 Helper function */
+        function cmul_ip(aRe, aIm, bRe, bIm) {
+            for (let i = 0; i < aRe.length; i++) {
+                const ar = aRe[i], ai = aIm[i], br = bRe[i], bi = bIm[i];
+                aRe[i] = ar * br - ai * bi;
+                aIm[i] = ar * bi + ai * br;
+            }
+        }
+
+        function cscale_ip(aRe, aIm, s) {
+            for (let i = 0; i < aRe.length; i++) {
+                aRe[i] *= s;
+                aIm[i] *= s;
+            }
+        }
+
+        function cexp_negj_twopi_tplus_into(outRe, outIm, tArr, N) {
+            for (let i = 0; i < tArr.length; i++) {
+                const angle = -2 * Math.PI * (tArr[i] + 1 / 8) / N;
+                outRe[i] = Math.cos(angle);
+                outIm[i] = Math.sin(angle);
+            }
+        }
+
+        function mdct(x) {
+            const N = x.length;
+            if (N % 4 !== 0) throw new Error("MDCT only for N%4==0");
+            const M = N >> 1;
+            const N4 = N >> 2;
+
+            const rot = new Float64Array(N);
+            for (let i = 0; i < N; i++) {
+                rot[i] = x[(i + N4) % N];
+            }
+            for (let i = 0; i < N4; i++) {
+                rot[i] = -rot[i];
+            }
+
+            const t = new Array(N4);
+            for (let i = 0; i < N4; i++) t[i] = i;
+
+            const wRe = new Float64Array(N4), wIm = new Float64Array(N4);
+            cexp_negj_twopi_tplus_into(wRe, wIm, t, N);
+
+            const cRe = new Float64Array(N4), cIm = new Float64Array(N4);
+            for (let i = 0; i < N4; i++) {
+                cRe[i] = rot[2 * i] - rot[N - 2 * i - 1];
+                cIm[i] = -(rot[M + 2 * i] - rot[M - 2 * i - 1]);
+            }
+
+            // c *= w * 0.5
+            cmul_ip(cRe, cIm, wRe, wIm);
+            cscale_ip(cRe, cIm, 0.5);
+
+            miniFFT(cRe, cIm);
+
+            // output = (2 / sqrt(N)) * w * FFT(c)
+            cmul_ip(cRe, cIm, wRe, wIm);
+            cscale_ip(cRe, cIm, 2 / Math.sqrt(N));
+
+            const y = new Float64Array(M);
+            for (let i = 0; i < N4; i++) {
+                y[2 * i] = cRe[i];
+                y[M - 2 * i - 1] = -cIm[i];
+            }
+
+            return y;
+        }
+
+        function imdct(x) {
+            const N = x.length;
+            if (N % 2 !== 0) throw new Error("iMDCT only for N even");
+            const M = N >> 1;
+            const N2 = N << 1;
+
+            const t = new Array(M);
+            for (let i = 0; i < M; i++) t[i] = i;
+
+            const wRe = new Float64Array(M), wIm = new Float64Array(M);
+            cexp_negj_twopi_tplus_into(wRe, wIm, t, N2);
+
+            const cRe = new Float64Array(M), cIm = new Float64Array(M);
+            for (let i = 0; i < M; i++) {
+                cRe[i] = x[2 * i];
+                cIm[i] = x[N - 2 * i - 1];
+            }
+
+            // c = 0.5 * w * c
+            cmul_ip(cRe, cIm, wRe, wIm);
+            cscale_ip(cRe, cIm, 0.5);
+
+            miniFFT(cRe, cIm);
+
+            // output = (8 / sqrt(N2)) * w * FFT(c)
+            cmul_ip(cRe, cIm, wRe, wIm);
+            cscale_ip(cRe, cIm, 8 / Math.sqrt(N2));
+
+            const rot = new Float64Array(N2);
+            for (let i = 0; i < M; i++) {
+                rot[2 * i] = cRe[i];
+                rot[N + 2 * i] = cIm[i];
+            }
+
+            for (let i = 1; i < N2; i += 2) {
+                rot[i] = -rot[N2 - i - 1];
+            }
+
+            const y = new Float64Array(N2);
+            for (let i = 0; i < 3 * M; i++) {
+                y[i] = rot[i + M];
+            }
+            for (let i = 3 * M; i < N2; i++) {
+                y[i] = -rot[i - 3 * M];
+            }
+
+            return y;
+        }
+
+        function quantizeCompress(array) {
+            if (!(array instanceof Float32Array)) {
+                array = new Float32Array(array);
+            }
+            if (array.length === 0) return new Uint8Array(0);
+
+            const result = [];
+
+            // Step 1: 量化
+            for (let i = 0; i < array.length; i++) {
+                const amp = array[i];
+                if (amp === 0.0) {
+                    result.push(0);
+                } else {
+                    let logVal = 20 * Math.log10(Math.abs(amp));
+                    let val;
+                    if (logVal < -127) {
+                        val = 0;
+                    } else {
+                        val = Math.sign(amp) * Math.round(127 + logVal);
+                        val = Math.max(-127, Math.min(127, val));
+                    }
+                    result.push(val);
+                }
+            }
+
+            // Step 2: 去除末尾 0
+            while (result.length && result[result.length - 1] === 0) {
+                result.pop();
+            }
+
+            // Step 3: RLE 压缩
+            const compressed = [];
+            let i = 0;
+            while (i < result.length) {
+                if (result[i] !== 0) {
+                    compressed.push(result[i]);
+                    i++;
+                } else {
+                    let zeroStart = i;
+                    while (i < result.length && result[i] === 0) {
+                        i++;
+                    }
+                    const zeroCount = i - zeroStart;
+
+                    if (zeroCount >= 3) {
+                        compressed.push(-128); // RLE 标志位
+                        let count = zeroCount;
+                        while (true) {
+                            let byte = count & 0x7F;
+                            count >>= 7;
+                            if (count) {
+                                compressed.push(byte | 0x80);
+                            } else {
+                                compressed.push(byte);
+                                break;
+                            }
+                        }
+                    } else {
+                        for (let z = 0; z < zeroCount; z++) {
+                            compressed.push(0);
+                        }
+                    }
+                }
+            }
+
+            // 转成 Int8Array
+            const buffer = new Int8Array(compressed);
+            return new Uint8Array(buffer.buffer);
+        }
+
+
+        function decompressQuantized(data, targetLen) {
+            const int8data = new Int8Array(data.buffer);
+            const result = new Int8Array(targetLen);
+
+            let i = 0, j = 0;
+            while (i < int8data.length && j < targetLen) {
+                const val = int8data[i++];
+                if (val !== -128) {
+                    result[j++] = val;
+                } else {
+                    // 解码 LEB128
+                    let shift = 0;
+                    let count = 0;
+                    while (true) {
+                        if (i >= int8data.length) throw new Error("Unexpected end of RLE stream");
+                        const byte = int8data[i++];
+                        count |= (byte & 0x7F) << shift;
+                        if ((byte & 0x80) === 0) break;
+                        shift += 7;
+                    }
+                    if (j + count > targetLen) {
+                        throw new Error("Decompressed result exceeds target length");
+                    }
+                    for (let k = 0; k < count; k++) {
+                        result[j++] = 0;
+                    }
+                }
+            }
+
+            // 反量化：int8 → float32
+            const out = new Float32Array(targetLen);
+            for (let k = 0; k < targetLen; k++) {
+                const val = result[k];
+                if (val === 0) {
+                    out[k] = 0.0;
+                } else {
+                    const sign = val < 0 ? -1.0 : 1.0;
+                    out[k] = sign * Math.pow(10, (Math.abs(val) - 127) / 20);
+                }
+            }
+
+            return out;
+        }
+
+
         class QFPEncoder {
             constructor(audioBuffer, qp) {
                 this.buffer = audioBuffer; // 音频数据
@@ -751,6 +986,153 @@
             }
         }
 
+        class QFP2Decoder {
+            constructor(arrayBuffer) {
+                this.buffer = arrayBuffer; // 使用输入的原始压缩数据
+                this.view = new DataView(this.buffer);
+                this.ptr = 0; // 指针位置
+                this.read = 0; // 已读取帧数
+                this.readHeader(); // 读取文件头信息
+
+                // 解压 gzipped 数据
+                this.decompressedData = pako.inflate(arrayBuffer.slice(21)); // 跳过文件头
+                this.decompressedView = new DataView(this.decompressedData.buffer); // 创建解压数据的 DataView
+
+                this.compressRatio = this.buffer.byteLength / this.decompressedData.buffer.byteLength; // 计算压缩比
+
+                // this.generatePos(); // 可选：预生成帧位置表
+            }
+
+            readHeader() {
+                let magic = new TextDecoder('utf-8').decode(this.buffer.slice(0, 4)); // 读取文件标识符
+                console.log("magic: " + magic);
+                if (magic !== 'QFPA') throw new Error("magic not match"); // 检查文件标识符是否匹配
+
+                // 读取版本、采样率、窗口大小等元信息
+                this.version = this.view.getUint8(4, true); // 版本号
+                this.sampleRate = this.view.getUint32(5, true); // 采样率
+                this.winSize = this.view.getUint32(9, true); // 窗口大小
+                this.numWindows = this.view.getUint32(13, true); // 总窗口数
+                this.groupSize = this.view.getUint32(17, true); // 组大小
+                this.hopSize = this.winSize / 2; // 步长大小，默认为窗口大小的一半
+
+                console.log("version: " + this.version);
+                console.log("sample rate: " + this.sampleRate);
+                console.log("win size:" + this.winSize);
+                console.log("num win:" + this.numWindows);
+                console.log("group size:" + this.groupSize);
+
+                // 计算音频总时长
+                this.duration = this.numWindows * (this.hopSize / this.sampleRate);
+
+                this.constructBuffer = [
+                    new Float32Array(this.winSize + this.hopSize),
+                    new Float32Array(this.winSize + this.hopSize) // 用于存储解码后的音频数据
+                ]
+            }
+
+            readFrame() {
+                if (this.read >= this.numWindows) throw new Error("No more frames to read"); // 检查是否还有帧可读
+
+                for (let ch = 0; ch < 2; ch++) {
+                    const mdctLength = this.decompressedView.getUint16(this.ptr, true); // 读取 MDCT 数据长度
+                    this.ptr += 2; // 移动指针
+                    let mdctDataRaw = this.decompressedData.slice(this.ptr, this.ptr + mdctLength); // 读取 MDCT 数据
+                    let mdctData = decompressQuantized(mdctDataRaw, this.hopSize); // 解压量化的 MDCT 数据
+                    let numOfGroups = Math.floor(mdctData.length / this.groupSize); // 计算组数
+
+                    this.ptr += mdctLength; // 移动指针
+                    const ampLength = this.decompressedView.getUint16(this.ptr, true); // 读取幅度数据长度
+                    this.ptr += 2; // 移动指针
+                    let ampDataRaw = this.decompressedData.slice(this.ptr, this.ptr + ampLength); // 读取幅度数据
+                    let ampData = decompressQuantized(ampDataRaw, numOfGroups); // 解压量化的幅度数据
+                    this.ptr += ampLength; // 移动指针
+
+                    //
+                    const ampLoss = new Float32Array(numOfGroups + 2); // 创建幅度损失数组
+                    for (let i = 0; i < numOfGroups; i++) {
+                        // 计算每组的响度
+                        const group = mdctData.slice(i * this.groupSize, (i + 1) * this.groupSize);
+                        if (group.length < this.groupSize) break; // 如果组不完整则跳出循环
+                        const groupAmp = Math.sqrt(group.reduce((sum, val) => sum + val * val, 0)); // 计算组的响度
+                        const recordedAmp = ampData[i] || 0.0; // 获取记录的响度
+                        ampLoss[i + 1] = recordedAmp - groupAmp; // 计算损失
+                    }
+                    ampLoss[0] = ampLoss[numOfGroups + 1] = 0; // 边界情况处理
+
+                    // 插值计算幅度损失
+                    const ampLossInterp = new Float32Array(mdctData.length); // 创建插值数组
+
+                    for (let i = 0; i < mdctData.length; i++) {
+                        const xOld = (i / mdctData.length) * (numOfGroups + 1); // 计算旧的 x 坐标
+                        const groupIndex = Math.floor(xOld);
+                        const frac = xOld - groupIndex; // 小数部分
+
+                        if (groupIndex < numOfGroups) {
+                            ampLossInterp[i] = ampLoss[groupIndex] * (1 - frac) + ampLoss[groupIndex + 1] * frac; // 线性插值
+                        } else {
+                            ampLossInterp[i] = ampLoss[numOfGroups]; // 边界情况
+                        }
+                    }
+
+                    // 根据插值增加噪声
+                    const noise = new Float32Array(mdctData.length);
+                    for (let i = 0; i < mdctData.length; i++) {
+                        noise[i] = Math.random() * ampLossInterp[i]; // 生成随机噪声
+                    }
+
+                    mdctData = mdctData.map((val, idx) => val + noise[idx]); // 添加噪声到 MDCT 数据
+                    
+                    const reconCh = imdct(mdctData); // 逆变换得到重建的音频数据
+
+                    // 将重建的音频数据存储到构造缓冲区
+                    this.constructBuffer[ch].set(reconCh, this.hopSize); // 将重建数据放入对应的声道缓冲区
+
+                }
+
+                this.read++; // 更新已读取帧数
+
+                // 计算 L 和 R 声道
+                const L = new Float32Array(this.hopSize);
+                const R = new Float32Array(this.hopSize);
+                for (let i = 0; i < this.hopSize; i++) {
+                    L[i] = (this.constructBuffer[0][i] + this.constructBuffer[1][i]) / 2; // 左声道
+                    R[i] = (this.constructBuffer[0][i] - this.constructBuffer[1][i]) / 2; // 右声道
+                }
+
+                // 前进缓冲区
+                for (let ch = 0; ch < 2; ch++) {
+                    for (let i = 0; i < this.hopSize; i++) {
+                        this.constructBuffer[ch][i] = this.constructBuffer[ch][i + this.hopSize]; // 向前移动缓冲区
+                        this.constructBuffer[ch][i + this.winSize] = 0; // 腾出空间填充0
+                    }
+                }
+
+                return [L, R, this.winSize]; // 返回重建的左右声道数据和窗口大小
+            }
+        }
+
+        function qfpFactory(arrayBuffer) {
+            if (!(arrayBuffer instanceof ArrayBuffer)) {
+                throw new Error("Input must be an ArrayBuffer.");
+            }
+
+            // 检查文件版本
+            const magic = new TextDecoder('utf-8').decode(arrayBuffer.slice(0, 4));
+            if (magic !== 'QFPA') {
+                throw new Error("Invalid QFP file format.");
+            }
+
+            const version = new DataView(arrayBuffer).getUint8(4, true);
+            if (version === 1) {
+                return new QFPDecoder(arrayBuffer); // 返回 QFP1 解码器实例
+            } else if (version === 2) {
+                return new QFP2Decoder(arrayBuffer); // 返回 QFP2 解码器实例
+            } else {
+                throw new Error("Unsupported QFP version: " + version);
+            }
+        }
+
 
         class QFPPlayer {
             /**
@@ -881,7 +1263,7 @@
                 try {
                     const arrayBuffer = event.target.result; // 获取读取结果
 
-                    let qfp = new QFPDecoder(arrayBuffer); // 创建解码器实例
+                    let qfp = qfpFactory(arrayBuffer); // 创建解码器实例
                     if (player) player.stop(); // 如果已有播放器实例，先停止
                     player = new QFPPlayer(qfp); // 创建新的播放器实例
                     player.start(); // 开始播放
