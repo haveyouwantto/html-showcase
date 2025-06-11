@@ -135,6 +135,7 @@
             <button id="pause">播放</button>
             <button id="replay">重播</button>
         </div>
+        <div id="fileinfo"></div>
         <div id="info"></div>
         <div class="status">
             <div id="progress">
@@ -188,6 +189,7 @@
         const bufferLength = analyser.frequencyBinCount;
         const dataArray = new Uint8Array(bufferLength);
 
+        const fileInfo = document.getElementById("fileinfo");
         const timeDisplay = document.getElementById("time")
         const progressDisplay = document.getElementById("progress-inner")
         const info = document.getElementById("info")
@@ -697,6 +699,14 @@
             return y;
         }
 
+        function gaussianRandom(avg = 0, std = 1) {
+            let u = 0, v = 0;
+            while (u === 0) u = Math.random(); //Converting [0,1) to (0,1)
+            while (v === 0) v = Math.random();
+            let num = Math.sqrt(-2.0 * Math.log(u)) * Math.cos(2.0 * Math.PI * v);
+            return avg + num * std;
+        }
+
         function quantizeCompress(array) {
             if (!(array instanceof Float32Array)) {
                 array = new Float32Array(array);
@@ -951,6 +961,9 @@
                 console.log("win size:" + this.winSize);
                 console.log("num win:" + this.numWindows);
 
+                // 显示文件头信息
+                fileInfo.innerHTML = `V${this.version} | SR: ${this.sampleRate}Hz | WS: ${this.winSize} | NW: ${this.numWindows}`;
+
                 // 计算音频总时长
                 this.duration = this.numWindows * (this.winSize / this.sampleRate);
             }
@@ -1054,6 +1067,9 @@
                 console.log("num win:" + this.numWindows);
                 console.log("group size:" + this.groupSize);
 
+                // 显示文件头信息
+                fileInfo.innerHTML = `V${this.version} | SR: ${this.sampleRate}Hz | WS: ${this.winSize} samples | NW: ${this.numWindows} | GS: ${this.groupSize} | HS: ${this.hopSize}`;
+
                 // 计算音频总时长
                 this.duration = this.numWindows * (this.hopSize / this.sampleRate);
 
@@ -1062,6 +1078,7 @@
                     new Float32Array(this.winSize + this.hopSize) // 用于存储解码后的音频数据
                 ]
                 this.window = createMDCTWindow(this.winSize)
+                this.noiseGain = Math.sqrt(this.hopSize)
             }
 
             readFrame() {
@@ -1088,38 +1105,33 @@
                         // 计算每组的响度
                         const group = mdctData.slice(i * this.groupSize, (i + 1) * this.groupSize);
                         if (group.length < this.groupSize) break; // 如果组不完整则跳出循环
-                        const groupAmp = Math.sqrt(group.reduce((sum, val) => sum + val * val, 0)); // 计算组的响度
+                        const groupAmp = group.reduce((sum, val) => sum + Math.abs(val), 0); // 计算组的响度
                         const recordedAmp = ampData[i] || 0.0; // 获取记录的响度
                         ampLoss[i + 1] = recordedAmp - groupAmp; // 计算损失
                     }
-                    // ampLoss[0] = ampLoss[numOfGroups + 1] = 0; // 边界情况处理
 
-                    // // 插值计算幅度损失
-                    // const ampLossInterp = new Float32Array(mdctData.length); // 创建插值数组
+                    // 插值计算幅度损失
+                    const ampLossInterp = new Float32Array(mdctData.length); // 创建插值数组
 
-                    // for (let i = 0; i < mdctData.length; i++) {
-                    //     const xOld = (i / mdctData.length) * (numOfGroups + 1); // 计算旧的 x 坐标
-                    //     const groupIndex = Math.floor(xOld);
-                    //     const frac = xOld - groupIndex; // 小数部分
-
-                    //     if (groupIndex < numOfGroups) {
-                    //         ampLossInterp[i] = ampLoss[groupIndex] * (1 - frac) + ampLoss[groupIndex + 1] * frac; // 线性插值
-                    //     } else {
-                    //         ampLossInterp[i] = ampLoss[numOfGroups]; // 边界情况
-                    //     }
-                    // }
-
-                    // // 根据插值增加噪声
-                    // const noise = new Float32Array(mdctData.length);
-                    // for (let i = 0; i < mdctData.length; i++) {
-                    //     noise[i] = Math.random() * ampLossInterp[i]; // 生成随机噪声
-                    // }
-
-                    // mdctData = mdctData.map((val, idx) => val + noise[idx]); // 添加噪声到 MDCT 数据
-
-                    // 增益mdct
                     for (let i = 0; i < mdctData.length; i++) {
-                        mdctData[i] *= this.winSize;
+                        const xOld = (i / mdctData.length) * (numOfGroups + 1); // 计算旧的 x 坐标
+                        const groupIndex = Math.floor(xOld);
+                        const frac = xOld - groupIndex; // 小数部分
+
+                        if (groupIndex < numOfGroups) {
+                            ampLossInterp[i] = ampLoss[groupIndex] * (1 - frac) + ampLoss[groupIndex + 1] * frac; // 线性插值
+                        } else {
+                            ampLossInterp[i] = ampLoss[numOfGroups]; // 边界情况
+                        }
+
+                        ampLossInterp[i] *= 0.5;
+                    }
+
+                    console.log(ampLossInterp); // 打印插值后的幅度损失，方便调试
+
+                    for (let i = 0; i < mdctData.length; i++) {
+                        mdctData[i] += gaussianRandom() * ampLossInterp[i] / this.noiseGain; // 添加噪声到 MDCT 数据
+                        mdctData[i] *= this.winSize; // 增益mdct
                     }
 
                     let reconCh = imdct(mdctData); // 逆变换得到重建的音频数据
@@ -1231,7 +1243,6 @@
 
                     // 创建音频缓冲区并填充左右声道数据
                     const buffer = ctx.createBuffer(2, frame[0].length, this.qfp.sampleRate);
-                    console.log(buffer)
                     const l = buffer.getChannelData(0);
                     const r = buffer.getChannelData(1);
                     l.set(frame[0]);
