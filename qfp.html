@@ -1127,8 +1127,6 @@
                         ampLossInterp[i] *= 0.5;
                     }
 
-                    console.log(ampLossInterp); // 打印插值后的幅度损失，方便调试
-
                     for (let i = 0; i < mdctData.length; i++) {
                         mdctData[i] += gaussianRandom() * ampLossInterp[i] / this.noiseGain; // 添加噪声到 MDCT 数据
                         mdctData[i] *= this.winSize; // 增益mdct
