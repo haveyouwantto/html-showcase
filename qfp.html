@@ -115,6 +115,20 @@
             color: white;
         }
 
+        input[type="radio"] {
+            margin: 4px;
+            accent-color: #8e4bec;
+            /* Purple accent for radio buttons */
+
+            width: 16px;
+            height: 16px;
+        }
+
+        #fileinfo {
+            margin-top: 8px;
+            font-size: 0.8rem;
+        }
+
         @media only screen and (max-width:600px) {
             body {
                 width: 95%;
@@ -148,6 +162,10 @@
         <h2>编码器</h2>
         <input type="file" id="audioInput" accept="audio/*" />
         <div>
+            <div id="version-select">
+                <input type="radio" name="version" id="v1" value="v1"> V1
+                <input type="radio" name="version" id="v2" value="v2" checked> V2
+            </div>
             QP: <input type="number" id="qp" min="0" max="80" value="32">
             <button id="encode">编码</button>
         </div>
@@ -829,7 +847,6 @@
                 this.buffer = audioBuffer; // 音频数据
                 this.i = 0; // 当前窗口索引
                 this.l = audioBuffer.getChannelData(0); // 左声道数据
-                console.log(audioBuffer)
                 this.r = audioBuffer.numberOfChannels >= 2 ? audioBuffer.getChannelData(1) : this.l; // 右声道数据，如果单声道则与左声道相同
                 this.qp = qp; // 量化参数
             }
@@ -921,6 +938,133 @@
             // 判断是否还有未编码的帧
             available() {
                 return this.i < this.numWins;
+            }
+        }
+
+        class QFP2Encoder {
+            constructor(audioBuffer, qp) {
+                this.buffer = audioBuffer; // 音频数据
+                this.i = 0; // 当前窗口索引
+                this.l = audioBuffer.getChannelData(0); // 左声道数据
+                this.r = audioBuffer.numberOfChannels >= 2 ? audioBuffer.getChannelData(1) : this.l; // 右声道数据，如果单声道则与左声道相同
+                this.qp = qp; // 量化参数
+                this.quantTable = [
+                    [0, 0.0000004],
+                    [1000, 0.000002],
+                    [4000, 0.0000032],
+                    [8000, 0.00005],
+                    [12000, 0.00002],
+                    [15000, 0.00003],
+                    [20000, 100]
+                ]; // 量化表，包含频率和对应的量化值
+            }
+
+            // 编码文件头部，包含采样率、窗口大小等元信息
+            encodeHeader() {
+                const buffer = new ArrayBuffer(21); // 文件头固定21字节
+                this.sampleRate = this.buffer.sampleRate; // 获取采样率
+                this.winSize = roundDownToPowerOfTwo(this.sampleRate / 8); // 窗口大小设置为采样率的1/16，并向下取整到2的次方
+                this.groupSize = 64
+                this.hopSize = this.winSize / 2; // 每组的跳跃大小
+                this.numWins = Math.floor(this.buffer.length / this.hopSize); // 根据音频长度和窗口大小计算总窗口数量
+
+                const qScale = 1.25 ** (this.qp - 32); // 用于计算子带量化的偏移值
+                this.currentQuantTable = [[], []];
+
+                for (let i = 0; i < this.hopSize; i++) {
+                    const binFreq = (i + 0.5) * (this.sampleRate / this.winSize); // 计算当前频率 bin 的频率值
+
+                    // 查找对应的量化阈值
+                    for (let j = 0; j < this.quantTable.length; j++) {
+                        if (binFreq > this.quantTable[j][0] && (j === this.quantTable.length - 1 || binFreq <= this.quantTable[j + 1][0])) {
+                            this.currentQuantTable[0][i] = this.quantTable[j][1] * qScale; // L+R 通道的量化值
+                            this.currentQuantTable[1][i] = this.quantTable[j][1] * qScale * 4; // L-R 通道的量化值
+                            break;
+                        }
+                        else {
+                            this.currentQuantTable[0][i] = this.quantTable[this.quantTable.length - 1][1] * qScale; // 默认使用最后一个量化值
+                            this.currentQuantTable[1][i] = this.quantTable[this.quantTable.length - 1][1] * qScale * 4; // L-R 通道的量化值
+                        }
+                    }
+                }
+
+                this.window = createMDCTWindow(this.winSize); // 创建满足 Princen-Bradley 条件的窗函数
+
+                const view = new DataView(buffer);
+                view.setUint32(0, 1095779921, true); // 设置魔数"QFPA"
+                view.setUint8(4, 2); // 版本号
+                view.setUint32(5, this.sampleRate, true); // 采样率
+                view.setUint32(9, this.winSize, true); // 窗口大小
+                view.setUint32(13, this.numWins, true); // 窗口总数
+                view.setUint32(17, this.groupSize, true); // 设置组大小
+
+                return buffer;
+            }
+
+            // 编码单个帧，处理 L+R 和 L-R 通道
+            encodeFrame() {
+                const L = this.l.slice(this.i * this.hopSize, this.i * this.hopSize + this.winSize); // 当前帧的左声道数据
+                const R = this.r.slice(this.i * this.hopSize, this.i * this.hopSize + this.winSize); // 当前帧的右声道数据
+
+                const winDataLPlusR = L.map((val, idx) => val + R[idx]); // L+R 数据
+                const winDataLMinusR = L.map((val, idx) => val - R[idx]); // L-R 数据
+
+                const encodedFrames = []; // 用于存储编码后的数据
+
+                for (let ch = 0; ch < 2; ch++) {
+                    // 应用窗函数
+                    const sampleData = ch === 0 ? winDataLPlusR : winDataLMinusR; // 处理 L+R 或 L-R 数据
+                    const windowedData = sampleData.map((val, idx) => val * this.window[idx]); // 应用窗函数
+
+                    const mdctCoeffs = mdct(windowedData); // 对数据应用离散余弦变换
+
+                    // 归一化并量化
+                    for (let i = 0; i < mdctCoeffs.length; i++) {
+                        mdctCoeffs[i] /= this.winSize; // 归一化
+                    }
+
+                    const ampCoeff = []; // 存储响度系数
+                    const numGroups = Math.floor(mdctCoeffs.length / this.groupSize); // 计算组数
+                    for (let j = 0; j < numGroups; j++) {
+                        const group = mdctCoeffs.slice(j * this.groupSize, (j + 1) * this.groupSize); // 获取当前组数据
+                        if (group.length < this.groupSize) break; // 如果组数据不足，跳出循环
+
+                        // 计算每组的响度
+                        const ampGroup = group.reduce((sum, value) => sum + Math.abs(value), 0); // 计算绝对值和
+                        if (ampGroup > 1e-4) { // 只保留大于1e-4的响度值
+                            ampCoeff.push(ampGroup);
+                        } else {
+                            ampCoeff.push(0.0); // 小于阈值的响度值设为0
+                        }
+                    }
+
+                    // 丢弃小于阈值的mdct系数
+                    for (let j = 0; j < mdctCoeffs.length; j++) {
+                        if (Math.abs(mdctCoeffs[j]) < this.currentQuantTable[ch][j]) {
+                            mdctCoeffs[j] = 0; // 小于阈值的系数设为0
+                        }
+                    }
+                    // 量化mdct系数
+                    const quantizedMdct = quantizeCompress(mdctCoeffs); // 量化压缩mdct系数
+                    // 量化响度系数
+                    const quantizedAmp = quantizeCompress(new Float32Array(ampCoeff)); // 量化压缩响度系数
+
+                    // 打包长度和压缩数据
+                    const mdctLen = new ArrayBuffer(2);
+                    const ampLen = new ArrayBuffer(2);
+                    new DataView(mdctLen).setUint16(0, quantizedMdct.byteLength, true); // 设置mdct长度
+                    new DataView(ampLen).setUint16(0, quantizedAmp.byteLength, true); // 设置响度长度
+                    encodedFrames.push(mdctLen); // 添加mdct长度
+                    encodedFrames.push(quantizedMdct.buffer); // 添加压缩后的mdct系数
+                    encodedFrames.push(ampLen); // 添加响度长度
+                    encodedFrames.push(quantizedAmp.buffer); // 添加压缩后的响度系数
+                }
+                this.i++; // 更新窗口索引
+
+                return encodedFrames; // 返回编码后的帧数据
+            }
+            available() {
+                return this.i < this.numWins; // 判断是否还有未编码的帧
             }
         }
 
@@ -1166,7 +1310,7 @@
 
                 return [L, R, this.ptr - start]; // 返回重建的左右声道数据和帧大小
             }
-            
+
             reset() {
                 this.ptr = 0;
                 this.read = 0;
@@ -1189,6 +1333,28 @@
                 return new QFPDecoder(arrayBuffer); // 返回 QFP1 解码器实例
             } else if (version === 2) {
                 return new QFP2Decoder(arrayBuffer); // 返回 QFP2 解码器实例
+            } else {
+                throw new Error("Unsupported QFP version: " + version);
+            }
+        }
+
+        function qfpEncoderFactory(audioBuffer, qp) {
+            if (!(audioBuffer instanceof AudioBuffer)) {
+                throw new Error("Input must be an AudioBuffer.");
+            }
+
+            if (qp < 0 || qp > 63) {
+                throw new Error("QP must be between 0 and 63.");
+            }
+
+            // version select radio buttons
+            const versionSelect = document.getElementById('version-select');
+            const version = versionSelect.querySelector('input[name="version"]:checked').value;
+            console.log("Selected QFP version: " + version);
+            if (version === 'v1') {
+                return new QFPEncoder(audioBuffer, qp); // 返回 QFP1 编码器实例
+            } else if (version === 'v2') {
+                return new QFP2Encoder(audioBuffer, qp); // 返回 QFP2 编码器实例
             } else {
                 throw new Error("Unsupported QFP version: " + version);
             }
@@ -1384,7 +1550,7 @@
                 reader.onload = function (event) {
                     const arrayBuffer = event.target.result; // 获取读取结果
                     ctx.decodeAudioData(arrayBuffer).then(data => {
-                        const encoder = new QFPEncoder(data, parseInt(document.getElementById('qp').value)); // 创建编码器
+                        const encoder = qfpEncoderFactory(data, parseInt(document.getElementById('qp').value)); // 创建编码器实例
                         const chunks = [];
 
                         // 编码头部信息
