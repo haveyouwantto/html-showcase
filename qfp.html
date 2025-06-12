@@ -1196,11 +1196,12 @@
                 console.log("win size:" + this.winSize);
                 console.log("num win:" + this.numWindows);
 
-                // 显示文件头信息
-                fileInfo.innerHTML = `V${this.version} | SR: ${this.sampleRate}Hz | WS: ${this.winSize} | NW: ${this.numWindows}`;
-
                 // 计算音频总时长
                 this.duration = this.numWindows * (this.winSize / this.sampleRate);
+
+                // 显示文件头信息
+                fileInfo.innerHTML = `V${this.version} | SR: ${this.sampleRate}Hz | WS: ${this.winSize} | NW: ${this.numWindows} | ABR: ${(this.buffer.byteLength / this.duration * 8 / 1024).toFixed(2)}kbps`;
+
             }
 
             // 读取并解码单帧数据
@@ -1306,12 +1307,12 @@
                 console.log("num win:" + this.numWindows);
                 console.log("group size:" + this.groupSize);
 
-
-                // 显示文件头信息
-                fileInfo.innerHTML = `V${this.version} | SR: ${this.sampleRate}Hz | WS: ${this.winSize} samples | NW: ${this.numWindows} | GS: ${this.groupSize} | HS: ${this.hopSize}`;
-
                 // 计算音频总时长
                 this.duration = this.numWindows * (this.hopSize / this.sampleRate);
+
+                // 显示文件头信息
+                fileInfo.innerHTML = `V${this.version} | SR: ${this.sampleRate}Hz | WS: ${this.winSize} | NW: ${this.numWindows} | GS: ${this.groupSize} | ABR: ${(this.buffer.byteLength / this.duration * 8 / 1024).toFixed(2)}kbps`;
+
 
                 this.constructBuffer = [
                     new Float32Array(this.winSize + this.hopSize),
