@@ -1046,6 +1046,7 @@
                 this.groupSize = 64
                 this.hopSize = this.winSize / 2; // 每组的跳跃大小
                 this.numWins = Math.floor(this.buffer.length / this.hopSize); // 根据音频长度和窗口大小计算总窗口数量
+                this.ampQuant = 0.1 / this.winSize;
 
                 const qScale = 1.25 ** (this.qp - 32); // 用于计算子带量化的偏移值
                 this.currentQuantTable = [[], []];
@@ -1122,7 +1123,7 @@
 
                         // 计算每组的响度
                         const ampGroup = group.reduce((sum, value) => sum + Math.abs(value), 0); // 计算绝对值和
-                        if (ampGroup > 5e-5) { // 只保留大于5e-5的响度值
+                        if (ampGroup > this.ampQuant) { // 只保留大的响度值
                             ampCoeff.push(ampGroup);
                         } else {
                             ampCoeff.push(0.0); // 小于阈值的响度值设为0
@@ -1638,7 +1639,7 @@
             encodeProgressDisplay.style.width = percent + "%"; // 更新进度条宽度
             encodeTimeDisplay.textContent = `${formatTime(currentTime)} / ${formatTime(duration)}`; // 更新显示的时间
             return new Promise(resolve => {
-                setTimeout(resolve, 1); // 模拟延时
+                setTimeout(resolve, 0); // 模拟延时
             });
         }
 
@@ -1676,7 +1677,7 @@
                                 chunks.push(frame);
                             }
                             encodedFrames++;
-                            if (encodedFrames % 300 === 0) {
+                            if (encodedFrames % 100 === 0) {
                                 const currentTime = encodedFrames * (encoder.frameLength() / sampleRate); // 计算当前编码时间
                                 await showEncodeProgress(currentTime, duration); // 更新进度条
                                 // await showEncodeProgress((encodedFrames / encoder.numWins) * 100); // 更新进度条
