@@ -1264,6 +1264,10 @@
                 this.ptr = 0;
                 this.read = 0;
             }
+
+            frameLength() {
+                return this.winSize; // 返回每帧的长度
+            }
         }
 
         class QFP2Decoder {
@@ -1302,6 +1306,7 @@
                 console.log("num win:" + this.numWindows);
                 console.log("group size:" + this.groupSize);
 
+
                 // 显示文件头信息
                 fileInfo.innerHTML = `V${this.version} | SR: ${this.sampleRate}Hz | WS: ${this.winSize} samples | NW: ${this.numWindows} | GS: ${this.groupSize} | HS: ${this.hopSize}`;
 
@@ -1328,6 +1333,7 @@
                     let mdctData = decompressQuantized(mdctDataRaw, this.hopSize); // 解压量化的 MDCT 数据
                     let numOfGroups = Math.floor(mdctData.length / this.groupSize); // 计算组数
                     this.ptr += mdctLength; // 移动指针
+
 
                     const ampLength = this.decompressedView.getUint16(this.ptr, true); // 读取幅度数据长度
                     this.ptr += 2; // 移动指针
@@ -1405,6 +1411,10 @@
             reset() {
                 this.ptr = 0;
                 this.read = 0;
+            }
+
+            frameLength() {
+                return this.hopSize; // 返回每帧的长度
             }
         }
 
@@ -1511,14 +1521,14 @@
                     this.frameLength.push(frame[2]); // 记录帧的比特长度
 
                     // 控制 frameLength 的缓存大小，避免内存占用过多
-                    const frameOf1S = Math.max(Math.floor(1 / (this.qfp.winSize / this.qfp.sampleRate)), 2);
+                    const frameOf1S = Math.max(Math.floor(1 / (this.qfp.frameLength() / this.qfp.sampleRate)), 2);
                     while (this.frameLength.length > frameOf1S * (this.preloadDuration + 0.5)) {
                         this.frameLength.shift();
                     }
 
                     // 计算平均比特率（ABR）并更新界面
                     let abrBuffer = this.frameLength.slice(0, frameOf1S / 2);
-                    let abr = abrBuffer.reduce((a, b) => a + b, 0) / (frame[0].length / this.qfp.sampleRate * abrBuffer.length) / 128 * this.qfp.compressRatio;
+                    let abr = abrBuffer.reduce((a, b) => a + b, 0) / (this.qfp.frameLength() / this.qfp.sampleRate * abrBuffer.length) / 128 * this.qfp.compressRatio;
                     info.textContent = `ABR ≈ ${abr.toFixed(1)} kbps`;
 
                     const node = ctx.createBufferSource(); // 创建音频节点
