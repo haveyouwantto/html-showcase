@@ -30,20 +30,30 @@
             justify-content: center;
         }
 
-        #progress {
+        .progress {
             height: 10px;
             width: 100%;
             background-color: #333;
             margin-right: 16px;
+            margin-top: 5px;
+            margin-bottom: 5px;
         }
 
-        #progress-inner {
+        .progress-inner {
             background-color: #8e4bec;
             width: 0;
             height: 100%;
         }
 
-        #time {
+        .encoder-container {
+            width: 100%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .time {
             min-width: fit-content;
         }
 
@@ -170,22 +180,30 @@
         <div id="fileinfo"></div>
         <div id="info"></div>
         <div class="status">
-            <div id="progress">
-                <div id="progress-inner"></div>
+            <div id="progress" class="progress">
+                <div id="progress-inner" class="progress-inner"></div>
             </div>
-            <div id="time">00:00 / 00:00</div>
+            <div id="time" class="time">00:00 / 00:00</div>
         </div>
         <canvas id="visualizer"></canvas>
 
         <h2>编码器</h2>
         <input type="file" id="audioInput" accept="audio/*" />
-        <div>
+        <div class="encoder-container">
             <div id="version-select">
                 <input type="radio" name="version" id="v1" value="v1"> V1
                 <input type="radio" name="version" id="v2" value="v2" checked> V2
             </div>
-            QP: <input type="number" id="qp" min="0" max="80" value="32">
+            <span>
+                QP: <input type="number" id="qp" min="0" max="80" value="32">
+            </span>
             <button id="encode">编码</button>
+            <div class="status">
+                <div id="encode-progress" class="progress">
+                    <div id="encode-progress-inner" class="progress-inner"></div>
+                </div>
+                <div id="encode-time" class="time">00:00 / 00:00</div>
+            </div>
         </div>
         <hr>
         <details>
@@ -265,6 +283,8 @@
         const fileInfo = document.getElementById("fileinfo");
         const timeDisplay = document.getElementById("time")
         const progressDisplay = document.getElementById("progress-inner")
+        const encodeTimeDisplay = document.getElementById("encode-time")
+        const encodeProgressDisplay = document.getElementById("encode-progress-inner")
         const info = document.getElementById("info")
 
         const SUB_BANDS = [
@@ -1594,6 +1614,15 @@
         // 编码按钮逻辑
         const encodeBtn = document.getElementById('encode');
 
+        const showEncodeProgress = (currentTime, duration) => {
+            const percent = Math.min(100, currentTime / duration * 100); // 确保百分比不超过100
+            encodeProgressDisplay.style.width = percent + "%"; // 更新进度条宽度
+            encodeTimeDisplay.textContent = `${formatTime(currentTime)} / ${formatTime(duration)}`; // 更新显示的时间
+            return new Promise(resolve => {
+                setTimeout(resolve, 1); // 模拟延时
+            });
+        }
+
         encodeBtn.addEventListener('click', e => {
             const fileInput = document.getElementById('audioInput');
             const file = fileInput.files[0];
@@ -1612,19 +1641,30 @@
 
                 reader.onload = function (event) {
                     const arrayBuffer = event.target.result; // 获取读取结果
-                    ctx.decodeAudioData(arrayBuffer).then(data => {
+                    ctx.decodeAudioData(arrayBuffer).then(async data => {
                         const encoder = qfpEncoderFactory(data, parseInt(document.getElementById('qp').value)); // 创建编码器实例
                         const chunks = [];
 
                         // 编码头部信息
                         const header = encoder.encodeHeader();
+                        const sampleRate = encoder.sampleRate || ctx.sampleRate; // 获取采样率
+                        const duration = encoder.numWins * (encoder.winSize / sampleRate); // 计算总时长
 
                         // 编码音频帧
+                        let encodedFrames = 0;
                         while (encoder.available()) {
                             for (const frame of encoder.encodeFrame()) {
                                 chunks.push(frame);
                             }
+                            encodedFrames++;
+                            if (encodedFrames % 300 === 0) {
+                                const currentTime = encodedFrames * (encoder.winSize / sampleRate); // 计算当前编码时间
+                                await showEncodeProgress(currentTime, duration); // 更新进度条
+                                // await showEncodeProgress((encodedFrames / encoder.numWins) * 100); // 更新进度条
+                                console.log(`Encoded ${encodedFrames} frames`); // 输出编码进度
+                            }
                         }
+                        showEncodeProgress(duration, duration); // 完成时更新进度条为100%
 
                         // 合并所有帧为一个 Uint8Array
                         const combinedChunks = new Uint8Array(chunks.reduce((acc, chunk) => acc + chunk.byteLength, 0));
