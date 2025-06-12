@@ -1014,6 +1014,10 @@
             available() {
                 return this.i < this.numWins;
             }
+
+            frameLength() {
+                return this.winSize; // 返回每帧的长度
+            }
         }
 
         class QFP2Encoder {
@@ -1076,6 +1080,10 @@
                 return buffer;
             }
 
+            frameLength() {
+                return this.hopSize; // 返回每帧的长度
+            }
+
             // 编码单个帧，处理 L+R 和 L-R 通道
             encodeFrame() {
                 let L = this.l.slice(this.i * this.hopSize, this.i * this.hopSize + this.winSize); // 当前帧的左声道数据
@@ -1114,7 +1122,7 @@
 
                         // 计算每组的响度
                         const ampGroup = group.reduce((sum, value) => sum + Math.abs(value), 0); // 计算绝对值和
-                        if (ampGroup > 1e-4) { // 只保留大于1e-4的响度值
+                        if (ampGroup > 5e-5) { // 只保留大于5e-5的响度值
                             ampCoeff.push(ampGroup);
                         } else {
                             ampCoeff.push(0.0); // 小于阈值的响度值设为0
@@ -1648,7 +1656,7 @@
                         // 编码头部信息
                         const header = encoder.encodeHeader();
                         const sampleRate = encoder.sampleRate || ctx.sampleRate; // 获取采样率
-                        const duration = encoder.numWins * (encoder.winSize / sampleRate); // 计算总时长
+                        const duration = encoder.numWins * (encoder.frameLength() / sampleRate); // 计算总时长
 
                         // 编码音频帧
                         let encodedFrames = 0;
@@ -1658,13 +1666,13 @@
                             }
                             encodedFrames++;
                             if (encodedFrames % 300 === 0) {
-                                const currentTime = encodedFrames * (encoder.winSize / sampleRate); // 计算当前编码时间
+                                const currentTime = encodedFrames * (encoder.frameLength() / sampleRate); // 计算当前编码时间
                                 await showEncodeProgress(currentTime, duration); // 更新进度条
                                 // await showEncodeProgress((encodedFrames / encoder.numWins) * 100); // 更新进度条
                                 console.log(`Encoded ${encodedFrames} frames`); // 输出编码进度
                             }
                         }
-                        showEncodeProgress(duration, duration); // 完成时更新进度条为100%
+                        await showEncodeProgress(duration, duration); // 完成时更新进度条为100%
 
                         // 合并所有帧为一个 Uint8Array
                         const combinedChunks = new Uint8Array(chunks.reduce((acc, chunk) => acc + chunk.byteLength, 0));
