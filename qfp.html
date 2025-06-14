@@ -924,6 +924,8 @@
                 this.l = audioBuffer.getChannelData(0); // 左声道数据
                 this.r = audioBuffer.numberOfChannels >= 2 ? audioBuffer.getChannelData(1) : this.l; // 右声道数据，如果单声道则与左声道相同
                 this.qp = qp; // 量化参数
+
+                this.settings = {};
             }
 
             // 编码文件头部，包含采样率、窗口大小等元信息
@@ -1036,6 +1038,10 @@
                     [15000, 0.000034],
                     [20000, 100]
                 ]; // 量化表，包含频率和对应的量化值
+
+                this.settings = {
+                    voiceOptimization: false
+                }
             }
 
             // 编码文件头部，包含采样率、窗口大小等元信息
@@ -1059,6 +1065,14 @@
                         if (binFreq > this.quantTable[j][0] && (j === this.quantTable.length - 1 || binFreq <= this.quantTable[j + 1][0])) {
                             this.currentQuantTable[0][i] = this.quantTable[j][1] * qScale; // L+R 通道的量化值
                             this.currentQuantTable[1][i] = this.quantTable[j][1] * qScale * 4; // L-R 通道的量化值
+
+                            if (this.settings.voiceOptimization) {
+                                // keep only 0-4k
+                                if (binFreq > 4000) {
+                                    this.currentQuantTable[0][i] = 100;
+                                    this.currentQuantTable[1][i] = 100;
+                                }
+                            }
                             break;
                         }
                         else {
