@@ -1058,12 +1058,12 @@
                     for (let j = 0; j < this.quantTable.length; j++) {
                         if (binFreq > this.quantTable[j][0] && (j === this.quantTable.length - 1 || binFreq <= this.quantTable[j + 1][0])) {
                             this.currentQuantTable[0][i] = this.quantTable[j][1] * qScale; // L+R 通道的量化值
-                            this.currentQuantTable[1][i] = this.quantTable[j][1] * qScale * 4; // L-R 通道的量化值
+                            this.currentQuantTable[1][i] = this.quantTable[j][1] * qScale * 2; // L-R 通道的量化值
                             break;
                         }
                         else {
                             this.currentQuantTable[0][i] = this.quantTable[this.quantTable.length - 1][1] * qScale; // 默认使用最后一个量化值
-                            this.currentQuantTable[1][i] = this.quantTable[this.quantTable.length - 1][1] * qScale * 4; // L-R 通道的量化值
+                            this.currentQuantTable[1][i] = this.quantTable[this.quantTable.length - 1][1] * qScale * 2; // L-R 通道的量化值
                         }
                     }
                 }
