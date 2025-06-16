@@ -1038,10 +1038,16 @@
                     [15000, 0.000034],
                     [20000, 100]
                 ]; // 量化表，包含频率和对应的量化值
+                this.MODES = {
+                    CQP: 0,
+                    MBR: 1
+                }
 
                 this.settings = {
-                    voiceOptimization: false
+                    voiceOptimization: false,
+                    mode: this.MODES.CQP
                 }
+
             }
 
             // 编码文件头部，包含采样率、窗口大小等元信息
@@ -1145,11 +1151,31 @@
                     }
 
                     // 丢弃小于阈值的mdct系数
-                    for (let j = 0; j < mdctCoeffs.length; j++) {
-                        if (Math.abs(mdctCoeffs[j]) < this.currentQuantTable[ch][j]) {
-                            mdctCoeffs[j] = 0; // 小于阈值的系数设为0
-                        }
+                    switch (this.settings.mode) {
+                        case this.MODES.CQP:
+                            for (let j = 0; j < mdctCoeffs.length; j++) {
+                                if (Math.abs(mdctCoeffs[j]) < this.currentQuantTable[ch][j]) {
+                                    mdctCoeffs[j] = 0; // 小于阈值的系数设为0
+                                }
+                            }
+                            break;
+                        case this.MODES.MBR:
+                            let arr = [...mdctCoeffs].map(e => Math.abs(e))
+                            arr.sort((a,b)=>a-b)
+                            const targetBitrate = 131072;
+                            const ratio = 1 - (targetBitrate / (this.sampleRate * 32));
+                            let threshold = 0;
+                            threshold = arr[Math.floor(arr.length * ratio)]
+                            // console.log(ratio, threshold, arr)
+                            for (let j = 0; j < mdctCoeffs.length; j++) {
+                                if (Math.abs(mdctCoeffs[j]) < threshold) {
+                                    mdctCoeffs[j] = 0; // 小于阈值的系数设为0
+                                }
+                            }
+                            break
                     }
+
+
                     // 量化mdct系数
                     const quantizedMdct = quantizeCompress(mdctCoeffs); // 量化压缩mdct系数
                     // 量化响度系数
@@ -1544,8 +1570,8 @@
 
                     // 计算平均比特率（ABR）并更新界面
                     let abrBuffer = this.frameLength.slice(0, frameOf1S / 2);
-                    let abr = abrBuffer.reduce((a, b) => a + b, 0) / (this.qfp.frameLength() / this.qfp.sampleRate * abrBuffer.length) / 128 * this.qfp.compressRatio;
-                    info.textContent = `ABR ≈ ${abr.toFixed(1)} kbps`;
+                    let abr = abrBuffer.reduce((a, b) => a + b, 0) / (this.qfp.frameLength() / this.qfp.sampleRate * abrBuffer.length) / 128;
+                    info.textContent = `ABR ≈ ${(abr * this.qfp.compressRatio).toFixed(1)} (${abr.toFixed(1)} raw) kbps`;
 
                     const node = ctx.createBufferSource(); // 创建音频节点
                     node.buffer = buffer;
