@@ -1165,13 +1165,13 @@
 
             let iter = -1;
             let refIter = 0;
-            let normDc = dc.norm();
             let bout = new FloatExp(bailout);
             let zero = new FloatExp(0);
+            let dcNorm = dc.norm();
 
             while (iter < maxIter) {
                 let dzNorm = dz.norm();
-                let result = lookupFE(table, refIter, ref.length, dzNorm, normDc)
+                let result = lookupFE(table, refIter, ref.length, dzNorm, dcNorm)
 
                 if (result.first != null) {
                     dz.mulMut(result.first.A).addMut(dc.mul(result.first.B));
@@ -1184,26 +1184,23 @@
                     iter++;
                     refIter++;
                 }
-                if (refIter >= ref.length) return { it: iter, e: true };
-                if (dz.re.exp > -150 && dz.im.exp > -150) {
-                    return { it: iter, e: false, z: dz.toComplex(), ref: refIter };
-                }
+                if (refIter >= ref.length) return iter;
 
                 const Z2 = ref[refIter]
                 const val = Z2.add(dz);
                 const valAbs = val.abs();
-                if (valAbs.compareTo(bout) > 0) {
+                if (valAbs.doubleValue() > bailout) {
                     let fracIter = Math.log(valAbs.doubleValue()) / 2;
                     fracIter = Math.log(fracIter / Math.LN2) / Math.LN2;
                     iter += 1 - fracIter;
-                    return { it: iter, e: true };
+                    return iter;
                 };
                 if (valAbs.sub(dzNorm).compareTo(zero) < 0 || refIter == ref.length - 1) { // 检测是否需要变基
                     dz = val;
                     refIter = 0;
                 }
             }
-            return { it: iter, e: true };
+            return iter;
         }
 
         /**
@@ -1570,11 +1567,11 @@
                     let delta = this.getDelta(x, y);
 
                     if (this.deep) {
-                        let result = getPTBLAFE(delta, ref, this.blaTable, this.iterations, this.bailout);
-                        if (result.e) newIter = result.it;
-                        else {
-                            newIter = getPTBLA(delta.toComplex(), refComplex, blaComplex, this.iterations, this.bailout, result.z.re, result.z.im, result.it, result.ref)
-                        }
+                        newIter = getPTBLAFE(delta, ref, this.blaTable, this.iterations, this.bailout);
+                        // if (result.e) newIter = result.it;
+                        // else {
+                        //     newIter = getPTBLA(delta.toComplex(), refComplex, blaComplex, this.iterations, this.bailout, result.z.re, result.z.im, result.it, result.ref)
+                        // }
                     }
                     else
                         newIter = getPTBLA(delta, ref, this.blaTable, this.iterations, this.bailout);
