@@ -66,6 +66,13 @@
             /* Add custom focus effect */
         }
 
+        button:disabled {
+            background-color: #555;
+            /* Darker color for disabled buttons */
+            cursor: not-allowed;
+            /* Change cursor to indicate disabled state */
+        }
+
         button.icon {
             font-size: 30px;
             font-family: emoji;
@@ -135,6 +142,7 @@
 
         .running {
             outline: var(--theme-color) 4px solid;
+            cursor: wait !important;
         }
 
 
@@ -174,18 +182,18 @@
             Iterations:
             <textarea id="it" rows="1"></textarea>
             <div class="shortcut">
-                <button class="icon" id="zoom-in" title="Zoom in">&#10133;</button>
-                <button class="icon" id="zoom-out" title="Zoom out">&#10134;</button>
-                <button class="icon" id="increase-iter" title="Iterations x2">&#128314;</button>
-                <button class="icon" id="decrease-iter" title="Iterations /2">&#128315;</button>
+                <button class="icon control-button" id="zoom-in" title="Zoom in">&#10133;</button>
+                <button class="icon control-button" id="zoom-out" title="Zoom out">&#10134;</button>
+                <button class="icon control-button" id="increase-iter" title="Iterations x2">&#128314;</button>
+                <button class="icon control-button" id="decrease-iter" title="Iterations /2">&#128315;</button>
             </div>
             <div class="shortcut">
-                <button class="icon" id="goto" title="Go to location">&#128640;</button>
-                <button class="icon" id="home" title="Reset view">&#127968;</button>
-                <button class="icon" id="kfr" title="Load KFR file">&#128229;</button>
-                <button class="icon" id="download" title="Download PNG">&#128248;</button>
+                <button class="icon control-button" id="goto" title="Go to location">&#128640;</button>
+                <button class="icon control-button" id="home" title="Reset view">&#127968;</button>
+                <button class="icon control-button" id="kfr" title="Load KFR file">&#128229;</button>
+                <button class="icon control-button" id="download" title="Download PNG">&#128248;</button>
             </div>
-            <button id="makeVideo">Make Video</button>
+            <button id="makeVideo" class="control-button">Make Video</button>
             <hr>
             Samples
             <select id="samples">
@@ -1712,11 +1720,27 @@
                 let statusText = `Reference: ${this.stats.ref}it\nApproximation: ${this.blaTable?.length ?? 0} levels\nCalculation: ${this.stats.calc} (${(this.stats.calc / totalPixels * 100).toFixed(2)}%)\nGuessed: ${this.stats.guess} (${(this.stats.guess / totalPixels * 100).toFixed(2)}%)\nTime: ${((performance.now() - this.stats.time) / 1000).toFixed(3)}s`;
                 if (!this.rendering) {
                     statusText += "\nDone!";
-                    canvas.classList.remove('running')
+                    this.setLocked(false);
                 } else {
-                    canvas.classList.add('running')
+                    this.setLocked(true);
                 }
                 statsLabel.innerText = statusText;
+            }
+
+            setLocked(locked) {
+                if (locked) {
+                    // Lock buttons
+                    document.querySelectorAll('.control-button').forEach(button => {
+                        button.disabled = true;
+                    });
+                    canvas.classList.add('running')
+                } else {
+                    // Unlock buttons
+                    document.querySelectorAll('.control-button').forEach(button => {
+                        button.disabled = false;
+                    });
+                    canvas.classList.remove('running')
+                }
             }
 
             /**
