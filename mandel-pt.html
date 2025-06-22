@@ -1409,10 +1409,10 @@
                     let blaArray = constructBlaFE(event.data.bla);
                     for (let delta of event.data.deltas) {
                         try {
-
                             let it = getPTBLAFE(
-                                new Complex(
-                                    delta.re, delta.im
+                                new FloatExpComplex(
+                                    new FloatExp(delta.re.base, delta.re.exp),
+                                    new FloatExp(delta.im.base, delta.im.exp)
                                 ),
                                 refArray,
                                 blaArray,
@@ -1736,7 +1736,6 @@
                 let prevDeep = this.deep;
                 this.deep = this.size.exp < -300;
                 if (prevDeep && !this.deep) this.ref = this.ref.map(e => e.toComplex());
-                console.log(prevDeep, this.deep)
 
                 reInput.value = this.center.re;
                 imInput.value = this.center.im;
@@ -1745,7 +1744,7 @@
 
                 this.image = this.context.getImageData(0, 0, this.canvas.width, this.canvas.height);
 
-                let base, ref, refComplex, blaComplex;
+                let base, ref;
                 let refLen = 0;
 
                 base = this.center;
@@ -1778,10 +1777,6 @@
 
                 if (this.deep) {
                     this.blaTable = createBLATableFE(ref, this.size);
-                    refComplex = ref.map(e => e.toComplex())
-                    blaComplex = this.blaTable.map(e => e.map(e2 => {
-                        return { A: e2.A.toComplex(), B: e2.B.toComplex(), radius: e2.radius.doubleValue() }
-                    }))
                 }
                 else
                     this.blaTable = createBLATable(ref, this.size.doubleValue())
@@ -1800,26 +1795,6 @@
                     : this.blaTable.map(e => e.map(e2 => {
                         return { A: [e2.A.re, e2.A.im], B: [e2.B.re, e2.B.im], radius: e2.radius }
                     }))
-
-                // let computePixel = (x, y, w, h) => {
-                //     let newIter;
-
-                //     let delta = this.getDelta(x, y);
-
-                    // if (this.deep) {
-                    //     newIter = getPTBLAFE(delta, ref, this.blaTable, this.iterations, this.bailout);
-                        // if (result.e) newIter = result.it;
-                        // else {
-                        //     newIter = getPTBLA(delta.toComplex(), refComplex, blaComplex, this.iterations, this.bailout, result.z.re, result.z.im, result.it, result.ref)
-                        // }
-                    // }
-                    // else
-                    //     newIter = getPTBLA(delta, ref, this.blaTable, this.iterations, this.bailout);
-
-                //     this.stats.calc++;
-
-                //     this.setIter(x, y, newIter, w, h);
-                // }
 
                 let p1 = () => {
                     return new Promise(async (r, j) => {
@@ -1961,7 +1936,6 @@
                                 } else {
                                     let delta = this.getDelta(x, y);
                                     allDeltas.push({
-                                        deep: this.deep,
                                         re: delta.re,
                                         im: delta.im,
                                         x: x,
@@ -1985,6 +1959,7 @@
                             if (deltasChunk.length === 0) continue; // 跳过空数据
 
                             const data = {
+                                deep: this.deep,
                                 deltas: deltasChunk,
                                 ref: workerRef,
                                 bla: workerBla,
