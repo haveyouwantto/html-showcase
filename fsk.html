@@ -248,6 +248,76 @@
             margin-top: 0.5rem;
         }
 
+        #progress-bar {
+            width: 100%;
+            background: #2d3746;
+            border-radius: var(--border-radius);
+            overflow: hidden;
+            margin-top: 1rem;
+            display: none;
+            /* 默认隐藏进度条 */
+        }
+
+        #progress {
+            height: 4px;
+            width: 0;
+            background: linear-gradient(135deg, var(--neon-cyan), var(--neon-purple));
+            transition: width 0.3s ease;
+        }
+
+        #demod-info {
+            font-family: monospace;
+        }
+
+        /* 消息模态框样式 */
+        #message-modal {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: var(--dark-bg);
+            color: var(--text-primary);
+            border: var(--border-width) solid #2d3746;
+            border-radius: var(--border-radius);
+        }
+
+        /* backdrop */
+        dialog::backdrop {
+            background: rgba(0, 0, 0, 0.8);
+        }
+
+        #message-content {
+            margin-top: 1rem;
+            white-space: pre-wrap;
+            word-break: break-all;
+        }
+
+        #message-date {
+            font-size: 0.9rem;
+            color: var(--text-secondary);
+        }
+
+        #message-list {
+            max-height: 300px;
+            overflow-y: auto;
+            margin-top: 1rem;
+            background: var(--dark-bg);
+            border: var(--border-width) solid #2d3746;
+            border-radius: var(--border-radius);
+            padding: 1rem;
+        }
+
+        #message-list li {
+            margin-bottom: 0.5rem;
+            padding: 0.5rem;
+            border-bottom: var(--border-width) solid #2d3746;
+            cursor: pointer;
+        }
+
+        #message-list li:hover {
+            background: rgba(0, 243, 255, 0.1);
+        }
+
 
         @media (max-width: 768px) {
             .container {
@@ -256,6 +326,10 @@
 
             #constellation {
                 width: 100%;
+            }
+
+            #message-modal {
+                width: 90%;
             }
         }
     </style>
@@ -272,7 +346,7 @@
                 <button id="start-tx">发送</button>
                 <button id="clearTx">清空</button>
                 <button id="uploadText">上传</button>
-                <input type="file" id="uploadTextFile" accept="text/*" hidden>
+                <input type="file" id="uploadTextFile" hidden>
             </div>
             <details>
                 <summary>图片发送</summary>
@@ -283,6 +357,9 @@
                 </div>
             </details>
             <div id="bits"></div>
+            <div id="progress-bar">
+                <div id="progress"></div>
+            </div>
 
         </div>
         <div>
@@ -308,6 +385,7 @@
                 <label for="audio-input">音频输入：</label>
                 <select id="audio-input"></select>
             </div>
+            <div id="message-list"></div>
         </div>
     </div>
     <hr>
@@ -315,8 +393,9 @@
         <div class="params">
             <label>模式：</label>
             <select id="mode">
-                <option value="gfsk" selected>GFSK</option>
-                <option value="bpsk">BPSK</option>
+                <option value="gfsk">GFSK</option>
+                <option value="fsk4">4FSK</option>
+                <option value="bpsk" selected>BPSK</option>
                 <option value="qpsk">QPSK</option>
                 <option value="psk8">8PSK</option>
             </select>
@@ -328,8 +407,8 @@
             <select id="baudrateInput">
                 <option value="2">2</option>
                 <option value="8">8</option>
-                <option value="32">32</option>
-                <option value="50" selected>50</option>
+                <option value="32" selected>32</option>
+                <option value="50">50</option>
                 <option value="80">80</option>
                 <option value="100">100</option>
                 <option value="125">125</option>
@@ -342,10 +421,20 @@
             <!-- <input type="number" id="baudrateInput" value="50" min="30" max="4800"> -->
         </div>
         <canvas id="constellation" width="500" height="500"></canvas>
+        <div id="demod-info"></div>
     </div>
+    <dialog id="message-modal">
+        <div id="message-date"></div>
+        <textarea id="message-content" disabled></textarea>
+        <button id="copy-message">复制</button>
+        <button id="close-message">关闭</button>
+    </dialog>
+    <!-- <script src="//cdn.jsdelivr.net/npm/eruda"></script>
+        <script>eruda.init();</script>
+        -->
     <script>
 
-        let baudRate = 50; // 波特率
+        let baudRate = 32; // 波特率
         const sampleRate = 48000; // 采样率
         let carrierFreq = 16000; // 载波频率
         const freqMulti = 1; // 频率倍数
@@ -417,11 +506,18 @@
             }
 
             function calculateAlpha(bd) {
-                return Math.min(0.2, 10 / bd);
+                return 0.0128//Math.min(0.1, 1.6 / bd);
             }
 
             function calculateBeta(bd) {
-                return calculateAlpha(bd) / 140;
+                return 0.00096//Math.min(0.1, 0.12 / bd);
+            }
+
+            function clamp(v, min, max) {
+                if (isNaN(v)) return min;
+                else if (v > max) return max;
+                else if (v < min) return min;
+                else return v;
             }
 
             const mod = class extends AudioWorkletProcessor {
@@ -626,7 +722,7 @@
 
                     this.alpha = 0.007
                     this.beta = 0.00005
-                    this.gamma = 0.5
+                    this.gamma = 0.05
                     this.phase = 0;
                     this.freq = 0;
 
@@ -644,6 +740,7 @@
                     this.samplesPerSymbol = Math.round(this.sampleRate / baudRate);
                     this.alpha = calculateAlpha(baudRate)
                     this.beta = calculateBeta(baudRate)
+                    this.gainAlpha = clamp((baudRate / 1200) * 0.01, 0.001, 0.1);
                 }
 
                 process(inputs, outputs, parameters) {
@@ -660,9 +757,13 @@
                     sum /= i.length;
                     const rms = Math.sqrt(sum)
 
-                    this.gain = 1 / rms;
-                    if (!isFinite(this.gain) || isNaN(this.gain)) this.gain = 1;
+                    let newGain = 1 / rms;
 
+                    // if diff > 10dB, set immediate gain
+                    if (Math.abs(this.gain - newGain) > 100) {
+                        this.gain = clamp(newGain, 1, 1e6);
+                    } else
+                        this.gain = clamp(this.gain * (1 - this.gainAlpha) + newGain * this.gainAlpha, 1, 1e6);
 
                     for (let j = 0; j < i.length; ++j) {
                         if (this.count >= 0) {
@@ -692,14 +793,15 @@
                             let error = out.real * out.imag;
                             this.freq += this.beta * error;
 
-                            let absFreq = this.freq * this.sampleRate / (2 * Math.PI);
-                            if (Math.abs(absFreq) > this.baudRate) {
-                                this.freq = 0;
-                            }
+                            // Clamp freq
+                            let radianPerHz = Math.PI * 2 / this.baudRate;
+                            let maxRadian = 4 * radianPerHz;
+                            this.freq = clamp(this.freq, -maxRadian, maxRadian);
+
                             this.phase += this.freq + this.alpha * error;
                             if (this.phase > 2 * Math.PI) this.phase -= 2 * Math.PI;
                             if (this.phase < 0) this.phase += 2 * Math.PI;
-                            this.port.postMessage({ i: out.real, q: out.imag, bit: out.real > 0 ? 1 : 0 });
+                            this.port.postMessage({ i: out.real, q: out.imag, gain: this.gain, freq: this.freq });
                         }
 
                         this.count++;
@@ -739,6 +841,7 @@
                     this.samplesPerSymbol = Math.round(this.sampleRate / baudRate);
                     this.alpha = calculateAlpha(this.baudRate) / 2
                     this.beta = calculateBeta(this.baudRate) / 2
+                    this.gainAlpha = clamp((baudRate / 1200) * 0.01, 0.001, 0.1);
                 }
 
                 process(inputs, outputs, parameters) {
@@ -755,9 +858,13 @@
                     sum /= i.length;
                     const rms = Math.sqrt(sum)
 
-                    this.gain = 1 / rms;
-                    if (!isFinite(this.gain) || isNaN(this.gain)) this.gain = 1;
 
+                    let newGain = 1 / rms;
+                    // if diff > 10dB, set immediate gain
+                    if (Math.abs(this.gain - newGain) > 100) {
+                        this.gain = clamp(newGain, 1, 1e6);
+                    } else
+                        this.gain = clamp(this.gain * (1 - this.gainAlpha) + newGain * this.gainAlpha, 1, 1e6);
 
                     for (let j = 0; j < i.length; ++j) {
                         if (this.count >= 0) {
@@ -787,14 +894,12 @@
                             let error = this.errorFunc(out); // errorFunc 需要根据实际情况进行修改
                             this.freq += this.beta * error;
 
-                            let absFreq = this.freq * this.sampleRate / (2 * Math.PI);
-                            if (Math.abs(absFreq) > this.baudRate) {
-                                this.freq = 0;
-                            }
+                            this.freq = clamp(this.freq, -Math.PI * 0.25, Math.PI * 0.25);
+
                             this.phase += this.freq + this.alpha * error;
                             if (this.phase > 2 * Math.PI) this.phase -= 2 * Math.PI;
                             if (this.phase < 0) this.phase += 2 * Math.PI;
-                            this.port.postMessage({ i: out.real, q: out.imag });
+                            this.port.postMessage({ i: out.real, q: out.imag, gain: this.gain, freq: this.freq });
                         }
 
                         this.count++;
@@ -832,7 +937,7 @@
                     this.gain = 1;
 
                     this.phaseRef = Array.from({ length: 8 }, (_, k) => {
-                        const angle = 2 * Math.PI * k / 8+(Math.PI/8);
+                        const angle = 2 * Math.PI * k / 8 + (Math.PI / 8);
                         return [Math.cos(angle), Math.sin(angle)];
                     });
 
@@ -848,6 +953,7 @@
                     this.samplesPerSymbol = Math.round(this.sampleRate / baudRate);
                     this.alpha = calculateAlpha(baudRate) / 4
                     this.beta = calculateBeta(baudRate) / 4
+                    this.gainAlpha = clamp((baudRate / 1200) * 0.01, 0.001, 0.1);
                 }
 
                 nearest8psk(sample) {
@@ -878,9 +984,12 @@
                     sum /= i.length;
                     const rms = Math.sqrt(sum)
 
-                    this.gain = 1 / rms;
-                    if (!isFinite(this.gain) || isNaN(this.gain)) this.gain = 1;
-
+                    let newGain = 1 / rms;
+                    // if diff > 10dB, set immediate gain
+                    if (Math.abs(this.gain - newGain) > 100) {
+                        this.gain = clamp(newGain, 1, 1e6);
+                    } else
+                        this.gain = clamp(this.gain * (1 - this.gainAlpha) + newGain * this.gainAlpha, 1, 1e6);
 
                     for (let j = 0; j < i.length; ++j) {
                         if (this.count >= 0) {
@@ -909,13 +1018,11 @@
                             let out = this.out[0].mul(costas);
                             let error = this.phaseDetector8(out);
                             this.freq += this.beta * error;
-                            if (Math.abs(absFreq) > this.baudRate) {
-                                this.freq = 0;
-                            }
+                            this.freq = clamp(this.freq, -Math.PI * 0.125, Math.PI * 0.125);
                             this.phase += this.freq + this.alpha * error;
                             if (this.phase > 2 * Math.PI) this.phase -= 2 * Math.PI;
                             if (this.phase < 0) this.phase += 2 * Math.PI;
-                            this.port.postMessage({ i: out.real, q: out.imag });
+                            this.port.postMessage({ i: out.real, q: out.imag, gain: this.gain, freq: this.freq });
                         }
 
                         this.count++;
@@ -1091,6 +1198,30 @@
                 symbols.push(phase)
             }
             return symbols
+        }
+
+        function formatSigned(v, significant) {
+            return v < 0 ? v.toFixed(significant) : "+" + v.toFixed(significant);
+        }
+
+        function randomBits(len) {
+            if (len <= 0) return [];
+
+            const arr = new Array(len);
+            // 随机生成第一个元素（0或1）
+            arr[0] = Math.random() < 0.5 ? 0 : 1;
+
+            // 生成后续元素，确保不出现连续1
+            for (let i = 1; i < len; i++) {
+                if (arr[i - 1] === 1) {
+                    arr[i] = 0;  // 如果前一个是1，当前必须为0
+                } else {
+                    // 前一个是0时，随机生成0或1
+                    arr[i] = Math.random() < 0.5 ? 0 : 1;
+                }
+            }
+
+            return arr;
         }
 
 
@@ -1672,7 +1803,7 @@
                 convolver.connect(freqDeviation);
                 freqDeviation.connect(oscillator.frequency);
                 oscillator.connect(gainNode);
-                gainNode.connect(audioCtx.destination);
+                gainNode.connect(audioCtx.destination, 0, 0);
                 oscillator.start();
 
                 let symbolTime = 1 / this.baudRate;
@@ -1693,6 +1824,100 @@
             }
         }
 
+        class MFSKModulator extends Modulator {
+            constructor(order) {
+                super();
+                this.order = order;
+                this.bitsPer = Math.log2(order)
+            }
+
+            transmit(audioCtx, bitArray) {
+                let packed = packBitArray(bitArray, this.bitsPer)
+
+                const mod = new AudioWorkletNode(audioCtx, 'mod')
+                mod.port.postMessage({ type: "baudRate", baudRate: this.baudRate })
+                mod.port.postMessage({ type: "data", data: packed })
+                mod.port.postMessage({
+                    type: "symbolMap", symbolMap: this.distributePoints(this.order, -1, 1)
+                })
+                this.bits = bitArray.length
+
+                const convolver = audioCtx.createConvolver();
+                const filter = createGFSKFilter(this.baudRate);
+                convolver.buffer = filter;
+
+                const freqDeviation = audioCtx.createGain();
+                freqDeviation.gain.value = 170.778026716646371 * this.baudRate * 0.25;
+                const oscillator = audioCtx.createOscillator();
+                oscillator.frequency.value = this.carrierFreq;
+                const gainNode = audioCtx.createGain();
+                gainNode.gain.value = 0.5;
+
+                mod.connect(convolver)
+                convolver.connect(freqDeviation);
+                freqDeviation.connect(oscillator.frequency);
+                oscillator.connect(gainNode);
+                gainNode.connect(audioCtx.destination, 0, 0);
+                oscillator.start();
+
+                let symbolTime = 1 / this.baudRate;
+
+                oscillator.stop(audioCtx.currentTime + symbolTime * packed.length);
+
+                oscillator.onended = () => {
+                    if (this.onStop) this.onStop();
+                }
+
+                this.oscillator = oscillator;
+                return oscillator;
+            }
+
+            stop() {
+                super.stop();
+                if (this.oscillator) this.oscillator.stop();
+            }
+
+            get bitsPerSymbol() {
+                return this.bitsPer;
+            }
+
+            distributePoints(numPoints, start, end) {
+                // 如果点的数量小于2，直接返回空数组
+                if (numPoints < 2) {
+                    return {};
+                }
+
+                // 如果点的数量为2，直接返回起始点和结束点
+                if (numPoints === 2) {
+                    return { 0: [-1, 0], 1: [1, 0] };
+                }
+
+                // 计算每个区间的长度
+                const intervalLength = (end - start) / (numPoints - 1);
+
+                // 创建一个数组来存储分割点
+                const points = { 0: [start, 0] }; // 第一个点是起始点
+
+                // 计算中间的分割点
+                for (let i = 1; i < numPoints - 1; i++) {
+                    const point = start + intervalLength * i;
+                    points[i] = [point, 0];
+                }
+
+                // 最后一个点是结束点
+                points[numPoints - 1] = [end, 0];
+
+                return points;
+            }
+
+        }
+
+        class FSK4Modulator extends MFSKModulator {
+            constructor() {
+                super(4);
+            }
+        }
+
         class BPSKModulator extends Modulator {
             transmit(audioCtx, bitArray) {
                 // differential coding
@@ -1703,6 +1928,7 @@
                 for (let i = 0; i < this.baudRate * 0.5; i++) {
                     startSync.push(...[1, 0])
                 }
+                startSync.push(...randomBits(baudRate * 5));
 
 
                 codedArray = startSync.concat(codedArray)
@@ -1731,7 +1957,7 @@
                 convolver.connect(gainNode);
                 this.mixer.connect(multiplier.gain);
                 gainNode.connect(multiplier);
-                multiplier.connect(audioCtx.destination);
+                multiplier.connect(audioCtx.destination, 0, 0);
 
                 this.mixer.start();
                 this.mixer.stop(audioCtx.currentTime + symbolTime * codedArray.length);
@@ -1760,6 +1986,7 @@
                 for (let i = 0; i < this.baudRate * 0.5; i++) {
                     startSync.push(...[0, 2])
                 }
+                startSync.push(...qpskEncode(randomBits(baudRate * 10)));
 
 
                 codedArray = startSync.concat(codedArray)
@@ -1803,7 +2030,7 @@
                 mod.connect(convolver)
                 convolver.connect(gainNode);
                 gainNode.connect(this.mixer);
-                merger.connect(audioCtx.destination)
+                merger.connect(audioCtx.destination, 0, 0)
                 this.mixer.connect(merger, 0, 0)
                 this.mixer.connect(merger, 0, 1)
 
@@ -1833,6 +2060,7 @@
                 for (let i = 0; i < this.baudRate * 0.5; i++) {
                     startSync.push(...[0, 4])
                 }
+                startSync.push(...psk8Encode(randomBits(baudRate * 15)));
 
                 codedArray = startSync.concat(codedArray)
                 this.bits = codedArray.length * this.bitsPerSymbol
@@ -1879,7 +2107,7 @@
                 mod.connect(convolver)
                 convolver.connect(gainNode);
                 gainNode.connect(this.mixer);
-                merger.connect(audioCtx.destination)
+                merger.connect(audioCtx.destination, 0, 0)
                 this.mixer.connect(merger, 0, 0)
                 this.mixer.connect(merger, 0, 1)
 
@@ -1897,6 +2125,9 @@
                 return 3;
             }
         }
+
+        // Demodulators
+        const demodInfo = document.getElementById("demod-info");
 
         class Demodulator {
             constructor() {
@@ -1973,6 +2204,75 @@
             }
         }
 
+        class FSK4Demodulator extends Demodulator {
+            setBaudRate(baudRate) {
+                this.baudRate = baudRate;
+                const filter = createGFSKFilter(this.baudRate)
+                if (this.convolver) this.convolver.buffer = filter;
+                if (this.demod) this.demod.port.postMessage({ type: "baudRate", baudRate: baudRate })
+            }
+            setCarrierFreq(carrierFreq) {
+                this.carrierFreq = carrierFreq;
+                if (this.mixer) this.mixer.parameters.get('frequency').value = carrierFreq;
+            }
+            receive(source) {
+                super.receive(source)
+                this.mixer = new AudioWorkletNode(audioCtx, 'mixer', { outputChannelCount: [2] });
+                this.convolver = audioCtx.createConvolver()
+                this.demod = new AudioWorkletNode(audioCtx, 'demod')
+                this.setBaudRate(this.baudRate)
+                this.setCarrierFreq(this.carrierFreq)
+
+                source.connect(this.mixer, 0)
+                this.mixer.connect(this.convolver);
+                this.convolver.connect(this.demod)
+
+                this.demod.port.onmessage = (event) => {
+                    let phase = event.data.phase;
+                    let bit1, bit2
+                    if (phase < -0.5) {
+                        bit1 = bit2 = 0;
+                    } else if (phase < 0) {
+                        bit1 = 0;
+                        bit2 = 1;
+                    } else if (phase < 0.5) {
+                        bit1 = 1
+                        bit2 = 0
+                    } else {
+                        bit1 = bit2 = 1
+                    }
+
+                    if (this.onSample) this.onSample({
+                        sample: [phase, 0],
+                        bits: [bit1, bit2]
+                    })
+                }
+            }
+
+            stop() {
+                super.stop();
+                if (this.mixer) this.mixer.disconnect();
+                if (this.convolver) this.convolver.disconnect();
+                if (this.demod) this.demod.disconnect();
+            }
+
+            get decidePoints() {
+                return [
+                    {
+                        i: -1, q: 0, label: "00"
+                    },
+                    {
+                        i: -0.333, q: 0, label: "01"
+                    },
+                    {
+                        i: 0.333, q: 0, label: "10"
+                    },
+                    {
+                        i: 1, q: 0, label: "11"
+                    }]
+            }
+        }
+
 
         class BPSKDemodulator extends Demodulator {
             constructor() {
@@ -2005,7 +2305,7 @@
                 this.convolver.connect(this.demod)
 
                 this.demod.port.onmessage = (event) => {
-                    let current = event.data.bit;
+                    let current = event.data.i > 0 ? 1 : 0;
                     this.debug.push(current)
                     if (this.debug.length >= 18) {
                         //console.log([...this.debug])
@@ -2016,6 +2316,7 @@
                         bits: [current ^ this.lastBit]
                     })
                     this.lastBit = current;
+                    demodInfo.innerText = `Gain: ${(Math.log10(event.data.gain) * 20).toFixed(0)} dB | Freq: ${formatSigned(-event.data.freq / Math.PI * baudRate / 2, 4)} Hz`
                 }
             }
 
@@ -2086,6 +2387,8 @@
                         bits: [bit1, bit2]
                     })
                     this.lastPhase = phase;
+                    demodInfo.innerText = `Gain: ${(Math.log10(event.data.gain) * 20).toFixed(0)} dB | Freq: ${formatSigned(-event.data.freq / Math.PI * baudRate / 2, 4)} Hz`
+
                 }
             }
 
@@ -2159,6 +2462,8 @@
                         bits: [bit1, bit2, bit3]
                     })
                     this.lastPhase = phase;
+                    demodInfo.innerText = `Gain: ${(Math.log10(event.data.gain) * 20).toFixed(0)} dB | Freq: ${formatSigned(-event.data.freq / Math.PI * baudRate / 2, 4)} Hz`
+
                 }
             }
 
@@ -2193,6 +2498,93 @@
                 ]
             }
         }
+
+        // Message
+        class Message {
+            constructor() {
+                this.date = new Date();
+                this.data = [];
+            }
+
+            write(str) {
+                this.data.push(str)
+            }
+
+            toString() {
+                return this.data.join('');
+            }
+
+            preview() {
+                if (this.data.length === 0) return '(Empty Message)';
+
+                let counter = 0;
+                let preview = "";
+                let idx = 0;
+
+                while (idx < this.data.length) { // Corrected loop condition to prevent infinite loops
+                    let str = this.data[idx];
+
+                    if (str != null) {
+                        if (counter + str.length >= 20) {
+                            preview += str.substring(0, 20 - counter);
+                            break; // Exit the loop after reaching the limit
+                        } else {
+                            preview += str;
+                            counter += str.length;
+                        }
+                    }
+
+                    idx++;
+                }
+
+                return preview;
+            }
+
+            toJSON() {
+                return {
+                    date: this.date.toISOString(),
+                    data: this.data
+                };
+            }
+        }
+
+        const messages = [];
+        let rxMessage = null;
+        const messageList = document.getElementById("message-list");
+        const messageModal = document.getElementById("message-modal");
+        const messageDate = document.getElementById("message-date");
+        const messageContent = document.getElementById("message-content");
+        const copyMessageButton = document.getElementById("copy-message");
+        const closeMessageButton = document.getElementById("close-message");
+
+        copyMessageButton.addEventListener('click', () => {
+            navigator.clipboard.writeText(messageContent.value).then(() => {
+                alert("内容已复制到剪贴板");
+            }).catch(err => {
+                console.error("复制失败:", err);
+            });
+        });
+
+        closeMessageButton.addEventListener('click', () => {
+            messageModal.close()
+        });
+
+
+        function updateMessageList() {
+            messageList.innerHTML = '';
+            messages.forEach((msg, index) => {
+                const li = document.createElement('li');
+                li.textContent = `${index + 1}: ${msg.preview()} (${msg.date.toLocaleTimeString()})`;
+                li.addEventListener('click', () => {
+                    messageDate.textContent = `接收时间: ${msg.date.toLocaleString()}`;
+                    messageContent.textContent = msg.toString();
+                    messageModal.showModal()
+                });
+                messageList.appendChild(li);
+            });
+        }
+
+
 
         function isValidSample(sample) {
             if (sample.idx === 0) {
@@ -2317,6 +2709,8 @@
         const received = document.getElementById('received');
 
         const bitDisplay = document.getElementById('bits');
+        const progressBar = document.getElementById('progress-bar');
+        const progressDiv = document.getElementById('progress');
 
         navigator.mediaDevices?.enumerateDevices().then(devices => {
             devices.filter(device => device.kind === 'audioinput').forEach(device => {
@@ -2349,6 +2743,11 @@
                 modulate: GFSKModulator,
                 demodulate: GFSKDemodulator
             },
+            fsk4: {
+                name: '4FSK',
+                modulate: FSK4Modulator,
+                demodulate: FSK4Demodulator
+            },
             bpsk: {
                 name: 'BPSK',
                 modulate: BPSKModulator,
@@ -2365,7 +2764,7 @@
                 demodulate: PSK8Demodulator
             }
         }
-        let selectedMode = MODES['gfsk'];
+        let selectedMode = MODES['bpsk'];
 
         const constellation = new ConstellationRecorder(baudRate / 8);
 
@@ -2392,6 +2791,31 @@
             imageRecvDiv.open = false;
         }
 
+        let rxBuffer = [];
+
+        function receivedChar(c) {
+            if (baudRate < 200) {
+                let textNode = document.createTextNode(c)
+
+                let isBottom = Math.abs(received.scrollHeight - received.clientHeight - received.scrollTop) < 48;
+                received.appendChild(textNode);
+                if (isBottom) {
+                    received.scrollTo(0, received.scrollHeight)
+                }
+            } else {
+                rxBuffer.push(c);
+                if (rxBuffer.length >= baudRate / 16) {
+                    let str = rxBuffer.join('');
+                    let isBottom = Math.abs(received.scrollHeight - received.clientHeight - received.scrollTop) < 48;
+                    received.appendChild(document.createTextNode(str));
+                    if (isBottom) {
+                        received.scrollTo(0, received.scrollHeight)
+                    }
+                    rxBuffer = [];
+                }
+            }
+        }
+
         async function startRx() {
             rxBtn.textContent = '停止';
             audioCtx.resume()
@@ -2413,26 +2837,47 @@
                 const dec = baudRate >= 200 ? decodeAndVerify(result) : result;//decodeAndVerify(result)
                 // console.log("解码结果:", dec);
                 if (dec > 0) {
-                    if (isRxImage) {
-                        if (dec < 0) imgParser.state = 0;
-                        else if (dec === 2000001) {
-                            isRxImage = false;
-                        } else {
-                            if (dec >= 2000002) dec -= 2;
-                            imgParser.feed(dec)
+                    if (dec >= 2000000 && dec <= 2001000) { // Control tokens
+                        console.log("控制令牌:", dec);
+                        switch (dec) {
+                            case 2000000: // Start image
+                                startRxImage();
+                                break;
+                            case 2000001: // End image
+                                if (isRxImage) {
+                                    isRxImage = false;
+                                } else {
+                                    console.warn("未开始图像接收");
+                                }
+                                break;
+                            case 2000002: // Start new message
+                                rxMessage = new Message();
+                                messages.push(rxMessage);
+                                updateMessageList();
+                                console.log("开始新消息");
+                                break;
+                            case 2000003: // End message
+                                rxMessage = null;
+                                updateMessageList();
+                                break;
+
+                            default:
+                                console.warn("未知控制令牌:", dec);
                         }
-                    } else {
-                        if (dec == 2000000) {
-                            startRxImage()
-                        } else {
-                            if (dec >= 2 && dec <= 129) {
-                                received.appendChild(document.createTextNode(VARICODE[dec - 2]))
-                            } else {
-                                received.appendChild(document.createTextNode(String.fromCodePoint(dec - 2)))
-                            }
-                            if (Math.abs(received.scrollHeight - received.clientHeight - received.scrollTop) < 48) {
-                                received.scrollTo(0, received.scrollHeight)
-                            }
+                    }
+                    else if (isRxImage) { // Image data
+                        if (dec >= 2001000) {
+                            imgParser.feed(dec - 2001000);
+                        } else imgParser.feed(dec);
+                    } else if (dec >= 2 && dec <= 129) { // Varicode characters
+                        receivedChar(VARICODE[dec - 2]);
+                        if (rxMessage) {
+                            rxMessage.write(VARICODE[dec - 2]);
+                        }
+                    } else { // Regular characters
+                        receivedChar(String.fromCodePoint(dec - 2));
+                        if (rxMessage) {
+                            rxMessage.write(String.fromCodePoint(dec - 2));
                         }
                     }
                 }
@@ -2524,13 +2969,18 @@
             function transmitOrdArray(ordArray, delay = 1) {
                 audioCtx.resume();
                 const mod = new AudioWorkletNode(audioCtx, 'mod')
+                ordArray.unshift(2000002); // Start message token
+                ordArray.push(2000003); // End message token
                 const preparedArray = baudRate >= 200 ? ordArray.map(e => encodeWithParity(e)) : ordArray;
-                const sync = [2, 2, 2, 2, 2, 2, 2, 2];
+                const sync = [2, 2];
 
                 preparedArray.unshift(...sync);
                 preparedArray.push(...sync);
 
+                console.log("发送数据:", preparedArray);
+
                 const bits = fibonacciEncoding(preparedArray);
+                const baudRateFinal = baudRate;
 
                 modulator = new selectedMode.modulate();
                 modulator.setBaudRate(baudRate);
@@ -2542,20 +2992,24 @@
                     bitDisplay.textContent = '';
                     txBtn.textContent = '发送';
                     txStart = false;
+                    progressBar.style.display = 'none';
+                    progressDiv.style.width = '0%';
                 })
                 modulator.transmit(audioCtx, bits);
 
                 const currentTime = audioCtx.currentTime;
                 const interval = setInterval(() => {
-                    const sent = (audioCtx.currentTime - currentTime) * baudRate * modulator.bitsPerSymbol;
-                    const remainingSeconds = (modulator.totalBits - sent) / (baudRate * modulator.bitsPerSymbol);
+                    const sent = (audioCtx.currentTime - currentTime) * baudRateFinal * modulator.bitsPerSymbol;
+                    const remainingSeconds = (modulator.totalBits - sent) / (baudRateFinal * modulator.bitsPerSymbol);
                     bitDisplay.textContent = `发送进度: ${toSI(sent / 8, true)}B / ${toSI(modulator.totalBits / 8, true)}B (剩余 ${secondsToHms(remainingSeconds)})`;
+                    progressDiv.style.width = `${Math.min(100, (sent / modulator.totalBits) * 100)}%`;
                 }, 100);
 
 
                 txStart = true;
                 txImageBtn.disabled = true;
                 txBtn.textContent = '中止';
+                progressBar.style.display = 'block';
             }
 
             txBtn.addEventListener('click', () => {
@@ -2729,9 +3183,9 @@
             }
 
             // 检查文件大小
-            const maxSize = 256 * 1024; // 256KB
+            const maxSize = 512 * 1024; // 256KB
             if (file.size > maxSize) {
-                alert('文件大小不能超过 256KB');
+                alert('文件大小不能超过 512KB');
                 uploadTextFile.value = ''; // 清空文件选择
                 return;
             }
@@ -2742,9 +3196,12 @@
                 const text = event.target.result;
                 // 简单判断是否为纯文本 (例如检查是否存在二进制数据)
                 if (!isPlainText(text)) {
-                    alert('请选择纯文本文件');
-                    uploadTextFile.value = ''; // 清空文件选择
-                    return;
+                    // 转dataurl
+                    reader.onload = function (e) {
+                        const dataUrl = e.target.result;
+                        document.getElementById('transmit').value = dataUrl;
+                    };
+                    reader.readAsDataURL(file);
                 }
 
                 // 文件验证通过，可以进行后续操作
@@ -2776,11 +3233,11 @@
 
                 if (sample.value != 0) {
                     let meta = sampleMetaToSymbol(sample);
-                    if (meta >= 2000000) meta += 2;
+                    if (meta >= 2000000) meta += 1000;
                     symbolList.push(meta)
 
                     let sampSymbol = sampleToSymbol(sample);
-                    if (sampSymbol >= 2000000) sampSymbol += 2;
+                    if (sampSymbol >= 2000000) sampSymbol += 1000;
                     symbolList.push(sampSymbol)
                 }
             }

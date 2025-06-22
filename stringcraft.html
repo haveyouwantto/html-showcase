@@ -1,0 +1,938 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="UTF-8">
+    <title>StringCraft</title>
+    <style>
+        :root {
+            --primary: #7c4dff;
+            --primary-light: #b47cff;
+            --primary-dark: #3a1ab6;
+            --secondary: #00e5ff;
+            --background: #121212;
+            --surface: #1e1e1e;
+            --surface-light: #2a2a2a;
+            --surface-dark: #121212;
+            --text-primary: rgba(255, 255, 255, 0.87);
+            --text-secondary: rgba(255, 255, 255, 0.6);
+            --error: #ff5252;
+            --success: #69f0ae;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background-color: var(--background);
+            color: var(--text-primary);
+            margin: 0;
+            padding: 24px;
+            line-height: 1.5;
+        }
+
+        h1 {
+            text-align: center;
+            margin-bottom: 32px;
+            font-weight: 600;
+            font-size: 2.5rem;
+            background: linear-gradient(90deg, var(--primary), var(--secondary));
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
+            text-shadow: 0 0 8px rgba(124, 77, 255, 0.3);
+        }
+
+        section {
+            background: var(--surface);
+            padding: 24px;
+            margin-bottom: 24px;
+            border-radius: 12px;
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        section:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4);
+        }
+
+        h2 {
+            margin-top: 0;
+            font-size: 1.4rem;
+            padding-bottom: 12px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            color: var(--primary-light);
+            font-weight: 500;
+        }
+
+        /* Excitation Source Tabs */
+        .source-tabs {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 16px;
+            flex-wrap: wrap;
+        }
+
+        .source-tabs button {
+            margin: 0;
+            padding: 10px 20px;
+            border: none;
+            background: var(--surface-light);
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            color: var(--text-secondary);
+            transition: all 0.2s ease;
+            font-weight: 500;
+            letter-spacing: 0.5px;
+        }
+
+        .source-tabs button:hover {
+            background: rgba(124, 77, 255, 0.2);
+            color: var(--primary-light);
+        }
+
+        .source-tabs button.active {
+            background: var(--primary);
+            color: white;
+            box-shadow: 0 2px 8px rgba(124, 77, 255, 0.4);
+        }
+
+        /* Noise Options */
+        #noise-options {
+            display: flex;
+            gap: 16px;
+            align-items: center;
+            flex-wrap: wrap;
+            margin-bottom: 16px;
+        }
+
+        #noise-options label {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            cursor: pointer;
+            color: var(--text-secondary);
+            transition: color 0.2s;
+        }
+
+        #noise-options label:hover {
+            color: var(--text-primary);
+        }
+
+        #noise-options input[type="radio"] {
+            accent-color: var(--primary);
+        }
+
+        #noise-random {
+            background: var(--surface-light);
+            border: none;
+            padding: 8px 16px;
+            border-radius: 6px;
+            color: var(--text-primary);
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        #noise-random:hover {
+            background: rgba(124, 77, 255, 0.2);
+        }
+
+        /* Sliders */
+        #sliders-container {
+            display: flex;
+            gap: 8px;
+            padding: 16px 0;
+            overflow-x: auto;
+            scrollbar-width: thin;
+            scrollbar-color: var(--primary) var(--surface-light);
+        }
+
+        #sliders-container::-webkit-scrollbar {
+            height: 6px;
+        }
+
+        #sliders-container::-webkit-scrollbar-track {
+            background: var(--surface-light);
+            border-radius: 3px;
+        }
+
+        #sliders-container::-webkit-scrollbar-thumb {
+            background: var(--primary);
+            border-radius: 3px;
+        }
+
+        .slider-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .slider-container input[type="range"] {
+            -webkit-appearance: slider-vertical;
+            width: 8px;
+            height: 100px;
+            background: transparent;
+            cursor: pointer;
+        }
+
+        .slider-container input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background: var(--primary);
+            box-shadow: 0 0 0 2px var(--surface), 0 2px 4px rgba(0, 0, 0, 0.3);
+        }
+
+        .slider-label {
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+            background: var(--surface-light);
+            padding: 2px 6px;
+            border-radius: 4px;
+        }
+
+        /* Preview Canvas */
+        #preview {
+            width: 100%;
+            height: 200px;
+            background: var(--surface-light);
+            border-radius: 8px;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            margin-top: 16px;
+        }
+
+        /* Keyboard */
+        #keyboard-container {
+            display: flex;
+            width: calc(52 * 30px);
+            /* 52个白键 * 每个30px */
+            height: 180px;
+            margin: 24px auto;
+            background: var(--surface-light);
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: inset 0 0 16px rgba(0, 0, 0, 0.3);
+            user-select: none;
+        }
+
+        .white-key {
+            position: relative;
+            width: 30px;
+            background: linear-gradient(to bottom, #fff, #e0e0e0);
+            border: 1px solid rgba(0, 0, 0, 0.2);
+            border-bottom: 4px solid rgba(0, 0, 0, 0.2);
+            border-radius: 0 0 6px 6px;
+            z-index: 1;
+            cursor: pointer;
+            transition: all 0.1s;
+        }
+
+        .black-key {
+            position: absolute;
+            width: 18px;
+            height: 110px;
+            top: 0;
+            right: 0;
+            transform: translateX(50%);
+            background: linear-gradient(to bottom, #333, #000);
+            z-index: 2;
+            border-radius: 0 0 4px 4px;
+            cursor: pointer;
+            transition: all 0.1s;
+        }
+
+        .white-key:hover {
+            background: linear-gradient(to bottom, #f5f5f5, #d0d0d0);
+        }
+
+        .white-key:active {
+            background: linear-gradient(to bottom, #e0e0e0, #c0c0c0);
+            border-bottom-width: 2px;
+            transform: translateY(2px);
+        }
+
+        .black-key:hover {
+            background: linear-gradient(to bottom, #444, #111);
+        }
+
+        .black-key:active {
+            background: linear-gradient(to bottom, #222, #000);
+            height: 108px;
+        }
+
+        /* Buttons */
+        button {
+            background: var(--primary);
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 500;
+            transition: all 0.2s;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            font-size: 0.8rem;
+        }
+
+        button:hover {
+            background: var(--primary-light);
+            box-shadow: 0 4px 12px rgba(124, 77, 255, 0.3);
+        }
+
+        button:active {
+            transform: translateY(1px);
+        }
+
+        /* Dropdowns */
+        select {
+            background: var(--surface-light);
+            color: var(--text-primary);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            padding: 8px 12px;
+            border-radius: 6px;
+            cursor: pointer;
+            margin-right: 8px;
+        }
+
+        /* File Input */
+        input[type="file"] {
+            color: var(--text-primary);
+        }
+
+        input[type="file"]::file-selector-button {
+            background: var(--primary);
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            margin-right: 8px;
+            transition: all 0.2s;
+        }
+
+        input[type="file"]::file-selector-button:hover {
+            background: var(--primary-light);
+        }
+
+        /* Hidden elements */
+        .hidden {
+            display: none !important;
+        }
+
+        /* MIDI Select */
+        #midi-inputs {
+            width: 100%;
+            max-width: 400px;
+            padding: 10px 16px;
+            margin-top: 8px;
+            background: var(--surface-light);
+            color: var(--text-primary);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 8px;
+        }
+
+        /* Responsive adjustments */
+        @media (max-width: 768px) {
+            body {
+                padding: 16px;
+            }
+
+            h1 {
+                font-size: 1.8rem;
+            }
+
+            section {
+                padding: 16px;
+            }
+
+            .source-tabs {
+                gap: 4px;
+            }
+
+            .source-tabs button {
+                padding: 8px 12px;
+                font-size: 0.8rem;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <h1>StringCraft</h1>
+    <section id="excitation">
+        <h2>激励源</h2>
+        <div class="source-tabs">
+            <button id="tab-noise" class="active">噪声</button>
+            <button id="tab-waveform">波形</button>
+            <button id="tab-additive">加法合成</button>
+            <button id="tab-upload">上传音频</button>
+        </div>
+        <!-- 噪声选项 -->
+        <div id="noise-options">
+            <label><input type="radio" name="noise-type" value="white" checked>白噪声</label>
+            <label><input type="radio" name="noise-type" value="pink">粉噪声</label>
+            <label><input type="radio" name="noise-type" value="brown">布朗噪声</label>
+            <button id="noise-random">刷新</button>
+        </div>
+        <!-- 波形选项 -->
+        <div id="waveform-options" class="hidden">
+            <label for="waveform-select">波形:</label>
+            <select id="waveform-select">
+                <option value="sine">正弦波</option>
+                <option value="triangle">三角波</option>
+                <option value="square">方波</option>
+                <option value="sawtooth">锯齿波</option>
+            </select>
+        </div>
+        <!-- 加法合成选项 -->
+        <div id="additive-options" class="hidden">
+            <div id="sliders-container">
+                <!-- 32 个滑杆将由脚本生成 -->
+            </div>
+            <select id="random-mode">随机模式
+                <option value="random">随机</option>
+                <option value="decay">衰减</option>
+                <option value="odd-decay">奇数衰减</option>
+            </select>
+            <button id="additive-random">随机</button>
+        </div>
+        <!-- 上传选项 -->
+        <div id="upload-options" class="hidden">
+            <input type="file" id="file-input" accept="audio/*">
+        </div>
+        <!-- 波形预览 Canvas -->
+        <canvas id="preview" width="1200" height="300"></canvas>
+        <button id="download-excitation">下载激励信号</button>
+    </section>
+    <section id="keyboard">
+        <h2>键盘</h2>
+        <div id="keyboard-container">
+            <!-- 动态生成 -->
+        </div>
+    </section>
+
+    <section id="midi-input-select">
+        <h2>MIDI 输入设备</h2>
+        <p>选择一个midi设备来自动播放音符。</p>
+        <select id="midi-inputs">
+            <option value="">选择输入设备：</option>
+            <!-- 这里将动态填充可用的 MIDI 输入设备 -->
+        </select>
+    </section>
+    <script>
+        // 全局变量
+        const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        let currentExcitation = new Float32Array(1024);
+        const previewCanvas = document.getElementById('preview');
+        const previewCtx = previewCanvas.getContext('2d');
+
+        // 声音管理
+        const sounds = new Map(); // 格式: Frequency -> Set(AudioBufferSourceNode)
+
+        // 效果器
+        const compressor = audioContext.createDynamicsCompressor();
+        const filter = audioContext.createBiquadFilter(); // 消除低频
+        filter.type = 'highpass';
+        filter.frequency.setValueAtTime(20, audioContext.currentTime);
+        const reverb = audioContext.createConvolver();
+
+        // 创建一个混响
+        const impulseResponse = audioContext.createBuffer(2, audioContext.sampleRate, audioContext.sampleRate);
+        for (let ch = 0; ch < 2; ch++) {
+            const channelData = impulseResponse.getChannelData(ch);
+            for (let i = 0; i < channelData.length; i++) {
+                const t = i / audioContext.sampleRate;
+                channelData[i] = (Math.random() * 2 - 1) * Math.pow(Math.E, -t * 32); // 指数衰减
+            }
+        }
+        reverb.normalize = true; // 归一化
+        reverb.buffer = impulseResponse;
+
+        reverb.connect(compressor).connect(filter).connect(audioContext.destination);
+        // compressor.connect(audioContext.destination);
+
+        // 激励源选项卡切换逻辑
+        const tabs = {
+            noise: document.getElementById('noise-options'),
+            waveform: document.getElementById('waveform-options'),
+            additive: document.getElementById('additive-options'),
+            upload: document.getElementById('upload-options')
+        };
+        document.getElementById('tab-noise').onclick = () => switchTab('noise');
+        document.getElementById('tab-waveform').onclick = () => switchTab('waveform');
+        document.getElementById('tab-additive').onclick = () => switchTab('additive');
+        document.getElementById('tab-upload').onclick = () => switchTab('upload');
+
+        function switchTab(tabName) {
+            // 切换按钮和内容的显示/隐藏
+            Object.keys(tabs).forEach(name => {
+                document.getElementById('tab-' + name).classList.toggle('active', name === tabName);
+                tabs[name].classList.toggle('hidden', name !== tabName);
+            });
+            // 选项变更后重新生成激励信号
+            generateExcitation();
+        }
+
+        // 初始化加法合成滑杆
+        const slidersContainer = document.getElementById('sliders-container');
+        for (let i = 1; i <= 32; i++) {
+            const container = document.createElement('div');
+            container.className = 'slider-container';
+            const slider = document.createElement('input');
+            slider.type = 'range';
+            slider.min = -32;
+            slider.max = 0;
+            slider.value = (i === 1 ? 0 : -32); // 默认第一个谐波 0dB，其余 -32dB
+            slider.className = 'slider-vertical';
+            slider.dataset.harmonic = i;
+            const label = document.createElement('div');
+            label.className = 'slider-label';
+            label.textContent = slider.value;
+            container.appendChild(slider);
+            container.appendChild(label);
+            slidersContainer.appendChild(container);
+            // 滑杆变化时更新标签并重生成信号
+            slider.addEventListener('input', () => {
+                label.textContent = slider.value;
+                generateExcitation();
+            });
+        }
+        // 随机按钮事件
+
+        document.getElementById('noise-random').addEventListener('click', () => {
+            // 随机生成噪声
+            const type = document.querySelector('input[name="noise-type"]:checked').value;
+            generateNoise(type);
+            normalizeExcitation();
+            drawPreview();
+        });
+
+        document.getElementById('additive-random').addEventListener('click', () => {
+
+            // 获取当前随机模式
+            const randomMode = document.getElementById('random-mode').value;
+
+            /* random：随机滑块
+            decay：随机db数恒定衰减
+            odd-decay：随机db数奇数衰减，偶数为0
+            */
+
+            let randomFunc = {
+                random: (i) => {
+                    return Math.floor(Math.random() * -32);
+                },
+                decay: (i, decay) => {
+                    return -Math.floor(decay * i);
+                },
+                'odd-decay': (i, decay) => {
+                    return (i % 2) == 0 ? -32 : -Math.floor(decay * i);
+                }
+            }
+
+            let rand = Math.random() * 3
+
+            // 随机生成滑杆值
+            slidersContainer.querySelectorAll('input[type=range]').forEach(input => {
+                const randomValue = randomFunc[randomMode](parseInt(input.dataset.harmonic), rand);
+                input.value = randomValue;
+                input.dispatchEvent(new Event('input'));
+            });
+            // slidersContainer.querySelectorAll('input[type=range]').forEach(input => {
+            //     const randomValue = Math.floor(Math.random() * -32);
+            //     input.value = randomValue;
+            //     input.dispatchEvent(new Event('input'));
+            // });
+        });
+
+        // 噪声类型与波形选择事件监听
+        document.getElementsByName('noise-type').forEach(radio => {
+            radio.addEventListener('change', generateExcitation);
+        });
+        document.getElementById('waveform-select').addEventListener('change', generateExcitation);
+
+        // 文件上传处理
+        document.getElementById('file-input').addEventListener('change', function () {
+            const file = this.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = function () {
+                audioContext.decodeAudioData(reader.result, function (buffer) {
+                    // 解码后取第一声道数据，或双声道平均
+                    const input = buffer.getChannelData(0);
+                    const length = Math.min(input.length, currentExcitation.length);
+                    if (buffer.numberOfChannels > 1) {
+                        const input2 = buffer.getChannelData(1);
+                        for (let i = 0; i < length; i++) {
+                            currentExcitation[i] = 0.5 * (input[i] + input2[i]);
+                        }
+                    } else {
+                        for (let i = 0; i < length; i++) {
+                            currentExcitation[i] = input[i];
+                        }
+                    }
+
+                    // 归一化
+                    let maxVal = 0;
+                    for (let i = 0; i < length; i++) {
+                        if (Math.abs(currentExcitation[i]) > maxVal) maxVal = Math.abs(currentExcitation[i]);
+                    }
+                    if (maxVal > 0) {
+                        for (let i = 0; i < length; i++) {
+                            currentExcitation[i] /= maxVal;
+                        }
+                    }
+
+                    // 如果文件音频较短，补零
+                    for (let i = length; i < currentExcitation.length; i++) {
+                        currentExcitation[i] = 0;
+                    }
+                    drawPreview();
+                });
+            };
+            reader.readAsArrayBuffer(file);
+        });
+
+        function normalizeExcitation() {
+            // 归一化当前激励信号
+            let maxVal = 0;
+            for (let i = 0; i < currentExcitation.length; i++) {
+                if (Math.abs(currentExcitation[i]) > maxVal) maxVal = Math.abs(currentExcitation[i]);
+            }
+            if (maxVal > 0) {
+                for (let i = 0; i < currentExcitation.length; i++) {
+                    currentExcitation[i] /= maxVal;
+                }
+            }
+        }
+
+        // 根据当前设置生成激励信号
+        function generateExcitation() {
+            const activeTab = Object.keys(tabs).find(name => !tabs[name].classList.contains('hidden'));
+            if (!activeTab) return;
+            if (activeTab === 'noise') {
+                const type = document.querySelector('input[name="noise-type"]:checked').value;
+                generateNoise(type);
+            } else if (activeTab === 'waveform') {
+                const wave = document.getElementById('waveform-select').value;
+                generateWaveform(wave);
+            } else if (activeTab === 'additive') {
+                generateAdditive();
+            }
+            normalizeExcitation();
+            drawPreview();
+        }
+
+        function generateNoise(type) {
+            // 根据选定类型生成对应噪声
+            if (type === 'white') {
+                for (let i = 0; i < currentExcitation.length; i++) {
+                    currentExcitation[i] = Math.random() * 2 - 1;
+                }
+            } else if (type === 'pink') {
+                // Paul Kellet 的粉噪声算法
+                let b0 = 0, b1 = 0, b2 = 0, b3 = 0, b4 = 0, b5 = 0, b6 = 0;
+                for (let i = 0; i < currentExcitation.length; i++) {
+                    const white = Math.random() * 2 - 1;
+                    b0 = 0.99886 * b0 + white * 0.0555179;
+                    b1 = 0.99332 * b1 + white * 0.0750759;
+                    b2 = 0.96900 * b2 + white * 0.1538520;
+                    b3 = 0.86650 * b3 + white * 0.3104856;
+                    b4 = 0.55000 * b4 + white * 0.5329522;
+                    b5 = -0.7616 * b5 - white * 0.0168980;
+                    currentExcitation[i] = b0 + b1 + b2 + b3 + b4 + b5 + b6 + white * 0.5362;
+                    currentExcitation[i] *= 0.11; // 补偿增益
+                    b6 = white * 0.115926;
+                }
+            } else if (type === 'brown') {
+                let lastOut = 0;
+                for (let i = 0; i < currentExcitation.length; i++) {
+                    const white = Math.random() * 2 - 1;
+                    lastOut = (lastOut + (0.02 * white)) / 1.02;
+                    currentExcitation[i] = lastOut * 3.5; // 补偿增益
+                }
+            }
+        }
+
+        function generateWaveform(wave) {
+            // 生成选定基础波形的一个周期
+            for (let i = 0; i < currentExcitation.length; i++) {
+                const phase = i / currentExcitation.length;
+                if (wave === 'sine') {
+                    currentExcitation[i] = Math.sin(2 * Math.PI * phase);
+                } else if (wave === 'triangle') {
+                    currentExcitation[i] = 2 * Math.abs(2 * (phase - Math.floor(phase + 0.5))) - 1;
+                } else if (wave === 'square') {
+                    currentExcitation[i] = phase < 0.5 ? 1 : -1;
+                } else if (wave === 'sawtooth') {
+                    currentExcitation[i] = 2 * (phase - Math.floor(phase + 0.5));
+                }
+            }
+        }
+
+        function generateAdditive() {
+            // 根据 32 个滑杆的值合成谐波
+            const N = currentExcitation.length;
+            // 初始化为零
+            for (let i = 0; i < N; i++) currentExcitation[i] = 0;
+            // 叠加正弦波
+            slidersContainer.querySelectorAll('input[type=range]').forEach(input => {
+                const ampDB = parseFloat(input.value);
+                const amp = Math.pow(10, ampDB / 20);
+                const k = parseInt(input.dataset.harmonic);
+                for (let i = 0; i < N; i++) {
+                    currentExcitation[i] += amp * Math.sin(2 * Math.PI * k * i / N);
+                }
+            });
+            normalizeExcitation();
+        }
+
+        function downloadExcitation() {
+            // 下载当前激励信号为 WAV 文件
+            const length = currentExcitation.length;
+            const buffer = new ArrayBuffer(44 + length * 2);
+            const view = new DataView(buffer);
+            const sampleRate = audioContext.sampleRate;
+
+            // WAV 文件头
+            writeString(view, 0, 'RIFF');
+            view.setUint32(4, 36 + length * 2, true);
+            writeString(view, 8, 'WAVE');
+            writeString(view, 12, 'fmt ');
+            view.setUint32(16, 16, true);
+            view.setUint16(20, 1, true);
+            view.setUint16(22, 1, true);
+            view.setUint32(24, sampleRate, true);
+            view.setUint32(28, sampleRate * 2, true);
+            view.setUint16(32, 2, true);
+            view.setUint16(34, 16, true);
+            writeString(view, 36, 'data');
+            view.setUint32(40, length * 2, true);
+
+            // 写入数据
+            for (let i = 0; i < length; i++) {
+                view.setInt16(44 + i * 2, currentExcitation[i] * 32767.5 - 0.5, true);
+            }
+
+            // 创建 Blob 并下载
+            const blob = new Blob([buffer], { type: 'audio/wav' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'excitation.wav';
+            a.click();
+        }
+
+        function writeString(view, offset, str) {
+            for (let i = 0; i < str.length; i++) {
+                view.setUint8(offset + i, str.charCodeAt(i));
+            }
+        }
+
+        function drawPreview() {
+            // 在 Canvas 上绘制当前激励信号的波形
+            const width = previewCanvas.width;
+            const height = previewCanvas.height;
+            previewCtx.clearRect(0, 0, width, height);
+            previewCtx.beginPath();
+            previewCtx.moveTo(0, height / 2);
+            for (let i = 0; i < currentExcitation.length; i++) {
+                const x = (i / (currentExcitation.length - 1)) * width;
+                const y = (1 - (currentExcitation[i] + 1) / 2) * height;
+                previewCtx.lineTo(x, y);
+            }
+            previewCtx.strokeStyle = '#b47cff';
+            previewCtx.stroke();
+        }
+
+        class Sound {
+            constructor(buffer, envelope) {
+                this.buffer = buffer;
+                this.envelope = envelope;
+            }
+        }
+
+        function mapMidiVelocityToGain(midiVelocity, curve = 1) {
+            const clamped = Math.max(0, Math.min(midiVelocity, 127));
+            const normalized = clamped / 127;
+            return curve === 1
+                ? normalized
+                : Math.pow(normalized, curve);
+        }
+
+        // Karplus-Strong 合成：生成拨弦效果并播放
+        function playNote(frequency, volume = 1) {
+            const sampleRate = audioContext.sampleRate;
+            const N = Math.floor(sampleRate / frequency);
+            // 初始化延迟环缓冲区
+            let ringBuffer = new Float32Array(N);
+            for (let i = 0; i < N; i++) {
+                ringBuffer[i] = currentExcitation[i % currentExcitation.length];
+            }
+            // 生成 4 秒的输出
+            const length = sampleRate * 4;
+            let output = new Float32Array(length);
+            let idx = 0;
+            const decay = 0.998;
+            for (let i = 0; i < length; i++) {
+                const first = ringBuffer[idx];
+                const second = ringBuffer[(idx + 1) % N];
+                const newSample = decay * 0.5 * (first + second);
+                output[i] = first;
+                ringBuffer[idx] = newSample;
+                idx = (idx + 1) % N;
+            }
+
+            // 规范化
+            let maxVal = 0;
+            for (let i = 0; i < length; i++) {
+                if (Math.abs(output[i]) > maxVal) maxVal = Math.abs(output[i]);
+            }
+            if (maxVal > 0) {
+                for (let i = 0; i < length; i++) {
+                    output[i] /= maxVal;
+                }
+            }
+
+            // 创建并播放 AudioBuffer
+            const buffer = audioContext.createBuffer(1, length, sampleRate);
+            buffer.copyToChannel(output, 0);
+            const source = audioContext.createBufferSource();
+            source.buffer = buffer;
+
+            // 根据采样率计算频率舍入误差补偿
+            const playbackRate = frequency / (sampleRate / N);
+            source.playbackRate.value = playbackRate;
+
+            // 包络
+            const envelope = audioContext.createGain();
+            envelope.gain.setValueAtTime(volume, audioContext.currentTime);
+
+            const sound = new Sound(buffer, envelope);
+            source.connect(envelope).connect(reverb);
+            source.start();
+
+            // 把声音存储到 Map 中
+            let id = frequency.toFixed(2);
+
+            if (!sounds.has(id)) {
+                sounds.set(id, new Set());
+            }
+            sounds.get(id).add(sound);
+            source.onended = () => {
+                sounds.get(id).delete(sound);
+                if (sounds.get(id).size === 0) {
+                    sounds.delete(id);
+                }
+            };
+        }
+
+        // 停止播放某个频率的声音
+        function stopNote(frequency) {
+            let id = frequency.toFixed(2);
+
+            console.log("stopNote", id);
+            if (sounds.has(id)) {
+                console.log("stopNote", sounds.get(id));
+                sounds.get(id).forEach(sound => {
+                    sound.envelope.gain.setTargetAtTime(0, audioContext.currentTime, 0.3);
+                });
+            }
+        }
+
+
+        function stopAllNotes() {
+            sounds.forEach((soundSet, id) => {
+                soundSet.forEach(sound => {
+                    sound.envelope.gain.setTargetAtTime(0, audioContext.currentTime, 0.3);
+                });
+            });
+            sounds.clear();
+        }
+
+        // 生成88钢琴键盘
+        function pressKey(note) {
+            document.getElementById(`key-${note}`).dispatchEvent('mousedown')
+        }
+
+        function generatePianoKeyboard() {
+            const keyboard = document.getElementById('keyboard-container');
+
+            const notes = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+
+            for (let i = 21; i <= 108; i++) {
+                const freq = 440 * Math.pow(2, (i - 69) / 12);
+                const key = document.createElement('div');
+                key.classList.add('key');
+                key.id = "key-" + i;
+                key.addEventListener('mousedown', e => {
+                    e.stopPropagation();
+                    playNote(freq);
+                });
+                key.addEventListener('mouseup', e => {
+                    e.stopPropagation();
+                    stopNote(freq);
+                });
+                key.addEventListener('mouseleave', e => {
+                    e.stopPropagation();
+                    stopNote(freq);
+                });
+                if ([1, 3, 6, 8, 10].includes(i % 12)) {
+                    key.classList.add('black-key');
+                    key.innerHTML = `<div class="key-label">${notes[i % 12]}</div>`;
+                    keyboard.lastChild.appendChild(key);
+                } else {
+                    key.classList.add('white-key');
+                    key.innerHTML = `<div class="key-label">${notes[i % 12]}</div>`;
+                    keyboard.appendChild(key);
+                }
+            }
+        }
+        generatePianoKeyboard()
+
+
+        // 初始生成激励信号波形
+        generateExcitation();
+
+        // midi输入支持
+
+        if (navigator.requestMIDIAccess) {
+            navigator.requestMIDIAccess().then(midiAccess => {
+                const inputs = midiAccess.inputs;
+                const midiSelect = document.getElementById('midi-inputs');
+                inputs.forEach(input => {
+                    const option = document.createElement('option');
+                    option.value = input.id;
+                    option.textContent = input.name;
+                    midiSelect.appendChild(option);
+                });
+                midiSelect.addEventListener('change', () => {
+                    const selectedInput = midiAccess.inputs.get(midiSelect.value);
+                    if (selectedInput) {
+                        selectedInput.onmidimessage = event => {
+                            const [status, note, velocity] = event.data;
+                            if (status === 144 && velocity > 0) { // Note On
+                                const freq = 440 * Math.pow(2, (note - 69) / 12);
+                                playNote(freq, mapMidiVelocityToGain(velocity, 1));
+                            } else if (status === 128 || (status === 144 && velocity === 0)) { // Note Off
+                                const freq = 440 * Math.pow(2, (note - 69) / 12);
+                                stopNote(freq);
+                            }
+                        };
+                    }
+                });
+
+                // stopAllNotes()
+            });
+        } else {
+            console.log("MIDI not supported");
+        }
+
+        document.getElementById('download-excitation').addEventListener('click', downloadExcitation);
+    </script>
+</body>
+
+</html>

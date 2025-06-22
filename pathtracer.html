@@ -1,0 +1,491 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Multi-threaded Path Tracer - Cornell Box</title>
+    <style>
+        body { margin: 0; display: flex; flex-direction: column; justify-content: center; align-items: center; min-height: 100vh; background-color: #333; color: white; font-family: sans-serif;}
+        canvas { border: 1px solid white; }
+        #info { margin-top: 10px; }
+    </style>
+</head>
+<body>
+    <canvas id="renderCanvas"></canvas>
+    <div id="info">Initializing workers...</div>
+    <script>
+        // --- Configuration ---
+        const WIDTH = 500;
+        const HEIGHT = 500;
+        const TOTAL_SAMPLES_PER_PIXEL = 1000; // More samples to see benefit
+        const MAX_DEPTH = 4;
+        const NUM_WORKERS = navigator.hardwareConcurrency || 4; // Use available cores or default to 4
+
+        // --- Globals for Main Thread ---
+        let ctx;
+        let imageData;
+        let data;
+        let accumulatedColorBuffer; // Array of Vec3 for main thread
+        let currentGlobalSample = 0;
+        let renderStartTime;
+        let workers = [];
+        let activeWorkers = 0;
+
+        const infoDiv = document.getElementById('info');
+
+        // --- Vec3 Class (needed by main thread for accumulation) ---
+        class Vec3 {
+            constructor(x = 0, y = 0, z = 0) { this.x = x; this.y = y; this.z = z; }
+            clone() { return new Vec3(this.x, this.y, this.z); }
+            add(v) { return new Vec3(this.x + v.x, this.y + v.y, this.z + v.z); }
+            sub(v) { return new Vec3(this.x - v.x, this.y - v.y, this.z - v.z); }
+            mulScalar(s) { return new Vec3(this.x * s, this.y * s, this.z * s); }
+            mul(v) { return new Vec3(this.x * v.x, this.y * v.y, this.z * v.z); } // Element-wise
+            divScalar(s) { return new Vec3(this.x / s, this.y / s, this.z / s); }
+            // ... other Vec3 methods if needed by main thread (dot, cross, etc. are not for main thread accumulation)
+            lengthSquared() { return this.x * this.x + this.y * this.y + this.z * this.z; }
+        }
+        const VEC3_ZERO = new Vec3(0,0,0);
+
+        // --- Worker Script Content (as a string) ---
+        const workerScriptContent = `
+            // --- Vector 3D Math (Full version for Worker) ---
+            class Vec3 {
+                constructor(x = 0, y = 0, z = 0) { this.x = x; this.y = y; this.z = z; }
+                clone() { return new Vec3(this.x, this.y, this.z); }
+                add(v) { return new Vec3(this.x + v.x, this.y + v.y, this.z + v.z); }
+                sub(v) { return new Vec3(this.x - v.x, this.y - v.y, this.z - v.z); }
+                mulScalar(s) { return new Vec3(this.x * s, this.y * s, this.z * s); }
+                mul(v) { return new Vec3(this.x * v.x, this.y * v.y, this.z * v.z); }
+                divScalar(s) { return new Vec3(this.x / s, this.y / s, this.z / s); }
+                dot(v) { return this.x * v.x + this.y * v.y + this.z * v.z; }
+                cross(v) { return new Vec3(this.y * v.z - this.z * v.y, this.z * v.x - this.x * v.z, this.x * v.y - this.y * v.x); }
+                lengthSquared() { return this.x * this.x + this.y * this.y + this.z * this.z; }
+                length() { return Math.sqrt(this.lengthSquared()); }
+                normalize() {
+                    const l = this.length();
+                    if (l === 0) return new Vec3(0,0,0);
+                    return this.divScalar(l);
+                }
+                static random() { return new Vec3(Math.random(), Math.random(), Math.random()); }
+                static randomInUnitSphere() {
+                    while (true) {
+                        const p = new Vec3(Math.random() * 2 - 1, Math.random() * 2 - 1, Math.random() * 2 - 1);
+                        if (p.lengthSquared() < 1) return p;
+                    }
+                }
+            }
+            const VEC3_ZERO_WORKER = new Vec3(0,0,0); // Use a different name to avoid confusion if debugging main
+
+            // --- Ray ---
+            class Ray {
+                constructor(origin, direction) {
+                    this.origin = origin;
+                    this.direction = direction.normalize();
+                }
+                at(t) { return this.origin.add(this.direction.mulScalar(t)); }
+            }
+
+            // --- Material ---
+            class Material {
+                constructor(colorData, emissionData = {x:0,y:0,z:0}) {
+                    this.color = new Vec3(colorData.x, colorData.y, colorData.z);
+                    this.emission = new Vec3(emissionData.x, emissionData.y, emissionData.z);
+                }
+            }
+
+            // --- Hittable Objects ---
+            class Hittable {
+                constructor(materialData) { this.material = new Material(materialData.color, materialData.emission); }
+                intersect(ray, tMin, tMax) { throw new Error("Not implemented"); }
+            }
+
+            class HitRecord {
+                constructor(t, point, normal, material, frontFace) {
+                    this.t = t; this.point = point; this.normal = normal;
+                    this.material = material; this.frontFace = frontFace;
+                }
+                setFaceNormal(ray, outwardNormal) {
+                    this.frontFace = ray.direction.dot(outwardNormal) < 0;
+                    this.normal = this.frontFace ? outwardNormal : outwardNormal.mulScalar(-1);
+                }
+            }
+
+            class Sphere extends Hittable {
+                constructor(centerData, radius, materialData) {
+                    super(materialData);
+                    this.center = new Vec3(centerData.x, centerData.y, centerData.z);
+                    this.radius = radius;
+                }
+                intersect(ray, tMin, tMax) {
+                    const oc = ray.origin.sub(this.center);
+                    const a = ray.direction.lengthSquared();
+                    const half_b = oc.dot(ray.direction);
+                    const c = oc.lengthSquared() - this.radius * this.radius;
+                    const discriminant = half_b * half_b - a * c;
+                    if (discriminant < 0) return null;
+                    const sqrtd = Math.sqrt(discriminant);
+                    let root = (-half_b - sqrtd) / a;
+                    if (root < tMin || root > tMax) {
+                        root = (-half_b + sqrtd) / a;
+                        if (root < tMin || root > tMax) return null;
+                    }
+                    const t = root;
+                    const point = ray.at(t);
+                    const outwardNormal = point.sub(this.center).divScalar(this.radius);
+                    const hitRecord = new HitRecord(t, point, VEC3_ZERO_WORKER, this.material, false); // Pass material instance
+                    hitRecord.setFaceNormal(ray, outwardNormal);
+                    return hitRecord;
+                }
+            }
+
+            class AARect extends Hittable {
+                constructor(axis, k, val0_min, val0_max, val1_min, val1_max, materialData) {
+                    super(materialData);
+                    this.axis = axis; this.k = k;
+                    this.val0_min = val0_min; this.val0_max = val0_max;
+                    this.val1_min = val1_min; this.val1_max = val1_max;
+                    this.axis0 = (axis + 1) % 3; 
+                    this.axis1 = (axis + 2) % 3;
+                }
+                intersect(ray, tMin, tMax) {
+                    const rayOriginArr = [ray.origin.x, ray.origin.y, ray.origin.z];
+                    const rayDirArr = [ray.direction.x, ray.direction.y, ray.direction.z];
+                    if (Math.abs(rayDirArr[this.axis]) < 1e-6) return null;
+                    const t = (this.k - rayOriginArr[this.axis]) / rayDirArr[this.axis];
+                    if (t < tMin || t > tMax) return null;
+                    const hitPoint = ray.at(t);
+                    const hitCoordsArr = [hitPoint.x, hitPoint.y, hitPoint.z];
+                    if (hitCoordsArr[this.axis0] < this.val0_min || hitCoordsArr[this.axis0] > this.val0_max ||
+                        hitCoordsArr[this.axis1] < this.val1_min || hitCoordsArr[this.axis1] > this.val1_max) {
+                        return null;
+                    }
+                    let outwardNormalVec = new Vec3();
+                    if (this.axis === 0) outwardNormalVec.x = 1;
+                    else if (this.axis === 1) outwardNormalVec.y = 1;
+                    else outwardNormalVec.z = 1;
+                    const hitRecord = new HitRecord(t, hitPoint, VEC3_ZERO_WORKER, this.material, false);
+                    hitRecord.setFaceNormal(ray, outwardNormalVec);
+                    return hitRecord;
+                }
+            }
+
+            // --- Scene (Worker Version) ---
+            class Scene {
+                constructor(objectsData) {
+                    this.objects = [];
+                    objectsData.forEach(objData => {
+                        if (objData.type === 'sphere') {
+                            this.objects.push(new Sphere(objData.center, objData.radius, objData.material));
+                        } else if (objData.type === 'aarect') {
+                            this.objects.push(new AARect(objData.axis, objData.k, objData.v0min, objData.v0max, objData.v1min, objData.v1max, objData.material));
+                        }
+                    });
+                }
+                intersect(ray, tMin, tMax) {
+                    let closestHit = null;
+                    let closest_so_far = tMax;
+                    for (const object of this.objects) {
+                        const hitRecord = object.intersect(ray, tMin, closest_so_far);
+                        if (hitRecord) {
+                            closest_so_far = hitRecord.t;
+                            closestHit = hitRecord;
+                        }
+                    }
+                    return closestHit;
+                }
+            }
+
+            // --- Camera (Worker Version) ---
+            class Camera {
+                 constructor(lookfromData, lookatData, vupData, vfov, aspect_ratio) {
+                    const lookfrom = new Vec3(lookfromData.x, lookfromData.y, lookfromData.z);
+                    const lookat = new Vec3(lookatData.x, lookatData.y, lookatData.z);
+                    const vup = new Vec3(vupData.x, vupData.y, vupData.z);
+
+                    const theta = vfov * Math.PI / 180;
+                    const h = Math.tan(theta / 2);
+                    const viewport_height = 2.0 * h;
+                    const viewport_width = aspect_ratio * viewport_height;
+
+                    this.w = lookfrom.sub(lookat).normalize();
+                    this.u = vup.cross(this.w).normalize();
+                    this.v = this.w.cross(this.u);
+
+                    this.origin = lookfrom;
+                    this.horizontal = this.u.mulScalar(viewport_width);
+                    this.vertical = this.v.mulScalar(viewport_height);
+                    this.lower_left_corner = this.origin
+                        .sub(this.horizontal.divScalar(2))
+                        .sub(this.vertical.divScalar(2))
+                        .sub(this.w);
+                }
+                getRay(s, t) {
+                    return new Ray(
+                        this.origin,
+                        this.lower_left_corner
+                            .add(this.horizontal.mulScalar(s))
+                            .add(this.vertical.mulScalar(t))
+                            .sub(this.origin)
+                            .normalize()
+                    );
+                }
+            }
+
+            // --- Path Tracing Logic (Worker Version) ---
+            function rayColor(ray, world, depth, maxDepth) { // Added maxDepth param
+                if (depth <= 0) return VEC3_ZERO_WORKER;
+
+                const hitRecord = world.intersect(ray, 0.001, Infinity);
+
+                if (hitRecord) {
+                    const emitted = hitRecord.material.emission;
+                    if (hitRecord.material.emission.lengthSquared() > 0) {
+                        return emitted;
+                    } else {
+                        let scatterDirection = hitRecord.normal.add(Vec3.randomInUnitSphere().normalize());
+                        if (scatterDirection.lengthSquared() < 1e-8) scatterDirection = hitRecord.normal;
+                        else scatterDirection = scatterDirection.normalize();
+                        
+                        const scatteredRay = new Ray(hitRecord.point, scatterDirection);
+                        const attenuation = hitRecord.material.color;
+                        // Ensure recursive call also passes maxDepth
+                        return emitted.add(attenuation.mul(rayColor(scatteredRay, world, depth - 1, maxDepth)));
+                    }
+                }
+                return VEC3_ZERO_WORKER;
+            }
+
+            // --- Worker Globals ---
+            let workerCam;
+            let workerWorld;
+            let workerWidth;
+            let workerHeight;
+            let workerMaxDepth;
+
+            self.onmessage = function(e) {
+                const msg = e.data;
+                if (msg.type === 'init') {
+                    workerWidth = msg.width;
+                    workerHeight = msg.height;
+                    workerMaxDepth = msg.maxDepth;
+                    workerCam = new Camera(msg.cameraData.lookfrom, msg.cameraData.lookat, msg.cameraData.vup, msg.cameraData.vfov, msg.cameraData.aspect_ratio);
+                    workerWorld = new Scene(msg.sceneData);
+                    // console.log('Worker initialized');
+                    self.postMessage({ type: 'initialized' });
+                } else if (msg.type === 'renderChunk') {
+                    const { startY, endY } = msg;
+                    const chunkPixelData = new Float32Array((endY - startY) * workerWidth * 3);
+                    let offset = 0;
+
+                    for (let j = startY; j < endY; j++) { // Corrected loop condition
+                        for (let i = 0; i < workerWidth; i++) {
+                            const u = (i + Math.random()) / (workerWidth - 1);
+                            const v_cam = ((workerHeight - 1 - j) + Math.random()) / (workerHeight - 1); // Map j to camera v (bottom-up)
+
+                            const r = workerCam.getRay(u, v_cam);
+                            const color = rayColor(r, workerWorld, workerMaxDepth, workerMaxDepth); // Start with maxDepth
+
+                            chunkPixelData[offset++] = color.x;
+                            chunkPixelData[offset++] = color.y;
+                            chunkPixelData[offset++] = color.z;
+                        }
+                    }
+                    self.postMessage({
+                        type: 'chunkComplete',
+                        pixelData: chunkPixelData,
+                        startY: startY,
+                        endY: endY
+                    }, [chunkPixelData.buffer]); // Transferable object
+                }
+            };
+        `;
+
+
+        // --- Main Thread Logic ---
+
+        function getSceneData() { // To serialize scene for workers
+            const redMatData   = { color: {x:0.65, y:0.05, z:0.05}, emission: {x:0,y:0,z:0} };
+            const whiteMatData = { color: {x:0.73, y:0.73, z:0.73}, emission: {x:0,y:0,z:0} };
+            const greenMatData = { color: {x:0.12, y:0.45, z:0.15}, emission: {x:0,y:0,z:0} };
+            const lightMatData = { color: {x:0,y:0,z:0}, emission: {x:15, y:15, z:15} };
+            const yellowMatData= { color: {x:0.8, y:0.6, z:0.2}, emission: {x:0,y:0,z:0} };
+
+            const boxSize = 5;
+            const lightPanelSize = 1.5;
+
+            return [
+                { type: 'aarect', axis: 1, k: 0,         v0min: -boxSize, v0max: boxSize, v1min: -boxSize, v1max: boxSize, material: whiteMatData }, // Floor
+                { type: 'aarect', axis: 1, k: 2*boxSize, v0min: -boxSize, v0max: boxSize, v1min: -boxSize, v1max: boxSize, material: whiteMatData }, // Ceiling
+                { type: 'aarect', axis: 2, k: boxSize,   v0min: -boxSize, v0max: boxSize, v1min: 0, v1max: 2*boxSize, material: whiteMatData }, // Back
+                { type: 'aarect', axis: 0, k: boxSize,   v0min: 0, v0max: 2*boxSize, v1min: -boxSize, v1max: boxSize, material: greenMatData }, // Right
+                { type: 'aarect', axis: 0, k: -boxSize,  v0min: 0, v0max: 2*boxSize, v1min: -boxSize, v1max: boxSize, material: redMatData },   // Left
+                { type: 'aarect', axis: 1, k: 2*boxSize - 0.01, v0min: -lightPanelSize, v0max: lightPanelSize, v1min: -lightPanelSize, v1max: lightPanelSize, material: lightMatData }, // Light
+                { type: 'sphere', center: {x: -boxSize/2 + 1, y: boxSize/2 - 1.5, z: boxSize/2 -1}, radius: 1.5, material: whiteMatData },
+                { type: 'sphere', center: {x: boxSize/2 -1, y: boxSize/2 + 0.5, z: boxSize/2 - 2.5}, radius: 1.0, material: yellowMatData }
+            ];
+        }
+
+        function getCameraData() {
+            const lookfrom = {x:0, y:5, z:-12.5}; // boxSize is 5, so y=boxSize
+            const lookat   = {x:0, y:5, z:0};
+            const vup      = {x:0, y:1, z:0};
+            const vfov     = 60.0;
+            const aspect_ratio = WIDTH / HEIGHT;
+            return { lookfrom, lookat, vup, vfov, aspect_ratio };
+        }
+
+
+        function startRenderPass() {
+            if (currentGlobalSample >= TOTAL_SAMPLES_PER_PIXEL) {
+                const totalTime = (performance.now() - renderStartTime) / 1000;
+                infoDiv.textContent = `Rendering Complete! ${TOTAL_SAMPLES_PER_PIXEL} samples/pixel. Total time: ${totalTime.toFixed(2)}s`;
+                console.log("All samples complete.");
+                workers.forEach(w => w.terminate());
+                return;
+            }
+
+            currentGlobalSample++;
+            activeWorkers = NUM_WORKERS;
+            const rowsPerWorker = Math.ceil(HEIGHT / NUM_WORKERS);
+
+            // console.log(`Starting sample pass ${currentGlobalSample}/${TOTAL_SAMPLES_PER_PIXEL}`);
+
+            for (let i = 0; i < NUM_WORKERS; i++) {
+                const startY = i * rowsPerWorker;
+                const endY = Math.min((i + 1) * rowsPerWorker, HEIGHT);
+                if (startY >= endY) { // Should not happen if rowsPerWorker > 0
+                    activeWorkers--; // This worker has no work
+                    continue;
+                }
+                workers[i].postMessage({
+                    type: 'renderChunk',
+                    startY: startY,
+                    endY: endY,
+                    // currentSample: currentGlobalSample // Not strictly needed by worker if it's stateless per chunk
+                });
+            }
+            // If some workers had no work (e.g. HEIGHT < NUM_WORKERS)
+            if (activeWorkers === 0 && currentGlobalSample < TOTAL_SAMPLES_PER_PIXEL) {
+                 console.warn("No active workers for this pass, something is wrong or HEIGHT is very small.");
+                 // This case should ideally be handled by ensuring rowsPerWorker leads to actual work.
+                 // If NUM_WORKERS > HEIGHT, some workers get no scanlines.
+                 // The current logic should reduce activeWorkers if endY <= startY.
+                 // If all activeWorkers get reduced, we might need to directly call updateCanvasAndContinue
+                 updateCanvasAndContinue();
+            }
+        }
+
+        function updateCanvasAndContinue() {
+            // Update canvas from accumulatedColorBuffer
+            for (let j = 0; j < HEIGHT; j++) {
+                for (let i = 0; i < WIDTH; i++) {
+                    const bufferIdx = j * WIDTH + i;
+                    let displayColor = accumulatedColorBuffer[bufferIdx].divScalar(currentGlobalSample);
+
+                    // Gamma correction
+                    displayColor = new Vec3(Math.sqrt(displayColor.x), Math.sqrt(displayColor.y), Math.sqrt(displayColor.z));
+                    
+                    const R = Math.floor(255.999 * Math.max(0, Math.min(1, displayColor.x)));
+                    const G = Math.floor(255.999 * Math.max(0, Math.min(1, displayColor.y)));
+                    const B = Math.floor(255.999 * Math.max(0, Math.min(1, displayColor.z)));
+                    
+                    const dataIndex = (j * WIDTH + i) * 4;
+                    data[dataIndex + 0] = R;
+                    data[dataIndex + 1] = G;
+                    data[dataIndex + 2] = B;
+                    data[dataIndex + 3] = 255;
+                }
+            }
+            ctx.putImageData(imageData, 0, 0);
+
+            const passDuration = (performance.now() - lastPassStartTime) / 1000;
+            const totalElapsed = (performance.now() - renderStartTime) / 1000;
+            infoDiv.textContent = `Sample: ${currentGlobalSample}/${TOTAL_SAMPLES_PER_PIXEL}. Pass: ${passDuration.toFixed(2)}s. Total: ${totalElapsed.toFixed(2)}s`;
+            lastPassStartTime = performance.now(); // Reset for next pass
+
+            // Schedule next pass
+            setTimeout(startRenderPass, 0);
+        }
+
+        let lastPassStartTime; // For timing individual passes
+
+        function main() {
+            const canvas = document.getElementById('renderCanvas');
+            canvas.width = WIDTH;
+            canvas.height = HEIGHT;
+            ctx = canvas.getContext('2d');
+            imageData = ctx.createImageData(WIDTH, HEIGHT);
+            data = imageData.data;
+
+            accumulatedColorBuffer = new Array(WIDTH * HEIGHT);
+            for (let k = 0; k < WIDTH * HEIGHT; k++) {
+                accumulatedColorBuffer[k] = VEC3_ZERO.clone();
+            }
+
+            const sceneData = getSceneData();
+            const cameraData = getCameraData();
+
+            const workerBlob = new Blob([workerScriptContent], { type: 'application/javascript' });
+            const workerUrl = URL.createObjectURL(workerBlob);
+            // Alternative: Data URL using btoa
+            // const base64WorkerScript = btoa(workerScriptContent);
+            // const workerUrl = 'data:application/javascript;base64,' + base64WorkerScript;
+
+
+            let workersInitialized = 0;
+            for (let i = 0; i < NUM_WORKERS; i++) {
+                const worker = new Worker(workerUrl);
+                worker.onmessage = function(e) {
+                    const msg = e.data;
+                    if (msg.type === 'initialized') {
+                        workersInitialized++;
+                        if (workersInitialized === NUM_WORKERS) {
+                            infoDiv.textContent = "Workers ready. Starting render...";
+                            URL.revokeObjectURL(workerUrl); // Clean up blob URL
+                            renderStartTime = performance.now();
+                            lastPassStartTime = performance.now();
+                            startRenderPass();
+                        }
+                    } else if (msg.type === 'chunkComplete') {
+                        const { pixelData, startY, endY } = msg;
+                        let sourceIdx = 0;
+                        for (let y = startY; y < endY; y++) {
+                            for (let x = 0; x < WIDTH; x++) {
+                                const bufferIdx = y * WIDTH + x; // y is already canvas row index
+                                const r = pixelData[sourceIdx++];
+                                const g = pixelData[sourceIdx++];
+                                const b = pixelData[sourceIdx++];
+                                accumulatedColorBuffer[bufferIdx] = accumulatedColorBuffer[bufferIdx].add(new Vec3(r, g, b));
+                            }
+                        }
+                        activeWorkers--;
+                        if (activeWorkers === 0) {
+                            updateCanvasAndContinue();
+                        }
+                    }
+                };
+                worker.onerror = function(error) {
+                    console.error('Worker error:', error.message, error);
+                    infoDiv.textContent = `Worker Error: ${error.message}. Check console.`;
+                    // Terminate other workers to prevent hanging
+                    workers.forEach(w => w.terminate());
+                };
+                workers.push(worker);
+                worker.postMessage({
+                    type: 'init',
+                    width: WIDTH,
+                    height: HEIGHT,
+                    maxDepth: MAX_DEPTH,
+                    sceneData: sceneData,
+                    cameraData: cameraData
+                });
+            }
+            if (NUM_WORKERS === 0) { // Fallback for browsers without worker support or 0 concurrency
+                 infoDiv.textContent = "No workers available or NUM_WORKERS is 0. Progressive rendering disabled.";
+                 console.warn("NUM_WORKERS is 0, path tracing will not run effectively.");
+            }
+        }
+
+        main();
+    </script>
+</body>
+</html>

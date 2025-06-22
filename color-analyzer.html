@@ -385,11 +385,9 @@
             }
             
             function processImage(img) {
-                // 设置画布大小 (响应式)
-                const maxWidth = Math.min(800, window.innerWidth - 40);
-                const scale = Math.min(maxWidth / img.width, 1);
-                const width = img.width * scale;
-                const height = img.height * scale;
+                // 设置画布大小
+                const width = img.width;
+                const height = img.height;
                 
                 // 初始化所有画布
                 const canvases = [

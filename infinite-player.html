@@ -1,0 +1,524 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>无限循环播放器</title>
+    <style>
+        :root {
+            --bg-color: #1a1a2e;
+            --primary-color: #a56de2;
+            --secondary-color: #6d5de2;
+            --text-color: #e2e2e2;
+            --highlight-color: #ff79c6;
+            --progress-bg: #33334d;
+            --progress-fill: var(--primary-color);
+            --control-bg: #252540;
+            --control-hover: #3a3a5a;
+            --marker-start: #4dffb8;
+            --marker-end: #ff4d8a;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            padding: 20px;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+
+        .player-container {
+            width: 100%;
+            max-width: 500px;
+            background: linear-gradient(145deg, #23233d, #1e1e35);
+            border-radius: 20px;
+            padding: 25px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .drop-area {
+            border: 3px dashed var(--primary-color);
+            border-radius: 15px;
+            padding: 30px;
+            text-align: center;
+            margin-bottom: 25px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            background-color: rgba(37, 37, 64, 0.5);
+        }
+
+        .drop-area:hover {
+            background-color: rgba(37, 37, 64, 0.8);
+            border-color: var(--highlight-color);
+        }
+
+        .drop-area i {
+            font-size: 48px;
+            margin-bottom: 15px;
+            color: var(--primary-color);
+        }
+
+        .drop-area p {
+            font-size: 16px;
+            margin-bottom: 10px;
+        }
+
+        .file-button {
+            background-color: var(--primary-color);
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 50px;
+            cursor: pointer;
+            font-size: 14px;
+            margin-top: 10px;
+            transition: all 0.3s ease;
+        }
+
+        .file-button:hover {
+            background-color: var(--highlight-color);
+            transform: scale(1.05);
+        }
+
+        .file-input {
+            display: none;
+        }
+
+        .player-controls {
+            display: none;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        .control-row {
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+            align-items: center;
+        }
+
+        .go-start {
+            background-color: var(--secondary-color);
+            color: white;
+            border: none;
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            font-size: 18px;
+            cursor: pointer;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            transition: all 0.3s ease;
+        }
+
+        .go-start:hover {
+            background-color: var(--highlight-color);
+            transform: scale(1.1);
+        }
+
+        .play-pause {
+            background-color: var(--primary-color);
+            color: white;
+            border: none;
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            font-size: 24px;
+            cursor: pointer;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(165, 109, 226, 0.4);
+        }
+
+        .play-pause:hover {
+            background-color: var(--highlight-color);
+            transform: scale(1.1);
+        }
+
+        .progress-container {
+            position: relative;
+            margin-top: 20px;
+            height: 40px;
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 8px;
+            background-color: var(--progress-bg);
+            border-radius: 4px;
+            cursor: pointer;
+            position: relative;
+            overflow: visible;
+            margin-top: 20px;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background-color: var(--progress-fill);
+            border-radius: 4px;
+            width: 0%;
+        }
+
+        .marker-container {
+            position: absolute;
+            left: 0;
+            width: 100%;
+            height: 20px;
+        }
+
+        .marker {
+            position: absolute;
+            top: 0;
+            width: 0;
+            height: 0;
+            border-left: 6px solid transparent;
+            border-right: 6px solid transparent;
+            transform: translateX(-6px);
+        }
+
+        .marker-start {
+            border-top: 12px solid var(--marker-start);
+        }
+
+        .marker-end {
+            border-top: 12px solid var(--marker-end);
+        }
+
+        .marker-label {
+            position: absolute;
+            top: -16px;
+            transform: translateX(-50%);
+            font-size: 10px;
+            white-space: nowrap;
+        }
+
+        .marker-start-label {
+            color: var(--marker-start);
+        }
+
+        .marker-end-label {
+            color: var(--marker-end);
+        }
+
+        .time-display {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 5px;
+            font-size: 14px;
+            color: var(--text-color);
+        }
+
+        .file-info {
+            margin-top: 30px;
+            text-align: center;
+            font-size: 14px;
+            color: var(--text-color);
+            opacity: 0.8;
+        }
+
+        .loop-info {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 5px;
+            font-size: 12px;
+            color: var(--text-color);
+            opacity: 0.7;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="player-container">
+        <div class="player-content">
+            <div class="drop-area" id="dropArea">
+                <i>🎵</i>
+                <p>拖放 OGG 文件到这里</p>
+                <p>或</p>
+                <button class="file-button" id="fileButton">选择文件</button>
+                <input type="file" id="fileInput" class="file-input" accept=".ogg,.oga">
+            </div>
+
+            <div class="player-controls" id="playerControls">
+                <div class="control-row">
+                    <button class="go-start" id="goStartBtn">⏮</button>
+                    <button class="play-pause" id="playPauseBtn">▶</button>
+                </div>
+                <div class="progress-container">
+                    <div class="marker-container" id="markerContainer"></div>
+                    <div class="progress-bar" id="progressBar">
+                        <div class="progress-fill" id="progressFill"></div>
+                    </div>
+                    <div class="time-display">
+                        <span id="currentTime">0:00</span>
+                        <span id="totalTime">0:00</span>
+                    </div>
+                    <div class="loop-info">
+                        <span id="loopStartTime">循环开始：0:00 (0 采样点)</span>
+                        <span id="loopEndTime">循环结束：0:00 (0 采样点)</span>
+                    </div>
+                </div>
+                <div class="file-info" id="fileInfo">未加载文件</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const dropArea = document.getElementById('dropArea');
+        const fileButton = document.getElementById('fileButton');
+        const fileInput = document.getElementById('fileInput');
+        const playerControls = document.getElementById('playerControls');
+        const goStartBtn = document.getElementById('goStartBtn');
+        const playPauseBtn = document.getElementById('playPauseBtn');
+        const progressBar = document.getElementById('progressBar');
+        const progressFill = document.getElementById('progressFill');
+        const markerContainer = document.getElementById('markerContainer');
+        const currentTimeEl = document.getElementById('currentTime');
+        const totalTimeEl = document.getElementById('totalTime');
+        const loopStartEl = document.getElementById('loopStartTime');
+        const loopEndEl = document.getElementById('loopEndTime');
+        const fileInfoEl = document.getElementById('fileInfo');
+
+        let audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        let audioBuffer, audioSource;
+        let sampleRate = audioCtx.sampleRate;
+        let loopStartSample = 0, loopLengthSample = 0;
+        let loopStartSec = 0, loopEndSec = 0;
+        let isPlaying = false, startTime = 0, pauseOffset = 0;
+
+        dropArea.addEventListener('dragover', e => { e.preventDefault(); dropArea.classList.add('hover'); });
+        dropArea.addEventListener('dragleave', e => { dropArea.classList.remove('hover'); });
+        dropArea.addEventListener('drop', e => {
+            e.preventDefault(); dropArea.classList.remove('hover');
+            handleFile(e.dataTransfer.files[0]);
+        });
+        dropArea.addEventListener('click', () => fileInput.click());
+
+        fileInput.addEventListener('change', e => handleFile(e.target.files[0]));
+
+        goStartBtn.addEventListener('click', () => {
+            if (!audioBuffer) return;
+            seek(0);
+        });
+
+        playPauseBtn.addEventListener('click', () => {
+            if (!audioBuffer) return;
+            isPlaying ? pauseAudio() : playAudio();
+        });
+
+        progressBar.addEventListener('click', e => {
+            if (!audioBuffer) return;
+            const rect = progressBar.getBoundingClientRect();
+            const pct = (e.clientX - rect.left) / rect.width;
+            seek(pct * audioBuffer.duration);
+        });
+
+        /**
+        * Parses OGG Vorbis comments from an ArrayBuffer.
+        * This is a simplified parser and might not cover all edge cases of OGG framing.
+        * It looks for the Vorbis comment header (packet type 0x03).
+        */
+        function parseOggVorbisComments(arrayBuffer) {
+            const view = new DataView(arrayBuffer);
+            const comments = {};
+            let offset = 0;
+            const textDecoder = new TextDecoder('utf-8');
+
+            // Iterate through OGG pages
+            while (offset < view.byteLength - 27) { // Minimum OGG page header size
+                // Find 'OggS' capture pattern
+                let oggSFound = false;
+                for (let i = offset; i < view.byteLength - 4; i++) {
+                    if (view.getUint32(i, false) === 0x4F676753 /* OggS */) {
+                        offset = i;
+                        oggSFound = true;
+                        break;
+                    }
+                }
+                if (!oggSFound) break; // No more OggS patterns
+
+                // const streamStructureVersion = view.getUint8(offset + 4);
+                // const headerTypeFlag = view.getUint8(offset + 5);
+                // const granulePosition = view.getBigUint64(offset + 6, true); // Requires BigInt support
+                // const streamSerialNumber = view.getUint32(offset + 14, true);
+                // const pageSequenceNumber = view.getUint32(offset + 18, true);
+                // const checksum = view.getUint32(offset + 22, true);
+                const pageSegments = view.getUint8(offset + 26);
+
+                let pageDataLength = 0;
+                const segmentTableOffset = offset + 27;
+                for (let i = 0; i < pageSegments; i++) {
+                    pageDataLength += view.getUint8(segmentTableOffset + i);
+                }
+
+                const packetDataStartOffset = segmentTableOffset + pageSegments;
+
+                // Check if this page contains a Vorbis comment header
+                // Packet type 0x03 ("vorbis")
+                if (pageDataLength > 7 &&
+                    view.getUint8(packetDataStartOffset) === 0x03 &&
+                    textDecoder.decode(new Uint8Array(arrayBuffer, packetDataStartOffset + 1, 6)) === "vorbis") {
+
+                    let currentPosInPacket = packetDataStartOffset + 7; // Skip type and "vorbis"
+
+                    const vendorLength = view.getUint32(currentPosInPacket, true); // true for little-endian
+                    currentPosInPacket += 4 + vendorLength; // Skip vendor length and vendor string
+
+                    const userCommentListLength = view.getUint32(currentPosInPacket, true);
+                    currentPosInPacket += 4;
+
+                    for (let i = 0; i < userCommentListLength; i++) {
+                        if (currentPosInPacket + 4 > view.byteLength) break; // Boundary check
+                        const commentLength = view.getUint32(currentPosInPacket, true);
+                        currentPosInPacket += 4;
+
+                        if (currentPosInPacket + commentLength > view.byteLength) break; // Boundary check
+
+                        const commentBytes = new Uint8Array(arrayBuffer, currentPosInPacket, commentLength);
+                        const commentString = textDecoder.decode(commentBytes);
+                        currentPosInPacket += commentLength;
+
+                        const [key, value] = commentString.split('=', 2);
+                        if (key && value) {
+                            comments[key.toUpperCase()] = value; // Store in uppercase for easier lookup
+                        }
+                    }
+                    // Found and parsed comments, we can stop searching.
+                    // A more robust parser would check stream serial numbers if multiple logical streams exist.
+                    return comments;
+                }
+                // Move to the start of the next potential page
+                offset += (27 + pageSegments + pageDataLength);
+            }
+            return comments; // Return any comments found, or empty if none/error
+        }
+
+
+        function handleFile(file) {
+            if (!file) return;
+            fileInfoEl.textContent = `文件: ${file.name} | ${(sampleRate / 1000).toFixed(1)}kHz`;
+            const reader = new FileReader();
+            reader.onload = async () => {
+                const comments = parseOggVorbisComments(reader.result);
+                console.log(comments);
+                loopStartSample = parseInt(comments['LOOPSTART'], 10) || 0;
+                loopLengthSample = parseInt(comments['LOOPLENGTH'], 10) || -1;
+                audioBuffer = await audioCtx.decodeAudioData(reader.result);
+                if (loopLengthSample < 0) {
+                    loopLengthSample = audioBuffer.length - loopStartSample;
+                }
+                loopStartSec = loopStartSample / sampleRate;
+                loopEndSec = (loopStartSample + loopLengthSample) / sampleRate;
+                const loopEndSample = loopStartSample + loopLengthSample;
+                audioSource && audioSource.stop();
+                updateUI(loopStartSec, loopEndSec, loopEndSample);
+                reset(); playerControls.style.display = 'flex';
+                // autoplay
+                playAudio();
+            };
+            reader.readAsArrayBuffer(file);
+        }
+
+        function createSource(offset = 0) {
+            const src = audioCtx.createBufferSource();
+            src.buffer = audioBuffer;
+            src.loop = true;
+            src.loopStart = loopStartSec;
+            src.loopEnd = loopEndSec;
+            src.connect(audioCtx.destination);
+            src.start(0, offset);
+            return src;
+        }
+
+        function playAudio() {
+            audioSource = createSource(pauseOffset);
+            startTime = audioCtx.currentTime - pauseOffset;
+            isPlaying = true; playPauseBtn.textContent = '⏸';
+            requestAnimationFrame(updateProgress);
+        }
+
+        function pauseAudio() {
+            audioSource.stop();
+            pauseOffset = (audioCtx.currentTime - startTime) % audioBuffer.duration;
+            isPlaying = false; playPauseBtn.textContent = '▶';
+        }
+
+        function seek(time) {
+            audioSource && audioSource.stop();
+            pauseOffset = time;
+            if (isPlaying) playAudio(); else updateDisplay(time);
+        }
+
+        function reset() {
+            audioSource && audioSource.stop();
+            isPlaying = false; pauseOffset = 0;
+            playPauseBtn.textContent = '▶';
+            progressFill.style.width = '0%';
+            currentTimeEl.textContent = '0:00';
+        }
+
+        function updateUI(loopStartSec, loopEndSec, loopEndSample) {
+            totalTimeEl.textContent = formatTime(audioBuffer.duration);
+            loopStartEl.textContent = `循环开始：${formatTime(loopStartSec)} (${loopStartSample} 采样点)`;
+            loopEndEl.textContent = `循环结束：${formatTime(loopEndSec)} (${loopEndSample} 采样点)`;
+            renderMarkers(loopStartSec / audioBuffer.duration, loopEndSec / audioBuffer.duration);
+        }
+
+        function updateProgress() {
+            if (!isPlaying) return;
+            const elapsed = audioCtx.currentTime - startTime;
+            let displayTime;
+            if (elapsed < loopStartSec) {
+                displayTime = elapsed;
+            } else {
+                const loopLenSec = loopEndSec - loopStartSec;
+                displayTime = loopStartSec + ((elapsed - loopStartSec) % loopLenSec);
+            }
+            updateDisplay(displayTime);
+            requestAnimationFrame(updateProgress);
+        }
+
+        function updateDisplay(time) {
+            progressFill.style.width = `${(time / audioBuffer.duration) * 100}%`;
+            currentTimeEl.textContent = formatTime(time);
+        }
+
+        function formatTime(sec) {
+            const m = Math.floor(sec / 60);
+            const s = Math.floor(sec % 60);
+            return `${m}:${s.toString().padStart(2, '0')}`;
+        }
+
+        function renderMarkers(pctStart, pctEnd) {
+            markerContainer.innerHTML = '';
+            ['start', 'end'].forEach(type => {
+                const marker = document.createElement('div');
+                const label = document.createElement('div');
+                const pct = type === 'start' ? pctStart : pctEnd;
+                marker.className = `marker marker-${type}`;
+                marker.style.left = `${pct * 100}%`;
+                label.className = `marker-label marker-${type}-label`;
+                label.style.left = `${pct * 100}%`;
+                label.textContent = type === 'start' ? '开始' : '结束';
+                markerContainer.appendChild(marker);
+                markerContainer.appendChild(label);
+            });
+        }
+    </script>
+</body>
+
+</html>

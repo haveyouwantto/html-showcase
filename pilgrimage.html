@@ -1,0 +1,672 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>圣地巡礼相机</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #181a1b;
+            color: #e8e6e3;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+
+        .container {
+            max-width: 95%;
+            width: 700px; /* 稍微加宽以容纳更多控件 */
+            margin: 20px auto;
+            padding: 25px;
+            background-color: #2c2f33;
+            border-radius: 16px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.35);
+        }
+
+        h1 {
+            text-align: center;
+            color: #7289da;
+            margin-bottom: 25px;
+            font-size: 2.2em;
+            letter-spacing: 1px;
+        }
+
+        .controls, .output-controls, .api-key-section {
+            margin-bottom: 25px;
+            display: flex;
+            flex-direction: column;
+            gap: 18px;
+        }
+        
+        .api-key-section {
+            border-top: 1px solid #4f545c;
+            padding-top: 20px;
+        }
+
+        label {
+            font-weight: 600;
+            margin-bottom: 6px;
+            display: block;
+            color: #b9bbbe;
+        }
+
+        input[type="file"], input[type="range"], button, input[type="text"], input[type="password"] {
+            padding: 12px 18px;
+            border: 1px solid #4f545c;
+            border-radius: 8px;
+            font-size: 16px;
+            background-color: #40444b;
+            color: #e8e6e3;
+            box-sizing: border-box; /* 确保 padding 不会撑大元素 */
+        }
+        input[type="text"], input[type="password"] {
+             width: 100%;
+        }
+        button {
+            cursor: pointer;
+            transition: background-color 0.2s ease, border-color 0.2s ease;
+        }
+
+
+        input[type="file"]::file-selector-button {
+            background-color: #7289da;
+            color: white;
+            border: none;
+            padding: 10px 15px;
+            border-radius: 6px;
+            cursor: pointer;
+            margin-right: 12px;
+            font-weight: 500;
+        }
+        input[type="file"]::file-selector-button:hover {
+            background-color: #5f73bc;
+        }
+
+        input[type="range"] {
+            width: 100%;
+            accent-color: #7289da;
+            padding: 0;
+        }
+
+        button {
+            background-color: #7289da;
+            color: white;
+            font-weight: 600;
+            letter-spacing: 0.5px;
+        }
+        button.secondary {
+            background-color: #5865f2; /* 另一种蓝色 */
+        }
+        button.danger {
+            background-color: #ed4245; /* 红色 */
+        }
+        button:hover {
+            filter: brightness(1.1);
+        }
+        button:disabled {
+            background-color: #4f545c;
+            color: #96989b;
+            cursor: not-allowed;
+            filter: none;
+        }
+
+        .camera-view {
+            position: relative;
+            width: 100%;
+            /* aspect-ratio will be set by JS */
+            margin: 0 auto 25px;
+            background-color: #000;
+            border-radius: 10px;
+            overflow: hidden;
+            border: 2px solid #40444b;
+        }
+
+        #cameraPreview, #referenceOverlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+        }
+
+        #referenceOverlay {
+            opacity: 0.5;
+            pointer-events: none;
+        }
+
+        #outputCanvas {
+            display: block;
+            max-width: 100%; /* 画布会很大，允许滚动条出现 */
+            margin: 20px auto;
+            border-radius: 10px;
+            box-shadow: 0 6px 15px rgba(0,0,0,0.25);
+            background-color: #202225;
+        }
+        .hidden {
+            display: none;
+        }
+        .status {
+            text-align: center;
+            margin-top: 10px;
+            font-style: italic;
+            color: #96989b;
+            font-size: 0.9em;
+        }
+        .info-text {
+            font-size: 0.85em;
+            color: #b9bbbe;
+            text-align: center;
+            margin-top: -10px;
+            margin-bottom: 10px;
+        }
+        .api-key-input-group {
+            display: flex;
+            gap: 10px;
+        }
+        .api-key-input-group input {
+            flex-grow: 1;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>圣地巡礼相机</h1>
+
+        <div class="controls">
+            <div>
+                <label for="referenceImageUpload">1. 上传参考截图:</label>
+                <input type="file" id="referenceImageUpload" accept="image/*">
+            </div>
+
+            <div>
+                <label for="blendSlider">混合透明度 (参考图): <span id="blendValue">0.5</span></label>
+                <input type="range" id="blendSlider" min="0" max="1" step="0.05" value="0.5">
+            </div>
+
+            <button id="takePhotoButton" disabled>2. 启动相机并拍照</button>
+            <p class="status" id="cameraStatus">请先上传参考图</p>
+        </div>
+
+        <div class="camera-view" id="cameraViewContainer">
+            <video id="cameraPreview" autoplay playsinline muted></video>
+            <img id="referenceOverlay" src="#" alt="Reference Overlay" class="hidden">
+        </div>
+
+        <div class="output-controls hidden" id="outputSection">
+            <label for="manualPlaceNameInput">地点信息:</label>
+            <input type="text" id="manualPlaceNameInput" placeholder="自动获取或手动输入地名">
+            <p class="status" id="geoStatus">尝试自动获取地理位置和地名...</p>
+            <button id="composeButton" disabled>生成带相框的图片</button>
+            <button id="downloadButton" disabled class="hidden">下载图片</button>
+        </div>
+        
+        <canvas id="outputCanvas" class="hidden"></canvas> <!-- Canvas 移到这里，方便查看大图 -->
+
+        <div class="api-key-section">
+            <h3>地理位置API设置</h3>
+            <label for="apiKeyInput">OpenCage API Key (用于自动获取地名):</label>
+            <div class="api-key-input-group">
+                <input type="password" id="apiKeyInput" placeholder="在此输入你的API Key">
+                <button id="toggleApiKeyVisibility">显示</button>
+            </div>
+            <div style="display: flex; gap: 10px; margin-top:10px;">
+                <button id="saveApiKeyButton" class="secondary">保存Key</button>
+                <button id="clearApiKeyButton" class="danger">清除Key</button>
+            </div>
+            <p class="status" id="apiKeyStatus"></p>
+            <p class="info-text" id="globalApiKeyInfo">
+                自动地名解析使用 OpenCage API。
+                <a href="https://opencagedata.com/api" target="_blank" style="color: #7289da;">获取免费API Key</a>
+            </p>
+        </div>
+    </div>
+
+    <script>
+        const referenceImageUpload = document.getElementById('referenceImageUpload');
+        const blendSlider = document.getElementById('blendSlider');
+        const blendValueDisplay = document.getElementById('blendValue');
+        const takePhotoButton = document.getElementById('takePhotoButton');
+        const cameraStatus = document.getElementById('cameraStatus');
+        const cameraViewContainer = document.getElementById('cameraViewContainer');
+        const cameraPreview = document.getElementById('cameraPreview');
+        const referenceOverlay = document.getElementById('referenceOverlay');
+        
+        const outputSection = document.getElementById('outputSection');
+        const outputCanvas = document.getElementById('outputCanvas');
+        const manualPlaceNameInput = document.getElementById('manualPlaceNameInput');
+        const geoStatus = document.getElementById('geoStatus');
+        const composeButton = document.getElementById('composeButton');
+        const downloadButton = document.getElementById('downloadButton');
+
+        const apiKeyInput = document.getElementById('apiKeyInput');
+        const toggleApiKeyVisibilityButton = document.getElementById('toggleApiKeyVisibility');
+        const saveApiKeyButton = document.getElementById('saveApiKeyButton');
+        const clearApiKeyButton = document.getElementById('clearApiKeyButton');
+        const apiKeyStatus = document.getElementById('apiKeyStatus');
+        const globalApiKeyInfo = document.getElementById('globalApiKeyInfo');
+
+
+        let stream;
+        let imageCapture;
+        let referenceImage = null;
+        let capturedImageBlob = null;
+        let currentGeolocation = null;
+        let currentPlaceNameFromAPI = "";
+
+        // --- API Key Management ---
+        function loadApiKey() {
+            const savedKey = localStorage.getItem('opencageApiKey');
+            if (savedKey) {
+                apiKeyInput.value = savedKey;
+                apiKeyStatus.textContent = '已加载保存的API Key。';
+                updateGlobalApiKeyStatus(true);
+            } else {
+                apiKeyStatus.textContent = '未配置API Key。自动地名获取可能不可用。';
+                updateGlobalApiKeyStatus(false);
+            }
+        }
+
+        saveApiKeyButton.addEventListener('click', () => {
+            const key = apiKeyInput.value.trim();
+            if (key) {
+                localStorage.setItem('opencageApiKey', key);
+                apiKeyStatus.textContent = 'API Key已保存！';
+                updateGlobalApiKeyStatus(true);
+            } else {
+                // 如果输入为空，也视为清除
+                localStorage.removeItem('opencageApiKey');
+                apiKeyStatus.textContent = 'API Key已清除 (输入为空)。';
+                updateGlobalApiKeyStatus(false);
+            }
+        });
+
+        clearApiKeyButton.addEventListener('click', () => {
+            localStorage.removeItem('opencageApiKey');
+            apiKeyInput.value = '';
+            apiKeyStatus.textContent = '已保存的API Key已清除。';
+            updateGlobalApiKeyStatus(false);
+        });
+        
+        toggleApiKeyVisibilityButton.addEventListener('click', () => {
+            if (apiKeyInput.type === 'password') {
+                apiKeyInput.type = 'text';
+                toggleApiKeyVisibilityButton.textContent = '隐藏';
+            } else {
+                apiKeyInput.type = 'password';
+                toggleApiKeyVisibilityButton.textContent = '显示';
+            }
+        });
+
+        function updateGlobalApiKeyStatus(isKeyAvailable) {
+            if (isKeyAvailable) {
+                globalApiKeyInfo.innerHTML = `OpenCage API Key已配置。自动地名解析可用。 <a href="https://opencagedata.com/api" target="_blank" style="color: #7289da;">获取API Key</a>`;
+                globalApiKeyInfo.style.color = '#4CAF50';
+            } else {
+                globalApiKeyInfo.innerHTML = `自动地名解析使用 OpenCage API。请在上方输入并保存您的Key以启用此功能。 <a href="https://opencagedata.com/api" target="_blank" style="color: #7289da;">获取免费API Key</a>`;
+                globalApiKeyInfo.style.color = '#b9bbbe';
+            }
+        }
+        // --- End API Key Management ---
+
+
+        referenceImageUpload.addEventListener('change', (event) => {
+            const file = event.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    referenceImage = new Image();
+                    referenceImage.onload = () => {
+                        referenceOverlay.src = e.target.result;
+                        referenceOverlay.classList.remove('hidden');
+                        takePhotoButton.disabled = false;
+                        cameraStatus.textContent = '参考图已加载。';
+                        adjustCameraViewAspectRatio(referenceImage);
+                        resetOutput();
+                    }
+                    referenceImage.src = e.target.result;
+                }
+                reader.readAsDataURL(file);
+            }
+        });
+
+        function resetOutput() {
+            capturedImageBlob = null;
+            currentGeolocation = null;
+            currentPlaceNameFromAPI = "";
+            manualPlaceNameInput.value = "";
+            outputCanvas.classList.add('hidden');
+            // outputCanvas.getContext('2d').clearRect(0,0,outputCanvas.width, outputCanvas.height); // 清空画布内容
+            outputSection.classList.add('hidden');
+            downloadButton.classList.add('hidden');
+            downloadButton.disabled = true;
+            composeButton.disabled = true;
+            geoStatus.textContent = "尝试自动获取地理位置和地名...";
+        }
+
+        function adjustCameraViewAspectRatio(img) {
+            if (img.naturalWidth && img.naturalHeight) {
+                const aspectRatio = img.naturalWidth / img.naturalHeight;
+                cameraViewContainer.style.aspectRatio = `${aspectRatio}`;
+            } else { // Fallback if naturalWidth/Height is not immediately available
+                 cameraViewContainer.style.aspectRatio = `16/9`;
+            }
+        }
+
+        blendSlider.addEventListener('input', (event) => {
+            const opacity = event.target.value;
+            referenceOverlay.style.opacity = opacity;
+            blendValueDisplay.textContent = opacity;
+        });
+
+        takePhotoButton.addEventListener('click', async () => {
+            if (!referenceImage) {
+                alert('请先上传参考图片!');
+                return;
+            }
+
+            takePhotoButton.disabled = true;
+            takePhotoButton.textContent = '处理中...';
+            resetOutput();
+
+            if (!stream || !cameraPreview.srcObject || cameraPreview.paused) { // Check if stream needs re-init or is paused
+                try {
+                    cameraStatus.textContent = '正在请求相机权限...';
+                    if (stream) { // Stop previous stream if exists
+                        stream.getTracks().forEach(track => track.stop());
+                    }
+                    stream = await navigator.mediaDevices.getUserMedia({
+                        video: {
+                            facingMode: 'environment',
+                            width: { ideal: 3840, min:1920 }, 
+                            height: { ideal: 2160, min:1080 },
+                            // aspectRatio: referenceImage ? (referenceImage.naturalWidth / referenceImage.naturalHeight) : 16/9 //尝试匹配参考图比例
+                        }
+                    });
+                    cameraPreview.srcObject = stream;
+                    await cameraPreview.play();
+
+                    const track = stream.getVideoTracks()[0];
+                    imageCapture = new ImageCapture(track);
+                    // console.log("Camera capabilities:", track.getCapabilities());
+                    cameraStatus.textContent = '相机已启动。再次点击拍照。';
+                    takePhotoButton.textContent = '3. 拍照';
+                    takePhotoButton.disabled = false;
+                } catch (err) {
+                    console.error("无法访问相机:", err);
+                    cameraStatus.textContent = `无法访问相机: ${err.message}`;
+                    takePhotoButton.textContent = '启动相机失败';
+                    takePhotoButton.disabled = false;
+                    if (err.name === "NotAllowedError") alert("您拒绝了相机权限。");
+                    else if (err.name === "NotFoundError" || err.name === "DevicesNotFoundError") alert("未找到可用的相机设备。");
+                    else if (err.name === "OverconstrainedError") alert(`无法满足相机约束 (如分辨率): ${err.message}. 尝试降低分辨率或检查相机。`);
+                    else alert(`相机启动错误: ${err.message}`);
+                    return;
+                }
+            } else {
+                try {
+                    cameraStatus.textContent = '正在拍照...';
+                    if (cameraPreview.readyState < cameraPreview.HAVE_METADATA) {
+                         await new Promise(resolve => cameraPreview.onloadedmetadata = resolve);
+                    }
+                    
+                    // const photoSettings = await imageCapture.getPhotoSettings();
+                    // console.log("Photo settings:", photoSettings);
+                    // To get highest possible resolution, usually no specific settings are needed for takePhoto
+                    capturedImageBlob = await imageCapture.takePhoto();
+                    cameraStatus.textContent = '照片已拍摄！请填写地点信息并生成图片。';
+                    
+                    outputSection.classList.remove('hidden');
+                    composeButton.disabled = false;
+                    getGeolocation();
+
+                } catch (err) {
+                    console.error("拍照失败:", err);
+                    cameraStatus.textContent = `拍照失败: ${err.message}`;
+                } finally {
+                    takePhotoButton.textContent = '重新拍照';
+                    takePhotoButton.disabled = false;
+                }
+            }
+        });
+
+        function getGeolocation() {
+            geoStatus.textContent = '正在获取地理位置...';
+            manualPlaceNameInput.placeholder = "自动地名获取中...";
+            const storedApiKey = localStorage.getItem('opencageApiKey');
+
+            if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(
+                    async (position) => {
+                        currentGeolocation = {
+                            latitude: position.coords.latitude,
+                            longitude: position.coords.longitude
+                        };
+                        let geoMsg = `坐标: ${currentGeolocation.latitude.toFixed(4)}, ${currentGeolocation.longitude.toFixed(4)}. `;
+                        
+                        if (storedApiKey) {
+                            geoMsg += "正在获取地名...";
+                            geoStatus.textContent = geoMsg;
+                            await fetchPlaceName(currentGeolocation.latitude, currentGeolocation.longitude, storedApiKey);
+                        } else {
+                            geoMsg += "未配置API Key, 请手动输入地名。";
+                            geoStatus.textContent = geoMsg;
+                            manualPlaceNameInput.placeholder = "请手动输入地名";
+                        }
+                    },
+                    (error) => {
+                        console.error("地理位置错误:", error);
+                        currentGeolocation = null;
+                        currentPlaceNameFromAPI = "";
+                        geoStatus.textContent = `地理位置获取失败: ${error.message}. 请手动输入地名。`;
+                        manualPlaceNameInput.placeholder = "请手动输入地名";
+                    },
+                    { enableHighAccuracy: true, timeout: 15000, maximumAge: 60000 }
+                );
+            } else {
+                currentGeolocation = null;
+                currentPlaceNameFromAPI = "";
+                geoStatus.textContent = "浏览器不支持地理位置。请手动输入地名。";
+                manualPlaceNameInput.placeholder = "请手动输入地名";
+            }
+        }
+
+        async function fetchPlaceName(lat, lon, apiKey) {
+            try {
+                const response = await fetch(`https://api.opencagedata.com/geocode/v1/json?q=${lat}+${lon}&key=${apiKey}&language=zh-CN&pretty=1&no_annotations=1`);
+                const data = await response.json();
+                if (data.status && data.status.code === 200 && data.results && data.results.length > 0) {
+                    currentPlaceNameFromAPI = data.results[0].formatted || "地名解析失败";
+                    manualPlaceNameInput.value = currentPlaceNameFromAPI;
+                    geoStatus.textContent = `位置: ${currentPlaceNameFromAPI}`;
+                } else {
+                    currentPlaceNameFromAPI = "无法解析地名";
+                    let errorMsg = (data.status && data.status.message) ? ` (${data.status.message})` : "";
+                    geoStatus.textContent = `坐标已获取，但无法解析地名${errorMsg}. 请手动输入。`;
+                    if (data.status && (data.status.code === 401 || data.status.code === 402 || data.status.code === 403)) {
+                        apiKeyStatus.textContent = `API Key 无效或已过期: ${data.status.message}. 请检查并重新保存。`;
+                        apiKeyStatus.style.color = "#ed4245";
+                    }
+                }
+            } catch (error) {
+                console.error("获取地名失败:", error);
+                currentPlaceNameFromAPI = "获取地名API请求失败";
+                geoStatus.textContent = `坐标已获取，但地名API请求失败. 请手动输入。`;
+            }
+            manualPlaceNameInput.placeholder = "自动获取或手动输入地名";
+        }
+
+        composeButton.addEventListener('click', async () => {
+            if (!referenceImage || !capturedImageBlob) {
+                alert("需要参考图和拍摄的照片才能生成！");
+                return;
+            }
+            composeButton.disabled = true;
+            composeButton.textContent = "生成中 (可能需要几秒)...";
+            cameraStatus.textContent = "正在合成高清图片，请稍候...";
+            
+            // 使用 setTimeout 确保UI更新后再执行耗时操作
+            setTimeout(async () => {
+                try {
+                    await composeFinalImage();
+                    downloadButton.classList.remove('hidden');
+                    downloadButton.disabled = false;
+                    cameraStatus.textContent = '图片已生成！可滚动查看并下载。';
+                } catch (e) {
+                    console.error("合成图片失败:", e);
+                    cameraStatus.textContent = `图片合成失败: ${e.message}`;
+                    alert(`图片合成失败: ${e.message}`);
+                } finally {
+                    composeButton.disabled = false;
+                    composeButton.textContent = "重新生成图片";
+                }
+            }, 50);
+        });
+
+
+        async function composeFinalImage() {
+            const capturedImg = new Image();
+            const capturedUrl = URL.createObjectURL(capturedImageBlob);
+            
+            await new Promise((resolve, reject) => {
+                capturedImg.onload = resolve;
+                capturedImg.onerror = (err) => {
+                    URL.revokeObjectURL(capturedUrl);
+                    reject(new Error("无法加载拍摄的图片数据"));
+                };
+                capturedImg.src = capturedUrl;
+            });
+            URL.revokeObjectURL(capturedUrl);
+
+            const ctx = outputCanvas.getContext('2d');
+
+            // 核心：拍摄的照片使用其原始尺寸
+            const capOriginalWidth = capturedImg.naturalWidth;
+            const capOriginalHeight = capturedImg.naturalHeight;
+
+            if (capOriginalWidth === 0 || capOriginalHeight === 0) {
+                throw new Error("拍摄的照片尺寸无效 (0x0)。请确保相机正常工作。");
+            }
+
+            // 参考图的宽度调整为与拍摄照片的宽度一致，高度按比例缩放
+            const refAspectRatio = referenceImage.naturalWidth / referenceImage.naturalHeight;
+            const refTargetWidth = capOriginalWidth; // 参考图宽度 = 拍摄图宽度
+            const refTargetHeight = refTargetWidth / refAspectRatio;
+
+            // 动态计算边框、间距等，基于拍摄照片的尺寸
+            const dynamicScaleFactor = Math.min(capOriginalWidth, capOriginalHeight) / 1000; // 基准尺寸1000px
+            const padding = Math.max(20, Math.round(40 * dynamicScaleFactor));
+            const frameThickness = Math.max(15, Math.round(25 * dynamicScaleFactor));
+            const spacing = Math.max(15, Math.round(25 * dynamicScaleFactor));
+            const baseFontSize = Math.max(16, Math.round(20 * dynamicScaleFactor));
+            const textBlockHeight = Math.max(70, Math.round(baseFontSize * 4.5));
+
+
+            // Canvas 尺寸
+            const canvasWidth = capOriginalWidth + 2 * padding + 2 * frameThickness;
+            const canvasHeight = refTargetHeight + capOriginalHeight + spacing + 2 * padding + 2 * frameThickness + textBlockHeight;
+
+            outputCanvas.width = canvasWidth;
+            outputCanvas.height = canvasHeight;
+            outputCanvas.classList.remove('hidden');
+
+            // --- 绘制开始 ---
+            ctx.fillStyle = '#1e1e1e'; 
+            ctx.fillRect(0, 0, canvasWidth, canvasHeight);
+
+            ctx.fillStyle = '#202225'; // 外框
+            ctx.fillRect(0, 0, canvasWidth, canvasHeight);
+            
+            const picAreaX = frameThickness;
+            const picAreaY = frameThickness;
+            const picAreaWidth = canvasWidth - 2 * frameThickness;
+            const picAreaHeight = canvasHeight - 2 * frameThickness;
+            ctx.fillStyle = '#282b30'; 
+            ctx.fillRect(picAreaX, picAreaY, picAreaWidth, picAreaHeight);
+
+            ctx.save();
+            ctx.rect(picAreaX, picAreaY, picAreaWidth, picAreaHeight);
+            ctx.clip();
+            ctx.shadowOffsetX = 0;
+            ctx.shadowOffsetY = Math.round(5 * dynamicScaleFactor);
+            ctx.shadowBlur = Math.round(15 * dynamicScaleFactor);
+            ctx.shadowColor = 'rgba(0,0,0,0.6)';
+            ctx.fillStyle = 'rgba(0,0,0,0)';
+            ctx.fillRect(picAreaX, picAreaY, picAreaWidth, picAreaHeight);
+            ctx.restore();
+            
+            // 绘制参考图 (尺寸: refTargetWidth, refTargetHeight)
+            const refX = picAreaX + padding;
+            const refY = picAreaY + padding;
+            ctx.drawImage(referenceImage, refX, refY, refTargetWidth, refTargetHeight);
+
+            // 绘制拍摄的照片 (尺寸: capOriginalWidth, capOriginalHeight)
+            const capY = refY + refTargetHeight + spacing;
+            ctx.drawImage(capturedImg, refX, capY, capOriginalWidth, capOriginalHeight);
+
+            // 文字信息
+            let finalPlaceName = manualPlaceNameInput.value.trim();
+            if (!finalPlaceName) {
+                finalPlaceName = currentPlaceNameFromAPI || "地点未指定";
+            }
+            
+            let locationString = "";
+            if (currentGeolocation) {
+                locationString = `经纬: ${currentGeolocation.latitude.toFixed(5)}, ${currentGeolocation.longitude.toFixed(5)}`;
+            } else {
+                locationString = "经纬度未获取";
+            }
+
+            const textYBaseline = capY + capOriginalHeight + padding + Math.round(baseFontSize * 1.5);
+            
+            ctx.fillStyle = '#e0e0e0';
+            ctx.font = `bold ${Math.round(baseFontSize * 1.1)}px "Segoe UI", Arial, sans-serif`;
+            ctx.textAlign = 'center';
+            ctx.fillText(finalPlaceName, canvasWidth / 2, textYBaseline);
+
+            ctx.font = `${baseFontSize}px "Segoe UI", Arial, sans-serif`;
+            ctx.fillStyle = '#b9bbbe';
+            ctx.fillText(locationString, canvasWidth / 2, textYBaseline + Math.round(baseFontSize * 1.5));
+            
+            ctx.fillStyle = '#888';
+            ctx.font = `${Math.round(baseFontSize * 0.75)}px "Segoe UI", Arial, sans-serif`;
+            ctx.textAlign = 'right';
+            ctx.fillText("圣地巡礼相机", canvasWidth - frameThickness - padding/2, canvasHeight - frameThickness - padding/2);
+        }
+
+        downloadButton.addEventListener('click', () => {
+            if (!outputCanvas.classList.contains('hidden')) {
+                const dataURL = outputCanvas.toDataURL('image/png', 1.0); 
+                const a = document.createElement('a');
+                a.href = dataURL;
+                const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+                let filename = "pilgrimage_shot";
+                let placeForFilename = manualPlaceNameInput.value.trim() || currentPlaceNameFromAPI;
+                if (placeForFilename && !["地点未指定", "无法解析地名", "获取地名API请求失败", "地名解析失败"].includes(placeForFilename)) {
+                    filename += "_" + placeForFilename.replace(/[^\w\u4E00-\u9FA5\s\-]/g, '_').substring(0,30); // 清理并截断
+                }
+                filename += `_${timestamp}.png`;
+                a.download = filename;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+            }
+        });
+
+        // 初始化
+        loadApiKey(); 
+        blendValueDisplay.textContent = blendSlider.value;
+
+        window.addEventListener('beforeunload', () => {
+            if (stream) {
+                stream.getTracks().forEach(track => track.stop());
+            }
+        });
+    </script>
+</body>
+</html>
