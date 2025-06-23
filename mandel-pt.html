@@ -246,11 +246,12 @@
             <div class="shortcut">
                 <button class="icon control-button" id="goto" title="Go to location">&#128640;</button>
                 <button class="icon control-button" id="home" title="Reset view">&#127968;</button>
-                <button class="icon control-button" id="kfr" title="Load KFR file">&#128229;</button>
+                <button class="icon control-button" id="palette" title="Palette Editor">🎨</button>
                 <button class="icon control-button" id="download" title="Download PNG">&#128248;</button>
             </div>
             <div class="shortcut">
-                <button class="icon control-button" id="palette" title="Palette Editor">🎨</button>
+                <button class="icon control-button" id="kfr" title="Load KFR file">📂</button>
+                <button class="icon control-button" id="save-kfr" title="Save KFR file">💾</button>
             </div>
             <!-- <button id="makeVideo" class="control-button">Make Video</button> -->
             <hr>
@@ -2251,6 +2252,57 @@
             }
         }
 
+        class KFRWriter {
+            constructor() {
+                this.data = {};
+            }
+
+            // Setters for `Re`, `Im`, `Zoom`, `Iterations`, `IterDiv`, and `Colors`
+            set re(value) {
+                this.data.Re = value;
+            }
+
+            set im(value) {
+                this.data.Im = value;
+            }
+
+            set zoom(value) {
+                this.data.Zoom = value;
+            }
+
+            set iter(value) {
+                this.data.Iterations = value;
+            }
+
+            set iterDiv(value) {
+                this.data.IterDiv = value;
+            }
+
+            set colors(value) {
+                this.data.Colors = value.map(color => {
+                    // convert each color to BGR format
+                    return `${color[2]},${color[1]},${color[0]},`;
+                }).join("");
+            }
+
+            // Convert the data to a KFR formatted string
+            toString() {
+                return Object.entries(this.data)
+                    .map(([key, value]) => `${key}: ${value}`)
+                    .join("\r\n");
+            }
+
+            load(mandelbrot) {
+                this.re = mandelbrot.center.re.toString();
+                this.im = mandelbrot.center.im.toString();
+                let zoom = new FloatExp(4).div(mandelbrot.size);
+                this.zoom = `${zoom.base}E${zoom.exp}`;
+                this.iter = mandelbrot.iterations.toString();
+                this.iterDiv = (colorStep * palette.length) / 1024
+                this.colors = palette;
+            }
+        }
+
         const dict = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz123456789'
         function b58Compress(n, pad = true) {
             if (n == 0) return '0'
@@ -2524,6 +2576,24 @@
         // Trigger file upload when a button is clicked
         document.getElementById("kfr").addEventListener('click', () => {
             inputElement.click(); // Simulate a click on the input element
+        });
+
+        document.getElementById("save-kfr").addEventListener('click', () => {
+            const writer = new KFRWriter();
+            writer.load(mandelbrot);
+            const kfrContent = writer.toString();
+
+            // Create a Blob from the KFR content
+            const blob = new Blob([kfrContent], { type: 'text/plain' });
+            const url = URL.createObjectURL(blob);
+
+            // Create a link to download the file
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `mandelbrot-${new Date().toISOString()}.kfr`; // Set the desired file name
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
         });
 
         // Handle file selection
