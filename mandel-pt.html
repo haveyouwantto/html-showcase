@@ -1333,7 +1333,7 @@
          */
         function getColor(it, maxIter) {
             if (it == null || it >= maxIter) return [0, 0, 0, 255];
-            else if (it < 0) return [0, 0, 0, 0];
+            else if (it < 0) return [palette[0][0], palette[0][1], palette[0][2], 255];
             let color = colorTrans(palette, it / colorStep);
             return [color[0], color[1], color[2], 255];
         }
