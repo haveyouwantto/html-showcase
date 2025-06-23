@@ -271,6 +271,9 @@
             <button id="load-sample" class="control-button">Load</button>
         </div>
     </div>
+    <div>
+        Iterations: <span id="iter-count"></span>
+    </div>
     <div id="stats">
     </div>
     <div id="more"></div>
@@ -1604,6 +1607,13 @@
                         this.zoom(this.size.div(4));
                         this.update();
                     }
+                })
+
+                let iterCountSpan = document.getElementById('iter-count')
+                canvas.addEventListener('mousemove', e=>{
+                    let imageX = e.offsetX - canvas.clientLeft;
+                    let imageY = e.offsetY - canvas.clientTop;
+                    iterCountSpan.textContent = (this.iterMap[imageY][imageX]).toFixed(2);
                 })
 
                 this.stats = {
