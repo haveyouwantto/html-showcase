@@ -1462,54 +1462,64 @@
 
             self.onmessage = function (event) {
                 let calc = []
-                if (!event.data.deep) {
-                    let refArray = constructRef(event.data.ref);
-                    let blaArray = constructBla(event.data.bla);
-                    for (let delta of event.data.deltas) {
-                        let it = getPTBLA(
-                            new Complex(
-                                delta.re, delta.im
-                            ),
-                            refArray,
-                            blaArray,
-                            event.data.maxIter,
-                            event.data.bailout,
-                        );
-                        calc.push({
-                            it: it,
-                            x: delta.x,
-                            y: delta.y,
-                            w: delta.w,
-                            h: delta.h
-                        });
-                    }
-                    self.postMessage(calc);
-                } else {
-                    let refArray = constructRefFE(event.data.ref);
-                    let blaArray = constructBlaFE(event.data.bla);
-                    for (let delta of event.data.deltas) {
-                        try {
-                            let it = getPTBLAFE(
-                                new FloatExpComplex(
-                                    new FloatExp(delta.re.base, delta.re.exp),
-                                    new FloatExp(delta.im.base, delta.im.exp)
-                                ),
-                                refArray,
-                                blaArray,
-                                event.data.maxIter,
-                                event.data.bailout,
-                            );
-                            calc.push({
-                                it: it,
-                                x: delta.x,
-                                y: delta.y,
-                                w: delta.w,
-                                h: delta.h
-                            });
-                        } catch (e) { }
-                    }
-                    self.postMessage(calc);
+                switch (event.data.type) {
+                    case 'ref':
+                        if (!event.data.deep) {
+                            self.refArray = constructRef(event.data.ref);
+                            self.blaArray = constructBla(event.data.bla);
+                        } else {
+                            self.refArray = constructRefFE(event.data.ref);
+                            self.blaArray = constructBlaFE(event.data.bla);
+                        }
+                        self.deep = event.data.deep;
+                        break
+                    case 'calc':
+                        const calc = [];
+                        if (!self.deep) {
+                            for (let delta of event.data.deltas) {
+                                try {
+                                    let it = getPTBLA(
+                                        new Complex(delta.re, delta.im),
+                                        self.refArray,
+                                        self.blaArray,
+                                        event.data.maxIter,
+                                        event.data.bailout
+                                    );
+                                    calc.push({
+                                        it: it,
+                                        x: delta.x,
+                                        y: delta.y,
+                                        w: delta.w,
+                                        h: delta.h
+                                    });
+                                } catch (e) { }
+                            }
+                        } else {
+                            for (let delta of event.data.deltas) {
+                                try {
+                                    let it = getPTBLAFE(
+                                        new FloatExpComplex(
+                                            new FloatExp(delta.re.base, delta.re.exp),
+                                            new FloatExp(delta.im.base, delta.im.exp)
+                                        ),
+                                        self.refArray,
+                                        self.blaArray,
+                                        event.data.maxIter,
+                                        event.data.bailout
+                                    );
+                                    calc.push({
+                                        it: it,
+                                        x: delta.x,
+                                        y: delta.y,
+                                        w: delta.w,
+                                        h: delta.h
+                                    });
+                                } catch (e) { }
+                            }
+                        }
+                        self.postMessage(calc);
                 }
+
             };
         }
 
@@ -1898,6 +1908,15 @@
                         return { A: [e2.A.re, e2.A.im], B: [e2.B.re, e2.B.im], radius: e2.radius }
                     }))
 
+                for (let i = 0; i < this.workers.length; i++) {
+                    this.workers[i].postMessage({
+                        type: 'ref',
+                        ref: workerRef,
+                        bla: workerBla,
+                        deep: this.deep
+                    });
+                }
+
                 let p1 = () => {
                     return new Promise(async (r, j) => {
                         this.counter = 0;
@@ -1935,10 +1954,8 @@
                             if (deltasChunk.length === 0) continue; // 跳过空数据
 
                             const data = {
-                                deep: this.deep,
+                                type: 'calc',
                                 deltas: deltasChunk,
-                                ref: workerRef,
-                                bla: workerBla,
                                 maxIter: this.iterations,
                                 bailout: this.bailout,
                             };
@@ -2000,10 +2017,8 @@
                             if (deltasChunk.length === 0) continue; // 跳过空数据
 
                             const data = {
-                                deep: this.deep,
+                                type: 'calc',
                                 deltas: deltasChunk,
-                                ref: workerRef,
-                                bla: workerBla,
                                 maxIter: this.iterations,
                                 bailout: this.bailout,
                             };
@@ -2066,10 +2081,8 @@
                             if (deltasChunk.length === 0) continue; // 跳过空数据
 
                             const data = {
-                                deep: this.deep,
+                                type: 'calc',
                                 deltas: deltasChunk,
-                                ref: workerRef,
-                                bla: workerBla,
                                 maxIter: this.iterations,
                                 bailout: this.bailout,
                             };
