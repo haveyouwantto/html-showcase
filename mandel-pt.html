@@ -1604,7 +1604,7 @@
                 canvas.addEventListener('contextmenu', e => {
                     e.preventDefault();
                     if (!this.rendering) {
-                        this.zoom(this.size.div(4));
+                        this.zoom(this.size.mul(4));
                         this.update();
                     }
                 })
