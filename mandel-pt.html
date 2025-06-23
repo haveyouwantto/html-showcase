@@ -253,7 +253,7 @@
                 <button class="icon control-button" id="kfr" title="Load KFR file">📂</button>
                 <button class="icon control-button" id="save-kfr" title="Save KFR file">💾</button>
             </div>
-            <!-- <button id="makeVideo" class="control-button">Make Video</button> -->
+            <button id="makeVideo" class="control-button">Make Video</button>
             <hr>
             Samples
             <select id="samples">
@@ -1610,7 +1610,7 @@
                 })
 
                 let iterCountSpan = document.getElementById('iter-count')
-                canvas.addEventListener('mousemove', e=>{
+                canvas.addEventListener('mousemove', e => {
                     let imageX = e.offsetX - canvas.clientLeft;
                     let imageY = e.offsetY - canvas.clientTop;
 
@@ -1827,7 +1827,6 @@
             async update() {
                 this.rendering = true;
                 this.setLocked(true)
-                this.clear()
                 this.stats = {
                     ref: 0,
                     calc: 0,
@@ -1909,8 +1908,8 @@
                         const allDeltas = [];
                         for (let y = 0; y < this.canvas.height; y += 2) {
                             for (let x = 0; x < this.canvas.width; x += 2) {
-                                if (this.iterMap[y][x] != 0) {
-                                    this.setIter(x, y, this.iterMap[y][x], 2, 2);
+                                if (this.iterMap[y][x] > 0) {
+                                    this.setIter(x, y, this.iterMap[y][x]);
                                     continue;
                                 }
                                 // 计算并收集delta
@@ -1932,7 +1931,6 @@
                             const start = i * chunkSize;
                             const end = start + chunkSize;
                             const deltasChunk = allDeltas.slice(start, end);
-
                             if (deltasChunk.length === 0) continue; // 跳过空数据
 
                             const data = {
@@ -1951,6 +1949,9 @@
                             this.workerCounter++;
                         }
 
+                        if (this.counter <= 0) {
+                            this.resolveFunc();
+                        }
                     });
                 };
 
@@ -1965,8 +1966,8 @@
                         const allDeltas = [];
                         for (let y = 0; y < this.canvas.height; y += 2) {
                             for (let x = 1; x < this.canvas.width; x += 2) {
-                                if (this.iterMap[y][x] != 0) {
-                                    this.setIter(x, y, this.iterMap[y][x], 1, 2)
+                                if (this.iterMap[y][x] > 0) {
+                                    this.setIter(x, y, this.iterMap[y][x])
                                     continue
                                 }
                                 let leftColor = this.getIter(x - 1, y);
@@ -1994,7 +1995,6 @@
                             const start = i * chunkSize;
                             const end = start + chunkSize;
                             const deltasChunk = allDeltas.slice(start, end);
-
                             if (deltasChunk.length === 0) continue; // 跳过空数据
 
                             const data = {
@@ -2009,9 +2009,12 @@
                             // 轮询分配Worker
                             const workerIndex = this.workerCounter % CPU_CORES;
                             this.workers[workerIndex].postMessage(data);
-
                             this.counter++; // 追踪发送的任务总数
                             this.workerCounter++;
+                        }
+
+                        if (this.counter <= 0) {
+                            this.resolveFunc();
                         }
                     })
                 }
@@ -2057,7 +2060,6 @@
                             const start = i * chunkSize;
                             const end = start + chunkSize;
                             const deltasChunk = allDeltas.slice(start, end);
-
                             if (deltasChunk.length === 0) continue; // 跳过空数据
 
                             const data = {
@@ -2072,9 +2074,12 @@
                             // 轮询分配Worker
                             const workerIndex = this.workerCounter % CPU_CORES;
                             this.workers[workerIndex].postMessage(data);
-
                             this.counter++; // 追踪发送的任务总数
                             this.workerCounter++;
+                        }
+
+                        if (this.counter <= 0) {
+                            this.resolveFunc();
                         }
                     })
                 }
@@ -2169,12 +2174,12 @@
 
                 for (let y = 0; y < this.canvas.height; y++) {
                     for (let x = 0; x < this.canvas.width; x++) {
-                        if (this.iterMap[y][x] == this.iterations) {
-                            this.setIter(x, y, -1)
+                        if (this.iterMap[y][x] >= prevIter) {
+                            this.setIter(x, y, 0)
                         }
                     }
                 }
-                this.update(true)
+                this.update()
             }
 
             async renderFrames() {
@@ -2565,10 +2570,12 @@
 
         document.getElementById('increase-iter').addEventListener('click', function () {
             mandelbrot.increaseIteration(2);
+            mandelbrot.update();
         });
 
         document.getElementById('decrease-iter').addEventListener('click', function () {
             mandelbrot.setIterations(mandelbrot.iterations / 2);
+            mandelbrot.clear();
             mandelbrot.update()
         });
 
@@ -2633,110 +2640,110 @@
         });
 
         // Trigger file upload when a button is clicked
-        // document.getElementById("makeVideo").addEventListener('click', async () => {
-        //     const keyFrames = await mandelbrot.renderFrames();
-        //     console.log(keyFrames);
+        document.getElementById("makeVideo").addEventListener('click', async () => {
+            const keyFrames = await mandelbrot.renderFrames();
+            console.log(keyFrames);
 
-        //     const stream = canvas.captureStream();
-        //     const recorder = new MediaRecorder(stream, { mimeType: 'video/webm;codecs=h264', videoBitsPerSecond: 10000000 });
-        //     const data = [];
-        //     recorder.ondataavailable = function (event) {
-        //         if (event.data && event.data.size) {
-        //             data.push(event.data);
-        //         }
-        //     };
-        //     recorder.onstop = () => {
-        //         const url = URL.createObjectURL(new Blob(data, { type: 'video/webm' }));
-        //         console.log('video url', url)
-        //         var a = document.createElement('a');
-        //         a.download = 'file.webm';
-        //         a.href = url;
-        //         a.click();
+            const stream = canvas.captureStream();
+            const recorder = new MediaRecorder(stream, { mimeType: 'video/webm;codecs=h264', videoBitsPerSecond: 10000000 });
+            const data = [];
+            recorder.ondataavailable = function (event) {
+                if (event.data && event.data.size) {
+                    data.push(event.data);
+                }
+            };
+            recorder.onstop = () => {
+                const url = URL.createObjectURL(new Blob(data, { type: 'video/webm' }));
+                console.log('video url', url)
+                var a = document.createElement('a');
+                a.download = 'file.webm';
+                a.href = url;
+                a.click();
 
-        //         ctx.imageSmoothingEnabled = false;
-        //     };
+                ctx.imageSmoothingEnabled = false;
+            };
 
-        //     let indexFl = 0;
-        //     let ctx = canvas.getContext('2d')
-        //     ctx.imageSmoothingEnabled = true;
+            let indexFl = 0;
+            let ctx = canvas.getContext('2d')
+            ctx.imageSmoothingEnabled = true;
 
-        //     ctx.font = 'bold 26px Arial';
-        //     ctx.textAlign = 'left';
-        //     ctx.textBaseline = 'top';
-        //     ctx.fillStyle = 'white';
-        //     ctx.strokeStyle = 'black';
-        //     ctx.lineWidth = 1;
+            ctx.font = 'bold 26px Arial';
+            ctx.textAlign = 'left';
+            ctx.textBaseline = 'top';
+            ctx.fillStyle = 'white';
+            ctx.strokeStyle = 'black';
+            ctx.lineWidth = 1;
 
-        //     const renderer = () => {
-        //         // Ensure `keyFrames` array is defined and has elements
-        //         if (!keyFrames || keyFrames.length < 2) {
-        //             console.error("keyFrames array is either undefined or contains fewer than 2 frames.");
-        //             recorder.stop();
-        //             return;
-        //         }
+            const renderer = () => {
+                // Ensure `keyFrames` array is defined and has elements
+                if (!keyFrames || keyFrames.length < 2) {
+                    console.error("keyFrames array is either undefined or contains fewer than 2 frames.");
+                    recorder.stop();
+                    return;
+                }
 
-        //         // Calculate indices and verify bounds
-        //         let i = Math.floor(indexFl);
-        //         if (i < 0 || i + 1 >= keyFrames.length) {
-        //             recorder.stop();
-        //             return;
-        //         }
+                // Calculate indices and verify bounds
+                let i = Math.floor(indexFl);
+                if (i < 0 || i + 1 >= keyFrames.length) {
+                    recorder.stop();
+                    return;
+                }
 
-        //         // Get the two images for the transition
-        //         const image1 = keyFrames[i].frame;
-        //         const image2 = keyFrames[i + 1].frame;
+                // Get the two images for the transition
+                const image1 = keyFrames[i].frame;
+                const image2 = keyFrames[i + 1].frame;
 
-        //         // Calculate scaling factors
-        //         const decimalPart = indexFl - i; // Fractional part of the index
-        //         const scale1 = Math.pow(2, decimalPart); // Scale for image1
-        //         const scale2 = scale1 * .5; // Scale for image2 (fixed at half size)
+                // Calculate scaling factors
+                const decimalPart = indexFl - i; // Fractional part of the index
+                const scale1 = Math.pow(2, decimalPart); // Scale for image1
+                const scale2 = scale1 * .5; // Scale for image2 (fixed at half size)
 
-        //         // Clear canvas (assuming canvas context is `ctx`)
-        //         ctx.clearRect(0, 0, canvas.width, canvas.height);
+                // Clear canvas (assuming canvas context is `ctx`)
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-        //         // Draw image1 at center with scaling factor `scale1`
-        //         const centerX = canvas.width / 2;
-        //         const centerY = canvas.height / 2;
+                // Draw image1 at center with scaling factor `scale1`
+                const centerX = canvas.width / 2;
+                const centerY = canvas.height / 2;
 
-        //         ctx.drawImage(image1,
-        //             centerX - canvas.width * scale1 / 2,
-        //             centerY - canvas.height * scale1 / 2,
-        //             canvas.width * scale1,
-        //             canvas.width * scale1
-        //         );
+                ctx.drawImage(image1,
+                    centerX - canvas.width * scale1 / 2,
+                    centerY - canvas.height * scale1 / 2,
+                    canvas.width * scale1,
+                    canvas.width * scale1
+                );
 
 
-        //         ctx.drawImage(image2,
-        //             centerX - canvas.width * scale2 / 2,
-        //             centerY - canvas.height * scale2 / 2,
-        //             canvas.width * scale2,
-        //             canvas.width * scale2
-        //         );
+                ctx.drawImage(image2,
+                    centerX - canvas.width * scale2 / 2,
+                    centerY - canvas.height * scale2 / 2,
+                    canvas.width * scale2,
+                    canvas.width * scale2
+                );
 
-        //         more.innerText = indexFl.toFixed(2);
+                more.innerText = indexFl.toFixed(2);
 
-        //         const scale = new FloatExp(4).div(keyFrames[i].scale);
-        //         const currScale = FloatExp.fromLog2(scale.log2Value() + decimalPart);
+                const scale = new FloatExp(4).div(keyFrames[i].scale);
+                const currScale = FloatExp.fromLog2(scale.log2Value() + decimalPart);
 
-        //         let zoomText;
-        //         if (currScale.exp < 7) {
-        //             zoomText = currScale.doubleValue().toFixed(2);
-        //         } else zoomText = `${currScale.base.toFixed(2)}E${currScale.exp}`
+                let zoomText;
+                if (currScale.exp < 7) {
+                    zoomText = currScale.doubleValue().toFixed(2);
+                } else zoomText = `${currScale.base.toFixed(2)}E${currScale.exp}`
 
-        //         ctx.fillText(zoomText, 8, 8)
-        //         ctx.strokeText(zoomText, 8, 8)
+                ctx.fillText(zoomText, 8, 8)
+                ctx.strokeText(zoomText, 8, 8)
 
-        //         // Increment index for the next frame
-        //         indexFl += 1 / 60;
+                // Increment index for the next frame
+                indexFl += 1 / 60;
 
-        //         // Loop `renderer` to maintain animation (assuming 60fps rendering)
-        //         requestAnimationFrame(renderer);
-        //     };
+                // Loop `renderer` to maintain animation (assuming 60fps rendering)
+                requestAnimationFrame(renderer);
+            };
 
-        //     // Start the renderer
-        //     recorder.start();
-        //     requestAnimationFrame(renderer);
-        // });
+            // Start the renderer
+            recorder.start();
+            requestAnimationFrame(renderer);
+        });
 
         function generateRandomPalette(size) {
             const palette = [];
