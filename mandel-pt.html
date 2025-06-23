@@ -1926,8 +1926,9 @@
                         }
 
                         // 将deltas均分到每个核心
-                        const chunkSize = Math.ceil(allDeltas.length / CPU_CORES);
-                        for (let i = 0; i < CPU_CORES; i++) {
+                        const chunkSize = 64 * 64;
+                        const chunks = Math.ceil(allDeltas.length / chunkSize);
+                        for (let i = 0; i < chunks; i++) {
                             const start = i * chunkSize;
                             const end = start + chunkSize;
                             const deltasChunk = allDeltas.slice(start, end);
@@ -1990,8 +1991,9 @@
                         }
 
                         // 将deltas均分到每个核心
-                        const chunkSize = Math.ceil(allDeltas.length / CPU_CORES);
-                        for (let i = 0; i < CPU_CORES; i++) {
+                        const chunkSize = 64 * 64;
+                        const chunks = Math.ceil(allDeltas.length / chunkSize);
+                        for (let i = 0; i < chunks; i++) {
                             const start = i * chunkSize;
                             const end = start + chunkSize;
                             const deltasChunk = allDeltas.slice(start, end);
@@ -2055,8 +2057,9 @@
 
 
                         // 将deltas均分到每个核心
-                        const chunkSize = Math.ceil(allDeltas.length / CPU_CORES);
-                        for (let i = 0; i < CPU_CORES; i++) {
+                        const chunkSize = 64 * 64;
+                        const chunks = Math.ceil(allDeltas.length / chunkSize);
+                        for (let i = 0; i < chunks; i++) {
                             const start = i * chunkSize;
                             const end = start + chunkSize;
                             const deltasChunk = allDeltas.slice(start, end);
