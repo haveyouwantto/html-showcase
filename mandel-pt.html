@@ -926,7 +926,6 @@
                 orbit.push(z);
 
                 const error = z.sub(lpz).norm();
-                console.log(error)
                 if (error > 1e-13) {
                     lpz = z;
                     waypoints[i] = z;
