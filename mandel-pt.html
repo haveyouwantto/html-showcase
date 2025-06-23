@@ -1800,9 +1800,6 @@
                 let statusText = `Reference: ${this.stats.ref}it\nApproximation: ${this.blaTable?.length ?? 0} levels\nCalculation: ${this.stats.calc} (${(this.stats.calc / totalPixels * 100).toFixed(2)}%)\nGuessed: ${this.stats.guess} (${(this.stats.guess / totalPixels * 100).toFixed(2)}%)\nTime: ${((performance.now() - this.stats.time) / 1000).toFixed(3)}s`;
                 if (!this.rendering) {
                     statusText += "\nDone!";
-                    this.setLocked(false);
-                } else {
-                    this.setLocked(true);
                 }
                 statsLabel.innerText = statusText;
             }
@@ -1829,6 +1826,8 @@
              */
             async update() {
                 this.rendering = true;
+                this.setLocked(true)
+                this.clear()
                 this.stats = {
                     ref: 0,
                     calc: 0,
@@ -1948,7 +1947,6 @@
                             // 轮询分配Worker
                             const workerIndex = this.workerCounter % CPU_CORES;
                             this.workers[workerIndex].postMessage(data);
-
                             this.counter++; // 追踪发送的任务总数
                             this.workerCounter++;
                         }
@@ -2122,6 +2120,8 @@
 
                 // 重建哈希字符串
                 window.location.hash = params.toString();
+
+                this.setLocked(false)
             }
 
             /**
