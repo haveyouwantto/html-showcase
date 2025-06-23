@@ -38,8 +38,8 @@
             background: repeating-linear-gradient(45deg, var(--theme-color), var(--theme-color) 8px, #000 8px, #000 16px);
             /* Adjust colors for dark mode */
             cursor: crosshair;
-            /* width: 800px;
-            height: 800px; */
+            width: 800px;
+            height: 800px;
         }
 
         button {
@@ -64,6 +64,13 @@
             /* Remove default focus outline */
             box-shadow: 0 0 3px var(--theme-color);
             /* Add custom focus effect */
+        }
+
+        button:disabled {
+            filter: brightness(0.5);
+            /* Darker color for disabled buttons */
+            cursor: not-allowed;
+            /* Change cursor to indicate disabled state */
         }
 
         button.icon {
@@ -133,6 +140,67 @@
             gap: 8px;
         }
 
+        .running {
+            outline: var(--theme-color) 4px solid;
+            cursor: wait !important;
+        }
+
+        #color-list {
+            list-style: none;
+            outline: 1px solid var(--theme-color);
+            padding: 8px;
+            margin: 8px;
+            flex-wrap: wrap;
+            max-height: 75vh;
+            overflow-y: auto;
+        }
+
+        #palette-dialog {
+            width: 400px;
+            padding: 20px;
+            background-color: #222;
+            color: #fff;
+            border: none;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.5);
+            max-width: 90%;
+            max-height: 100dvh;
+        }
+
+        #palette-dialog h2 {
+            margin-top: 0;
+        }
+
+        #palette-dialog::backdrop {
+            background-color: rgba(0, 0, 0, 0.5);
+            /* Semi-transparent backdrop */
+        }
+
+        input[type="color"] {
+            width: 100%;
+            height: 40px;
+            border: none;
+            padding: 0;
+            margin: 0;
+            cursor: pointer;
+            appearance: none;
+            background: none;
+        }
+
+        input[type="number"] {
+            padding: 4px;
+            border: 1px solid #666;
+            background-color: #333;
+            color: #fff;
+            border-radius: 4px;
+            transition: background-color 0.3s;
+        }
+
+        .color-item {
+            display: flex;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+
 
         @media (max-width: 600px) {
             .container {
@@ -170,18 +238,22 @@
             Iterations:
             <textarea id="it" rows="1"></textarea>
             <div class="shortcut">
-                <button class="icon" id="zoom-in" title="Zoom in">&#10133;</button>
-                <button class="icon" id="zoom-out" title="Zoom out">&#10134;</button>
-                <button class="icon" id="increase-iter" title="Iterations x2">&#128314;</button>
-                <button class="icon" id="decrease-iter" title="Iterations /2">&#128315;</button>
+                <button class="icon control-button" id="zoom-in" title="Zoom in">&#10133;</button>
+                <button class="icon control-button" id="zoom-out" title="Zoom out">&#10134;</button>
+                <button class="icon control-button" id="increase-iter" title="Iterations x2">&#128314;</button>
+                <button class="icon control-button" id="decrease-iter" title="Iterations /2">&#128315;</button>
             </div>
             <div class="shortcut">
-                <button class="icon" id="goto" title="Go to location">&#128640;</button>
-                <button class="icon" id="home" title="Reset view">&#127968;</button>
-                <button class="icon" id="kfr" title="Load KFR file">&#128229;</button>
-                <button class="icon" id="download" title="Download PNG">&#128248;</button>
+                <button class="icon control-button" id="goto" title="Go to location">&#128640;</button>
+                <button class="icon control-button" id="home" title="Reset view">&#127968;</button>
+                <button class="icon control-button" id="palette" title="Palette Editor">🎨</button>
+                <button class="icon control-button" id="download" title="Download PNG">&#128248;</button>
             </div>
-            <button id="makeVideo">Make Video</button>
+            <div class="shortcut">
+                <button class="icon control-button" id="kfr" title="Load KFR file">📂</button>
+                <button class="icon control-button" id="save-kfr" title="Save KFR file">💾</button>
+            </div>
+            <button id="makeVideo" class="control-button">Make Video</button>
             <hr>
             Samples
             <select id="samples">
@@ -196,12 +268,27 @@
                 <option value="radiant">Radiant</option>
                 <option value="branches">Branches</option>
             </select>
-            <button id="load-sample">Load</button>
+            <button id="load-sample" class="control-button">Load</button>
         </div>
+    </div>
+    <div>
+        Iterations: <span id="iter-count"></span>
     </div>
     <div id="stats">
     </div>
     <div id="more"></div>
+    <dialog id="palette-dialog">
+        <h2>Color Settings</h2>
+        <label for="color-step">Color Step:</label>
+        <input type="number" id="color-step" value="1" min="1" max="100" step="1"><br>
+        <ol id="color-list">
+            <!-- Color settings -->
+        </ol>
+        <button id="apply-colors">Apply</button>
+        <button id="random-colors">Random</button>
+        <button id="reset-colors">Reset</button>
+        <button id="close-dialog">Close</button>
+    </dialog>
     <script src="lib/decimal.9.0.0.js"></script>
     <script>
         const canvas = document.getElementById('mandelbrot');
@@ -215,14 +302,15 @@
         const more = document.getElementById("more");
 
 
-        const buffer = new ArrayBuffer(8); // Create an 8-byte buffer
-        const floatView = new Float64Array(buffer); // Float64 view for the double
-        const int32View = new Int32Array(buffer); // Int32 view to access 64 bits as two 32-bit chunks
+        const CPU_CORES = Math.max(navigator.hardwareConcurrency ?? 1, 1);
 
         class FloatExp {
             static expTable = [];
             static LOG2_10 = Math.log2(10);
             static LOG10_2 = Math.log10(2);
+            static buffer = new ArrayBuffer(8); // Create an 8-byte buffer
+            static floatView = new Float64Array(FloatExp.buffer); // Float64 view for the double
+            static int32View = new Int32Array(FloatExp.buffer); // Int32 view to access 64 bits as two 32-bit chunks
             static {
                 this.expTable = [];
                 for (let i = 0; i < 324 + 308; i++) {
@@ -243,10 +331,10 @@
 
                 const LOG10_2 = Math.LOG10E; // log10(2)
                 const BIAS = 1023; // Double-precision bias
-                floatView[0] = d; // Store the double value
+                FloatExp.floatView[0] = d; // Store the double value
 
-                const highBits = int32View[1]; // Get the higher 32 bits
-                const lowBits = int32View[0]; // Get the lower 32 bits
+                const highBits = FloatExp.int32View[1]; // Get the higher 32 bits
+                const lowBits = FloatExp.int32View[0]; // Get the lower 32 bits
 
                 const rawExp = (highBits >>> 20) & 0x7FF; // Extract the exponent bits (11 bits)
 
@@ -285,7 +373,6 @@
 
             constructor(base, exp = 0) {
                 if (isNaN(base) || isNaN(exp) || !isFinite(base) || !isFinite(exp)) {
-                    console.log(base, exp)
                     throw new Error("Invalid FloatExp");
                 }
                 this.base = base;
@@ -842,7 +929,6 @@
                 orbit.push(z);
 
                 const error = z.sub(lpz).norm();
-                console.log(error)
                 if (error > 1e-13) {
                     lpz = z;
                     waypoints[i] = z;
@@ -859,7 +945,7 @@
                     await delay(1);
                 };
             }
-            console.log(waypoints)
+            console.log("Compressed ref: ", waypoints)
             return orbit;
         }
 
@@ -909,7 +995,6 @@
             let im1 = im;
 
             while (it <= maxiter) {
-                // console.log(re, im);
                 let re2 = re * re;
                 let im2 = im * im;
                 if (re2 + im2 > bailout) return it;
@@ -1165,13 +1250,13 @@
 
             let iter = -1;
             let refIter = 0;
-            let normDc = dc.norm();
             let bout = new FloatExp(bailout);
             let zero = new FloatExp(0);
+            let dcNorm = dc.norm();
 
             while (iter < maxIter) {
                 let dzNorm = dz.norm();
-                let result = lookupFE(table, refIter, ref.length, dzNorm, normDc)
+                let result = lookupFE(table, refIter, ref.length, dzNorm, dcNorm)
 
                 if (result.first != null) {
                     dz.mulMut(result.first.A).addMut(dc.mul(result.first.B));
@@ -1184,26 +1269,23 @@
                     iter++;
                     refIter++;
                 }
-                if (refIter >= ref.length) return { it: iter, e: true };
-                if (dz.re.exp > -150 && dz.im.exp > -150) {
-                    return { it: iter, e: false, z: dz.toComplex(), ref: refIter };
-                }
+                if (refIter >= ref.length) return iter;
 
                 const Z2 = ref[refIter]
                 const val = Z2.add(dz);
                 const valAbs = val.abs();
-                if (valAbs.compareTo(bout) > 0) {
+                if (valAbs.doubleValue() > bailout) {
                     let fracIter = Math.log(valAbs.doubleValue()) / 2;
                     fracIter = Math.log(fracIter / Math.LN2) / Math.LN2;
                     iter += 1 - fracIter;
-                    return { it: iter, e: true };
+                    return iter;
                 };
                 if (valAbs.sub(dzNorm).compareTo(zero) < 0 || refIter == ref.length - 1) { // 检测是否需要变基
                     dz = val;
                     refIter = 0;
                 }
             }
-            return { it: iter, e: true };
+            return iter;
         }
 
         /**
@@ -1225,8 +1307,9 @@
             return rainbowColors;
         }
 
-        let palette = [[0, 0, 0], [190, 35, 41], [108, 225, 132], [82, 174, 214], [241, 73, 144], [233, 187, 241], [166, 179, 235], [135, 60, 219], [153, 62, 12], [13, 94, 36], [183, 6, 28], [179, 222, 71], [200, 77, 18], [139, 187, 67], [3, 31, 166], [9, 125, 90], [31, 37, 56], [203, 212, 93], [245, 150, 252], [19, 59, 69], [10, 137, 13], [174, 219, 28], [154, 32, 50], [64, 238, 80], [253, 54, 120], [50, 73, 18], [125, 158, 246], [173, 220, 73], [242, 20, 79], [102, 64, 68], [196, 107, 208], [50, 183, 48], [34, 161, 59], [145, 34, 246], [139, 225, 157], [176, 218, 31], [2, 153, 202], [157, 114, 185], [128, 44, 73], [153, 197, 126], [128, 233, 213], [201, 234, 178], [191, 83, 204], [191, 214, 103], [126, 214, 20], [142, 220, 45], [239, 131, 102], [97, 73, 87], [143, 105, 255], [209, 205, 97], [156, 157, 30], [114, 114, 22], [240, 29, 230], [74, 79, 132], [215, 2, 119], [44, 57, 232], [201, 203, 83], [51, 30, 18], [12, 158, 116], [212, 213, 244], [164, 212, 159], [53, 126, 89], [34, 50, 207], [207, 204, 244], [45, 144, 211], [143, 211, 72], [217, 230, 117], [229, 42, 29], [43, 247, 192], [135, 129, 120], [95, 14, 68], [212, 0, 80], [190, 141, 97], [21, 5, 123], [51, 59, 7], [24, 31, 130], [218, 146, 112], [206, 84, 100], [62, 133, 177], [248, 21, 105], [4, 106, 70], [14, 115, 150], [47, 22, 217], [212, 104, 103], [74, 74, 247], [104, 87, 208], [22, 250, 118], [173, 17, 187], [136, 36, 174], [82, 254, 121], [67, 37, 219], [244, 60, 229], [216, 211, 69], [11, 206, 40], [96, 197, 245], [151, 61, 89], [89, 138, 39], [208, 45, 118], [205, 201, 194], [73, 212, 104], [37, 121, 106], [64, 97, 8], [59, 177, 20], [17, 165, 106], [140, 193, 40], [11, 169, 214], [140, 151, 135], [21, 241, 47], [149, 154, 29], [225, 155, 193], [233, 126, 192], [167, 154, 168], [181, 194, 134], [154, 191, 84], [35, 217, 231], [144, 85, 209], [209, 40, 56], [161, 108, 217], [78, 94, 102], [156, 48, 225], [113, 217, 254], [165, 226, 159], [155, 12, 226], [101, 71, 180], [70, 42, 56], [130, 169, 137], [118, 122, 121], [99, 194, 120]]
-        let colorStep = 8;
+        let defaultPalette = [[1, 1, 1], [205, 92, 92], [240, 128, 128], [255, 0, 0], [178, 34, 34], [139, 0, 0], [188, 143, 143], [165, 42, 42], [128, 0, 0], [250, 128, 114], [255, 99, 71], [233, 150, 122], [255, 127, 80], [255, 69, 0], [255, 160, 122], [160, 82, 45], [210, 105, 30], [139, 69, 19], [244, 164, 96], [255, 218, 185], [205, 133, 63], [255, 228, 196], [255, 140, 0], [222, 184, 135], [210, 180, 140], [255, 222, 173], [255, 228, 181], [255, 165, 0], [245, 222, 179], [184, 134, 11], [218, 165, 32], [255, 215, 0], [240, 230, 140], [238, 232, 170], [189, 183, 107], [255, 255, 0], [128, 128, 0], [107, 142, 35], [154, 205, 50], [85, 107, 47], [173, 255, 47], [127, 255, 0], [124, 252, 0], [0, 255, 0], [50, 205, 50], [152, 251, 152], [144, 238, 144], [34, 139, 34], [0, 128, 0], [0, 100, 0], [143, 188, 143], [46, 139, 87], [60, 179, 113], [0, 255, 127], [0, 250, 154], [102, 205, 170], [127, 255, 212], [64, 224, 208], [32, 178, 170], [72, 209, 204], [0, 139, 139], [0, 128, 128], [0, 255, 255], [175, 238, 238], [0, 206, 209], [95, 158, 160], [176, 224, 230], [173, 216, 230], [0, 191, 255], [135, 206, 235], [135, 206, 250], [70, 130, 180], [30, 144, 255], [176, 196, 222], [100, 149, 237], [65, 105, 225], [0, 0, 255], [0, 0, 205], [0, 0, 139], [0, 0, 128], [25, 25, 112], [106, 90, 205], [72, 61, 139], [123, 104, 238], [147, 112, 219], [138, 43, 226], [75, 0, 130], [153, 50, 204], [148, 0, 211], [186, 85, 211], [216, 191, 216], [221, 160, 221], [238, 130, 238], [255, 0, 255], [139, 0, 139], [128, 0, 128], [218, 112, 214], [199, 21, 133], [255, 20, 147], [255, 105, 180], [219, 112, 147], [220, 20, 60], [255, 192, 203], [255, 182, 193], [220, 220, 220], [211, 211, 211], [192, 192, 192], [169, 169, 169], [128, 128, 128], [105, 105, 105], [119, 136, 153], [112, 128, 144], [47, 79, 79]]
+        let palette = defaultPalette;
+        let colorStep = 6;
         /**
          * Calculates the color transition between two colors in a palette based on a percentage.
          * @param {number[][]} pal - The palette containing RGB values for colors.
@@ -1250,10 +1333,216 @@
          */
         function getColor(it, maxIter) {
             if (it == null || it >= maxIter) return [0, 0, 0, 255];
-            else if (it < 0) return [0, 0, 0, 0];
+            else if (it < 0) return [palette[0][0], palette[0][1], palette[0][2], 255];
             let color = colorTrans(palette, it / colorStep);
             return [color[0], color[1], color[2], 255];
         }
+
+        function groupArray(arr, groupSize = 3) {
+            if (!arr || arr.length === 0 || groupSize <= 0) {
+                return [];
+            }
+
+            const result = [];
+            for (let i = 0; i < arr.length; i += groupSize) {
+                result.push(arr.slice(i, i + groupSize));
+            }
+            return result;
+        }
+
+        function base64ToByteArray(base64String) {
+            try {
+                // 还原字符并将URL安全的Base64转换为标准Base64
+                let base64 = base64String.replace(/-/g, '+').replace(/_/g, '/');
+
+                // 添加 padding (确保长度是4的倍数)
+                const padLength = (4 - (base64.length % 4)) % 4;
+                base64 += '='.repeat(padLength);
+
+                const binaryString = atob(base64); // 解码Base64
+                const byteArray = new Uint8Array(binaryString.length);
+
+                for (let i = 0; i < binaryString.length; i++) {
+                    byteArray[i] = binaryString.charCodeAt(i);
+                }
+
+                return Array.from(byteArray);
+            } catch (error) {
+                throw new Error("输入不是一个有效的URL安全Base64字符串。");
+            }
+        }
+
+        function byteArrayToBase64(byteArray) {
+            if (!Array.isArray(byteArray)) {
+                throw new Error("输入必须是一个数组。");
+            }
+
+            // 验证字节数组
+            if (byteArray.some(v => typeof v !== 'number' || !Number.isInteger(v) || v < 0 || v > 255)) {
+                throw new Error("数组中的每个元素必须是0-255之间的整数。");
+            }
+
+            // 构建二进制字符串
+            const binaryString = String.fromCharCode(...byteArray);
+
+            // 编码并转换为URL安全格式
+            const base64 = btoa(binaryString)
+                .replace(/\+/g, '-')
+                .replace(/\//g, '_')
+                .replace(/=+$/, '');
+
+            return base64;
+        }
+        // ============================
+
+        function fExp2Obj(fExp) {
+            return { mant: fExp.base, exp: fExp.exp }
+        }
+        function fExpComplex2Obj(fExpComplex) {
+            return {
+                re: fExp2Obj(fExpComplex.re),
+                im: fExp2Obj(fExpComplex.im)
+            }
+        }
+
+        function createWorker() {
+
+            function constructRef(refArray) {
+                let ref = [];
+                for (let i = 0; i < refArray.length; i++) {
+                    ref.push(new Complex(refArray[i][0], refArray[i][1]));
+                }
+                return ref;
+            }
+
+            function constructBla(blaArray) {
+                let out = []
+                for (let i = 0; i < blaArray.length; i++) {
+                    out.push([])
+                    for (let j = 0; j < blaArray[i].length; j++) {
+                        out[i].push({
+                            A: new Complex(blaArray[i][j].A[0], blaArray[i][j].A[1]),
+                            B: new Complex(blaArray[i][j].B[0], blaArray[i][j].B[1]),
+                            radius: blaArray[i][j].radius
+                        })
+                    }
+                }
+                return out
+            }
+
+            function obj2FExp(obj) {
+                return new FloatExp(obj.mant, obj.exp)
+            }
+
+            function obj2FExpComplex(obj) {
+                return new FloatExpComplex(obj2FExp(obj.re), obj2FExp(obj.im))
+            }
+            function constructRefFE(refArray) {
+                let ref = [];
+                for (let i = 0; i < refArray.length; i++) {
+                    ref.push(obj2FExpComplex(refArray[i]));
+                }
+                return ref;
+            }
+
+            function constructBlaFE(blaArray) {
+                let out = []
+                for (let i = 0; i < blaArray.length; i++) {
+                    out.push([])
+                    for (let j = 0; j < blaArray[i].length; j++) {
+                        out[i].push({
+                            A: obj2FExpComplex(blaArray[i][j].A),
+                            B: obj2FExpComplex(blaArray[i][j].B),
+                            radius: obj2FExp(blaArray[i][j].radius)
+                        })
+                    }
+                }
+                return out
+            }
+
+            self.onmessage = function (event) {
+                let calc = []
+                switch (event.data.type) {
+                    case 'ref':
+                        if (!event.data.deep) {
+                            self.refArray = constructRef(event.data.ref);
+                            self.blaArray = constructBla(event.data.bla);
+                        } else {
+                            self.refArray = constructRefFE(event.data.ref);
+                            self.blaArray = constructBlaFE(event.data.bla);
+                        }
+                        self.deep = event.data.deep;
+                        break
+                    case 'calc':
+                        const calc = [];
+                        if (!self.deep) {
+                            for (let delta of event.data.deltas) {
+                                try {
+                                    let it = getPTBLA(
+                                        new Complex(delta.re, delta.im),
+                                        self.refArray,
+                                        self.blaArray,
+                                        event.data.maxIter,
+                                        event.data.bailout
+                                    );
+                                    calc.push({
+                                        it: it,
+                                        x: delta.x,
+                                        y: delta.y,
+                                        w: delta.w,
+                                        h: delta.h
+                                    });
+                                } catch (e) { }
+                            }
+                        } else {
+                            for (let delta of event.data.deltas) {
+                                try {
+                                    let it = getPTBLAFE(
+                                        new FloatExpComplex(
+                                            new FloatExp(delta.re.base, delta.re.exp),
+                                            new FloatExp(delta.im.base, delta.im.exp)
+                                        ),
+                                        self.refArray,
+                                        self.blaArray,
+                                        event.data.maxIter,
+                                        event.data.bailout
+                                    );
+                                    calc.push({
+                                        it: it,
+                                        x: delta.x,
+                                        y: delta.y,
+                                        w: delta.w,
+                                        h: delta.h
+                                    });
+                                } catch (e) { }
+                            }
+                        }
+                        self.postMessage(calc);
+                }
+
+            };
+        }
+
+
+        function arrayBufferToBase64(buffer) {
+            let binary = '';
+            const bytes = new Uint8Array(buffer);
+            const len = bytes.byteLength;
+            for (let i = 0; i < len; i++) {
+                binary += String.fromCharCode(bytes[i]);
+            }
+            return btoa(binary);
+        }
+
+        const code = new TextEncoder().encode(`
+    ${Complex.toString()}${lookup.toString()};${getPTBLA.toString()}
+    ${FloatExp.toString()}${FloatExpComplex.toString()}${getFloatExp.toString()}
+    ${doubleToFloatExp.toString()}${FEmax.toString()}${FEmin.toString()}
+    ${getPTBLAFE.toString()}${lookupFE.toString()}
+        (
+        ${createWorker.toString()}
+        )();`);
+        const workerData = 'data:application/javascript;base64,' + arrayBufferToBase64(code)
 
         /**
          * Represents a Mandelbrot set visualization.
@@ -1325,9 +1614,17 @@
                 canvas.addEventListener('contextmenu', e => {
                     e.preventDefault();
                     if (!this.rendering) {
-                        this.zoom(this.size.div(4));
+                        this.zoom(this.size.mul(4));
                         this.update();
                     }
+                })
+
+                let iterCountSpan = document.getElementById('iter-count')
+                canvas.addEventListener('mousemove', e => {
+                    let imageX = e.offsetX - canvas.clientLeft;
+                    let imageY = e.offsetY - canvas.clientTop;
+
+                    iterCountSpan.textContent = (this.iterMap[imageY]?.[imageX])?.toFixed(2) ?? "-";
                 })
 
                 this.stats = {
@@ -1337,6 +1634,31 @@
                     approx: 0,
                     time: performance.now()
                 }
+
+
+                this.counter = 0;
+                this.workerCounter = 0;
+                this.resolveFunc = null;
+                this.workers = []
+                for (let i = 0; i < CPU_CORES; i++) {
+                    this.workers[i] = new Worker(workerData);
+                    this.workers[i].onmessage = event => {
+                        this.stats.calc += event.data.length;
+                        for (let delta of event.data) {
+                            this.setIter(delta.x, delta.y, delta.it, delta.w, delta.h);
+                        }
+                        this.counter--;
+                        // if (this.counter % CPU_CORES == 0) {
+                        // };
+                        this.showInfo();
+                        this.context.putImageData(this.image, 0, 0)
+
+                        if (this.counter <= 0) {
+                            this.resolveFunc();
+                        }
+                    }
+                }
+
             }
 
             click(x, y) {
@@ -1486,8 +1808,26 @@
             showInfo() {
                 let totalPixels = this.canvas.width * this.canvas.height;
                 let statusText = `Reference: ${this.stats.ref}it\nApproximation: ${this.blaTable?.length ?? 0} levels\nCalculation: ${this.stats.calc} (${(this.stats.calc / totalPixels * 100).toFixed(2)}%)\nGuessed: ${this.stats.guess} (${(this.stats.guess / totalPixels * 100).toFixed(2)}%)\nTime: ${((performance.now() - this.stats.time) / 1000).toFixed(3)}s`;
-                if (!this.rendering) statusText += "\nDone!";
+                if (!this.rendering) {
+                    statusText += "\nDone!";
+                }
                 statsLabel.innerText = statusText;
+            }
+
+            setLocked(locked) {
+                if (locked) {
+                    // Lock buttons
+                    document.querySelectorAll('.control-button').forEach(button => {
+                        button.disabled = true;
+                    });
+                    canvas.classList.add('running')
+                } else {
+                    // Unlock buttons
+                    document.querySelectorAll('.control-button').forEach(button => {
+                        button.disabled = false;
+                    });
+                    canvas.classList.remove('running')
+                }
             }
 
             /**
@@ -1496,6 +1836,7 @@
              */
             async update() {
                 this.rendering = true;
+                this.setLocked(true)
                 this.stats = {
                     ref: 0,
                     calc: 0,
@@ -1507,7 +1848,6 @@
                 let prevDeep = this.deep;
                 this.deep = this.size.exp < -300;
                 if (prevDeep && !this.deep) this.ref = this.ref.map(e => e.toComplex());
-                console.log(prevDeep, this.deep)
 
                 reInput.value = this.center.re;
                 imInput.value = this.center.im;
@@ -1516,7 +1856,7 @@
 
                 this.image = this.context.getImageData(0, 0, this.canvas.width, this.canvas.height);
 
-                let base, ref, refComplex, blaComplex;
+                let base, ref;
                 let refLen = 0;
 
                 base = this.center;
@@ -1549,10 +1889,6 @@
 
                 if (this.deep) {
                     this.blaTable = createBLATableFE(ref, this.size);
-                    refComplex = ref.map(e => e.toComplex())
-                    blaComplex = this.blaTable.map(e => e.map(e2 => {
-                        return { A: e2.A.toComplex(), B: e2.B.toComplex(), radius: e2.radius.doubleValue() }
-                    }))
                 }
                 else
                     this.blaTable = createBLATable(ref, this.size.doubleValue())
@@ -1563,59 +1899,93 @@
 
                 console.log(performance.now() + " perturbation")
 
+                let workerRef = this.deep ? this.ref.map(e => fExpComplex2Obj(e)) : this.ref.map(e => [e.re, e.im]);
+                let workerBla = this.deep ?
+                    this.blaTable.map(e => e.map(e2 => {
+                        return { A: fExpComplex2Obj(e2.A), B: fExpComplex2Obj(e2.B), radius: fExp2Obj(e2.radius) }
+                    }))
+                    : this.blaTable.map(e => e.map(e2 => {
+                        return { A: [e2.A.re, e2.A.im], B: [e2.B.re, e2.B.im], radius: e2.radius }
+                    }))
 
-                let computePixel = (x, y, w, h) => {
-                    let newIter;
-
-                    let delta = this.getDelta(x, y);
-
-                    if (this.deep) {
-                        let result = getPTBLAFE(delta, ref, this.blaTable, this.iterations, this.bailout);
-                        if (result.e) newIter = result.it;
-                        else {
-                            newIter = getPTBLA(delta.toComplex(), refComplex, blaComplex, this.iterations, this.bailout, result.z.re, result.z.im, result.it, result.ref)
-                        }
-                    }
-                    else
-                        newIter = getPTBLA(delta, ref, this.blaTable, this.iterations, this.bailout);
-
-                    this.stats.calc++;
-
-                    this.setIter(x, y, newIter, w, h);
+                for (let i = 0; i < this.workers.length; i++) {
+                    this.workers[i].postMessage({
+                        type: 'ref',
+                        ref: workerRef,
+                        bla: workerBla,
+                        deep: this.deep
+                    });
                 }
 
                 let p1 = () => {
                     return new Promise(async (r, j) => {
+                        this.counter = 0;
+                        this.workerCounter = 0;
+                        this.resolveFunc = r;
+
+                        // 收集所有需要计算的deltas
+                        const allDeltas = [];
                         for (let y = 0; y < this.canvas.height; y += 2) {
                             for (let x = 0; x < this.canvas.width; x += 2) {
-                                if (this.iterMap[y][x] != 0) {
-                                    this.setIter(x, y, this.iterMap[y][x], 2, 2)
-                                    continue
+                                if (this.iterMap[y][x] > 0) {
+                                    this.setIter(x, y, this.iterMap[y][x]);
+                                    continue;
                                 }
+                                // 计算并收集delta
+                                let delta = this.getDelta(x, y);
+                                allDeltas.push({
+                                    re: delta.re,
+                                    im: delta.im,
+                                    x: x,
+                                    y: y,
+                                    w: 2,
+                                    h: 2
+                                });
+                            }
+                        }
 
-                                computePixel(x, y, 2, 2);
-                            }
-                            if (y % 100 == 0 && !this.videoRendering && this.deep) {
-                                this.showInfo();
-                                this.context.putImageData(this.image, 0, 0);
-                                await delay(1)
-                            }
+                        // 将deltas均分到每个核心
+                        const chunkSize = 64 * 64;
+                        const chunks = Math.ceil(allDeltas.length / chunkSize);
+                        for (let i = 0; i < chunks; i++) {
+                            const start = i * chunkSize;
+                            const end = start + chunkSize;
+                            const deltasChunk = allDeltas.slice(start, end);
+                            if (deltasChunk.length === 0) continue; // 跳过空数据
+
+                            const data = {
+                                type: 'calc',
+                                deltas: deltasChunk,
+                                maxIter: this.iterations,
+                                bailout: this.bailout,
+                            };
+
+                            // 轮询分配Worker
+                            const workerIndex = this.workerCounter % CPU_CORES;
+                            this.workers[workerIndex].postMessage(data);
+                            this.counter++; // 追踪发送的任务总数
+                            this.workerCounter++;
                         }
-                        if (!this.videoRendering) {
-                            this.context.putImageData(this.image, 0, 0);
-                            this.showInfo();
-                            await delay(10);
+
+                        if (this.counter <= 0) {
+                            this.resolveFunc();
                         }
-                        r();
-                    })
-                }
+                    });
+                };
 
                 let p2 = () => {
                     return new Promise(async (r, j) => {
+
+                        this.counter = 0;
+                        this.workerCounter = 0;
+                        this.resolveFunc = r;
+
+                        // 收集所有需要计算的deltas
+                        const allDeltas = [];
                         for (let y = 0; y < this.canvas.height; y += 2) {
                             for (let x = 1; x < this.canvas.width; x += 2) {
-                                if (this.iterMap[y][x] != 0) {
-                                    this.setIter(x, y, this.iterMap[y][x], 1, 2)
+                                if (this.iterMap[y][x] > 0) {
+                                    this.setIter(x, y, this.iterMap[y][x])
                                     continue
                                 }
                                 let leftColor = this.getIter(x - 1, y);
@@ -1624,26 +1994,55 @@
                                     this.setIter(x, y, (leftColor + rightColor) / 2);
                                     this.stats.guess++;
                                 } else {
-                                    computePixel(x, y, 1, 2);
+                                    let delta = this.getDelta(x, y);
+                                    allDeltas.push({
+                                        re: delta.re,
+                                        im: delta.im,
+                                        x: x,
+                                        y: y,
+                                        w: 1,
+                                        h: 2
+                                    })
                                 }
                             }
-                            if (y % 100 == 0 && !this.videoRendering && this.deep) {
-                                this.context.putImageData(this.image, 0, 0);
-                                this.showInfo();
-                                await delay(1)
-                            }
                         }
-                        if (!this.videoRendering) {
-                            this.context.putImageData(this.image, 0, 0);
-                            this.showInfo();
-                            await delay(10);
+
+                        // 将deltas均分到每个核心
+                        const chunkSize = 64 * 64;
+                        const chunks = Math.ceil(allDeltas.length / chunkSize);
+                        for (let i = 0; i < chunks; i++) {
+                            const start = i * chunkSize;
+                            const end = start + chunkSize;
+                            const deltasChunk = allDeltas.slice(start, end);
+                            if (deltasChunk.length === 0) continue; // 跳过空数据
+
+                            const data = {
+                                type: 'calc',
+                                deltas: deltasChunk,
+                                maxIter: this.iterations,
+                                bailout: this.bailout,
+                            };
+
+                            // 轮询分配Worker
+                            const workerIndex = this.workerCounter % CPU_CORES;
+                            this.workers[workerIndex].postMessage(data);
+                            this.counter++; // 追踪发送的任务总数
+                            this.workerCounter++;
                         }
-                        r();
+
+                        if (this.counter <= 0) {
+                            this.resolveFunc();
+                        }
                     })
                 }
 
                 let p3 = () => {
                     return new Promise(async (r, j) => {
+                        this.counter = 0;
+                        this.workerCounter = 0;
+                        this.resolveFunc = r;
+
+                        const allDeltas = [];
                         for (let y = 1; y < this.canvas.height; y += 2) {
                             for (let x = 0; x < this.canvas.width; x++) {
                                 if (this.iterMap[y][x] != 0) {
@@ -1657,20 +2056,47 @@
                                     this.setIter(x, y, (upColor + downColor) / 2);
                                     this.stats.guess++;
                                 } else {
-                                    computePixel(x, y);
+                                    let delta = this.getDelta(x, y);
+                                    allDeltas.push({
+                                        re: delta.re,
+                                        im: delta.im,
+                                        x: x,
+                                        y: y,
+                                        w: 1,
+                                        h: 1
+                                    })
                                 }
                             }
-
-                            if (y % 100 == 1 && !this.videoRendering && this.deep) {
-                                this.context.putImageData(this.image, 0, 0);
-                                this.showInfo();
-                                await delay(1)
-                            }
                         }
-                        this.context.putImageData(this.image, 0, 0);
-                        this.showInfo();
-                        await delay(10);
-                        r();
+
+
+
+                        // 将deltas均分到每个核心
+                        const chunkSize = 64 * 64;
+                        const chunks = Math.ceil(allDeltas.length / chunkSize);
+                        for (let i = 0; i < chunks; i++) {
+                            const start = i * chunkSize;
+                            const end = start + chunkSize;
+                            const deltasChunk = allDeltas.slice(start, end);
+                            if (deltasChunk.length === 0) continue; // 跳过空数据
+
+                            const data = {
+                                type: 'calc',
+                                deltas: deltasChunk,
+                                maxIter: this.iterations,
+                                bailout: this.bailout,
+                            };
+
+                            // 轮询分配Worker
+                            const workerIndex = this.workerCounter % CPU_CORES;
+                            this.workers[workerIndex].postMessage(data);
+                            this.counter++; // 追踪发送的任务总数
+                            this.workerCounter++;
+                        }
+
+                        if (this.counter <= 0) {
+                            this.resolveFunc();
+                        }
                     })
                 }
 
@@ -1702,11 +2128,45 @@
                 console.log('done!')
                 this.rendering = false;
                 this.showInfo();
-                location.hash = "#rec=" + compressDecimal(this.center.re.toString()) +
-                    "&imc=" + compressDecimal(this.center.im.toString()) +
-                    "&zmc=" + compressDecimal(new FloatExp(4).div(this.size).toString()) +
-                    "&itc=" + compressDecimal(this.iterations.toString());
+                const params = new URLSearchParams(window.location.hash.substring(1));
+
+                // 更新或添加新的参数
+                params.set("rec", compressDecimal(this.center.re.toString()));
+                params.set("imc", compressDecimal(this.center.im.toString()));
+                params.set("zmc", compressDecimal(new FloatExp(4).div(this.size).toString()));
+                params.set("itc", compressDecimal(this.iterations.toString()));
+                params.set("bailout", Math.sqrt(this.bailout).toString());
+                params.set("colorc", byteArrayToBase64(palette.flat(1)));
+                params.set("colorstep", colorStep);
+
+                // 重建哈希字符串
+                window.location.hash = params.toString();
+
+                this.setLocked(false)
             }
+
+            /**
+             * Recolorize the Mandelbrot set visualization without recalculating.
+             */
+
+            recolorize() {
+                this.image = this.context.getImageData(0, 0, this.canvas.width, this.canvas.height);
+                for (let y = 0; y < this.canvas.height; y++) {
+                    for (let x = 0; x < this.canvas.width; x++) {
+                        let it = this.iterMap[y][x];
+                        if (it >= 0) {
+                            let color = getColor(it, this.iterations);
+                            let i = (y * this.canvas.width + x) << 2;
+                            this.image.data[i] = color[0];
+                            this.image.data[i + 1] = color[1];
+                            this.image.data[i + 2] = color[2];
+                            this.image.data[i + 3] = 255;
+                        }
+                    }
+                }
+                this.context.putImageData(this.image, 0, 0);
+            }
+
 
             /**
              * Initiates the download of the Mandelbrot set visualization as a PNG image.
@@ -1730,12 +2190,12 @@
 
                 for (let y = 0; y < this.canvas.height; y++) {
                     for (let x = 0; x < this.canvas.width; x++) {
-                        if (this.iterMap[y][x] == this.iterations) {
-                            this.setIter(x, y, -1)
+                        if (this.iterMap[y][x] >= prevIter) {
+                            this.setIter(x, y, 0)
                         }
                     }
                 }
-                this.update(true)
+                this.update()
             }
 
             async renderFrames() {
@@ -1818,6 +2278,57 @@
                     rgbArray.push([colorValues[i + 2], colorValues[i + 1], colorValues[i]]);
                 }
                 return rgbArray;
+            }
+        }
+
+        class KFRWriter {
+            constructor() {
+                this.data = {};
+            }
+
+            // Setters for `Re`, `Im`, `Zoom`, `Iterations`, `IterDiv`, and `Colors`
+            set re(value) {
+                this.data.Re = value;
+            }
+
+            set im(value) {
+                this.data.Im = value;
+            }
+
+            set zoom(value) {
+                this.data.Zoom = value;
+            }
+
+            set iter(value) {
+                this.data.Iterations = value;
+            }
+
+            set iterDiv(value) {
+                this.data.IterDiv = value;
+            }
+
+            set colors(value) {
+                this.data.Colors = value.map(color => {
+                    // convert each color to BGR format
+                    return `${color[2]},${color[1]},${color[0]},`;
+                }).join("");
+            }
+
+            // Convert the data to a KFR formatted string
+            toString() {
+                return Object.entries(this.data)
+                    .map(([key, value]) => `${key}: ${value}`)
+                    .join("\r\n");
+            }
+
+            load(mandelbrot) {
+                this.re = mandelbrot.center.re.toString();
+                this.im = mandelbrot.center.im.toString();
+                let zoom = new FloatExp(4).div(mandelbrot.size);
+                this.zoom = `${zoom.base}E${zoom.exp}`;
+                this.iter = mandelbrot.iterations.toString();
+                this.iterDiv = (colorStep * palette.length) / 1024
+                this.colors = palette;
             }
         }
 
@@ -1973,38 +2484,59 @@
         let bailout = 16;
         let iterations = 256;
 
-        location.hash.slice(1).split("&").forEach(e => {
-            let kv = e.split("=", 2);
-            switch (kv[0]) {
-                case "rec":
-                    c.re = new Decimal(decompressDecimal(kv[1]))
-                    break;
-                case "imc":
-                    c.im = new Decimal(decompressDecimal(kv[1]))
-                    break;
-                case "zmc":
-                    size = new FloatExp(4).div(parseFloatExp(decompressDecimal(kv[1])))
-                    break;
-                case "itc":
-                    iterations = parseInt(decompressDecimal(kv[1]))
-                    break;
+        const params = new URLSearchParams(window.location.hash.substring(1));
+
+        params.forEach((value, key) => {
+            switch (key) {
+
+                // readable values
                 case "re":
-                    c.re = new Decimal(kv[1]);
+                    c.re = new Decimal(value);
+                    params.delete(key);
                     break;
                 case "im":
-                    c.im = new Decimal(kv[1]);
+                    c.im = new Decimal(value);
+                    params.delete(key);
                     break;
                 case "zoom":
-                    size = new FloatExp(4).div(getFloatExp(kv[1]));
+                    size = new FloatExp(4).div(getFloatExp(value));
+                    params.delete(key);
                     break;
                 case "iter":
-                    iterations = parseInt(kv[1]);
+                    iterations = parseInt(value);
+                    params.delete(key);
                     break;
                 case "bailout":
-                    bailout = parseFloat(kv[1]);
+                    bailout = parseFloat(value);
+                    params.delete(key);
+                    break;
+                case "colors":
+                    palette = groupArray(value.split(",").map(e => parseInt(e)))
+                    params.delete(key);
+                    break;
+                case "colorstep":
+                    colorStep = parseFloat(value)
+                    break;
+
+                // compressed values
+                case "rec":
+                    c.re = new Decimal(decompressDecimal(value));
+                    break;
+                case "imc":
+                    c.im = new Decimal(decompressDecimal(value));
+                    break;
+                case "zmc":
+                    size = new FloatExp(4).div(parseFloatExp(decompressDecimal(value)));
+                    break;
+                case "itc":
+                    iterations = parseInt(decompressDecimal(value));
+                    break;
+                case "colorc":
+                    palette = groupArray(base64ToByteArray(value));
                     break;
             }
         });
+        location.hash = params.toString();
 
         const mandelbrot = new Mandelbrot(canvas, c, iterations, bailout)
         mandelbrot.zoom(size)
@@ -2054,10 +2586,12 @@
 
         document.getElementById('increase-iter').addEventListener('click', function () {
             mandelbrot.increaseIteration(2);
+            mandelbrot.update();
         });
 
         document.getElementById('decrease-iter').addEventListener('click', function () {
             mandelbrot.setIterations(mandelbrot.iterations / 2);
+            mandelbrot.clear();
             mandelbrot.update()
         });
 
@@ -2073,6 +2607,24 @@
         // Trigger file upload when a button is clicked
         document.getElementById("kfr").addEventListener('click', () => {
             inputElement.click(); // Simulate a click on the input element
+        });
+
+        document.getElementById("save-kfr").addEventListener('click', () => {
+            const writer = new KFRWriter();
+            writer.load(mandelbrot);
+            const kfrContent = writer.toString();
+
+            // Create a Blob from the KFR content
+            const blob = new Blob([kfrContent], { type: 'text/plain' });
+            const url = URL.createObjectURL(blob);
+
+            // Create a link to download the file
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `mandelbrot-${new Date().toISOString()}.kfr`; // Set the desired file name
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
         });
 
         // Handle file selection
@@ -2094,9 +2646,6 @@
 
             // Parse the .kfr file using KFRReader
             const reader = new KFRReader(arrayBuffer);
-
-            // Display the parsed fields in the console
-            console.log(reader.zoom);
 
             mandelbrot.goto(new DeepComplex(reader.re, reader.im))
             mandelbrot.zoom(new FloatExp(4).div(parseFloatExp(reader.zoom)));
@@ -2210,6 +2759,120 @@
             // Start the renderer
             recorder.start();
             requestAnimationFrame(renderer);
+        });
+
+        function generateRandomPalette(size) {
+            const palette = [];
+            for (let i = 0; i < size; i++) {
+                palette.push([
+                    Math.floor(Math.random() * 256),
+                    Math.floor(Math.random() * 256),
+                    Math.floor(Math.random() * 256)
+                ]);
+            }
+            return palette;
+        }
+
+        class PaletteEditor {
+            constructor() {
+                this.dialog = document.getElementById('palette-dialog');
+                this.colorList = document.getElementById('color-list');
+                this.applyButton = document.getElementById('apply-colors');
+                this.randomButton = document.getElementById('random-colors');
+                this.resetButton = document.getElementById('reset-colors');
+                this.closeButton = document.getElementById('close-dialog');
+                this.colorStepInput = document.getElementById('color-step');
+                this.init();
+            }
+
+            init() {
+                this.applyButton.addEventListener('click', () => {
+                    this.applyColors();
+                });
+
+                this.randomButton.addEventListener('click', () => {
+                    palette = generateRandomPalette(palette.length); // Generate a random palette with 10 colors
+                    this.renderColors();
+                });
+
+                this.resetButton.addEventListener('click', () => {
+                    palette = defaultPalette; // Reset to the default palette
+                    this.renderColors();
+                });
+
+                this.closeButton.addEventListener('click', () => {
+                    this.dialog.close();
+                });
+
+                this.colorStepInput.addEventListener('input', (e) => {
+                    colorStep = parseFloat(e.target.value);
+                });
+
+                this.renderColors();
+            }
+
+            renderColors() {
+                this.colorList.innerHTML = ''; // Clear existing colors
+                palette.forEach((color, index) => {
+                    const li = document.createElement('li');
+                    li.classList.add('color-item');
+                    const label = document.createElement('label');
+                    label.textContent = `${index + 1} `;
+                    const colorInput = document.createElement('input');
+                    colorInput.type = 'color';
+                    colorInput.value = `#${color.map(c => c.toString(16).padStart(2, '0')).join('')}`;
+                    colorInput.dataset.index = index;
+                    const removeColorButton = document.createElement('button');
+                    removeColorButton.classList.add('icon');
+                    removeColorButton.dataset.index = index;
+                    removeColorButton.textContent = '-';
+                    removeColorButton.addEventListener('click', (e) => {
+                        const index = e.target.dataset.index;
+                        palette.splice(index, 1); // Remove color from palette
+                        this.renderColors(); // Re-render colors
+                    });
+                    const addColorButton = document.createElement('button');
+                    addColorButton.className = 'icon';
+                    addColorButton.textContent = '+';
+                    addColorButton.dataset.index = index;
+                    addColorButton.addEventListener('click', () => {
+                        // Add a new black color after the current color
+                        palette.splice(index + 1, 0, [0, 0, 0]); // Add black color
+                        this.renderColors(); // Re-render colors
+                    });
+                    li.appendChild(label);
+                    li.appendChild(colorInput);
+                    li.appendChild(removeColorButton);
+                    li.appendChild(addColorButton);
+                    this.colorList.appendChild(li);
+                });
+
+                this.colorStepInput.value = colorStep; // Set the color step input value
+            }
+
+            applyColors() {
+                const inputs = this.colorList.querySelectorAll('input[type="color"]');
+                palette = Array.from(inputs).map(input => {
+                    const color = input.value.slice(1); // Remove the '#' character
+                    return [
+                        parseInt(color.slice(0, 2), 16),
+                        parseInt(color.slice(2, 4), 16),
+                        parseInt(color.slice(4, 6), 16)
+                    ];
+                });
+                this.dialog.close();
+                mandelbrot.recolorize(); // Recolorize the Mandelbrot set with new colors
+            }
+
+            show() {
+                this.dialog.showModal();
+                this.renderColors();
+            }
+        }
+
+        const paletteEditor = new PaletteEditor();
+        document.getElementById('palette').addEventListener('click', () => {
+            paletteEditor.show();
         });
     </script>
 </body>
