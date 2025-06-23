@@ -28,6 +28,24 @@
             margin: auto;
         }
 
+        .canvas-container {
+            position: relative;
+        }
+
+        .progress-container {
+            display: flex;
+        }
+
+        .progress {
+            background-color: white;
+            width: 0;
+            height: 8px;
+        }
+
+        .guessed-progress {
+            background-color: rgba(255, 255, 255, 0.5);
+        }
+
         .location {
             display: flex;
             flex-direction: column;
@@ -226,7 +244,18 @@
 <body>
     <div class="container">
 
-        <canvas id="mandelbrot" width="800" height="800"></canvas>
+        <div class="canvas-container">
+            <canvas id="mandelbrot" width="800" height="800"></canvas>
+            <div class="progress-container">
+                <div id="progress" class="progress"></div>
+                <div id="guessed-progress" class="progress guessed-progress"></div>
+            </div>
+            <div>
+                Iterations: <span id="iter-count"></span>
+            </div>
+            <div id="stats">
+            </div>
+        </div>
 
         <div class="location">
             Real:
@@ -271,11 +300,6 @@
             <button id="load-sample" class="control-button">Load</button>
         </div>
     </div>
-    <div>
-        Iterations: <span id="iter-count"></span>
-    </div>
-    <div id="stats">
-    </div>
     <div id="more"></div>
     <dialog id="palette-dialog">
         <h2>Color Settings</h2>
@@ -297,6 +321,8 @@
         const zoomInput = document.getElementById('zoom')
         const itInput = document.getElementById('it')
         const statsLabel = document.getElementById('stats')
+        const progressBar = document.getElementById('progress');
+        const guessedProgressBar = document.getElementById('guessed-progress');
         const sampleSelect = document.getElementById('samples')
         const sampleLoadBtn = document.getElementById('load-sample')
         const more = document.getElementById("more");
@@ -1832,6 +1858,8 @@
             showInfo() {
                 let totalPixels = this.canvas.width * this.canvas.height;
                 let statusText = `Reference: ${this.stats.ref}it\nApproximation: ${this.blaTable?.length ?? 0} levels\nCalculation: ${this.stats.calc} (${(this.stats.calc / totalPixels * 100).toFixed(2)}%)\nGuessed: ${this.stats.guess} (${(this.stats.guess / totalPixels * 100).toFixed(2)}%)\nTime: ${((performance.now() - this.stats.time) / 1000).toFixed(3)}s`;
+                progressBar.style.width = `${((this.stats.calc) / totalPixels * 100).toFixed(2)}%`;
+                guessedProgressBar.style.width = `${((this.stats.guess) / totalPixels * 100).toFixed(2)}%`;
                 if (!this.rendering) {
                     statusText += "\nDone!";
                 }
