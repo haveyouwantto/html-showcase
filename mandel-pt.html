@@ -1981,6 +1981,7 @@
                             for (let x = 0; x < this.canvas.width; x += 2) {
                                 if (this.iterMap[y][x] > 0) {
                                     this.setIter(x, y, this.iterMap[y][x]);
+                                    this.stats.guess++;
                                     continue;
                                 }
                                 // 计算并收集delta
@@ -2040,6 +2041,7 @@
                             for (let x = 1; x < this.canvas.width; x += 2) {
                                 if (this.iterMap[y][x] > 0) {
                                     this.setIter(x, y, this.iterMap[y][x])
+                                    this.stats.guess++;
                                     continue
                                 }
                                 let leftColor = this.getIter(x - 1, y);
@@ -2103,6 +2105,7 @@
                             for (let x = 0; x < this.canvas.width; x++) {
                                 if (this.iterMap[y][x] != 0) {
                                     this.setIter(x, y, this.iterMap[y][x])
+                                    this.stats.guess++;
                                     continue
                                 }
 
