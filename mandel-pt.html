@@ -1350,6 +1350,30 @@
             return result;
         }
 
+        function sortByProximityToCenterPixel(array, imageWidth, imageHeight) {
+            // 预先计算中心点坐标
+            const centerX = imageWidth / 2;
+            const centerY = imageHeight / 2;
+
+            // 使用map创建带距离平方的临时数组
+            const withDistSq = array.map(item => {
+                const centerItemX = item.x + item.w / 2;  // 元素中心X
+                const centerItemY = item.y + item.h / 2;  // 元素中心Y
+                const dx = centerItemX - centerX;         // X方向差值
+                const dy = centerItemY - centerY;         // Y方向差值
+                return {
+                    item: item,
+                    distSq: dx * dx + dy * dy            // 距离平方（避免开方）
+                };
+            });
+
+            // 按距离平方排序（升序）
+            withDistSq.sort((a, b) => a.distSq - b.distSq);
+
+            // 提取原始元素
+            return withDistSq.map(entry => entry.item);
+        }
+
         function base64ToByteArray(base64String) {
             try {
                 // 还原字符并将URL安全的Base64转换为标准Base64
@@ -1924,7 +1948,7 @@
                         this.resolveFunc = r;
 
                         // 收集所有需要计算的deltas
-                        const allDeltas = [];
+                        let allDeltas = [];
                         for (let y = 0; y < this.canvas.height; y += 2) {
                             for (let x = 0; x < this.canvas.width; x += 2) {
                                 if (this.iterMap[y][x] > 0) {
@@ -1943,6 +1967,8 @@
                                 });
                             }
                         }
+
+                        allDeltas = sortByProximityToCenterPixel(allDeltas, this.canvas.width, this.canvas.height); // 按照距离中心点排序
 
                         // 将deltas均分到每个核心
                         const chunkSize = 64 * 64;
@@ -1981,7 +2007,7 @@
                         this.resolveFunc = r;
 
                         // 收集所有需要计算的deltas
-                        const allDeltas = [];
+                        let allDeltas = [];
                         for (let y = 0; y < this.canvas.height; y += 2) {
                             for (let x = 1; x < this.canvas.width; x += 2) {
                                 if (this.iterMap[y][x] > 0) {
@@ -2006,6 +2032,8 @@
                                 }
                             }
                         }
+
+                        allDeltas = sortByProximityToCenterPixel(allDeltas, this.canvas.width, this.canvas.height);
 
                         // 将deltas均分到每个核心
                         const chunkSize = 64 * 64;
@@ -2042,7 +2070,7 @@
                         this.workerCounter = 0;
                         this.resolveFunc = r;
 
-                        const allDeltas = [];
+                        let allDeltas = [];
                         for (let y = 1; y < this.canvas.height; y += 2) {
                             for (let x = 0; x < this.canvas.width; x++) {
                                 if (this.iterMap[y][x] != 0) {
@@ -2069,7 +2097,7 @@
                             }
                         }
 
-
+                        allDeltas = sortByProximityToCenterPixel(allDeltas, this.canvas.width, this.canvas.height);
 
                         // 将deltas均分到每个核心
                         const chunkSize = 64 * 64;
