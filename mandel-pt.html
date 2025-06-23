@@ -370,7 +370,6 @@
 
             constructor(base, exp = 0) {
                 if (isNaN(base) || isNaN(exp) || !isFinite(base) || !isFinite(exp)) {
-                    // console.log(base, exp)
                     throw new Error("Invalid FloatExp");
                 }
                 this.base = base;
@@ -943,7 +942,7 @@
                     await delay(1);
                 };
             }
-            console.log(waypoints)
+            console.log("Compressed ref: ", waypoints)
             return orbit;
         }
 
@@ -993,7 +992,6 @@
             let im1 = im;
 
             while (it <= maxiter) {
-                // console.log(re, im);
                 let re2 = re * re;
                 let im2 = im * im;
                 if (re2 + im2 > bailout) return it;
@@ -1461,7 +1459,6 @@
 
             self.onmessage = function (event) {
                 let calc = []
-                console.log(event.data)
                 if (!event.data.deep) {
                     let refArray = constructRef(event.data.ref);
                     let blaArray = constructBla(event.data.bla);
@@ -2615,9 +2612,6 @@
 
             // Parse the .kfr file using KFRReader
             const reader = new KFRReader(arrayBuffer);
-
-            // Display the parsed fields in the console
-            console.log(reader.zoom);
 
             mandelbrot.goto(new DeepComplex(reader.re, reader.im))
             mandelbrot.zoom(new FloatExp(4).div(parseFloatExp(reader.zoom)));
