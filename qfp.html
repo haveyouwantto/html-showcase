@@ -282,10 +282,16 @@
 
         const fileInfo = document.getElementById("fileinfo");
         const timeDisplay = document.getElementById("time")
+        const progressBar = document.getElementById("progress")
         const progressDisplay = document.getElementById("progress-inner")
         const encodeTimeDisplay = document.getElementById("encode-time")
         const encodeProgressDisplay = document.getElementById("encode-progress-inner")
         const info = document.getElementById("info")
+
+        progressBar.addEventListener('click', e => {
+            const progress = e.offsetX / progressBar.offsetWidth;
+            if (player) player.seekProgress(progress)
+        })
 
         const SUB_BANDS = [
             [0, 1000, 46],
@@ -1217,7 +1223,7 @@
 
                 this.compressRatio = this.buffer.byteLength / this.decompressedData.buffer.byteLength; // 计算压缩比
 
-                // this.generatePos(); // 可选：预生成帧位置表
+                this.generatePos(); // 可选：预生成帧位置表
             }
 
             // 读取文件头信息
@@ -1289,7 +1295,7 @@
                 for (let i = 0; i < this.numWindows; i++) {
                     this.lookUp.push(this.ptr); // 存储当前帧的指针位置
                     for (let ch = 0; ch < 2; ch++) {
-                        const length = this.view.getUint16(this.ptr, true); // 读取帧长度
+                        const length = this.decompressedView.getUint16(this.ptr, true); // 读取帧长度
                         this.ptr += 2 + length; // 移动指针到下一帧
                     }
                 }
@@ -1299,6 +1305,21 @@
             // 定位到指定帧（需要预生成帧位置表）
             seek(frame) {
                 this.ptr = 0 + this.lookUp[frame];
+                this.read = frame;
+            }
+
+            seekSeconds(sec) {
+                const progress = sec / this.duration;
+                this.seekProgress(progress)
+            }
+
+            seekProgress(progress) {
+                const frame = Math.floor(this.numWindows * progress);
+                this.seek(frame);
+            }
+
+            currentTime() {
+                return this.read * (this.winSize / this.sampleRate)
             }
 
             // 重置解码器状态
@@ -1531,6 +1552,17 @@
                 }
             }
 
+            seekProgress(progress) {
+                for (const node of this.nodeList) {
+                    node.disconnect(); // 断开所有音频节点
+                }
+                this.nodeList = [];
+                this.qfp.seekProgress(progress)
+                this.startTime = ctx.currentTime; // 记录启动时间
+                this.t = 0;
+                this.playFrame();
+            }
+
             // 设置播放/暂停状态
             setPaused(b) {
                 if (b) {
@@ -1542,7 +1574,7 @@
 
             // 更新进度条信息
             updateProgress() {
-                let currentTime = Math.min(ctx.currentTime - this.startTime, this.qfp.duration); // 当前播放时间
+                let currentTime = this.qfp.currentTime()//Math.min(ctx.currentTime - this.startTime, this.qfp.duration); // 当前播放时间
                 let prog = currentTime / this.qfp.duration; // 播放进度百分比
                 timeDisplay.textContent = `${formatTime(currentTime)} / ${formatTime(this.qfp.duration)}`;
                 progressDisplay.style.width = (prog * 100) + "%"; // 更新进度条显示
