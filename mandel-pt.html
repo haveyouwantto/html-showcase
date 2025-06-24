@@ -1479,7 +1479,8 @@
                             for (let delta of event.data.deltas) {
                                 try {
                                     let it = getPTBLA(
-                                        new Complex(delta.re, delta.im),
+                                        // 0: re, 1: im, 2: x, 3: y, 4: w, 5: h
+                                        new Complex(delta[0], delta[1]),
                                         self.refArray,
                                         self.blaArray,
                                         event.data.maxIter,
@@ -1487,10 +1488,14 @@
                                     );
                                     calc.push({
                                         it: it,
-                                        x: delta.x,
-                                        y: delta.y,
-                                        w: delta.w,
-                                        h: delta.h
+                                        x: delta[2],
+                                        y: delta[3],
+                                        w: delta[4],
+                                        h: delta[5]
+                                        // x: delta.x,
+                                        // y: delta.y,
+                                        // w: delta.w,
+                                        // h: delta.h
                                     });
                                 } catch (e) { }
                             }
@@ -1933,14 +1938,15 @@
                                 }
                                 // 计算并收集delta
                                 let delta = this.getDelta(x, y);
-                                allDeltas.push({
-                                    re: delta.re,
-                                    im: delta.im,
-                                    x: x,
-                                    y: y,
-                                    w: 2,
-                                    h: 2
-                                });
+                                allDeltas.push([delta.re, delta.im, x, y, 2, 2]);
+                                // allDeltas.push({
+                                //     re: delta.re,
+                                //     im: delta.im,
+                                //     x: x,
+                                //     y: y,
+                                //     w: 2,
+                                //     h: 2
+                                // });
                             }
                         }
 
@@ -1995,14 +2001,15 @@
                                     this.stats.guess++;
                                 } else {
                                     let delta = this.getDelta(x, y);
-                                    allDeltas.push({
-                                        re: delta.re,
-                                        im: delta.im,
-                                        x: x,
-                                        y: y,
-                                        w: 1,
-                                        h: 2
-                                    })
+                                allDeltas.push([delta.re, delta.im, x, y, 1, 2]);
+                                    // allDeltas.push({
+                                    //     re: delta.re,
+                                    //     im: delta.im,
+                                    //     x: x,
+                                    //     y: y,
+                                    //     w: 1,
+                                    //     h: 2
+                                    // })
                                 }
                             }
                         }
@@ -2057,14 +2064,15 @@
                                     this.stats.guess++;
                                 } else {
                                     let delta = this.getDelta(x, y);
-                                    allDeltas.push({
-                                        re: delta.re,
-                                        im: delta.im,
-                                        x: x,
-                                        y: y,
-                                        w: 1,
-                                        h: 1
-                                    })
+                                allDeltas.push([delta.re, delta.im, x, y, 1,1]);
+                                    // allDeltas.push({
+                                    //     re: delta.re,
+                                    //     im: delta.im,
+                                    //     x: x,
+                                    //     y: y,
+                                    //     w: 1,
+                                    //     h: 1
+                                    // })
                                 }
                             }
                         }
