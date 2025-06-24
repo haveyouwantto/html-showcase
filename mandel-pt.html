@@ -1536,17 +1536,11 @@
                                         event.data.maxIter,
                                         event.data.bailout
                                     );
-                                    calc.push({
-                                        it: it,
-                                        x: delta[2],
-                                        y: delta[3],
-                                        w: delta[4],
-                                        h: delta[5]
-                                        // x: delta.x,
-                                        // y: delta.y,
-                                        // w: delta.w,
-                                        // h: delta.h
-                                    });
+                                    calc.push([
+                                        it,
+                                        delta[2],
+                                        delta[3]
+                                    ]);
                                 } catch (e) { }
                             }
                         } else {
@@ -1554,21 +1548,19 @@
                                 try {
                                     let it = getPTBLAFE(
                                         new FloatExpComplex(
-                                            new FloatExp(delta.re.base, delta.re.exp),
-                                            new FloatExp(delta.im.base, delta.im.exp)
+                                            new FloatExp(delta[0].base, delta[0].exp),
+                                            new FloatExp(delta[1].base, delta[1].exp)
                                         ),
                                         self.refArray,
                                         self.blaArray,
                                         event.data.maxIter,
                                         event.data.bailout
                                     );
-                                    calc.push({
-                                        it: it,
-                                        x: delta.x,
-                                        y: delta.y,
-                                        w: delta.w,
-                                        h: delta.h
-                                    });
+                                    calc.push([
+                                        it,
+                                        delta[2],
+                                        delta[3]
+                                    ]);
                                 } catch (e) { }
                             }
                         }
@@ -1641,6 +1633,12 @@
                 this.rendering = false;
                 this.iterMap = [...new Array(this.canvas.height)].map(e => [...new Array(this.canvas.width)].map(e => 0))
                 this.videoRendering = false;
+                this.drawState = 0;
+                this.drawStates = [
+                    [2, 2],
+                    [1, 2],
+                    [1, 1]
+                ]
 
                 canvas.addEventListener('mousedown', e => {
                     if (e.button === 0 && !this.rendering) {
@@ -1700,7 +1698,12 @@
                     this.workers[i].onmessage = event => {
                         this.stats.calc += event.data.length;
                         for (let delta of event.data) {
-                            this.setIter(delta.x, delta.y, delta.it, delta.w, delta.h);
+                            let [w, h] = this.drawStates[this.drawState];
+                            this.setIter(
+                                delta[1], delta[2],
+                                delta[0],
+                                w, h
+                            );
                         }
                         this.counter--;
                         // if (this.counter % CPU_CORES == 0) {
@@ -1979,6 +1982,7 @@
                         this.counter = 0;
                         this.workerCounter = 0;
                         this.resolveFunc = r;
+                        this.drawState = 0;
 
                         // 收集所有需要计算的deltas
                         let allDeltas = [];
@@ -1991,15 +1995,7 @@
                                 }
                                 // 计算并收集delta
                                 let delta = this.getDelta(x, y);
-                                allDeltas.push([delta.re, delta.im, x, y, 2, 2]);
-                                // allDeltas.push({
-                                //     re: delta.re,
-                                //     im: delta.im,
-                                //     x: x,
-                                //     y: y,
-                                //     w: 2,
-                                //     h: 2
-                                // });
+                                allDeltas.push([delta.re, delta.im, x, y]);
                             }
                         }
 
@@ -2040,6 +2036,7 @@
                         this.counter = 0;
                         this.workerCounter = 0;
                         this.resolveFunc = r;
+                        this.drawState = 1;
 
                         // 收集所有需要计算的deltas
                         let allDeltas = [];
@@ -2057,15 +2054,7 @@
                                     this.stats.guess++;
                                 } else {
                                     let delta = this.getDelta(x, y);
-                                allDeltas.push([delta.re, delta.im, x, y, 1, 2]);
-                                    // allDeltas.push({
-                                    //     re: delta.re,
-                                    //     im: delta.im,
-                                    //     x: x,
-                                    //     y: y,
-                                    //     w: 1,
-                                    //     h: 2
-                                    // })
+                                    allDeltas.push([delta.re, delta.im, x, y]);
                                 }
                             }
                         }
@@ -2106,6 +2095,7 @@
                         this.counter = 0;
                         this.workerCounter = 0;
                         this.resolveFunc = r;
+                        this.drawState = 2;
 
                         let allDeltas = [];
                         for (let y = 1; y < this.canvas.height; y += 2) {
@@ -2123,15 +2113,7 @@
                                     this.stats.guess++;
                                 } else {
                                     let delta = this.getDelta(x, y);
-                                allDeltas.push([delta.re, delta.im, x, y, 1,1]);
-                                    // allDeltas.push({
-                                    //     re: delta.re,
-                                    //     im: delta.im,
-                                    //     x: x,
-                                    //     y: y,
-                                    //     w: 1,
-                                    //     h: 1
-                                    // })
+                                    allDeltas.push([delta.re, delta.im, x, y]);
                                 }
                             }
                         }
