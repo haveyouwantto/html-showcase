@@ -1383,8 +1383,8 @@
 
             // 使用map创建带距离平方的临时数组
             const withDistSq = array.map(item => {
-                const centerItemX = item.x + item.w / 2;  // 元素中心X
-                const centerItemY = item.y + item.h / 2;  // 元素中心Y
+                const centerItemX = item[2];  // 元素中心X
+                const centerItemY = item[3];  // 元素中心Y
                 const dx = centerItemX - centerX;         // X方向差值
                 const dy = centerItemY - centerY;         // Y方向差值
                 return {
