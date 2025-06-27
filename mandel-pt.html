@@ -173,7 +173,7 @@
             overflow-y: auto;
         }
 
-        #palette-dialog {
+        dialog {
             width: 400px;
             padding: 20px;
             background-color: #222;
@@ -211,6 +211,14 @@
             color: #fff;
             border-radius: 4px;
             transition: background-color 0.3s;
+        }
+
+        input[type="checkbox"] {
+            margin-right: 8px;
+            cursor: pointer;
+            width: 20px;
+            height: 20px;
+            accent-color: var(--theme-color);
         }
 
         .color-item {
@@ -279,6 +287,7 @@
                 <button class="icon control-button" id="download" title="Download PNG">&#128248;</button>
             </div>
             <div class="shortcut">
+                <button class="icon control-button" id="iteration-button" title="Iteration Settings">🔧</button>
                 <button class="icon control-button" id="kfr" title="Load KFR file">📂</button>
                 <button class="icon control-button" id="save-kfr" title="Save KFR file">💾</button>
             </div>
@@ -312,6 +321,15 @@
         <button id="random-colors">Random</button>
         <button id="reset-colors">Reset</button>
         <button id="close-dialog">Close</button>
+    </dialog>
+    <dialog id="iteration-dialog">
+        <h2>Iteration Settings</h2>
+        <label for="bailout">Bailout:</label>
+        <input type="number" id="bailout" value="16" min="2" step="1"><br>
+        <label for="smooth">Smooth:</label>
+        <input type="checkbox" id="smooth" checked><br>
+        <button id="apply-iter">Apply</button>
+        <button id="close-iter-dialog">Close</button>
     </dialog>
     <script src="lib/decimal.9.0.0.js"></script>
     <script>
@@ -1211,7 +1229,8 @@
          * @param {number} bailout - The bailout value used for iteration termination.
          * @returns {number|null} - The escape time for the point or null if it doesn't escape.
          */
-        function getPTBLA(dc, ref, table, maxIter, bailout, dzRe = 0, dzIm = 0, iter = -1, refIter = 0) {
+        function getPTBLA(dc, ref, table, maxIter, bailout, smooth = false) {
+            let dzRe = 0, dzIm = 0, iter = -1, refIter = 0;
 
             let dcNorm = Math.max(Math.abs(dc.re), Math.abs(dc.im));
             while (iter < maxIter) {
@@ -1255,10 +1274,14 @@
                 // Squared Euclidean distance (abs squared)
                 let valAbsSq = valRe * valRe + valIm * valIm;
                 if (valAbsSq > bailout) {
-                    let fracIter = Math.log(valAbsSq) / 2;
-                    fracIter = Math.log(fracIter / Math.LN2) / Math.LN2;
-                    iter += 1 - fracIter;
-                    return iter;
+                    if (smooth) {
+                        let fracIter = Math.log(valAbsSq) / 2;
+                        fracIter = Math.log(fracIter / Math.LN2) / Math.LN2;
+                        iter += 1 - fracIter;
+                        return iter;
+                    } else {
+                        return iter; // If not smooth, just return the iteration count
+                    }
                 }
 
                 let dzAbsSq = dzRe * dzRe + dzIm * dzIm;
@@ -1271,7 +1294,7 @@
             return iter;
         }
 
-        function getPTBLAFE(dc, ref, table, maxIter, bailout) {
+        function getPTBLAFE(dc, ref, table, maxIter, bailout, smooth = false) {
             let dz = new FloatExpComplex(0, 0)
 
             let iter = -1;
@@ -1301,10 +1324,14 @@
                 const val = Z2.add(dz);
                 const valAbs = val.abs();
                 if (valAbs.doubleValue() > bailout) {
-                    let fracIter = Math.log(valAbs.doubleValue()) / 2;
-                    fracIter = Math.log(fracIter / Math.LN2) / Math.LN2;
-                    iter += 1 - fracIter;
-                    return iter;
+                    if (smooth) {
+                        let fracIter = Math.log(valAbs.doubleValue()) / 2;
+                        fracIter = Math.log(fracIter / Math.LN2) / Math.LN2;
+                        iter += 1 - fracIter;
+                        return iter;
+                    } else {
+                        return iter; // If not smooth, just return the iteration count
+                    }
                 };
                 if (valAbs.sub(dzNorm).compareTo(zero) < 0 || refIter == ref.length - 1) { // 检测是否需要变基
                     dz = val;
@@ -1534,7 +1561,8 @@
                                         self.refArray,
                                         self.blaArray,
                                         event.data.maxIter,
-                                        event.data.bailout
+                                        event.data.bailout,
+                                        event.data.smooth
                                     );
                                     calc.push([
                                         it,
@@ -1554,7 +1582,8 @@
                                         self.refArray,
                                         self.blaArray,
                                         event.data.maxIter,
-                                        event.data.bailout
+                                        event.data.bailout,
+                                        event.data.smooth
                                     );
                                     calc.push([
                                         it,
@@ -1623,6 +1652,7 @@
                 this.center = center;
                 this.iterations = iterations;
                 this.bailout = bailout * bailout;
+                this.smooth = false;
 
                 this.size = new FloatExp(4);
                 this.deep = false;
@@ -1677,7 +1707,11 @@
                     let imageX = e.offsetX - canvas.clientLeft;
                     let imageY = e.offsetY - canvas.clientTop;
 
-                    iterCountSpan.textContent = (this.iterMap[imageY]?.[imageX])?.toFixed(2) ?? "-";
+                    if (this.smooth) {
+                        iterCountSpan.textContent = (this.iterMap[imageY]?.[imageX])?.toFixed(2) ?? "-";
+                    } else {
+                        iterCountSpan.textContent = this.iterMap[imageY]?.[imageX] ?? "-";
+                    }
                 })
 
                 this.stats = {
@@ -2015,6 +2049,7 @@
                                 deltas: deltasChunk,
                                 maxIter: this.iterations,
                                 bailout: this.bailout,
+                                smooth: this.smooth
                             };
 
                             // 轮询分配Worker
@@ -2049,7 +2084,7 @@
                                 }
                                 let leftColor = this.getIter(x - 1, y);
                                 let rightColor = this.getIter(x + 1, y);
-                                if (Math.floor(leftColor) == Math.floor(rightColor) && leftColor > 0 && rightColor > 0) {
+                                if (Math.floor(leftColor) == Math.floor(rightColor) && leftColor >= 0 && rightColor >= 0) {
                                     this.setIter(x, y, (leftColor + rightColor) / 2);
                                     this.stats.guess++;
                                 } else {
@@ -2075,6 +2110,7 @@
                                 deltas: deltasChunk,
                                 maxIter: this.iterations,
                                 bailout: this.bailout,
+                                smooth: this.smooth
                             };
 
                             // 轮询分配Worker
@@ -2108,7 +2144,7 @@
 
                                 let upColor = this.getIter(x, y - 1);
                                 let downColor = this.getIter(x, y + 1);
-                                if (Math.floor(upColor) == Math.floor(downColor) && upColor > 0 && downColor > 0) {
+                                if (Math.floor(upColor) == Math.floor(downColor) && upColor >= 0 && downColor >= 0) {
                                     this.setIter(x, y, (upColor + downColor) / 2);
                                     this.stats.guess++;
                                 } else {
@@ -2134,6 +2170,7 @@
                                 deltas: deltasChunk,
                                 maxIter: this.iterations,
                                 bailout: this.bailout,
+                                smooth: this.smooth
                             };
 
                             // 轮询分配Worker
@@ -2187,6 +2224,7 @@
                 params.set("bailout", Math.sqrt(this.bailout).toString());
                 params.set("colorc", byteArrayToBase64(palette.flat(1)));
                 params.set("colorstep", colorStep);
+                params.set("smooth", this.smooth ? 1 : 0);
 
                 // 重建哈希字符串
                 window.location.hash = params.toString();
@@ -2318,6 +2356,10 @@
                 return parseFloat(this.data.IterDiv) ?? 1;
             }
 
+            get smooth() {
+                return this.data.Smooth !== undefined && this.data.Smooth !== "0";
+            }
+
             // Getter for `Colors`, converts the raw color data into an array of [r, g, b] tuples
             get colors() {
                 if (!this.data.Colors) return [];
@@ -2363,6 +2405,10 @@
                 }).join("");
             }
 
+            set smooth(value) {
+                this.data.Smooth = value ? "1" : "0";
+            }
+
             // Convert the data to a KFR formatted string
             toString() {
                 return Object.entries(this.data)
@@ -2378,6 +2424,7 @@
                 this.iter = mandelbrot.iterations.toString();
                 this.iterDiv = (colorStep * palette.length) / 1024
                 this.colors = palette;
+                this.smooth = mandelbrot.smooth;
             }
         }
 
@@ -2530,8 +2577,9 @@
             new Decimal(0), new Decimal(0));
 
         let size = new FloatExp(4);
-        let bailout = 16;
+        let bailout = 2;
         let iterations = 256;
+        let smooth = false;
 
         const params = new URLSearchParams(window.location.hash.substring(1));
 
@@ -2566,6 +2614,9 @@
                 case "colorstep":
                     colorStep = parseFloat(value)
                     break;
+                case "smooth":
+                    smooth = value === "1" || value === "true";
+                    break;
 
                 // compressed values
                 case "rec":
@@ -2588,6 +2639,7 @@
         location.hash = params.toString();
 
         const mandelbrot = new Mandelbrot(canvas, c, iterations, bailout)
+        mandelbrot.smooth = smooth;
         mandelbrot.zoom(size)
         mandelbrot.update()
 
@@ -2699,6 +2751,7 @@
             mandelbrot.goto(new DeepComplex(reader.re, reader.im))
             mandelbrot.zoom(new FloatExp(4).div(parseFloatExp(reader.zoom)));
             mandelbrot.setIterations(reader.iter);
+            mandelbrot.smooth = reader.smooth;
             palette = reader.colors;
             colorStep = 1024 / reader.colors.length * reader.iterDiv;
             mandelbrot.update();
@@ -2922,6 +2975,29 @@
         const paletteEditor = new PaletteEditor();
         document.getElementById('palette').addEventListener('click', () => {
             paletteEditor.show();
+        });
+
+        document.getElementById('iteration-button').addEventListener('click', () => {
+            const iterDialog = document.getElementById('iteration-dialog');
+            const bailoutInput = document.getElementById('bailout');
+            const smoothCheckbox = document.getElementById('smooth');
+
+            bailoutInput.value = Math.sqrt(mandelbrot.bailout);
+            smoothCheckbox.checked = mandelbrot.smooth;
+
+            iterDialog.showModal();
+
+            document.getElementById('apply-iter').addEventListener('click', () => {
+                mandelbrot.bailout = parseFloat(bailoutInput.value) ** 2;
+                mandelbrot.smooth = smoothCheckbox.checked;
+                iterDialog.close();
+                mandelbrot.clear();
+                mandelbrot.update();
+            });
+
+            document.getElementById('close-iter-dialog').addEventListener('click', () => {
+                iterDialog.close();
+            });
         });
     </script>
 </body>
