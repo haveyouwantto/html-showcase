@@ -314,11 +314,17 @@
         <h2>Color Settings</h2>
         <label for="color-step">Color Step:</label>
         <input type="number" id="color-step" value="1" min="1" max="100" step="1"><br>
+        <div id="random-group">
+            <input type="radio" name="algorithm" id="random-1" value="random" checked>
+            <label for="random-1">Algorithm 1</label>
+            <input type="radio" name="algorithm" id="random-2" value="random-bw">
+            <label for="random-2">Algorithm 2</label>
+            <button id="random-colors">Random</button>
+        </div>
         <ol id="color-list">
             <!-- Color settings -->
         </ol>
         <button id="apply-colors">Apply</button>
-        <button id="random-colors">Random</button>
         <button id="reset-colors">Reset</button>
         <button id="close-dialog">Close</button>
     </dialog>
@@ -2875,6 +2881,59 @@
             return palette;
         }
 
+        function hsvToRgb(h, s, v) {
+            let r, g, b;
+            const i = Math.floor(h * 6);
+            const f = h * 6 - i;
+            const p = v * (1 - s);
+            const q = v * (1 - f * s);
+            const t = v * (1 - (1 - f) * s);
+            switch (i % 6) {
+                case 0: r = v, g = t, b = p; break;
+                case 1: r = q, g = v, b = p; break;
+                case 2: r = p, g = v, b = t; break;
+                case 3: r = p, g = q, b = v; break;
+                case 4: r = t, g = p, b = v; break;
+                case 5: r = v, g = p, b = q; break;
+            }
+            return [Math.floor(r * 255), Math.floor(g * 255), Math.floor(b * 255)];
+        }
+
+        function generateRandomBWPalette(size) {
+            const palette = [];
+            for (let i = 0; i < size; i++) {
+                const phase = i % 4;
+                let h, s, v;
+                switch (phase) {
+                    case 0:
+                        // Phase 0: full color: 
+                        h = Math.random();
+                        s = Math.random() * 0.5 + 0.5;
+                        v = Math.random() * 0.25 + 0.75;
+                        break;
+                    case 1:
+                        // Phase 1: darker color
+                        h = Math.random();
+                        s = Math.random() * 0.5 + 0.5;
+                        v = Math.random() * 0.25;
+                        break;
+                    case 2:
+                        // Phase 2: full color
+                        h = Math.random();
+                        s = Math.random() * 0.5 + 0.5;
+                        v = Math.random() * 0.25 + 0.75;
+                        break;
+                    case 3:
+                        // Phase 3: lighter color
+                        h = Math.random();
+                        s = Math.random() * 0.25;
+                        v = Math.random() * 0.25 + 0.75;
+                }
+                palette.push(hsvToRgb(h, s, v));
+            }
+            return palette;
+        }
+
         class PaletteEditor {
             constructor() {
                 this.dialog = document.getElementById('palette-dialog');
@@ -2893,7 +2952,17 @@
                 });
 
                 this.randomButton.addEventListener('click', () => {
-                    palette = generateRandomPalette(palette.length); // Generate a random palette with 10 colors
+                    const algorithm = this.getAlgorithm();
+                    switch (algorithm) {
+                        case 'random':
+                            palette = generateRandomPalette(palette.length); // Generate a random palette with the same length
+                            break;
+                        case 'random-bw':
+                            palette = generateRandomBWPalette(palette.length); // Generate a random black and white palette
+                            break;
+
+                    }
+                    // palette = generateRandomPalette(palette.length); // Generate a random palette with 10 colors
                     this.renderColors();
                 });
 
@@ -2950,6 +3019,11 @@
                 });
 
                 this.colorStepInput.value = colorStep; // Set the color step input value
+            }
+
+            getAlgorithm() {
+                const selectedAlgorithm = document.querySelector('input[name="algorithm"]:checked');
+                return selectedAlgorithm ? selectedAlgorithm.value : 'random';
             }
 
             applyColors() {
