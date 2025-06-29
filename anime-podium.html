@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>番剧截图颁奖台 Plus</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <style>
+        /* --- 全局样式 --- */
+        :root {
+            --gold: #FFD700;
+            --silver: #C0C0C0;
+            --bronze: #CD7F32;
+            --podium-color: #4A5568;
+            --podium-text-color: #F7FAFC;
+            --background-color: #1A202C;
+            --placeholder-text-color: #A0AEC0;
+            --border-color: #2D3748;
+            --button-bg: #4299E1;
+            --button-hover-bg: #2B6CB0;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background-color: var(--background-color);
+            color: var(--podium-text-color);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            padding: 20px;
+            box-sizing: border-box;
+        }
+        
+        .main-container {
+            width: 100%;
+            max-width: 1200px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 30px; /* 按钮和颁奖台的间距 */
+        }
+
+        /* --- 保存按钮 --- */
+        .controls {
+            width: 100%;
+            text-align: center;
+        }
+
+        .save-btn {
+            background-color: var(--button-bg);
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            font-size: 1.2em;
+            font-weight: bold;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: background-color 0.3s ease, transform 0.2s ease;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.2);
+        }
+
+        .save-btn:hover {
+            background-color: var(--button-hover-bg);
+        }
+
+        .save-btn:active {
+            transform: scale(0.98);
+        }
+
+
+        /* --- 颁奖台容器 --- */
+        .podium-container {
+            display: flex;
+            align-items: flex-end;
+            justify-content: center;
+            width: 100%;
+        }
+
+        /* --- 单个颁奖台位置 --- */
+        .podium-place {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            max-width: 380px;
+            /* 更新: 使用 margin 来创建间距 */
+            margin: 0 10px;
+        }
+        
+        .podium-place.second { order: 1; }
+        .podium-place.first  { order: 2; }
+        .podium-place.third  { order: 3; }
+
+        /* --- 截图显示区域 --- */
+        .image-container {
+            width: 100%;
+            padding-top: 56.25%;
+            background-color: rgba(255, 255, 255, 0.05);
+            border: 2px dashed var(--border-color);
+            border-radius: 8px;
+            position: relative;
+            overflow: hidden;
+            transition: border-color 0.3s ease;
+        }
+
+        .podium-place:hover .image-container {
+            border-color: var(--placeholder-text-color);
+        }
+
+        /* --- 文件上传相关 --- */
+        .file-input {
+            display: none;
+        }
+
+        .image-label {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            cursor: pointer;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .placeholder-text {
+            color: var(--placeholder-text-color);
+            font-size: 1.2em;
+            text-align: center;
+            padding: 10px;
+            transition: opacity 0.3s ease;
+        }
+
+        .image-preview {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            position: absolute;
+            top: 0;
+            left: 0;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+
+        /* --- 奖牌和丝带 --- */
+        .medal-container {
+            position: absolute;
+            top: -5px;
+            right: -5px;
+            width: 60px;
+            height: 90px;
+            transform: rotate(10deg);
+            opacity: 0;
+            transition: opacity 0.3s ease, transform 0.3s ease;
+            pointer-events: none;
+        }
+
+        .medal-ribbon {
+            position: absolute;
+            width: 8px;
+            height: 50px;
+            background-color: #c00;
+            box-shadow: 2px 2px 5px rgba(0,0,0,0.3);
+        }
+
+        .ribbon-left { left: 15px; top: -5px; transform: rotate(-30deg); }
+        .ribbon-right { right: 15px; top: -5px; transform: rotate(30deg); }
+
+        .medal-circle {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            position: absolute;
+            bottom: 15px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 24px;
+            font-weight: bold;
+            color: rgba(0,0,0,0.6);
+            box-shadow: inset 0 -3px 5px rgba(0,0,0,0.2), 0 3px 5px rgba(0,0,0,0.3);
+        }
+        
+        .medal-first .medal-circle { background-color: var(--gold); }
+        .medal-second .medal-circle { background-color: var(--silver); }
+        .medal-third .medal-circle { background-color: var(--bronze); }
+
+        /* --- 颁奖台底座 --- */
+        .podium-base {
+            width: 100%;
+            background-color: var(--podium-color);
+            text-align: center;
+            padding: 15px;
+            border-radius: 0 0 8px 8px;
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.3), 0 4px 6px -2px rgba(0, 0, 0, 0.2);
+            position: relative;
+            top: -2px;
+        }
+
+        .podium-place.first .podium-base { height: 180px; }
+        .podium-place.second .podium-base { height: 120px; }
+        .podium-place.third .podium-base { height: 80px; }
+
+        .rank-number { font-size: 3em; font-weight: bold; line-height: 1; }
+        .rank-title { font-size: 1.2em; margin-top: 5px; letter-spacing: 2px; }
+        
+        /* --- JS控制的动态样式 --- */
+        .has-image .placeholder-text { opacity: 0; }
+        .has-image .image-preview { opacity: 1; }
+        .has-image .medal-container { opacity: 1; transform: rotate(0deg) scale(1); }
+        .has-image { border-style: solid; border-color: #555; }
+    </style>
+</head>
+<body>
+
+    <div class="main-container">
+        <div class="controls">
+            <button id="save-button" class="save-btn">保存为图片</button>
+        </div>
+
+        <div class="podium-container" id="podium-to-capture">
+            <div class="podium-place second">
+                <div class="image-container" id="container-second">
+                    <input type="file" class="file-input" id="upload-second" accept="image/*">
+                    <label for="upload-second" class="image-label">
+                        <span class="placeholder-text">上传第二名截图</span>
+                        <img src="" alt="第二名截图预览" class="image-preview">
+                        <div class="medal-container medal-second">
+                            <div class="medal-ribbon ribbon-left"></div>
+                            <div class="medal-ribbon ribbon-right"></div>
+                            <div class="medal-circle">2</div>
+                        </div>
+                    </label>
+                </div>
+                <div class="podium-base">
+                    <div class="rank-number">2</div>
+                    <div class="rank-title">第二名</div>
+                </div>
+            </div>
+
+            <div class="podium-place first">
+                <div class="image-container" id="container-first">
+                    <input type="file" class="file-input" id="upload-first" accept="image/*">
+                    <label for="upload-first" class="image-label">
+                        <span class="placeholder-text">上传第一名截图</span>
+                        <img src="" alt="第一名截图预览" class="image-preview">
+                        <div class="medal-container medal-first">
+                            <div class="medal-ribbon ribbon-left"></div>
+                            <div class="medal-ribbon ribbon-right"></div>
+                            <div class="medal-circle">1</div>
+                        </div>
+                    </label>
+                </div>
+                <div class="podium-base">
+                    <div class="rank-number">1</div>
+                    <div class="rank-title">第一名</div>
+                </div>
+            </div>
+
+            <div class="podium-place third">
+                <div class="image-container" id="container-third">
+                    <input type="file" class="file-input" id="upload-third" accept="image/*">
+                    <label for="upload-third" class="image-label">
+                        <span class="placeholder-text">上传第三名截图</span>
+                        <img src="" alt="第三名截图预览" class="image-preview">
+                        <div class="medal-container medal-third">
+                            <div class="medal-ribbon ribbon-left"></div>
+                            <div class="medal-ribbon ribbon-right"></div>
+                            <div class="medal-circle">3</div>
+                        </div>
+                    </label>
+                </div>
+                <div class="podium-base">
+                    <div class="rank-number">3</div>
+                    <div class="rank-title">第三名</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // --- 图片上传逻辑 (无变化) ---
+            const fileInputs = document.querySelectorAll('.file-input');
+            fileInputs.forEach(input => {
+                input.addEventListener('change', function(event) {
+                    const file = event.target.files[0];
+                    if (!file) return;
+
+                    const rank = this.id.split('-')[1];
+                    const imageContainer = document.getElementById(`container-${rank}`);
+                    const previewImage = imageContainer.querySelector('.image-preview');
+                    const reader = new FileReader();
+
+                    reader.onload = function(e) {
+                        previewImage.src = e.target.result;
+                        imageContainer.classList.add('has-image');
+                    }
+                    reader.readAsDataURL(file);
+                });
+            });
+
+            // --- 新增：保存为图片逻辑 ---
+            const saveButton = document.getElementById('save-button');
+            const captureArea = document.getElementById('podium-to-capture');
+
+            saveButton.addEventListener('click', function() {
+                // 使用 html2canvas 截取指定区域
+                html2canvas(captureArea, {
+                    // 选项优化
+                    backgroundColor: null, // 使用页面body的背景，而不是白色
+                    useCORS: true, // 允许加载跨域图片（对于本地DataURL非必需，但好习惯）
+                    scale: 2 // 提高截图分辨率，使其更清晰
+                }).then(canvas => {
+                    // 创建一个临时的 a 标签用于下载
+                    const link = document.createElement('a');
+                    
+                    // 将 canvas 转换为 png 图片的 data URL
+                    link.href = canvas.toDataURL('image/png');
+                    
+                    // 设置下载的文件名
+                    link.download = '番剧截图颁奖台.png';
+                    
+                    // 触发点击事件，开始下载
+                    link.click();
+                });
+            });
+        });
+    </script>
+
+</body>
+</html>
