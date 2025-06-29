@@ -725,6 +725,10 @@
                     );
                 }
             }
+
+            toString() {
+                return `(${this.re}, ${this.im})`;
+            }
         }
 
         class DeepComplex {
@@ -996,6 +1000,41 @@
                 };
             }
             console.log("Compressed ref: ", waypoints)
+            // // Test decompress and compare with original orbit
+            // const orbit2 = decompressRef(C.downCast(), waypoints, iterations);
+            // // Print two orbits side by side
+            // for (let i = 0; i < Math.min(orbit.length, orbit2.length); i++) {
+            //     const original = orbit[i] || new Complex(0, 0);
+            //     const decompressed = orbit2[i] || new Complex(0, 0);
+            //     console.log(`Iteration ${i} Original: ${original.toString()}, Decompressed: ${decompressed.toString()}, Compression Error: ${original.sub(decompressed).abs()}`);
+            // }
+            return orbit;
+        }
+
+        function decompressRef(c, waypoints, maxIter) {
+            let re = 0, im = 0;
+            const orbit = [new Complex(0, 0)];
+
+            const waypointKeys = Object.keys(waypoints);
+
+            let iter = 0;
+            while (iter < maxIter) {
+                // if iter in waypoint, use waypoint value
+                if (waypointKeys.includes(iter.toString())) {
+                    re = waypoints[iter].re;
+                    im = waypoints[iter].im;
+                }
+                // do standard mandelbrot iteration
+                const re2 = re * re;
+                const im2 = im * im;
+                const re1 = re;
+                const im1 = im;
+                if (re2 + im2 > 16.0) break;
+                im = 2 * re * im + c.im;
+                re = re2 - im2 + c.re;
+                orbit.push(new Complex(re, im));
+                iter++;
+            }
             return orbit;
         }
 
