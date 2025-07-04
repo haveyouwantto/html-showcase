@@ -1289,7 +1289,7 @@
                 return [l, r, totalLength]; // 返回解码后的左右声道数据和帧总长度
             }
 
-            // 可选：预生成帧位置表（加速随机访问）
+            // 预生成帧位置表（加速随机访问）
             generatePos() {
                 this.lookUp = [];
                 for (let i = 0; i < this.numWindows; i++) {
@@ -1347,7 +1347,7 @@
 
                 this.compressRatio = this.buffer.byteLength / this.decompressedData.buffer.byteLength; // 计算压缩比
 
-                // this.generatePos(); // 可选：预生成帧位置表
+                this.generatePos(); // 可选：预生成帧位置表
             }
 
             readHeader() {
@@ -1478,6 +1478,41 @@
 
             frameLength() {
                 return this.hopSize; // 返回每帧的长度
+            }
+
+            // 预生成帧位置表（加速随机访问）
+            generatePos() {
+                this.lookUp = [];
+                for (let i = 0; i < this.numWindows; i++) {
+                    this.lookUp.push(this.ptr); // 存储当前帧的指针位置
+                    for (let ch = 0; ch < 2; ch++) {
+                        const length = this.decompressedView.getUint16(this.ptr, true); // 读取帧长度
+                        this.ptr += 2 + length;
+                        const length2 = this.decompressedView.getUint16(this.ptr, true); // 读取帧长度
+                        this.ptr += 2 + length2;
+                    }
+                }
+                this.reset(); // 重置指针和读取状态
+            }
+
+            // 定位到指定帧（需要预生成帧位置表）
+            seek(frame) {
+                this.ptr = 0 + this.lookUp[frame];
+                this.read = frame;
+            }
+
+            seekSeconds(sec) {
+                const progress = sec / this.duration;
+                this.seekProgress(progress)
+            }
+
+            seekProgress(progress) {
+                const frame = Math.floor(this.numWindows * progress);
+                this.seek(frame);
+            }
+
+            currentTime() {
+                return this.read * (this.hopSize / this.sampleRate)
             }
         }
 
