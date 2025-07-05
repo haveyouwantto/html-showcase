@@ -1044,6 +1044,15 @@
                     [15000, 0.000034],
                     [20000, 100]
                 ]; // 量化表，包含频率和对应的量化值
+                this.attenuationTable = [
+                    [0, 1],
+                    [1000, 0.4],
+                    [4000, 0.25],
+                    [8000, 0.125],
+                    [12000, 0.05],
+                    [15000, 0.016],
+                    [20000, 0],
+                ]
                 this.MODES = {
                     CQP: 0,
                     MBR: 1
@@ -1068,15 +1077,23 @@
 
                 const qScale = 1.25 ** (this.qp - 32); // 用于计算子带量化的偏移值
                 this.currentQuantTable = [[], []];
+                this.currentAttenuationTable = [[],[]]
+                this.binFreq = new Float32Array(this.hopSize);
+                for (let i = 0; i < this.binFreq.length; i++) {
+                    this.binFreq[i] = (i + 0.5) * (this.sampleRate / this.winSize); // 计算当前频率 bin 的频率值
+                }
 
                 for (let i = 0; i < this.hopSize; i++) {
-                    const binFreq = (i + 0.5) * (this.sampleRate / this.winSize); // 计算当前频率 bin 的频率值
+                    const binFreq = this.binFreq[i]
 
                     // 查找对应的量化阈值
                     for (let j = 0; j < this.quantTable.length; j++) {
                         if (binFreq > this.quantTable[j][0] && (j === this.quantTable.length - 1 || binFreq <= this.quantTable[j + 1][0])) {
                             this.currentQuantTable[0][i] = this.quantTable[j][1] * qScale; // L+R 通道的量化值
                             this.currentQuantTable[1][i] = this.quantTable[j][1] * qScale * 4; // L-R 通道的量化值
+
+                            this.currentAttenuationTable[0][i] = this.attenuationTable[j][1];
+                            this.currentAttenuationTable[1][i] = this.attenuationTable[j][1] *0.5;
 
                             if (this.settings.voiceOptimization) {
                                 // keep only 0-4k
@@ -1093,6 +1110,8 @@
                         }
                     }
                 }
+
+                console.log(this.currentAttenuationTable)
 
                 this.window = createMDCTWindow(this.winSize); // 创建满足 Princen-Bradley 条件的窗函数
 
@@ -1166,17 +1185,15 @@
                             }
                             break;
                         case this.MODES.MBR:
-                            let arr = [...mdctCoeffs].map(e => Math.abs(e))
+                            let arr = [...mdctCoeffs].map((e,i) => Math.abs(e))
                             arr.sort((a, b) => a - b)
                             // const targetBitrate = 131072;
                             // const ratio = 1 - (targetBitrate / (this.sampleRate * 32));
                             const ratio = Math.sqrt(this.qp / 64);
-                            console.log(ratio)
-                            let threshold = 0;
-                            threshold = arr[Math.floor(arr.length * ratio)]
+                            let threshold = arr[Math.floor(arr.length * ratio)]
                             // console.log(ratio, threshold, arr)
                             for (let j = 0; j < mdctCoeffs.length; j++) {
-                                if (Math.abs(mdctCoeffs[j]) < threshold) {
+                                if (Math.abs(mdctCoeffs[j]) * this.currentAttenuationTable[ch][j] < threshold) {
                                     mdctCoeffs[j] = 0; // 小于阈值的系数设为0
                                 }
                             }
