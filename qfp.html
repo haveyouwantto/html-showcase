@@ -1167,9 +1167,11 @@
                             break;
                         case this.MODES.MBR:
                             let arr = [...mdctCoeffs].map(e => Math.abs(e))
-                            arr.sort((a,b)=>a-b)
-                            const targetBitrate = 131072;
-                            const ratio = 1 - (targetBitrate / (this.sampleRate * 32));
+                            arr.sort((a, b) => a - b)
+                            // const targetBitrate = 131072;
+                            // const ratio = 1 - (targetBitrate / (this.sampleRate * 32));
+                            const ratio = Math.sqrt(this.qp / 64);
+                            console.log(ratio)
                             let threshold = 0;
                             threshold = arr[Math.floor(arr.length * ratio)]
                             // console.log(ratio, threshold, arr)
