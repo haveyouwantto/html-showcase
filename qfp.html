@@ -1189,7 +1189,7 @@
                             arr.sort((a, b) => a - b)
                             // const targetBitrate = 131072;
                             // const ratio = 1 - (targetBitrate / (this.sampleRate * 32));
-                            const ratio = Math.sqrt(this.qp / 64);
+                            const ratio = this.qp / 64;
                             let threshold = arr[Math.floor(arr.length * ratio)]
                             // console.log(ratio, threshold, arr)
                             for (let j = 0; j < mdctCoeffs.length; j++) {
