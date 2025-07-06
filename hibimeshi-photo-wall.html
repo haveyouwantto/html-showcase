@@ -55,6 +55,20 @@
             pointer-events: none;
         }
 
+        /* 新增：图钉样式 */
+        .pin {
+            position: absolute;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            top: -10px;
+            left: 50%;
+            transform: translateX(-50%);
+            box-shadow: 1px 1px 4px rgba(0, 0, 0, 0.5);
+            border: 2px solid rgba(255, 255, 255, 0.8);
+            z-index: 1; /* 确保图钉在照片之上 */
+        }
+
         .handle {
             position: absolute;
             width: 20px;
@@ -64,6 +78,7 @@
             right: -10px;
             cursor: nwse-resize;
             transition: opacity 0.3s;
+            z-index: 1; /* 确保操作手柄在照片之上 */
         }
 
         .handle::after {
@@ -75,7 +90,7 @@
         }
 
         /* 新增：用于隐藏控件 */
-        #corkboard.controls-hidden .handle {
+        #corkboard.controls-hidden .handle{
             display: none;
         }
 
@@ -198,15 +213,15 @@
             const contextMenu = document.getElementById('context-menu');
             const deleteBtn = document.getElementById('delete-btn');
 
-            // 新增: FAB 元素引用
             const fabButton = document.getElementById('fab-button');
             const fabMenu = document.getElementById('fab-menu');
             const fabUpload = document.getElementById('fab-upload');
             const fabToggleControls = document.getElementById('fab-toggle-controls');
             const fabAdjustPadding = document.getElementById('fab-adjust-padding');
 
-            // --- 纹理生成 ---
-            function generateCorkTexture() {
+            // --- 纹理生成 (已重构) ---
+            // 1. 创建基础的纹理图案
+            function createCorkPattern() {
                 const canvas = document.createElement('canvas');
                 const size = 256;
                 canvas.width = size;
@@ -236,9 +251,36 @@
                     ctx.fillRect(x, y, 1, 1);
                 }
                 ctx.globalAlpha = 1.0;
-                return canvas.toDataURL('image/png');
+                return canvas; // 返回Canvas元素而不是DataURL
             }
-            const textureDataUrl = generateCorkTexture();
+
+            // 2. 使用基础图案生成一个更大的、随机旋转的纹理
+            function generateRotatedCorkTexture() {
+                const patternCanvas = createCorkPattern();
+                const patternSize = patternCanvas.width;
+                const textureCanvas = document.createElement('canvas');
+                const textureSize = patternSize * 8; // 创建一个2x2的纹理图
+                textureCanvas.width = textureSize;
+                textureCanvas.height = textureSize;
+                const ctx = textureCanvas.getContext('2d');
+
+                for (let y = 0; y < 8; y++) {
+                    for (let x = 0; x < 8; x++) {
+                        const posX = x * patternSize;
+                        const posY = y * patternSize;
+                        // 随机选择 0, 90, 180, 270 度
+                        const angle = Math.floor(Math.random() * 4) * (Math.PI / 2);
+                        ctx.save();
+                        ctx.translate(posX + patternSize / 2, posY + patternSize / 2);
+                        ctx.rotate(angle);
+                        ctx.drawImage(patternCanvas, -patternSize / 2, -patternSize / 2);
+                        ctx.restore();
+                    }
+                }
+                return textureCanvas.toDataURL('image/png');
+            }
+
+            const textureDataUrl = generateRotatedCorkTexture();
             corkboard.style.backgroundImage = `url(${textureDataUrl})`;
             // --- 纹理生成结束 ---
 
@@ -250,14 +292,15 @@
             let dragOffsetX = 0, dragOffsetY = 0;
             let rotateCenterX = 0, rotateCenterY = 0, startAngle = 0, initialRotation = 0;
 
-            // 新增：边距控制
             const paddingSizes = [5, 10, 15];
-            let currentPaddingIndex = 1; // 默认 15px
+            let currentPaddingIndex = 1;
+
+            // 新增: 定义图钉颜色
+            const pinColors = ['#e74c3c', '#3498db', '#2ecc71', '#f1c40f', '#9b59b6', '#e67e22'];
 
             function createPhoto(src) {
                 const photoContainer = document.createElement('div');
                 photoContainer.classList.add('photo-container');
-                // 新增: 创建时应用当前边距
                 photoContainer.style.padding = `${paddingSizes[currentPaddingIndex]}px`;
 
                 const img = new Image();
@@ -266,15 +309,26 @@
                     const maxHeight = Math.min(window.innerHeight * 0.4, 300);
                     let ratio = Math.min(maxWidth / img.width, maxHeight / img.height);
                     let width = img.width * ratio;
+
+                    // 新增: 创建并添加图钉
+                    const pin = document.createElement('div');
+                    pin.className = 'pin';
+                    const randomColor = pinColors[Math.floor(Math.random() * pinColors.length)];
+                    pin.style.backgroundColor = randomColor;
+                    photoContainer.appendChild(pin);
+
                     const photo = document.createElement('img');
                     photo.src = src;
                     photo.classList.add('photo');
                     photo.style.width = `${width}px`;
                     photoContainer.appendChild(photo);
+                    
                     const handle = document.createElement('div');
                     handle.classList.add('handle');
                     photoContainer.appendChild(handle);
+                    
                     corkboard.appendChild(photoContainer);
+                    
                     const maxX = corkboard.clientWidth - photoContainer.offsetWidth - 30;
                     const maxY = corkboard.clientHeight - photoContainer.offsetHeight - 30;
                     photoContainer.style.top = `${Math.random() * maxY}px`;
@@ -326,7 +380,6 @@
                 });
             }
 
-            // --- 右键菜单 ---
             function showContextMenu(x, y) {
                 contextMenu.style.left = `${x}px`;
                 contextMenu.style.top = `${y}px`;
@@ -343,7 +396,6 @@
                 hideContextMenu();
             });
 
-            // --- FAB 菜单逻辑 ---
             function showFabMenu() {
                 fabMenu.style.display = 'block';
                 fabButton.classList.add('active');
@@ -361,7 +413,7 @@
                 }
             });
             fabUpload.addEventListener('click', () => {
-                imageUpload.click(); // 触发隐藏的文件输入
+                imageUpload.click();
                 hideFabMenu();
             });
             fabToggleControls.addEventListener('click', () => {
@@ -378,13 +430,10 @@
                 hideFabMenu();
             });
 
-
-            // --- 全局事件 ---
             document.addEventListener('mousemove', (e) => {
                 if (!activeItem) return;
                 e.preventDefault();
                 if (action === 'drag') {
-                    // 考虑边框宽度
                     const boardRect = corkboard.getBoundingClientRect();
                     let newX = e.clientX - dragOffsetX;
                     let newY = e.clientY - dragOffsetY;
@@ -411,7 +460,6 @@
             });
 
             document.addEventListener('click', (e) => {
-                // 点击非菜单区域时，关闭所有菜单
                 if (!e.target.closest('#context-menu')) {
                     hideContextMenu();
                 }
@@ -436,7 +484,7 @@
                         };
                         reader.readAsDataURL(file);
                     }
-                    e.target.value = ''; // 重置输入，以便可以再次上传相同文件
+                    e.target.value = '';
                 }
             });
 
