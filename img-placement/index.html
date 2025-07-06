@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>图片展示工具集</title>
+    <style>
+        /* --- 全局样式 --- */
+        :root {
+            --bg-color: #121212;
+            --surface-color: #1e1e1e;
+            --primary-text-color: #e0e0e0;
+            --secondary-text-color: #b0b0b0;
+            --accent-color: #4A90E2; /* 鲜艳的蓝色作为强调色 */
+            --accent-hover-color: #4281cb;
+            --shadow-color: rgba(0, 0, 0, 0.4);
+        }
+
+        body, html {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--primary-text-color);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* --- 头部 --- */
+        .showcase-header {
+            text-align: center;
+            padding: 3rem 1rem;
+            background-color: var(--surface-color);
+            border-bottom: 1px solid #333;
+        }
+
+        .showcase-header h1 {
+            margin: 0;
+            font-size: 2.5rem;
+            font-weight: 600;
+        }
+
+        .showcase-header p {
+            margin-top: 0.5rem;
+            font-size: 1.1rem;
+            color: var(--secondary-text-color);
+        }
+
+        /* --- 主内容和卡片容器 --- */
+        main {
+            flex-grow: 1;
+            padding: 2rem 1rem;
+        }
+
+        .card-container {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 2rem;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        /* --- 卡片样式 --- */
+        .card {
+            background-color: var(--surface-color);
+            border-radius: 12px;
+            box-shadow: 0 5px 15px var(--shadow-color);
+            width: 320px;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+
+        .card:hover {
+            transform: translateY(-8px);
+            box-shadow: 0 10px 25px var(--shadow-color);
+        }
+
+        /* 卡片缩略图 */
+        .card-thumbnail {
+            height: 200px;
+            background-color: #333; /* SVG加载前的后备颜色 */
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 1rem;
+            box-sizing: border-box;
+        }
+        
+        .card-thumbnail svg {
+            width: 100%;
+            height: 100%;
+        }
+
+        /* 卡片内容 */
+        .card-content {
+            padding: 1.5rem;
+            flex-grow: 1;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .card-content h2 {
+            margin-top: 0;
+            margin-bottom: 0.5rem;
+            font-size: 1.4rem;
+        }
+
+        .card-content p {
+            color: var(--secondary-text-color);
+            line-height: 1.6;
+            margin-bottom: 1.5rem;
+            flex-grow: 1; /* 让描述占据多余空间，按钮对齐底部 */
+        }
+
+        /* 卡片按钮 */
+        .card-button {
+            display: block;
+            background-color: var(--accent-color);
+            color: #fff;
+            text-align: center;
+            padding: 0.8rem 1rem;
+            border-radius: 6px;
+            text-decoration: none;
+            font-weight: 500;
+            transition: background-color 0.2s ease;
+            margin-top: auto; /* 将按钮推到底部 */
+        }
+
+        .card-button:hover {
+            background-color: var(--accent-hover-color);
+        }
+        
+        /* --- 页脚 --- */
+        .showcase-footer {
+            text-align: center;
+            padding: 1.5rem;
+            color: #666;
+            font-size: 0.9rem;
+            margin-top: 2rem;
+        }
+    </style>
+</head>
+<body>
+
+    <header class="showcase-header">
+        <h1>图片展示工具集</h1>
+        <p>一系列用于放置、排列和展示图片的互动网页方案。</p>
+    </header>
+
+    <main>
+        <div class="card-container">
+
+            <!-- 卡片 1: 赛博软木盘 -->
+            <div class="card">
+                <div class="card-thumbnail">
+                    <!-- 内联SVG缩略图 -->
+                    <svg viewBox="0 0 100 60" xmlns="http://www.w3.org/2000/svg">
+                        <defs>
+                            <filter id="dropShadow" x="-20%" y="-20%" width="140%" height="140%">
+                                <feGaussianBlur in="SourceAlpha" stdDeviation="1"/>
+                                <feOffset dx="1" dy="1"/>
+                                <feComponentTransfer>
+                                    <feFuncA type="linear" slope="0.5"/>
+                                </feComponentTransfer>
+                                <feMerge>
+                                    <feMergeNode/>
+                                    <feMergeNode in="SourceGraphic"/>
+                                </feMerge>
+                            </filter>
+                        </defs>
+                        <rect width="100" height="60" fill="#a57d52" />
+                        <rect x="25" y="10" width="50" height="38" fill="white" stroke="#ccc" stroke-width="0.5" transform="rotate(-5 50 30)" filter="url(#dropShadow)"/>
+                        <circle cx="50" cy="8" r="3" fill="#e74c3c" stroke="white" stroke-width="0.5"/>
+                    </svg>
+                </div>
+                <div class="card-content">
+                    <h2>赛博软木盘</h2>
+                    <p>一个虚拟的软木板，可以上传、拖动、旋转和删除照片。带有随机颜色的图钉和逼真的程序化木纹背景。</p>
+                    <a href="hibimeshi-photo-wall.html" class="card-button">进入体验</a>
+                </div>
+            </div>
+
+            <!-- 卡片 2: 动漫角色领奖台 -->
+            <div class="card">
+                <div class="card-thumbnail">
+                    <!-- 内联SVG缩略图 -->
+                    <svg viewBox="0 0 100 60" xmlns="http://www.w3.org/2000/svg">
+                         <rect x="35" y="20" width="30" height="35" fill="#FFD700" />
+                         <text x="50" y="15" font-family="sans-serif" font-size="10" fill="white" text-anchor="middle">1</text>
+                         <rect x="5" y="30" width="30" height="25" fill="#C0C0C0" />
+                         <text x="20" y="25" font-family="sans-serif" font-size="10" fill="white" text-anchor="middle">2</text>
+                         <rect x="65" y="35" width="30" height="20" fill="#CD7F32" />
+                         <text x="80" y="30" font-family="sans-serif" font-size="10" fill="white" text-anchor="middle">3</text>
+                    </svg>
+                </div>
+                <div class="card-content">
+                    <h2>动漫角色领奖台</h2>
+                    <p>一个互动页面，可以上传动漫角色卡片到冠、亚、季军的领奖台上进行排列展示。</p>
+                    <a href="anime-podium.html" class="card-button">进入体验</a>
+                </div>
+            </div>
+
+            <!-- 在这里可以添加更多卡片... -->
+
+        </div>
+    </main>
+    
+    <footer class="showcase-footer">
+        © 2025 Maple-Kaede
+    </footer>
+
+</body>
+</html>
