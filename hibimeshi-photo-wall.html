@@ -65,8 +65,10 @@
             left: 50%;
             transform: translateX(-50%);
             box-shadow: 1px 1px 4px rgba(0, 0, 0, 0.5);
-            border: 2px solid rgba(255, 255, 255, 0.8);
-            z-index: 1; /* 确保图钉在照片之上 */
+            border: 1.5px solid rgba(255, 255, 255, 0.8);
+            z-index: 1;
+            /* 确保图钉在照片之上 */
+            background-image: radial-gradient(circle at 65% 35%, rgba(255, 255, 255, 0.75) 0%, rgba(255, 255, 255, 0) 50%);
         }
 
         .handle {
@@ -78,7 +80,8 @@
             right: -10px;
             cursor: nwse-resize;
             transition: opacity 0.3s;
-            z-index: 1; /* 确保操作手柄在照片之上 */
+            z-index: 1;
+            /* 确保操作手柄在照片之上 */
         }
 
         .handle::after {
@@ -90,7 +93,7 @@
         }
 
         /* 新增：用于隐藏控件 */
-        #corkboard.controls-hidden .handle{
+        #corkboard.controls-hidden .handle {
             display: none;
         }
 
@@ -298,6 +301,29 @@
             // 新增: 定义图钉颜色
             const pinColors = ['#e74c3c', '#3498db', '#2ecc71', '#f1c40f', '#9b59b6', '#e67e22'];
 
+            function darkenHexColor(hexColor) {
+                // 1. 移除 '#' (如果存在)
+                hexColor = hexColor.replace(/^#/, '');
+
+                // 2. 将十六进制颜色值转换为 RGB 值
+                const r = parseInt(hexColor.substring(0, 2), 16);
+                const g = parseInt(hexColor.substring(2, 4), 16);
+                const b = parseInt(hexColor.substring(4, 6), 16);
+
+                // 3. 将每个 RGB 值变暗 25%
+                const darkenedR = Math.round(r * 0.75);
+                const darkenedG = Math.round(g * 0.75);
+                const darkenedB = Math.round(b * 0.75);
+
+                // 4. 将变暗后的 RGB 值转换回十六进制
+                const darkenedHexR = darkenedR.toString(16).padStart(2, '0');
+                const darkenedHexG = darkenedG.toString(16).padStart(2, '0');
+                const darkenedHexB = darkenedB.toString(16).padStart(2, '0');
+
+                // 5. 返回变暗后的十六进制颜色值
+                return `#${darkenedHexR}${darkenedHexG}${darkenedHexB}`;
+            }
+
             function createPhoto(src) {
                 const photoContainer = document.createElement('div');
                 photoContainer.classList.add('photo-container');
@@ -315,6 +341,7 @@
                     pin.className = 'pin';
                     const randomColor = pinColors[Math.floor(Math.random() * pinColors.length)];
                     pin.style.backgroundColor = randomColor;
+                    pin.style.borderColor = darkenHexColor(randomColor)
                     photoContainer.appendChild(pin);
 
                     const photo = document.createElement('img');
@@ -322,13 +349,13 @@
                     photo.classList.add('photo');
                     photo.style.width = `${width}px`;
                     photoContainer.appendChild(photo);
-                    
+
                     const handle = document.createElement('div');
                     handle.classList.add('handle');
                     photoContainer.appendChild(handle);
-                    
+
                     corkboard.appendChild(photoContainer);
-                    
+
                     const maxX = corkboard.clientWidth - photoContainer.offsetWidth - 30;
                     const maxY = corkboard.clientHeight - photoContainer.offsetHeight - 30;
                     photoContainer.style.top = `${Math.random() * maxY}px`;
