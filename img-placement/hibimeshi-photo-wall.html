@@ -259,32 +259,40 @@
 
             // 2. 使用基础图案生成一个更大的、随机旋转的纹理
             function generateRotatedCorkTexture() {
-                const patternCanvas = createCorkPattern();
-                const patternSize = patternCanvas.width;
-                const textureCanvas = document.createElement('canvas');
-                const textureSize = patternSize * 8; // 创建一个2x2的纹理图
-                textureCanvas.width = textureSize;
-                textureCanvas.height = textureSize;
-                const ctx = textureCanvas.getContext('2d');
+                return new Promise((resolve) => {
+                    const patternCanvas = createCorkPattern();
+                    const patternSize = patternCanvas.width;
+                    const textureCanvas = document.createElement('canvas');
+                    const textureSize = patternSize * 8;
+                    textureCanvas.width = textureSize;
+                    textureCanvas.height = textureSize;
+                    const ctx = textureCanvas.getContext('2d');
 
-                for (let y = 0; y < 8; y++) {
-                    for (let x = 0; x < 8; x++) {
-                        const posX = x * patternSize;
-                        const posY = y * patternSize;
-                        // 随机选择 0, 90, 180, 270 度
-                        const angle = Math.floor(Math.random() * 4) * (Math.PI / 2);
-                        ctx.save();
-                        ctx.translate(posX + patternSize / 2, posY + patternSize / 2);
-                        ctx.rotate(angle);
-                        ctx.drawImage(patternCanvas, -patternSize / 2, -patternSize / 2);
-                        ctx.restore();
+                    for (let y = 0; y < 8; y++) {
+                        for (let x = 0; x < 8; x++) {
+                            const posX = x * patternSize;
+                            const posY = y * patternSize;
+                            const angle = Math.floor(Math.random() * 4) * (Math.PI / 2);
+                            ctx.save();
+                            ctx.translate(posX + patternSize / 2, posY + patternSize / 2);
+                            ctx.rotate(angle);
+                            ctx.drawImage(patternCanvas, -patternSize / 2, -patternSize / 2);
+                            ctx.restore();
+                        }
                     }
-                }
-                return textureCanvas.toDataURL('image/png');
+
+                    // 异步转为 Blob
+                    textureCanvas.toBlob((blob) => {
+                        const url = URL.createObjectURL(blob)
+                        resolve(url);
+                    }, 'image/png');
+                });
             }
 
-            const textureDataUrl = generateRotatedCorkTexture();
-            corkboard.style.backgroundImage = `url(${textureDataUrl})`;
+
+            generateRotatedCorkTexture().then(url => {
+                corkboard.style.backgroundImage = `url(${url})`;
+            });
             // --- 纹理生成结束 ---
 
 
@@ -505,15 +513,14 @@
             imageUpload.addEventListener('change', (e) => {
                 if (e.target.files) {
                     for (const file of e.target.files) {
-                        const reader = new FileReader();
-                        reader.onload = (event) => {
-                            createPhoto(event.target.result);
-                        };
-                        reader.readAsDataURL(file);
+                        const blob = new Blob([file], { type: file.type });
+                        const url = URL.createObjectURL(blob);
+                        createPhoto(url);
                     }
                     e.target.value = '';
                 }
             });
+
 
             function getHighestZIndex() {
                 let highest = 0;
