@@ -134,6 +134,10 @@
             height: 16px;
         }
 
+        input[type="checkbox"] {
+            accent-color: #8e4bec;
+        }
+
         #fileinfo {
             margin-top: 8px;
             font-size: 0.8rem;
@@ -157,6 +161,10 @@
             outline: #8e4bec solid 1px;
         }
 
+        .player-opt {
+            display: none;
+        }
+
         @media only screen and (max-width:600px) {
             body {
                 width: 95%;
@@ -176,6 +184,13 @@
         <div class="btn">
             <button id="pause">播放</button>
             <button id="replay">重播</button>
+        </div>
+        <div>
+            <div class="player-opt" id="v1">
+            </div>
+            <div class="player-opt" id="v2">
+                噪声填充：<input type="checkbox" class="player-opt-item" data-key="noise-filling" checked>
+            </div>
         </div>
         <div id="fileinfo"></div>
         <div id="info"></div>
@@ -1077,7 +1092,7 @@
 
                 const qScale = 1.25 ** (this.qp - 32); // 用于计算子带量化的偏移值
                 this.currentQuantTable = [[], []];
-                this.currentAttenuationTable = [[],[]]
+                this.currentAttenuationTable = [[], []]
                 this.binFreq = new Float32Array(this.hopSize);
                 for (let i = 0; i < this.binFreq.length; i++) {
                     this.binFreq[i] = (i + 0.5) * (this.sampleRate / this.winSize); // 计算当前频率 bin 的频率值
@@ -1093,7 +1108,7 @@
                             this.currentQuantTable[1][i] = this.quantTable[j][1] * qScale * 4; // L-R 通道的量化值
 
                             this.currentAttenuationTable[0][i] = this.attenuationTable[j][1];
-                            this.currentAttenuationTable[1][i] = this.attenuationTable[j][1] *0.5;
+                            this.currentAttenuationTable[1][i] = this.attenuationTable[j][1] * 0.5;
 
                             if (this.settings.voiceOptimization) {
                                 // keep only 0-4k
@@ -1185,7 +1200,7 @@
                             }
                             break;
                         case this.MODES.MBR:
-                            let arr = [...mdctCoeffs].map((e,i) => Math.abs(e))
+                            let arr = [...mdctCoeffs].map((e, i) => Math.abs(e))
                             arr.sort((a, b) => a - b)
                             // const targetBitrate = 131072;
                             // const ratio = 1 - (targetBitrate / (this.sampleRate * 32));
@@ -1350,6 +1365,14 @@
             frameLength() {
                 return this.winSize; // 返回每帧的长度
             }
+
+            getVersion() {
+                return 'v1'
+            }
+
+            setOption(key, value) {
+
+            }
         }
 
         class QFP2Decoder {
@@ -1367,6 +1390,10 @@
                 this.compressRatio = this.buffer.byteLength / this.decompressedData.buffer.byteLength; // 计算压缩比
 
                 this.generatePos(); // 可选：预生成帧位置表
+
+                this.settings = {
+                    noiseFilling: true
+                }
             }
 
             readHeader() {
@@ -1451,7 +1478,7 @@
                     }
 
                     for (let i = 0; i < mdctData.length; i++) {
-                        mdctData[i] += gaussianRandom() * ampLossInterp[i] / this.noiseGain; // 添加噪声到 MDCT 数据
+                        if (this.settings.noiseFilling) mdctData[i] += gaussianRandom() * ampLossInterp[i] / this.noiseGain; // 添加噪声到 MDCT 数据
                         mdctData[i] *= this.winSize; // 增益mdct
                     }
 
@@ -1532,6 +1559,22 @@
 
             currentTime() {
                 return this.read * (this.hopSize / this.sampleRate)
+            }
+
+            getVersion() {
+                return 'v2'
+            }
+
+
+            setOption(key, value) {
+                switch (key) {
+                    case 'noise-filling':
+                        this.settings.noiseFilling = value;
+                        break;
+
+                    default:
+                        break;
+                }
             }
         }
 
@@ -1695,6 +1738,10 @@
                 this.qfp.reset(); // 重置解码器
                 this.start(); // 重新启动播放
             }
+
+            setOption(key, value) {
+                this.qfp.setOption(key, value)
+            }
         }
 
         let paused = true;
@@ -1723,6 +1770,12 @@
                     if (player) player.stop(); // 如果已有播放器实例，先停止
                     player = new QFPPlayer(qfp); // 创建新的播放器实例
                     player.start(); // 开始播放
+
+                    document.querySelectorAll('.player-opt').forEach(e => {
+                        e.style.display = 'none'
+                    })
+
+                    document.getElementById(qfp.getVersion()).style.display = 'block'
 
                     // 如果当前是暂停状态，自动开始播放
                     if (paused) pauseBtn.click();
@@ -1847,6 +1900,11 @@
             promise.catch(e => alert(e)).finally(() => encodeBtn.disabled = false); // 最终启用按钮
         });
 
+        document.querySelectorAll('.player-opt-item').forEach(e => {
+            e.addEventListener('change', () => {
+                player.setOption(e.dataset.key, e.checked)
+            })
+        })
     </script>
 </body>
 
