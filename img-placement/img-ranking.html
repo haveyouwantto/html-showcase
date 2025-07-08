@@ -1,0 +1,555 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>图片拖拽排名</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background-color: #1e272e;
+            /* 深色背景 */
+            color: #f5f6fa;
+            /* 浅色文字 */
+            margin: 0;
+            padding: 20px;
+        }
+
+        h1 {
+            text-align: center;
+            color: #d2dae2;
+            /* 标题颜色 */
+        }
+
+        /* 排名列表容器 */
+        #rankings-container {
+            list-style-type: none;
+            padding: 0;
+            margin-bottom: 30px;
+        }
+
+        /* 单个排名行 */
+        .ranking-row {
+            display: flex;
+            align-items: stretch;
+            background-color: #2c3a47;
+            /* 行背景色 */
+            border: 1px solid #4a5766;
+            /* 边框颜色 */
+            margin-bottom: 10px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+            transition: box-shadow 0.2s ease-in-out;
+            cursor: grab;
+        }
+
+        .ranking-row:active {
+            cursor: grabbing;
+        }
+
+        .ranking-row.dragging {
+            opacity: 0.6;
+            background: #3b4b5a;
+        }
+
+        /* 排名标签 */
+        .ranking-label {
+            padding: 15px 20px;
+            color: white;
+            font-weight: bold;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 100px;
+            border-top-left-radius: 8px;
+            border-bottom-left-radius: 8px;
+            text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.3);
+            font-size: 32px;
+        }
+
+        /* 图片放置区 */
+        .image-drop-zone {
+            flex-grow: 1;
+            min-height: 120px;
+            padding: 10px;
+            display: flex;
+            flex-wrap: wrap;
+            align-content: flex-start;
+            gap: 10px;
+            border-left: 1px solid #4a5766;
+            border-right: 1px solid #4a5766;
+        }
+
+        /* 拖拽悬停效果 */
+        .drag-over {
+            background-color: #3b4b5a;
+            /* 拖拽悬停背景色 */
+            border-style: dashed;
+        }
+
+        /* 拖拽的图片 */
+        .draggable-image {
+            width: 100px;
+            height: 100%;
+            min-height: 120px;
+            object-fit: cover;
+            border-radius: 4px;
+            cursor: grab;
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
+            border: 1px solid #1e272e;
+        }
+
+        .draggable-image:active {
+            cursor: grabbing;
+        }
+
+        .draggable-image.dragging {
+            opacity: 0.4;
+            transform: scale(0.9);
+        }
+
+        /* 按钮容器 */
+        .edit-btn-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 0 20px;
+            gap: 10px;
+            /* 按钮间距 */
+        }
+
+        .action-btn {
+            /* 通用按钮样式 */
+            padding: 8px 15px;
+            color: #f5f6fa;
+            cursor: pointer;
+            border-radius: 5px;
+            border: 1px solid #5a6776;
+            transition: background-color 0.2s, border-color 0.2s;
+        }
+
+        .edit-btn {
+            background-color: #4a5766;
+        }
+
+        .edit-btn:hover {
+            background-color: #5a6776;
+        }
+
+        /* --- 新增：删除按钮样式 --- */
+        .delete-btn {
+            background-color: #d63031;
+            /* 红色背景 */
+            border-color: #d63031;
+        }
+
+        .delete-btn:hover {
+            background-color: #e17055;
+            /* 悬停时更亮的红色 */
+            border-color: #e17055;
+        }
+
+        /* --- 结束新增 --- */
+
+        /* 等待区 */
+        #waiting-area-container {
+            margin-top: 30px;
+            padding: 20px;
+            border: 2px dashed #5a6776;
+            border-radius: 8px;
+            background-color: #2c3a47;
+            /* 等待区背景 */
+        }
+
+        #waiting-area-container h3 {
+            margin-top: 0;
+            color: #d2dae2;
+            text-align: center;
+        }
+
+        #image-upload-label {
+            display: block;
+            text-align: center;
+            padding: 12px;
+            background-color: #0984e3;
+            /* 沿用亮色作为强调 */
+            color: white;
+            border-radius: 5px;
+            cursor: pointer;
+            margin-bottom: 15px;
+            transition: background-color 0.2s;
+        }
+
+        #image-upload-label:hover {
+            background-color: #0097e6;
+        }
+
+        #image-upload {
+            display: none;
+        }
+
+        #waiting-zone {
+            min-height: 130px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            padding: 10px;
+            background-color: #1e272e;
+            /* 内层背景，与body一致 */
+            border-radius: 4px;
+        }
+
+        /* 添加新排名按钮 */
+        #add-rank-btn {
+            display: block;
+            width: 100%;
+            padding: 15px;
+            margin-top: 20px;
+            font-size: 16px;
+            font-weight: bold;
+            color: white;
+            background-color: #27ae60;
+            /* 沿用亮色作为强调 */
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+
+        #add-rank-btn:hover {
+            background-color: #2ecc71;
+        }
+
+        /* 编辑模态框 */
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            overflow: auto;
+            background-color: rgba(0, 0, 0, 0.6);
+        }
+
+        .modal-content {
+            background-color: #4a5766;
+            /* 模态框背景 */
+            color: #f5f6fa;
+            /* 模态框文字 */
+            margin: 15% auto;
+            padding: 20px;
+            border: 1px solid #5a6776;
+            width: 80%;
+            max-width: 400px;
+            border-radius: 8px;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.5);
+        }
+
+        .modal-content h2 {
+            margin-top: 0;
+        }
+
+        .modal-content label {
+            display: block;
+            margin-top: 10px;
+            margin-bottom: 5px;
+        }
+
+        .modal-content input[type="text"] {
+            width: calc(100% - 20px);
+            padding: 8px;
+            border: 1px solid #5a6776;
+            border-radius: 4px;
+            background-color: #2c3a47;
+            /* 输入框背景 */
+            color: #f5f6fa;
+            /* 输入框文字 */
+        }
+
+        .modal-content input[type="color"] {
+            width: calc(100% - 4px);
+            /* 调整宽度以适应边框 */
+            padding: 0;
+            height: 40px;
+            border: 2px solid #5a6776;
+            /* 为颜色选择器添加边框 */
+            border-radius: 4px;
+            cursor: pointer;
+            background-color: transparent;
+        }
+
+        .modal-buttons {
+            margin-top: 20px;
+            text-align: right;
+        }
+
+        .modal-buttons button {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            margin-left: 10px;
+            font-weight: bold;
+        }
+
+        #save-edit-btn {
+            background-color: #0984e3;
+            color: white;
+        }
+
+        #cancel-edit-btn {
+            background-color: #636e72;
+            color: white;
+        }
+    </style>
+</head>
+
+<body>
+
+    <h1>图片拖拽排名</h1>
+
+    <ul id="rankings-container">
+    </ul>
+
+    <button id="add-rank-btn">添加新排名</button>
+
+    <div id="waiting-area-container">
+        <h3>等待区</h3>
+        <label for="image-upload" id="image-upload-label">点击上传图片</label>
+        <input type="file" id="image-upload" multiple accept="image/*">
+        <div id="waiting-zone" class="image-drop-zone">
+        </div>
+    </div>
+
+    <div id="edit-modal" class="modal">
+        <div class="modal-content">
+            <h2>编辑排名</h2>
+            <label for="edit-text">说明文字:</label>
+            <input type="text" id="edit-text">
+            <label for="edit-color">背景颜色:</label>
+            <input type="color" id="edit-color">
+            <div class="modal-buttons">
+                <button id="cancel-edit-btn">取消</button>
+                <button id="save-edit-btn">保存</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const rankingsContainer = document.getElementById('rankings-container');
+            const addRankBtn = document.getElementById('add-rank-btn');
+            const imageUpload = document.getElementById('image-upload');
+            const waitingZone = document.getElementById('waiting-zone');
+
+            const editModal = document.getElementById('edit-modal');
+            const cancelEditBtn = document.getElementById('cancel-edit-btn');
+            const saveEditBtn = document.getElementById('save-edit-btn');
+            const editTextInput = document.getElementById('edit-text');
+            const editColorInput = document.getElementById('edit-color');
+            let currentEditingRow = null;
+
+            let draggedItem = null;
+            let draggedRankRow = null;
+
+            const defaultRanks = [
+                { text: '优', color: '#28a745' },
+                { text: '良', color: '#8bc34a' },
+                { text: '中', color: '#ffc107' },
+                { text: '差', color: '#ff9800' },
+                { text: '劣', color: '#f44336' }
+            ];
+
+            // --- 函数定义 ---
+
+            // 创建一个新的排名行 (*** 已更新 ***)
+            function createRankingRow(text, color) {
+                const rankRow = document.createElement('li');
+                rankRow.className = 'ranking-row';
+                rankRow.setAttribute('draggable', 'true');
+
+                // --- 更新：HTML结构中加入删除按钮 ---
+                rankRow.innerHTML = `
+                <div class="ranking-label" style="background-color: ${color};">${text}</div>
+                <div class="image-drop-zone"></div>
+                <div class="edit-btn-container">
+                    <button class="action-btn edit-btn">编辑</button>
+                    <button class="action-btn delete-btn">删除</button>
+                </div>
+            `;
+
+                rankingsContainer.appendChild(rankRow);
+
+                // 为编辑按钮添加事件监听
+                rankRow.querySelector('.edit-btn').addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    openEditModal(rankRow);
+                });
+
+                // --- 新增：为删除按钮添加事件监听 ---
+                rankRow.querySelector('.delete-btn').addEventListener('click', (e) => {
+                    e.stopPropagation(); // 防止触发行的拖拽事件
+                    // 弹出确认框，防止误删
+                    if (confirm(`您确定要删除 "${rankRow.querySelector('.ranking-label').textContent}" 这个排名吗？`)) {
+                        // 将所有内部图片移回等待区
+                        const images = rankRow.querySelectorAll('.draggable-image');
+                        images.forEach(img => waitingZone.appendChild(img));
+                        // 删除该行
+                        rankRow.remove();
+                    }
+                });
+            }
+
+            function openEditModal(row) {
+                currentEditingRow = row;
+                const label = row.querySelector('.ranking-label');
+                const rgbColor = label.style.backgroundColor;
+
+                editTextInput.value = label.textContent;
+                editColorInput.value = rgbToHex(rgbColor);
+                editModal.style.display = 'block';
+            }
+
+            function closeEditModal() {
+                editModal.style.display = 'none';
+                currentEditingRow = null;
+            }
+
+            function rgbToHex(rgb) {
+                if (!rgb.startsWith('rgb')) return rgb; // 如果已经是hex，直接返回
+                let sep = rgb.indexOf(",") > -1 ? "," : " ";
+                rgb = rgb.substr(4).split(")")[0].split(sep);
+                let r = (+rgb[0]).toString(16),
+                    g = (+rgb[1]).toString(16),
+                    b = (+rgb[2]).toString(16);
+                if (r.length == 1) r = "0" + r;
+                if (g.length == 1) g = "0" + g;
+                if (b.length == 1) b = "0" + b;
+                return "#" + r + g + b;
+            }
+
+            function handleImageUpload(event) {
+                const files = event.target.files;
+                for (const file of files) {
+                    if (file.type.startsWith('image/')) {
+                        // 直接从文件(File对象本身就是一种Blob)创建一个Blob URL
+                        const blobUrl = URL.createObjectURL(file);
+
+                        const img = document.createElement('img');
+                        img.src = blobUrl; // 将src设置为Blob URL
+                        img.className = 'draggable-image';
+                        img.setAttribute('draggable', 'true');
+
+                        // 可选：为了在图片加载失败时也能释放内存，可以这样写
+                        img.onload = img.onerror = () => {
+                            URL.revokeObjectURL(img.src);
+                        };
+
+                        waitingZone.appendChild(img);
+                    }
+                }
+            }
+
+            // --- 事件监听器 ---
+
+            addRankBtn.addEventListener('click', () => {
+                createRankingRow('新排名', '#6c757d');
+            });
+
+            imageUpload.addEventListener('change', handleImageUpload);
+
+            saveEditBtn.addEventListener('click', () => {
+                if (currentEditingRow) {
+                    const label = currentEditingRow.querySelector('.ranking-label');
+                    label.textContent = editTextInput.value;
+                    label.style.backgroundColor = editColorInput.value;
+                    closeEditModal();
+                }
+            });
+
+            cancelEditBtn.addEventListener('click', closeEditModal);
+            window.addEventListener('click', (event) => {
+                if (event.target == editModal) {
+                    closeEditModal();
+                }
+            });
+
+            // --- 拖拽逻辑 ---
+
+            document.addEventListener('dragstart', (e) => {
+                if (e.target.classList.contains('draggable-image')) {
+                    draggedItem = e.target;
+                    setTimeout(() => e.target.classList.add('dragging'), 0);
+                }
+                if (e.target.classList.contains('ranking-row')) {
+                    draggedRankRow = e.target;
+                    setTimeout(() => e.target.classList.add('dragging'), 0);
+                }
+            });
+
+            document.addEventListener('dragend', (e) => {
+                if (draggedItem) {
+                    draggedItem.classList.remove('dragging');
+                    draggedItem = null;
+                }
+                if (draggedRankRow) {
+                    draggedRankRow.classList.remove('dragging');
+                    draggedRankRow = null;
+                }
+            });
+
+            document.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                const targetDropZone = e.target.closest('.image-drop-zone');
+                if (targetDropZone && draggedItem) {
+                    document.querySelectorAll('.drag-over').forEach(zone => zone.classList.remove('drag-over'));
+                    targetDropZone.classList.add('drag-over');
+                }
+
+                if (draggedRankRow) {
+                    const overElement = e.target.closest('.ranking-row');
+                    if (overElement && overElement !== draggedRankRow) {
+                        const rect = overElement.getBoundingClientRect();
+                        const nextSibling = (e.clientY > rect.top + rect.height / 2)
+                            ? overElement.nextSibling
+                            : overElement;
+                        rankingsContainer.insertBefore(draggedRankRow, nextSibling);
+                    }
+                }
+            });
+
+            document.addEventListener('dragleave', (e) => {
+                const targetDropZone = e.target.closest('.image-drop-zone');
+                if (targetDropZone) {
+                    targetDropZone.classList.remove('drag-over');
+                }
+            });
+
+            document.addEventListener('drop', (e) => {
+                e.preventDefault();
+                document.querySelectorAll('.drag-over').forEach(zone => zone.classList.remove('drag-over'));
+                const targetDropZone = e.target.closest('.image-drop-zone');
+                if (targetDropZone) {
+                    if (draggedItem) {
+                        targetDropZone.appendChild(draggedItem);
+                    }
+                }
+            });
+
+            // --- 初始化 ---
+            function initialize() {
+                defaultRanks.forEach(rank => createRankingRow(rank.text, rank.color));
+            }
+
+            initialize();
+        });
+    </script>
+
+</body>
+
+</html>
