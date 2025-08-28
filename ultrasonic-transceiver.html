@@ -376,7 +376,10 @@
                     for (let channel = 0; channel < input.length; channel++) {
                         for (let i = 0; i < input[channel].length; i++) {
                             output[channel][i] = input[channel][i] * this.gain;
-                            if (Math.abs(output[channel][i]) > 1) this.gain *= 0.5;
+                            if (Math.abs(output[channel][i]) > 1) {
+                                this.gain *= 1 / Math.abs(output[channel][i]);
+                                output[channel][i] = input[channel][i] * this.gain;
+                            }
                         }
                     }
 
