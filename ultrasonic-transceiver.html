@@ -542,7 +542,7 @@
             _audioNodes.push(compressor);
 
             const oscGain = ctx.createGain();
-            oscGain.gain.value = 0.1;
+            oscGain.gain.value = 0.25;
             oscGain.connect(analyser);
             oscGain.connect(ctx.destination);
             _audioNodes.push(oscGain);
@@ -650,7 +650,7 @@
 
             const gain = ctx.createGain()
             _audioNodes.push(gain);
-            gain.gain.value = 1;
+            gain.gain.value = 50;
 
             const agc = new AudioWorkletNode(ctx, 'agc');
             _audioNodes.push(agc);
@@ -691,10 +691,10 @@
 
             bandpass.connect(mixer);
             localOscillator.connect(mixer.gain);
-            mixer.connect(lowpass);
+            mixer.connect(agc);
+            agc.connect(lowpass)
             lowpass.connect(gain)
-            gain.connect(agc)
-            agc.connect(compressor)
+            gain.connect(compressor)
             compressor.connect(muteGain)
             muteGain.connect(ctx.destination)
             analyser2 = ctx.createAnalyser()
