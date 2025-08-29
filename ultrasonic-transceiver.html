@@ -544,6 +544,7 @@
             const oscGain = ctx.createGain();
             oscGain.gain.value = 0.1;
             oscGain.connect(analyser);
+            oscGain.connect(ctx.destination);
             _audioNodes.push(oscGain);
 
             function setFrequency(freq, bandwidth) {
