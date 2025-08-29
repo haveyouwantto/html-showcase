@@ -107,6 +107,12 @@
             /* Light text color inside input */
         }
 
+        input[type="checkbox"] {
+            width: 20px;
+            height: 20px;
+            cursor: pointer;
+        }
+
         input[type="number"]:focus {
             outline: none;
             border-color: #33b73a;
@@ -149,6 +155,7 @@
         或
         <button class="btn" id="microphone">麦克风</button>
         <audio controls id="tx-audio"></audio>
+        <label for="tx-carrier">发射载波</label><input type="checkbox" id="tx-carrier">
         <button class="btn exit" id="tx-exit">退出</button>
     </div>
     <div id="rx">
@@ -231,6 +238,7 @@
         const rxBtn = document.getElementById('rx-btn');
         const txExitBtn = document.getElementById('tx-exit');
         const rxExitBtn = document.getElementById('rx-exit');
+        const txCarrierCheckbox = document.getElementById('tx-carrier');
 
         const microphoneBtn = document.getElementById('microphone');
         const audioInput = document.getElementById('audio-input');
@@ -252,6 +260,7 @@
         let dataArray = new Float32Array(analyser.fftSize);
 
         let _osc;
+        let _oscgain;
         let _audioNodes = []; // To store audio nodes for cleanup
         let _animationFrame; // To store animation frame for cleanup
         let eventInited = false;
@@ -490,6 +499,16 @@
             else channelSelection.value = Math.floor(channelSelection.value)
         })
 
+        txCarrierCheckbox.addEventListener('change', e => {
+            if (_osc && _oscgain) {
+                if (txCarrierCheckbox.checked) {
+                    _osc.connect(_oscgain);
+                } else {
+                    _osc.disconnect(_oscgain);
+                }
+            }
+        })
+
         let setupMicrophone;
         let microphone;
 
@@ -521,6 +540,11 @@
 
             const compressor = ctx.createDynamicsCompressor();
             _audioNodes.push(compressor);
+
+            const oscGain = ctx.createGain();
+            oscGain.gain.value = 0.1;
+            oscGain.connect(analyser);
+            _audioNodes.push(oscGain);
 
             function setFrequency(freq, bandwidth) {
                 reverse = freq < reverseFreq;
@@ -555,6 +579,7 @@
 
             compressor.connect(analyser)
             _osc = localOscillator;
+            _oscgain = oscGain;
             resizeCanvas()
             analyser2 = analyser;
             draw()
