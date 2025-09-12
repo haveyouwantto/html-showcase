@@ -338,6 +338,7 @@
         <button id="close-iter-dialog">Close</button>
     </dialog>
     <script src="lib/decimal.9.0.0.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/gmp-wasm"></script>
     <script>
         const canvas = document.getElementById('mandelbrot');
         const reInput = document.getElementById('re')
@@ -959,6 +960,155 @@
 
         function delay(ms) {
             return new Promise(resolve => setTimeout(resolve, ms));
+        }
+
+        async function* getReferenceOrbitMPFR(C, radius, iterations, precisionBits, reportInterval = 10000) {
+            console.log(C)
+
+            let Z = new DeepComplex(0, 0),
+                z = new Complex(0, 0),
+                dzdc = new Complex(1, 0),
+                one = new Complex(1, 0);
+            const orbit = [new Complex(0, 0)];
+
+            const roundingMode = gmp.FloatRoundingMode.ROUND_DOWN;
+            const options = { precisionBits: precisionBits, roundingMode };
+
+            let gmpinit = await gmp.init();
+            let ctx = gmpinit.getContext(options);
+
+            let cre = ctx.Float(C.re.toString());
+            let cim = ctx.Float(C.im.toString());
+            let mpzre = ctx.Float(0);
+            let mpzim = ctx.Float(0);
+
+            console.log("Starting MPFR orbit calculation with", cre.toString(), cim.toString(), precisionBits);
+
+            for (let i = 0; i < iterations; i++) {
+                dzdc = z.add(z).mulMut(dzdc).addMut(one);
+
+                // Z = Z.square().add(C);
+                const re2 = mpzre.mul(mpzre);
+                const im2 = mpzim.mul(mpzim);
+
+                const newRe = re2.sub(im2).add(cre);
+                const newIm = mpzre.mul(mpzim).mul(ctx.Float(2)).add(cim);
+                mpzre = newRe;
+                mpzim = newIm;
+
+                z = new Complex(mpzre.toNumber(), mpzim.toNumber());
+                orbit.push(z);
+
+                if (dzdc.norm() * radius * 2 > z.norm()) {
+                    const predCenter = z.div(dzdc);
+                    console.log(predCenter);
+                    break;
+                };
+                if (z.norm() > 16.0) break;
+                if (i % reportInterval == 0) {
+                    yield i;
+                    await delay(1);
+                };
+            }
+
+            ctx.destroy();
+            return orbit;
+        }
+function MPFR2FloatExp(num) {
+    return getFloatExp(num.toNumber()); // Temporary simple conversion
+    // console.log(num)
+    // if (num.isZero()) return new FloatExp(0, 0);
+
+    // const sign = num.sign();
+    // const absNum = num.abs();
+
+    // // 用 bitLength 估算 10^exponent
+    // const log2 = absNum.precisionBits - 1;
+    // let exponent = Math.floor(log2 / Math.log2(10));
+
+    // // 计算 10^exponent
+    // const pow10 = BigInt("1" + "0".repeat(exponent)); // 或者用 num library 提供的 pow(10, exponent)
+
+    // // 修正 exponent，使 mantissa 落在 [1,10)
+    // let mantissaNum = absNum.div(pow10);
+    // while (mantissaNum >= 10) {
+    //     mantissaNum = mantissaNum / 10;
+    //     exponent++;
+    // }
+    // while (mantissaNum < 1) {
+    //     mantissaNum = mantissaNum * 10;
+    //     exponent--;
+    // }
+
+    // return new FloatExp(Number(mantissaNum) * sign, exponent);
+}
+
+        async function* getReferenceOrbitFEMPFR(C, radius, iterations, precisionBits, reportInterval = 10000) {
+        
+            let Z = new DeepComplex(0, 0),
+                z = new FloatExpComplex(0, 0),
+                dzdc = new FloatExpComplex(1, 0),
+                one = new FloatExpComplex(1, 0);
+            const orbit = [new FloatExpComplex(0, 0)];
+
+            
+            const roundingMode = gmp.FloatRoundingMode.ROUND_DOWN;
+            const options = { precisionBits: precisionBits, roundingMode };
+
+            let gmpinit = await gmp.init();
+            let ctx = gmpinit.getContext(options);
+
+            let cre = ctx.Float(C.re.toString());
+            let cim = ctx.Float(C.im.toString());
+            let mpzre = ctx.Float(0);
+            let mpzim = ctx.Float(0);
+
+            for (let i = 0; i < iterations; i++) {
+                dzdc = z.add(z).mulMut(dzdc).add(one);
+
+                // Z = Z.square().add(C);
+                const re2 = mpzre.mul(mpzre);
+                const im2 = mpzim.mul(mpzim);
+                const newRe = re2.sub(im2).add(cre);
+                const newIm = mpzre.mul(mpzim).mul(ctx.Float(2)).add(cim);
+                mpzre = newRe;
+                mpzim = newIm;
+                z = new FloatExpComplex(MPFR2FloatExp(mpzre), MPFR2FloatExp(mpzim));
+                orbit.push(z);
+                if (dzdc.norm().mul(radius).mul(2).compareTo(z.norm()) > 0) break;
+                if (z.norm().doubleValue() > 16.0) break;
+                if (i % reportInterval == 0) {
+                    yield i;
+                    await delay(1);
+                };
+            }
+            ctx.destroy();
+            return orbit;
+                
+
+            /*
+            let Z = new DeepComplex(0, 0),
+                z = new FloatExpComplex(0, 0),
+                dzdc = new FloatExpComplex(1, 0),
+                one = new FloatExpComplex(1, 0);
+            const orbit = [new FloatExpComplex(0, 0)];
+            for (let i = 0; i < iterations; i++) {
+                dzdc = z.add(z).mulMut(dzdc).add(one);
+
+                Z = Z.mul(Z).add(C);
+
+                z = Z.toFloatExp();
+                orbit.push(z);
+
+                if (dzdc.norm().mul(radius).mul(2).compareTo(z.norm()) > 0) break;
+                if (z.norm().doubleValue() > 16.0) break;
+                if (i % reportInterval == 0) {
+                    yield i;
+                    await delay(1);
+                };
+            }
+            return orbit;
+            */
         }
 
 
@@ -2006,8 +2156,9 @@
                     let reportInterval = Math.max(1, Math.floor(200000 / -this.size.exp));
 
                     const generator = this.deep ?
-                        getReferenceOrbitFE(base, this.size, this.iterations, reportInterval) :
-                        getReferenceOrbit(base, this.size.doubleValue(), this.iterations, reportInterval);
+                        getReferenceOrbitFEMPFR(base, this.size, this.iterations, Math.ceil((-this.size.exp + 10) * 3.32), reportInterval * 10) :
+                        // getReferenceOrbit(base, this.size.doubleValue(), this.iterations, reportInterval);
+                        getReferenceOrbitMPFR(base, this.size.doubleValue(), this.iterations, Math.ceil((-this.size.exp + 10) * 3.32), reportInterval * 10);
                     while (!(nextTerm = await generator.next()).done) {
                         this.stats.ref = nextTerm.value;
                         this.showInfo(); // Update progress
