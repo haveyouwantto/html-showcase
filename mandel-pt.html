@@ -988,11 +988,19 @@
                 dzdc = z.add(z).mulMut(dzdc).addMut(one);
 
                 // Z = Z.square().add(C);
-                const re2 = mpzre.mul(mpzre);
-                const im2 = mpzim.mul(mpzim);
+                const re = mpzre;
+                const im = mpzim;
+
+                // 先算一次平方
+                const re2 = re.mul(re);
+                const im2 = im.mul(im);
+
+                // 先算一次乘积 re*im
+                const reim = re.mul(im);
 
                 const newRe = re2.sub(im2).add(cre);
-                const newIm = mpzre.mul(mpzim).mul(ctx.Float(2)).add(cim);
+                const newIm = reim.add(reim).add(cim); // 等价于 (re*im)*2 + cim
+
                 mpzre = newRe;
                 mpzim = newIm;
 
@@ -1014,44 +1022,44 @@
             ctx.destroy();
             return orbit;
         }
-function MPFR2FloatExp(num) {
-    return getFloatExp(num.toNumber()); // Temporary simple conversion
-    // console.log(num)
-    // if (num.isZero()) return new FloatExp(0, 0);
+        function MPFR2FloatExp(num) {
+            return getFloatExp(num.toNumber()); // Temporary simple conversion
+            // console.log(num)
+            // if (num.isZero()) return new FloatExp(0, 0);
 
-    // const sign = num.sign();
-    // const absNum = num.abs();
+            // const sign = num.sign();
+            // const absNum = num.abs();
 
-    // // 用 bitLength 估算 10^exponent
-    // const log2 = absNum.precisionBits - 1;
-    // let exponent = Math.floor(log2 / Math.log2(10));
+            // // 用 bitLength 估算 10^exponent
+            // const log2 = absNum.precisionBits - 1;
+            // let exponent = Math.floor(log2 / Math.log2(10));
 
-    // // 计算 10^exponent
-    // const pow10 = BigInt("1" + "0".repeat(exponent)); // 或者用 num library 提供的 pow(10, exponent)
+            // // 计算 10^exponent
+            // const pow10 = BigInt("1" + "0".repeat(exponent)); // 或者用 num library 提供的 pow(10, exponent)
 
-    // // 修正 exponent，使 mantissa 落在 [1,10)
-    // let mantissaNum = absNum.div(pow10);
-    // while (mantissaNum >= 10) {
-    //     mantissaNum = mantissaNum / 10;
-    //     exponent++;
-    // }
-    // while (mantissaNum < 1) {
-    //     mantissaNum = mantissaNum * 10;
-    //     exponent--;
-    // }
+            // // 修正 exponent，使 mantissa 落在 [1,10)
+            // let mantissaNum = absNum.div(pow10);
+            // while (mantissaNum >= 10) {
+            //     mantissaNum = mantissaNum / 10;
+            //     exponent++;
+            // }
+            // while (mantissaNum < 1) {
+            //     mantissaNum = mantissaNum * 10;
+            //     exponent--;
+            // }
 
-    // return new FloatExp(Number(mantissaNum) * sign, exponent);
-}
+            // return new FloatExp(Number(mantissaNum) * sign, exponent);
+        }
 
         async function* getReferenceOrbitFEMPFR(C, radius, iterations, precisionBits, reportInterval = 10000) {
-        
+
             let Z = new DeepComplex(0, 0),
                 z = new FloatExpComplex(0, 0),
                 dzdc = new FloatExpComplex(1, 0),
                 one = new FloatExpComplex(1, 0);
             const orbit = [new FloatExpComplex(0, 0)];
 
-            
+
             const roundingMode = gmp.FloatRoundingMode.ROUND_DOWN;
             const options = { precisionBits: precisionBits, roundingMode };
 
@@ -1067,12 +1075,22 @@ function MPFR2FloatExp(num) {
                 dzdc = z.add(z).mulMut(dzdc).add(one);
 
                 // Z = Z.square().add(C);
-                const re2 = mpzre.mul(mpzre);
-                const im2 = mpzim.mul(mpzim);
+                const re = mpzre;
+                const im = mpzim;
+
+                // 先算一次平方
+                const re2 = re.mul(re);
+                const im2 = im.mul(im);
+
+                // 先算一次乘积 re*im
+                const reim = re.mul(im);
+
                 const newRe = re2.sub(im2).add(cre);
-                const newIm = mpzre.mul(mpzim).mul(ctx.Float(2)).add(cim);
+                const newIm = reim.add(reim).add(cim); // 等价于 (re*im)*2 + cim
+
                 mpzre = newRe;
                 mpzim = newIm;
+
                 z = new FloatExpComplex(MPFR2FloatExp(mpzre), MPFR2FloatExp(mpzim));
                 orbit.push(z);
                 if (dzdc.norm().mul(radius).mul(2).compareTo(z.norm()) > 0) break;
@@ -1084,7 +1102,7 @@ function MPFR2FloatExp(num) {
             }
             ctx.destroy();
             return orbit;
-                
+
 
             /*
             let Z = new DeepComplex(0, 0),
