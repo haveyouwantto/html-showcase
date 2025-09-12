@@ -991,18 +991,13 @@
                 const re = mpzre;
                 const im = mpzim;
 
-                // 先算一次平方
-                const re2 = re.mul(re);
-                const im2 = im.mul(im);
+                const re2 = re.mul(re);       // re^2
+                const im2 = im.mul(im);       // im^2
+                const reim = re.mul(im);      // re*im
 
-                // 先算一次乘积 re*im
-                const reim = re.mul(im);
+                mpzre = re2.sub(im2).add(cre);
+                mpzim = reim.add(reim).add(cim); // 2*re*im + cim
 
-                const newRe = re2.sub(im2).add(cre);
-                const newIm = reim.add(reim).add(cim); // 等价于 (re*im)*2 + cim
-
-                mpzre = newRe;
-                mpzim = newIm;
 
                 z = new Complex(mpzre.toNumber(), mpzim.toNumber());
                 orbit.push(z);
@@ -1078,18 +1073,12 @@
                 const re = mpzre;
                 const im = mpzim;
 
-                // 先算一次平方
-                const re2 = re.mul(re);
-                const im2 = im.mul(im);
+                const re2 = re.mul(re);       // re^2
+                const im2 = im.mul(im);       // im^2
+                const reim = re.mul(im);      // re*im
 
-                // 先算一次乘积 re*im
-                const reim = re.mul(im);
-
-                const newRe = re2.sub(im2).add(cre);
-                const newIm = reim.add(reim).add(cim); // 等价于 (re*im)*2 + cim
-
-                mpzre = newRe;
-                mpzim = newIm;
+                mpzre = re2.sub(im2).add(cre);
+                mpzim = reim.add(reim).add(cim); // 2*re*im + cim
 
                 z = new FloatExpComplex(MPFR2FloatExp(mpzre), MPFR2FloatExp(mpzim));
                 orbit.push(z);
