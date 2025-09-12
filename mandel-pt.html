@@ -424,7 +424,7 @@
 
             constructor(base, exp = 0) {
                 if (isNaN(base) || isNaN(exp) || !isFinite(base) || !isFinite(exp)) {
-                    throw new Error("Invalid FloatExp");
+                    throw new Error("Invalid FloatExp: " + JSON.stringify({ base, exp }));
                 }
                 this.base = base;
                 this.exp = exp;
@@ -626,7 +626,8 @@
             // Get the exponent
             let exponent = Math.floor(Math.log10(Math.abs(num)));
             // Calculate the significand
-            let significand = num / FloatExp.getExp(exponent);
+            let scale = FloatExp.getExp(exponent);
+            let significand = scale ? num / scale : 0;
             return new FloatExp(significand, exponent);
         }
 
@@ -1018,7 +1019,11 @@
             return orbit;
         }
         function MPFR2FloatExp(num) {
-            return getFloatExp(num.toNumber()); // Temporary simple conversion
+            let n = num.toNumber();
+            if (n === 0 || !isFinite(n)) return parseFloatExp(num.toString());
+            else if ( isNaN(n)) return new FloatExp(0, 0);
+
+            return getFloatExp(n); // Temporary simple conversion
             // console.log(num)
             // if (num.isZero()) return new FloatExp(0, 0);
 
