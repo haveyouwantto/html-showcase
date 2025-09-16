@@ -506,11 +506,25 @@
             }
 
             function calculateAlpha(bd) {
-                return 0.128//Math.min(0.1, 1.6 / bd);
+                // This was previously a fixed value.
+                // Making it dependent on baud rate ensures the phase correction loop
+                // has a consistent bandwidth relative to the symbol rate, improving stability.
+                // The formula is tuned for a critically damped loop.
+                return clamp(1.6 / bd, 0.001, 0.1);
             }
 
             function calculateBeta(bd) {
-                return 0.0096//Math.min(0.1, 0.12 / bd);
+                // Beta is for frequency correction and should be much smaller than alpha.
+                // This relationship to alpha helps maintain loop stability.
+                const alpha = calculateAlpha(bd);
+                return clamp((alpha * alpha) / 4.0, 0.00001, 0.005);
+            }
+
+            function calculateGamma(bd) {
+                // This is the loop gain for the Gardner timing recovery.
+                // It was previously fixed. Making it adaptive improves timing lock performance.
+                // This value is empirically chosen for a ~1% timing loop bandwidth.
+                return clamp(0.2 / (bd), 0.01, 0.2);
             }
 
             function clamp(v, min, max) {
@@ -738,8 +752,10 @@
                 setBaudRate(baudRate) {
                     this.baudRate = baudRate;
                     this.samplesPerSymbol = Math.round(this.sampleRate / baudRate);
-                    this.alpha = calculateAlpha(baudRate)
-                    this.beta = calculateBeta(baudRate)
+                    // Update all loop gains based on the new baud rate
+                    this.alpha = calculateAlpha(this.baudRate);
+                    this.beta = calculateBeta(this.baudRate);
+                    this.gamma = calculateGamma(this.baudRate); // Add this line
                     this.gainAlpha = clamp((baudRate / 1200) * 0.01, 0.001, 0.1);
                 }
 
@@ -839,8 +855,12 @@
                 setBaudRate(baudRate) {
                     this.baudRate = baudRate;
                     this.samplesPerSymbol = Math.round(this.sampleRate / baudRate);
-                    this.alpha = calculateAlpha(this.baudRate) / 2
-                    this.beta = calculateBeta(this.baudRate) / 2
+
+                    // Update all loop gains based on the new baud rate
+                    this.alpha = calculateAlpha(this.baudRate);
+                    this.beta = calculateBeta(this.baudRate);
+                    this.gamma = calculateGamma(this.baudRate); // Add this line
+
                     this.gainAlpha = clamp((baudRate / 1200) * 0.01, 0.001, 0.1);
                 }
 
@@ -951,8 +971,10 @@
                 setBaudRate(baudRate) {
                     this.baudRate = baudRate;
                     this.samplesPerSymbol = Math.round(this.sampleRate / baudRate);
-                    this.alpha = calculateAlpha(baudRate) / 4
-                    this.beta = calculateBeta(baudRate) / 4
+                    // Update all loop gains based on the new baud rate
+                    this.alpha = calculateAlpha(this.baudRate);
+                    this.beta = calculateBeta(this.baudRate);
+                    this.gamma = calculateGamma(this.baudRate); // Add this line
                     this.gainAlpha = clamp((baudRate / 1200) * 0.01, 0.001, 0.1);
                 }
 
@@ -1925,16 +1947,16 @@
                 console.log(codedArray)
 
                 let startSync = []
-                for (let i = 0; i < this.baudRate * 0.5; i++) {
+                // Use 1 second of alternating bits for robust lock-in
+                for (let i = 0; i < this.baudRate; i++) {
                     startSync.push(...[1, 0])
                 }
-                startSync.push(...randomBits(baudRate * 5));
-
 
                 codedArray = startSync.concat(codedArray)
                 this.bits = codedArray.length
 
                 const mod = new AudioWorkletNode(audioCtx, 'mod')
+
                 mod.port.postMessage({ type: "baudRate", baudRate: this.baudRate })
                 mod.port.postMessage({ type: "data", data: codedArray })
 
@@ -1983,15 +2005,13 @@
                 console.log(codedArray)
 
                 let startSync = []
-                for (let i = 0; i < this.baudRate * 0.5; i++) {
+                // Use 1 second of alternating symbols for robust lock-in
+                for (let i = 0; i < this.baudRate; i++) {
                     startSync.push(...[0, 2])
                 }
-                startSync.push(...qpskEncode(randomBits(baudRate * 10)));
-
 
                 codedArray = startSync.concat(codedArray)
                 this.bits = codedArray.length * this.bitsPerSymbol
-
 
                 const mod = new AudioWorkletNode(audioCtx, 'mod', { outputChannelCount: [2] })
                 mod.port.postMessage({ type: "baudRate", baudRate: this.baudRate })
@@ -2051,17 +2071,17 @@
 
 
         class PSK8Modulator extends Modulator {
-            transmit(audioCtx, bitArray) {
+             transmit(audioCtx, bitArray) {
                 // differential coding
                 let codedArray = psk8Encode(bitArray)
                 console.log(codedArray)
 
                 let startSync = []
-                for (let i = 0; i < this.baudRate * 0.5; i++) {
+                // Use 1 second of alternating symbols for robust lock-in
+                for (let i = 0; i < this.baudRate; i++) {
                     startSync.push(...[0, 4])
                 }
-                startSync.push(...psk8Encode(randomBits(baudRate * 15)));
-
+                
                 codedArray = startSync.concat(codedArray)
                 this.bits = codedArray.length * this.bitsPerSymbol
 
