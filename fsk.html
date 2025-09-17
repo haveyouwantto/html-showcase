@@ -850,6 +850,7 @@
                             this.count -= this.samplesPerSymbol
                             // this.count -= Math.floor(this.mu);
                             // this.mu -= Math.floor(this.mu);
+                            if (this.mu > this.samplesPerSymbol || this.mu < -this.samplesPerSymbol) this.mu = 0;
 
                             // Shift history
                             this.out[2] = this.out[1];
@@ -956,6 +957,7 @@
                             this.count -= this.samplesPerSymbol
                             // this.count -= Math.floor(this.mu);
                             // this.mu -= Math.floor(this.mu);
+                            if (this.mu > this.samplesPerSymbol || this.mu < -this.samplesPerSymbol) this.mu = 0;
 
                             // Shift history
                             this.out[2] = this.out[1];
@@ -1084,6 +1086,7 @@
                             this.count -= this.samplesPerSymbol
                             // this.count -= Math.floor(this.mu);
                             // this.mu -= Math.floor(this.mu);
+                            if (this.mu > this.samplesPerSymbol || this.mu < -this.samplesPerSymbol) this.mu = 0;
 
                             // Shift history
                             this.out[2] = this.out[1];
@@ -2728,7 +2731,7 @@
 
                 switch (this.mode) {
                     case 1: // 零中线
-                        scaleY = height / (2 * this.maxValue);
+                        scaleY = height / (2 * this.maxAbsValue);
                         centerY = height / 2;
                         break;
                     case 2: // 0到最大正值
@@ -2768,10 +2771,13 @@
                 }
 
                 ctx.stroke();
-            }// 计算当前缓冲区的最大值和最小值
+            }
+            
+            // 计算当前缓冲区的最大值和最小值
             calculateMaxValue() {
-                let maxValue = 0;
-                let minValue = 0;
+                let maxValue = -2147483638;
+                let minValue = 2147483637;
+                let maxAbsValue = 0;
                 for (let i = 0; i < this.memorySize; i++) {
                     const value = this.buffer[i];
                     if (value > maxValue) {
@@ -2780,11 +2786,14 @@
                     if (value < minValue) {
                         minValue = value;
                     }
+                    if (Math.abs(value) > maxAbsValue) {
+                        maxAbsValue = Math.abs(value)
+                    }
                 }
                 this.maxValue = maxValue;
                 this.minValue = minValue;
+                this.maxAbsValue = maxAbsValue;
             }
-
 
             // 绘制网格和坐标轴
             drawGrid(width, height) {
@@ -2799,7 +2808,8 @@
                         centerY = height / 2;
                         break;
                     case 2: // 0到最大正值
-                        return; // 没有中线
+                        centerY = height;
+                        break;
                     case 3: // 最小值到最大值
                         centerY = this.maxValue / (this.maxValue - this.minValue) * height;
                         break;
