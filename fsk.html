@@ -141,6 +141,11 @@
             margin: 1rem 0;
         }
 
+        #decodeInfo {
+            width: 100%;
+            max-width: 500px;
+        }
+
         #constellation {
             background: var(--dark-bg);
             border: var(--border-width) solid #2d3746;
@@ -318,6 +323,10 @@
             background: rgba(0, 243, 255, 0.1);
         }
 
+        .oscilloscope {
+            background-color: #0a1428;
+        }
+
 
         @media (max-width: 768px) {
             .container {
@@ -385,7 +394,10 @@
                 <label for="audio-input">音频输入：</label>
                 <select id="audio-input"></select>
             </div>
-            <div id="message-list"></div>
+            <details>
+                <summary>消息列表</summary>
+                <div id="message-list"></div>
+            </details>
         </div>
     </div>
     <hr>
@@ -421,7 +433,17 @@
             <!-- <input type="number" id="baudrateInput" value="50" min="30" max="4800"> -->
         </div>
         <canvas id="constellation" width="500" height="500"></canvas>
-        <div id="demod-info"></div>
+        <details id="decodeInfo">
+            <summary>解码详情</summary>
+            <div>
+                <canvas class="oscilloscope" id="gainCanvas"></canvas>
+                <label id="gainLabel"></label>
+                <canvas class="oscilloscope" id="offsetCanvas"></canvas>
+                <label id="offsetLabel"></label>
+                <canvas class="oscilloscope" id="freqCanvas"></canvas>
+                <label id="freqLabel"></label>
+            </div>
+        </details>
     </div>
     <dialog id="message-modal">
         <div id="message-date"></div>
@@ -1083,6 +1105,8 @@
             symbolTime = samplePerSymbol / sampleRate;
             bandwidth = baudRate * freqMulti
             constellation.maxLen = Math.max(1, bd / 8);
+
+            freqWaves.markers = [- bandwidth, bandwidth]
         }
 
         const audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: sampleRate, latencyHint: "balanced" });
@@ -2071,7 +2095,7 @@
 
 
         class PSK8Modulator extends Modulator {
-             transmit(audioCtx, bitArray) {
+            transmit(audioCtx, bitArray) {
                 // differential coding
                 let codedArray = psk8Encode(bitArray)
                 console.log(codedArray)
@@ -2081,7 +2105,7 @@
                 for (let i = 0; i < this.baudRate; i++) {
                     startSync.push(...[0, 4])
                 }
-                
+
                 codedArray = startSync.concat(codedArray)
                 this.bits = codedArray.length * this.bitsPerSymbol
 
@@ -2336,7 +2360,10 @@
                         bits: [current ^ this.lastBit]
                     })
                     this.lastBit = current;
-                    demodInfo.innerText = `Gain: ${(Math.log10(event.data.gain) * 20).toFixed(1)} dB\nOffset: ${event.data.offset.toFixed(3)} sps\nFreq: ${formatSigned(-event.data.freq / Math.PI * baudRate / 2, 4)} Hz`
+                    gainWaves.addData(Math.log10(event.data.gain) * 20)
+                    offsetWaves.addData(event.data.offset)
+                    freqWaves.addData(-event.data.freq / Math.PI * baudRate / 2)
+                    // demodInfo.innerText = `Gain: ${(Math.log10(event.data.gain) * 20).toFixed(1)} dB\nOffset: ${event.data.offset.toFixed(3)} sps\nFreq: ${formatSigned(-event.data.freq / Math.PI * baudRate / 2, 4)} Hz`
                 }
             }
 
@@ -2565,6 +2592,218 @@
                     date: this.date.toISOString(),
                     data: this.data
                 };
+            }
+        }
+
+        class Oscilloscope {
+            constructor(canvas, labelElement, memorySize = 500) {
+                this.canvas = canvas;
+                this.ctx = canvas.getContext('2d');
+                this.labelElement = labelElement;
+                this.memorySize = memorySize;
+                this.buffer = new Float64Array(memorySize);
+                this.head = 0;
+                this.isRunning = false;
+                this.animationId = null;
+                this.maxValue = 0;
+                this.markers = []; // 默认Y轴标记
+                this.precision = 3; // 显示精度
+                this.hasNegative = true;
+                this.title = "Value"
+                this.unit = ""; // 单位
+                this.lineColor = '#2ecc71'
+
+                // 初始化缓冲区为0
+                this.buffer.fill(0);
+
+                // 设置初始标签
+                this.updateLabel(0);
+
+                // 初始调整画布大小
+                this.redetect();
+
+                // 监听窗口大小变化
+                window.addEventListener('resize', () => this.redetect());
+            }
+
+            // 调整画布大小以适应CSS尺寸和设备像素比
+            redetect() {
+                const dpr = window.devicePixelRatio || 1;
+                const rect = this.canvas.getBoundingClientRect();
+
+                this.canvas.width = rect.width * dpr;
+                this.canvas.height = rect.height * dpr;
+
+                this.ctx.scale(dpr, dpr);
+
+                // 重新绘制
+                this.draw();
+            }
+
+            // 添加数据到缓冲区
+            addData(value) {
+                // 更新缓冲区
+                this.buffer[this.head] = value;
+
+                // 更新当前指针（循环缓冲区）
+                this.head = (this.head + 1) % this.memorySize;
+
+                // 更新标签
+                this.updateLabel(value);
+
+                // 更新最大值用于自动缩放
+                this.updateMaxValue(value);
+
+                // 重绘
+                this.draw();
+            }
+
+            // 更新标签显示
+            updateLabel(value) {
+                this.labelElement.textContent = `${this.title}: ${value.toFixed(this.precision)} ${this.unit}`;
+            }
+
+            // 更新最大值用于自动缩放
+            updateMaxValue(value) {
+                const absValue = Math.abs(value);
+                if (absValue > this.maxValue) {
+                    this.maxValue = absValue;
+                }
+            }
+
+            // 设置Y轴标记
+            setMarkers(markers) {
+                this.markers = markers.slice(); // 复制数组
+                this.draw(); // 重绘以显示标记
+            }
+
+            // 绘制波形
+            draw() {
+                const width = this.canvas.width / window.devicePixelRatio;
+                const height = this.canvas.height / window.devicePixelRatio;
+                const ctx = this.ctx;
+
+                // 清除画布
+                ctx.clearRect(0, 0, width, height);
+
+                // 绘制网格和坐标轴
+                this.drawGrid(width, height);
+
+                // 绘制Y轴标记
+                this.drawMarkers(width, height);
+
+                // 绘制波形
+                ctx.beginPath();
+                ctx.lineWidth = 2;
+                ctx.strokeStyle = this.lineColor;
+
+                // 计算缩放因子
+                const scaleY = this.hasNegative ? height / (2 * this.maxValue) : height / this.maxValue;
+                const centerY = this.hasNegative ? height / 2 : height;
+
+                // 计算每个数据点的水平间距
+                const stepX = width / (this.memorySize - 1);
+
+                // 从当前指针开始绘制（最新数据）
+                let x = 0;
+
+                // 绘制从head到缓冲区末尾的数据
+                for (let i = this.head; i < this.memorySize; i++) {
+                    const y = centerY - this.buffer[i] * scaleY;
+
+                    if (i === this.head) {
+                        ctx.moveTo(x, y);
+                    } else {
+                        ctx.lineTo(x, y);
+                    }
+
+                    x += stepX;
+                }
+
+                // 绘制从缓冲区开头到head的数据
+                for (let i = 0; i < this.head; i++) {
+                    const y = centerY - this.buffer[i] * scaleY;
+                    ctx.lineTo(x, y);
+                    x += stepX;
+                }
+
+                ctx.stroke();
+            }
+
+            // 绘制网格和坐标轴
+            drawGrid(width, height) {
+                const ctx = this.ctx;
+                const centerY = this.hasNegative ? height / 2 : height;
+
+                // 绘制中心线（零线）
+                ctx.strokeStyle = 'rgba(236, 240, 241, 0.5)';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.moveTo(0, centerY);
+                ctx.lineTo(width, centerY);
+                ctx.stroke();
+            }
+
+            // 绘制Y轴标记
+            drawMarkers(width, height) {
+                const ctx = this.ctx;
+                const centerY = height / 2;
+                const scaleY = height / (2 * this.maxValue);
+
+                // 绘制标记线
+                ctx.strokeStyle = 'rgba(255, 215, 0, 0.7)';
+                ctx.lineWidth = 1.5;
+                ctx.setLineDash([5, 3]);
+
+                this.markers.forEach(marker => {
+                    const yPos = centerY - marker * scaleY;
+
+                    // 如果标记在可见范围内
+                    if (yPos >= 0 && yPos <= height) {
+                        ctx.beginPath();
+                        ctx.moveTo(0, yPos);
+                        ctx.lineTo(width, yPos);
+                        ctx.stroke();
+
+                        // 绘制标记文本
+                        ctx.fillStyle = '#ffd700';
+                        ctx.font = '12px Arial';
+                        ctx.textAlign = 'right';
+                        ctx.textBaseline = 'middle';
+                        ctx.fillText(`${marker.toFixed(this.precision)} ${this.unit}`, width - 10, yPos);
+                    }
+                });
+
+                // 重置虚线样式
+                ctx.setLineDash([]);
+            }
+
+            // 重置示波器
+            reset() {
+                this.buffer.fill(0);
+                this.head = 0;
+                this.time = 0;
+                this.maxValue = 1.0;
+                this.updateLabel(0);
+                this.draw();
+            }
+
+            // 设置缓冲区大小
+            setMemorySize(size) {
+                // 创建新缓冲区并复制数据
+                const newBuffer = new Float64Array(size);
+
+                // 复制尽可能多的数据
+                const copySize = Math.min(this.memorySize, size);
+                for (let i = 0; i < copySize; i++) {
+                    // 从当前指针开始复制
+                    const index = (this.head + i) % this.memorySize;
+                    newBuffer[i] = this.buffer[index];
+                }
+
+                this.buffer = newBuffer;
+                this.memorySize = size;
+                this.head = 0; // 重置指针
             }
         }
 
@@ -3422,6 +3661,25 @@
 
             return value;
         }
+
+
+        const gainWaves = new Oscilloscope(
+            document.getElementById('gainCanvas'), document.getElementById('gainLabel'), 500);
+        gainWaves.precision = 1;
+        gainWaves.title = 'Gain'
+        gainWaves.unit = 'dB'
+        gainWaves.hasNegative = false;
+        gainWaves.markers = [120];
+        const offsetWaves = new Oscilloscope(
+            document.getElementById('offsetCanvas'), document.getElementById('offsetLabel'), 500);
+        offsetWaves.precision = 3;
+        offsetWaves.title = 'Offset'
+        offsetWaves.unit = 'sp'
+        const freqWaves = new Oscilloscope(
+            document.getElementById('freqCanvas'), document.getElementById('freqLabel'), 500);
+        freqWaves.precision = 3;
+        freqWaves.title = 'Frequency'
+        freqWaves.unit = 'Hz'
     </script>
 </body>
 
