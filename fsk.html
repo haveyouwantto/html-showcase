@@ -143,7 +143,6 @@
 
         #decodeInfo {
             width: 100%;
-            max-width: 500px;
         }
 
         #constellation {
@@ -325,8 +324,26 @@
 
         .oscilloscope {
             background-color: #0a1428;
+            max-width: 300px;
         }
 
+        .decode-info-container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 32px;
+            align-items: center;
+        }
+
+        .oscilloscope-container {
+            flex-grow: 1;
+        }
+
+        .info-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            flex-grow: 1;
+        }
 
         @media (max-width: 768px) {
             .container {
@@ -389,15 +406,15 @@
                     <button id="cancelImage">取消图片</button>
                 </div>
             </details>
+            <details>
+                <summary>消息列表</summary>
+                <div id="message-list"></div>
+            </details>
             <!-- <button id="rxImageBtn">接收图片</button> -->
             <div id="audio-inputs">
                 <label for="audio-input">音频输入：</label>
                 <select id="audio-input"></select>
             </div>
-            <details>
-                <summary>消息列表</summary>
-                <div id="message-list"></div>
-            </details>
         </div>
     </div>
     <hr>
@@ -432,16 +449,33 @@
             </select>
             <!-- <input type="number" id="baudrateInput" value="50" min="30" max="4800"> -->
         </div>
-        <canvas id="constellation" width="500" height="500"></canvas>
         <details id="decodeInfo">
             <summary>解码详情</summary>
-            <div>
-                <canvas class="oscilloscope" id="gainCanvas"></canvas>
-                <label id="gainLabel"></label>
-                <canvas class="oscilloscope" id="offsetCanvas"></canvas>
-                <label id="offsetLabel"></label>
-                <canvas class="oscilloscope" id="freqCanvas"></canvas>
-                <label id="freqLabel"></label>
+            <div style="
+    display: flex;
+    align-items: center;
+    flex-direction: column;
+">
+                <div class="decode-info-container">
+                    <div class="info-container">
+                        <canvas id="constellation" width="500" height="500"></canvas>
+                        <label>星座图</label>
+                    </div>
+                    <div class="oscilloscope-container">
+                        <div class="info-container">
+                            <canvas class="oscilloscope" id="gainCanvas"></canvas>
+                            <label id="gainLabel"></label>
+                        </div>
+                        <div class="info-container">
+                            <canvas class="oscilloscope" id="offsetCanvas"></canvas>
+                            <label id="offsetLabel"></label>
+                        </div>
+                        <div class="info-container">
+                            <canvas class="oscilloscope" id="freqCanvas"></canvas>
+                            <label id="freqLabel"></label>
+                        </div>
+                    </div>
+                </div>
             </div>
         </details>
     </div>
