@@ -836,8 +836,8 @@
 
                     for (let j = 0; j < i.length; ++j) {
                         if (this.count + this.mu >= 0) {
-                            let currI = getSample(i, j + this.mu) * this.gain;
-                            let currQ = getSample(q, j + this.mu) * this.gain
+                            let currI = i[j] * this.gain;
+                            let currQ = q[j] * this.gain;
 
                             this.out[0] = new Complex(currI, currQ);
                             this.outRail[0] = new Complex(Number(this.out[0].real > 0), Number(this.out[0].imag > 0));
@@ -943,8 +943,8 @@
 
                     for (let j = 0; j < i.length; ++j) {
                         if (this.count >= 0) {
-                            let currI = getSample(i, j + this.mu) * this.gain;
-                            let currQ = getSample(q, j + this.mu) * this.gain
+                            let currI = i[j] * this.gain;
+                            let currQ = q[j] * this.gain;
 
                             this.out[0] = new Complex(currI, currQ);
                             this.outRail[0] = new Complex(Number(this.out[0].real > 0), Number(this.out[0].imag > 0));
@@ -1072,8 +1072,8 @@
 
                     for (let j = 0; j < i.length; ++j) {
                         if (this.count >= 0) {
-                            let currI = getSample(i, j + this.mu) * this.gain;
-                            let currQ = getSample(q, j + this.mu) * this.gain
+                            let currI = i[j] * this.gain;
+                            let currQ = q[j] * this.gain;
 
                             this.out[0] = new Complex(currI, currQ);
                             this.outRail[0] = this.nearest8psk(this.out[0]);
