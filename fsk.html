@@ -2653,9 +2653,6 @@
 
                 // 更新最大值用于自动缩放
                 this.updateMaxValue(value);
-
-                // 重绘
-                this.draw();
             }
 
             // 更新标签显示
@@ -3209,6 +3206,10 @@
                     ctx.arc(x, y, 4, 0, Math.PI * 2); // 使用准确的角度值
                     ctx.fill();
                 }
+
+                gainWaves.draw()
+                offsetWaves.draw()
+                freqWaves.draw()
 
                 drawHandle = requestAnimationFrame(draw);
             }
