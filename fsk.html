@@ -2772,7 +2772,7 @@
 
                 ctx.stroke();
             }
-            
+
             // 计算当前缓冲区的最大值和最小值
             calculateMaxValue() {
                 let maxValue = -2147483638;
@@ -2824,8 +2824,22 @@
             // 绘制Y轴标记
             drawMarkers(width, height) {
                 const ctx = this.ctx;
-                const centerY = height / 2;
-                const scaleY = height / (2 * this.maxValue);
+                let centerY, scaleY;
+
+                switch (this.mode) {
+                    case 1: // 零中线
+                        centerY = height / 2;
+                        scaleY = height / (2 * this.maxValue);
+                        break;
+                    case 2: // 0到最大正值
+                        centerY = height;
+                        scaleY = height / this.maxValue;
+                        break;
+                    case 3: // 最小值到最大值
+                        centerY = this.maxValue / (this.maxValue - this.minValue) * height;
+                        scaleY = height / (this.maxValue - this.minValue);
+                        break;
+                }
 
                 // 绘制标记线
                 ctx.strokeStyle = 'rgba(255, 215, 0, 0.7)';
@@ -3750,7 +3764,7 @@
         gainWaves.title = 'Gain'
         gainWaves.unit = 'dB'
         gainWaves.hasNegative = false;
-        gainWaves.markers = [120];
+        gainWaves.markers = [30, 60, 90, 120];
         const offsetWaves = new Oscilloscope(
             document.getElementById('offsetCanvas'), document.getElementById('offsetLabel'), 500, 3);
         offsetWaves.precision = 3;
