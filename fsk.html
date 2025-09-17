@@ -577,10 +577,7 @@
             }
 
             function calculateGamma(bd) {
-                // This is the loop gain for the Gardner timing recovery.
-                // It was previously fixed. Making it adaptive improves timing lock performance.
-                // This value is empirically chosen for a ~1% timing loop bandwidth.
-                return clamp(0.2 / (bd), 0.01, 0.2);
+                return clamp(0.01 / bd, 0.01, 0.2);
             }
 
             function clamp(v, min, max) {
@@ -838,7 +835,7 @@
                         this.gain = clamp(this.gain * (1 - this.gainAlpha) + newGain * this.gainAlpha, 1, 1e6);
 
                     for (let j = 0; j < i.length; ++j) {
-                        if (this.count >= 0) {
+                        if (this.count + this.mu >= 0) {
                             let currI = getSample(i, j + this.mu) * this.gain;
                             let currQ = getSample(q, j + this.mu) * this.gain
 
@@ -849,9 +846,10 @@
                             let y = this.out[0].sub(this.out[2]).mul(this.outRail[1].conj()).real;
                             let mmVal = y - x;
 
-                            this.mu += this.samplesPerSymbol + this.gamma * mmVal;
-                            this.count -= Math.floor(this.mu);
-                            this.mu -= Math.floor(this.mu);
+                            this.mu += this.gamma * mmVal;
+                            this.count -= this.samplesPerSymbol
+                            // this.count -= Math.floor(this.mu);
+                            // this.mu -= Math.floor(this.mu);
 
                             // Shift history
                             this.out[2] = this.out[1];
@@ -954,9 +952,10 @@
                             let y = this.out[0].sub(this.out[2]).mul(this.outRail[1].conj()).real;
                             let mmVal = y - x;
 
-                            this.mu += this.samplesPerSymbol + this.gamma * mmVal;
-                            this.count -= Math.floor(this.mu);
-                            this.mu -= Math.floor(this.mu);
+                            this.mu += this.gamma * mmVal;
+                            this.count -= this.samplesPerSymbol
+                            // this.count -= Math.floor(this.mu);
+                            // this.mu -= Math.floor(this.mu);
 
                             // Shift history
                             this.out[2] = this.out[1];
@@ -1081,9 +1080,10 @@
                             let y = this.out[0].sub(this.out[2]).mul(this.outRail[1].conj()).real;
                             let mmVal = y - x;
 
-                            this.mu += this.samplesPerSymbol + this.gamma * mmVal;
-                            this.count -= Math.floor(this.mu);
-                            this.mu -= Math.floor(this.mu);
+                            this.mu += this.gamma * mmVal;
+                            this.count -= this.samplesPerSymbol
+                            // this.count -= Math.floor(this.mu);
+                            // this.mu -= Math.floor(this.mu);
 
                             // Shift history
                             this.out[2] = this.out[1];
@@ -1139,7 +1139,7 @@
             symbolTime = samplePerSymbol / sampleRate;
             bandwidth = baudRate * freqMulti
             constellation.maxLen = Math.max(1, bd / 8);
-
+            offsetWaves.markers = [-samplePerSymbol, samplePerSymbol]
             freqWaves.markers = [- bandwidth, bandwidth]
         }
 
@@ -2205,7 +2205,6 @@
         }
 
         // Demodulators
-        const demodInfo = document.getElementById("demod-info");
 
         class Demodulator {
             constructor() {
@@ -2397,7 +2396,6 @@
                     gainWaves.addData(Math.log10(event.data.gain) * 20)
                     offsetWaves.addData(event.data.offset)
                     freqWaves.addData(-event.data.freq / Math.PI * baudRate / 2)
-                    // demodInfo.innerText = `Gain: ${(Math.log10(event.data.gain) * 20).toFixed(1)} dB\nOffset: ${event.data.offset.toFixed(3)} sps\nFreq: ${formatSigned(-event.data.freq / Math.PI * baudRate / 2, 4)} Hz`
                 }
             }
 
@@ -2468,8 +2466,10 @@
                         bits: [bit1, bit2]
                     })
                     this.lastPhase = phase;
-                    demodInfo.innerText = `Gain: ${(Math.log10(event.data.gain) * 20).toFixed(0)} dB | Freq: ${formatSigned(-event.data.freq / Math.PI * baudRate / 2, 4)} Hz`
 
+                    gainWaves.addData(Math.log10(event.data.gain) * 20)
+                    offsetWaves.addData(event.data.offset)
+                    freqWaves.addData(-event.data.freq / Math.PI * baudRate / 2)
                 }
             }
 
@@ -2543,8 +2543,10 @@
                         bits: [bit1, bit2, bit3]
                     })
                     this.lastPhase = phase;
-                    demodInfo.innerText = `Gain: ${(Math.log10(event.data.gain) * 20).toFixed(0)} dB | Freq: ${formatSigned(-event.data.freq / Math.PI * baudRate / 2, 4)} Hz`
 
+                    gainWaves.addData(Math.log10(event.data.gain) * 20)
+                    offsetWaves.addData(event.data.offset)
+                    freqWaves.addData(-event.data.freq / Math.PI * baudRate / 2)
                 }
             }
 
@@ -2630,7 +2632,7 @@
         }
 
         class Oscilloscope {
-            constructor(canvas, labelElement, memorySize = 500) {
+            constructor(canvas, labelElement, memorySize = 500, mode = 1) {
                 this.canvas = canvas;
                 this.ctx = canvas.getContext('2d');
                 this.labelElement = labelElement;
@@ -2640,9 +2642,10 @@
                 this.isRunning = false;
                 this.animationId = null;
                 this.maxValue = 0;
+                this.minValue = 0; // 添加最小值
                 this.markers = []; // 默认Y轴标记
                 this.precision = 3; // 显示精度
-                this.hasNegative = true;
+                this.mode = mode; // 1: 零中线, 2: 0到最大正值, 3: 最小值到最大值
                 this.title = "Value"
                 this.unit = ""; // 单位
                 this.lineColor = '#2ecc71'
@@ -2685,21 +2688,11 @@
                 // 更新标签
                 this.updateLabel(value);
 
-                // 更新最大值用于自动缩放
-                this.updateMaxValue(value);
             }
 
             // 更新标签显示
             updateLabel(value) {
                 this.labelElement.textContent = `${this.title}: ${value.toFixed(this.precision)} ${this.unit}`;
-            }
-
-            // 更新最大值用于自动缩放
-            updateMaxValue(value) {
-                const absValue = Math.abs(value);
-                if (absValue > this.maxValue) {
-                    this.maxValue = absValue;
-                }
             }
 
             // 设置Y轴标记
@@ -2713,6 +2706,9 @@
                 const width = this.canvas.width / window.devicePixelRatio;
                 const height = this.canvas.height / window.devicePixelRatio;
                 const ctx = this.ctx;
+
+                // 计算当前缓冲区的最大值和最小值
+                this.calculateMaxValue();
 
                 // 清除画布
                 ctx.clearRect(0, 0, width, height);
@@ -2728,9 +2724,22 @@
                 ctx.lineWidth = 2;
                 ctx.strokeStyle = this.lineColor;
 
-                // 计算缩放因子
-                const scaleY = this.hasNegative ? height / (2 * this.maxValue) : height / this.maxValue;
-                const centerY = this.hasNegative ? height / 2 : height;
+                let scaleY, centerY;
+
+                switch (this.mode) {
+                    case 1: // 零中线
+                        scaleY = height / (2 * this.maxValue);
+                        centerY = height / 2;
+                        break;
+                    case 2: // 0到最大正值
+                        scaleY = height / this.maxValue;
+                        centerY = height;
+                        break;
+                    case 3: // 最小值到最大值
+                        scaleY = height / (this.maxValue - this.minValue);
+                        centerY = this.maxValue / (this.maxValue - this.minValue) * height;
+                        break;
+                }
 
                 // 计算每个数据点的水平间距
                 const stepX = width / (this.memorySize - 1);
@@ -2759,21 +2768,48 @@
                 }
 
                 ctx.stroke();
+            }// 计算当前缓冲区的最大值和最小值
+            calculateMaxValue() {
+                let maxValue = 0;
+                let minValue = 0;
+                for (let i = 0; i < this.memorySize; i++) {
+                    const value = this.buffer[i];
+                    if (value > maxValue) {
+                        maxValue = value;
+                    }
+                    if (value < minValue) {
+                        minValue = value;
+                    }
+                }
+                this.maxValue = maxValue;
+                this.minValue = minValue;
             }
+
 
             // 绘制网格和坐标轴
             drawGrid(width, height) {
                 const ctx = this.ctx;
-                const centerY = this.hasNegative ? height / 2 : height;
-
-                // 绘制中心线（零线）
+                let centerY;
                 ctx.strokeStyle = 'rgba(236, 240, 241, 0.5)';
                 ctx.lineWidth = 2;
                 ctx.beginPath();
+
+                switch (this.mode) {
+                    case 1: // 零中线
+                        centerY = height / 2;
+                        break;
+                    case 2: // 0到最大正值
+                        return; // 没有中线
+                    case 3: // 最小值到最大值
+                        centerY = this.maxValue / (this.maxValue - this.minValue) * height;
+                        break;
+                }
+
                 ctx.moveTo(0, centerY);
                 ctx.lineTo(width, centerY);
                 ctx.stroke();
             }
+
 
             // 绘制Y轴标记
             drawMarkers(width, height) {
@@ -3699,14 +3735,14 @@
 
 
         const gainWaves = new Oscilloscope(
-            document.getElementById('gainCanvas'), document.getElementById('gainLabel'), 500);
+            document.getElementById('gainCanvas'), document.getElementById('gainLabel'), 500, 2);
         gainWaves.precision = 1;
         gainWaves.title = 'Gain'
         gainWaves.unit = 'dB'
         gainWaves.hasNegative = false;
         gainWaves.markers = [120];
         const offsetWaves = new Oscilloscope(
-            document.getElementById('offsetCanvas'), document.getElementById('offsetLabel'), 500);
+            document.getElementById('offsetCanvas'), document.getElementById('offsetLabel'), 500, 3);
         offsetWaves.precision = 3;
         offsetWaves.title = 'Offset'
         offsetWaves.unit = 'sp'
