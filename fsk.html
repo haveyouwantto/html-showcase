@@ -485,9 +485,9 @@
         <button id="copy-message">复制</button>
         <button id="close-message">关闭</button>
     </dialog>
-    <!-- <script src="//cdn.jsdelivr.net/npm/eruda"></script>
+    <script src="//cdn.jsdelivr.net/npm/eruda"></script>
         <script>eruda.init();</script>
-        -->
+        
     <script>
 
         let baudRate = 32; // 波特率
@@ -566,7 +566,7 @@
                 // Making it dependent on baud rate ensures the phase correction loop
                 // has a consistent bandwidth relative to the symbol rate, improving stability.
                 // The formula is tuned for a critically damped loop.
-                return clamp(1.6 / bd, 0.001, 0.1);
+                return clamp(12.8 / bd, 0.001, 0.1);
             }
 
             function calculateBeta(bd) {
@@ -577,7 +577,7 @@
             }
 
             function calculateGamma(bd) {
-                return clamp(0.01 / bd, 0.01, 0.2);
+                return clamp(1 / bd, 0.05, 0.5);
             }
 
             function clamp(v, min, max) {
@@ -793,7 +793,7 @@
                     this.phase = 0;
                     this.freq = 0;
 
-                    this.gain = 1;
+                    this.gain = 1; 
 
                     this.port.onmessage = (event) => {
                         if (event.data.type === "baudRate") {
@@ -809,7 +809,7 @@
                     this.alpha = calculateAlpha(this.baudRate);
                     this.beta = calculateBeta(this.baudRate);
                     this.gamma = calculateGamma(this.baudRate); // Add this line
-                    this.gainAlpha = clamp((baudRate / 1200) * 0.01, 0.001, 0.1);
+                    this.gainAlpha = clamp((baudRate / 100) * 0.01, 0.001, 0.1);
                 }
 
                 process(inputs, outputs, parameters) {
@@ -824,16 +824,15 @@
                         sum += i[j] * i[j] + q[j] * q[j]
                     }
                     sum /= i.length;
-                    const rms = Math.sqrt(sum)
-
+                    const rms = Math.sqrt(sum);
+                    
                     let newGain = 1 / rms;
 
                     // if diff > 10dB, set immediate gain
-                    if (this.baudRate <= 64 || Math.abs(this.gain - newGain) > 100) {
-                        this.gain = clamp(newGain, 1, 1e6);
-                    } else
-                        this.gain = clamp(this.gain * (1 - this.gainAlpha) + newGain * this.gainAlpha, 1, 1e6);
-
+                    //if (this.baudRate <= 64 || Math.abs(this.gain - newGain) > 100) {
+                    //    this.gain = clamp(newGain, 1, 1e6);
+                    //} else
+                    this.gain = clamp(this.gain * (1 - this.gainAlpha) + newGain * this.gainAlpha, 1, 1e6);
                     for (let j = 0; j < i.length; ++j) {
                         if (this.count + this.mu >= 0) {
                             let currI = i[j] * this.gain;
@@ -846,11 +845,9 @@
                             let y = this.out[0].sub(this.out[2]).mul(this.outRail[1].conj()).real;
                             let mmVal = y - x;
 
-                            this.mu += this.gamma * mmVal;
-                            this.count -= this.samplesPerSymbol
-                            // this.count -= Math.floor(this.mu);
-                            // this.mu -= Math.floor(this.mu);
-                            if (this.mu > this.samplesPerSymbol || this.mu < -this.samplesPerSymbol) this.mu = 0;
+                            this.mu +=this.samplesPerSymbol+ this.gamma * mmVal;
+                            this.count -= Math.floor(this.mu);
+                            this.mu -= Math.floor(this.mu);
 
                             // Shift history
                             this.out[2] = this.out[1];
@@ -916,7 +913,7 @@
                     this.beta = calculateBeta(this.baudRate);
                     this.gamma = calculateGamma(this.baudRate); // Add this line
 
-                    this.gainAlpha = clamp((baudRate / 1200) * 0.01, 0.001, 0.1);
+                    this.gainAlpha = clamp((baudRate / 100) * 0.01, 0.001, 0.1);
                 }
 
                 process(inputs, outputs, parameters) {
@@ -936,10 +933,10 @@
 
                     let newGain = 1 / rms;
                     // if diff > 10dB, set immediate gain
-                    if (this.baudRate <= 64 || Math.abs(this.gain - newGain) > 100) {
-                        this.gain = clamp(newGain, 1, 1e6);
-                    } else
-                        this.gain = clamp(this.gain * (1 - this.gainAlpha) + newGain * this.gainAlpha, 1, 1e6);
+                    //if (this.baudRate <= 64 || Math.abs(this.gain - newGain) > 100) {
+                    //    this.gain = clamp(newGain, 1, 1e6);
+                    //} else
+                    this.gain = clamp(this.gain * (1 - this.gainAlpha) + newGain * this.gainAlpha, 1, 1e6);
 
                     for (let j = 0; j < i.length; ++j) {
                         if (this.count >= 0) {
@@ -953,12 +950,10 @@
                             let y = this.out[0].sub(this.out[2]).mul(this.outRail[1].conj()).real;
                             let mmVal = y - x;
 
-                            this.mu += this.gamma * mmVal;
-                            this.count -= this.samplesPerSymbol
-                            // this.count -= Math.floor(this.mu);
-                            // this.mu -= Math.floor(this.mu);
-                            if (this.mu > this.samplesPerSymbol || this.mu < -this.samplesPerSymbol) this.mu = 0;
-
+                            this.mu +=this.samplesPerSymbol+ this.gamma * mmVal;
+                            this.count -= Math.floor(this.mu);
+                            this.mu -= Math.floor(this.mu);
+                            
                             // Shift history
                             this.out[2] = this.out[1];
                             this.out[1] = this.out[0];
