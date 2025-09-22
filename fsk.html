@@ -1366,6 +1366,45 @@
             // 否则，value 在 min 和 max 之间，直接返回 value
             return value;
         }
+        
+        function arrayBufferToBitArray(buffer) {
+  const uint8Array = new Uint8Array(buffer); // 先把 ArrayBuffer 变成 Uint8Array，这样才能方便地读取每个字节
+  const bitArray = []; // 用来存放比特的数组
+
+  for (let i = 0; i < uint8Array.length; i++) { // 遍历每一个字节
+    const byte = uint8Array[i]; // 取出当前的字节
+    for (let j = 7; j >= 0; j--) { // 从最高位到最低位，依次取出每一个比特
+      const bit = (byte >> j) & 1; // 右移 j 位，然后和 1 进行与运算，就可以得到第 j 位的比特
+      bitArray.push(bit); // 把这个比特放到数组里
+    }
+  }
+
+  return bitArray; // 返回装满了比特的数组
+}
+
+function concatArrayBuffers(...arrayBuffers) {
+  // 计算所有 ArrayBuffer 的总长度
+  let totalLength = 0;
+  for (let i = 0; i < arrayBuffers.length; i++) {
+    totalLength += arrayBuffers[i].byteLength;
+  }
+
+  // 创建一个新的 ArrayBuffer，长度是所有 ArrayBuffer 的总和
+  const result = new ArrayBuffer(totalLength);
+
+  // 创建一个 Uint8Array 来操作新的 ArrayBuffer
+  const uint8Array = new Uint8Array(result);
+
+  // 依次把每个 ArrayBuffer 的内容复制到新的 ArrayBuffer 中
+  let offset = 0;
+  for (let i = 0; i < arrayBuffers.length; i++) {
+    const currentBuffer = new Uint8Array(arrayBuffers[i]);
+    uint8Array.set(currentBuffer, offset);
+    offset += currentBuffer.byteLength;
+  }
+
+  return result;
+}
 
         class FibonacciDecoder {
             constructor(callback) {
@@ -1401,7 +1440,58 @@
                 this.callback(total);
             }
         }
+        
+        class RawByteDecoder{
+            constructor (callback){
+                this.callback= callback;
+                this.buffer = []
+                this.syncBuffer=[];
+                this.syncCode= [
+  0, 0, 0, 1, 1, 0, 1, 0, // 0x1a
+  1, 1, 0, 0, 1, 1, 1, 1, // 0xcf
+  1, 1, 1, 1, 1, 1, 0, 0, // 0xfc
+  0, 0, 0, 1, 1, 1, 0, 1  // 0x1d
+];
+                this.sync=true;
+            }
 
+            feed(bit){
+                this.buffer.push(bit);
+                console.log(this.buffer+"", this.syncBuffer, this.sync)
+                if (this.sync) {
+                    this.syncBuffer.push(bit);
+                    this._correlate();
+                    }
+                if (this.buffer.length>=8){
+                    // 这里Iris来帮你把8个比特变成一个字节哦！
+                    let byte = 0;
+                    for (let i = 0; i < 8; i++) {
+                        byte = (byte << 1) | this.buffer[i];
+                    }
+                    this.callback(byte);
+                    this.buffer =[];
+                }
+            }
+
+            _correlate(){
+               if (this.syncBuffer.length > 32){ // 当同步缓冲区里的比特超过32个时
+                   this.syncBuffer.shift(); // 移除最老的那个比特
+                   // 现在我们来检查是不是找到了同步码！
+                   let isCorrelated = true;
+                   for (let i = 0; i < this.syncCode.length; i++) { // 遍历32个比特
+                       if (this.syncBuffer[i] !== this.syncCode[i]) {
+                           isCorrelated = false; // 有一个不一样就不是同步码啦
+                           break;
+                       }
+                   }
+                   if (isCorrelated) { // 如果找到了同步码
+                       this.buffer = []; // 清空数据缓冲区，因为同步码不是数据哦
+                       this.sync = false; // 设置为不同步模式，就不再找同步码了
+                   }
+               }
+            }
+        }
+        
         // ========== 1. 1D DCT 与 IDCT ==========
         function dct1d(vector) {
             const N = vector.length;
@@ -3138,6 +3228,7 @@
         }
 
         let rxBuffer = [];
+        let rxRawMode=true;
 
         function receivedChar(c) {
             if (baudRate < 200) {
@@ -3228,6 +3319,13 @@
                     }
                 }
             })
+            
+            const rawDecoder=new RawByteDecoder(byte=>{
+                  receivedChar(byte>=32&&byte<=126?
+                            String.fromCharCode(byte):
+                            `\\x${byte.toString(16).padStart(2, '0')}`
+                            );
+            });
 
 
             const source = audioCtx.createMediaStreamSource(stream)
@@ -3238,7 +3336,7 @@
                 // console.log(data)
                 constellation.addSample(data.sample[0], data.sample[1]);
                 for (let bit of data.bits)
-                    decoder.feed(bit)
+                    rxRawMode? rawDecoder.feed(bit):decoder.feed(bit)
             })
             demodulator.receive(source)
 
@@ -3312,6 +3410,8 @@
             rxBtn.textContent = '开始';
             constellation.clear();
         }
+        
+        let txRawMode=true;
 
         audioCtx.audioWorklet.addModule(workletData).then(() => {
             let oscillator;
@@ -3330,8 +3430,11 @@
                 console.log("发送数据:", preparedArray);
 
                 const bits = fibonacciEncoding(preparedArray);
-                const baudRateFinal = baudRate;
 
+                transmitBitArray (bits,baudRate);
+            }
+            
+            function transmitBitArray(bits, baudRate){
                 modulator = new selectedMode.modulate();
                 modulator.setBaudRate(baudRate);
                 modulator.setCarrierFreq(carrierFreq);
@@ -3349,8 +3452,8 @@
 
                 const currentTime = audioCtx.currentTime;
                 const interval = setInterval(() => {
-                    const sent = (audioCtx.currentTime - currentTime) * baudRateFinal * modulator.bitsPerSymbol;
-                    const remainingSeconds = (modulator.totalBits - sent) / (baudRateFinal * modulator.bitsPerSymbol);
+                    const sent = (audioCtx.currentTime - currentTime) * baudRate * modulator.bitsPerSymbol;
+                    const remainingSeconds = (modulator.totalBits - sent) / (baudRate * modulator.bitsPerSymbol);
                     bitDisplay.textContent = `发送进度: ${toSI(sent / 8, true)}B / ${toSI(modulator.totalBits / 8, true)}B (剩余 ${secondsToHms(remainingSeconds)})`;
                     progressDiv.style.width = `${Math.min(100, (sent / modulator.totalBits) * 100)}%`;
                 }, 100);
@@ -3365,7 +3468,22 @@
             txBtn.addEventListener('click', () => {
                 if (!txStart) {
                     const string = document.getElementById('transmit').value;
-                    transmitOrdArray(stringToOrdArray(string));
+                    if(txRawMode) {
+                        const buffer = new ArrayBuffer(8);
+                        const u8 = new Uint8Array(buffer);
+                        u8[0]=0x55;
+                        u8[1]=0xaa;
+                        u8[2]=0x55;
+                        u8[3]=0xaa;
+                        u8[4]=0x1a;
+                        u8[5]=0xcf;
+                        u8[6]=0xfc;
+                        u8[7]=0x1d;
+                        
+                        const txContent= concatArrayBuffers(buffer, new TextEncoder().encode(string));
+                        transmitBitArray (arrayBufferToBitArray(txContent), baudRate)
+                    }
+                    else transmitOrdArray(stringToOrdArray(string));
                 } else {
                     modulator.stop();
                 }
