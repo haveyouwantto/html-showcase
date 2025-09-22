@@ -577,7 +577,7 @@
             }
 
             function calculateGamma(bd) {
-                return clamp(1 / bd, 0.05, 0.5);
+                return clamp(50 / bd, 0.1, 5); 
             }
 
             function clamp(v, min, max) {
@@ -829,9 +829,9 @@
                     let newGain = 1 / rms;
 
                     // if diff > 10dB, set immediate gain
-                    //if (this.baudRate <= 64 || Math.abs(this.gain - newGain) > 100) {
-                    //    this.gain = clamp(newGain, 1, 1e6);
-                    //} else
+                    /*if (Math.abs(this.gain - newGain) > 1000) {
+                        this.gain = clamp(newGain, 1, 1e6);
+                    } else*/
                     this.gain = clamp(this.gain * (1 - this.gainAlpha) + newGain * this.gainAlpha, 1, 1e6);
                     for (let j = 0; j < i.length; ++j) {
                         if (this.count + this.mu >= 0) {
@@ -846,8 +846,9 @@
                             let mmVal = y - x;
 
                             this.mu +=this.samplesPerSymbol+ this.gamma * mmVal;
-                            this.count -= Math.floor(this.mu);
-                            this.mu -= Math.floor(this.mu);
+                            let offset = Math.floor(this.mu);
+                            this.count -= offset;
+                            this.mu -= offset;
 
                             // Shift history
                             this.out[2] = this.out[1];
@@ -861,7 +862,7 @@
                             let error = out.real * out.imag;
                             this.freq += this.beta * error;
 
-                            // Clamp freq
+                            // Clamp freq 
                             let radianPerHz = Math.PI * 2 / this.baudRate;
                             let maxRadian = 4 * radianPerHz;
                             this.freq = clamp(this.freq, -maxRadian, maxRadian);
@@ -869,7 +870,7 @@
                             this.phase += this.freq + this.alpha * error;
                             if (this.phase > 2 * Math.PI) this.phase -= 2 * Math.PI;
                             if (this.phase < 0) this.phase += 2 * Math.PI;
-                            this.port.postMessage({ i: out.real, q: out.imag, gain: this.gain, freq: this.freq, offset: this.mu });
+                            this.port.postMessage({ i: out.real, q: out.imag, gain: this.gain, freq: this.freq, offset: offset - this.samplesPerSymbol });
                         }
 
                         this.count++;
@@ -951,8 +952,9 @@
                             let mmVal = y - x;
 
                             this.mu +=this.samplesPerSymbol+ this.gamma * mmVal;
-                            this.count -= Math.floor(this.mu);
-                            this.mu -= Math.floor(this.mu);
+                            let offset = Math.floor(this.mu);
+                            this.count -= offset;
+                            this.mu -= offset;
                             
                             // Shift history
                             this.out[2] = this.out[1];
@@ -971,7 +973,7 @@
                             this.phase += this.freq + this.alpha * error;
                             if (this.phase > 2 * Math.PI) this.phase -= 2 * Math.PI;
                             if (this.phase < 0) this.phase += 2 * Math.PI;
-                            this.port.postMessage({ i: out.real, q: out.imag, gain: this.gain, freq: this.freq, offset: this.mu });
+                            this.port.postMessage({ i: out.real, q: out.imag, gain: this.gain, freq: this.freq, offset: offset - this.samplesPerSymbol });
                         }
 
                         this.count++;
@@ -1060,10 +1062,10 @@
 
                     let newGain = 1 / rms;
                     // if diff > 10dB, set immediate gain
-                    if (this.baudRate <= 64 || Math.abs(this.gain - newGain) > 100) {
+                    /*if (this.baudRate <= 64 || Math.abs(this.gain - newGain) > 100) {
                         this.gain = clamp(newGain, 1, 1e6);
-                    } else
-                        this.gain = clamp(this.gain * (1 - this.gainAlpha) + newGain * this.gainAlpha, 1, 1e6);
+                    } else*/
+                    this.gain = clamp(this.gain * (1 - this.gainAlpha) + newGain * this.gainAlpha, 1, 1e6);
 
                     for (let j = 0; j < i.length; ++j) {
                         if (this.count >= 0) {
@@ -1077,12 +1079,11 @@
                             let y = this.out[0].sub(this.out[2]).mul(this.outRail[1].conj()).real;
                             let mmVal = y - x;
 
-                            this.mu += this.gamma * mmVal;
-                            this.count -= this.samplesPerSymbol
-                            // this.count -= Math.floor(this.mu);
-                            // this.mu -= Math.floor(this.mu);
-                            if (this.mu > this.samplesPerSymbol || this.mu < -this.samplesPerSymbol) this.mu = 0;
-
+                            this.mu +=this.samplesPerSymbol+ this.gamma * mmVal;
+                            let offset = Math.floor(this.mu);
+                            this.count -= offset;
+                            this.mu -= offset;
+                            
                             // Shift history
                             this.out[2] = this.out[1];
                             this.out[1] = this.out[0];
@@ -1098,7 +1099,7 @@
                             this.phase += this.freq + this.alpha * error;
                             if (this.phase > 2 * Math.PI) this.phase -= 2 * Math.PI;
                             if (this.phase < 0) this.phase += 2 * Math.PI;
-                            this.port.postMessage({ i: out.real, q: out.imag, gain: this.gain, freq: this.freq, offset: this.mu });
+                            this.port.postMessage({ i: out.real, q: out.imag, gain: this.gain, freq: this.freq, offset: offset - this.samplesPerSymbol });
                         }
 
                         this.count++;
@@ -1138,7 +1139,7 @@
             bandwidth = baudRate * freqMulti
             constellation.maxLen = Math.max(1, bd / 8);
             offsetWaves.markers = [-samplePerSymbol, samplePerSymbol]
-            freqWaves.markers = [- bandwidth, bandwidth]
+            freqWaves.markers = [-4, 4]
         }
 
         const audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: sampleRate, latencyHint: "balanced" });
