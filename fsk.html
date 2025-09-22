@@ -382,6 +382,13 @@
                     <canvas id="sourceCanvas"></canvas>
                 </div>
             </details>
+            <details>
+                <summary>文件发送</summary>
+                <div>
+                    <input type="file" id="txFile">
+                    <button id="txFileBtn">发送</button>
+                </div>
+            </details>
             <div id="bits"></div>
             <div id="progress-bar">
                 <div id="progress"></div>
@@ -483,6 +490,7 @@
         <div id="message-date"></div>
         <textarea id="message-content" disabled></textarea>
         <button id="copy-message">复制</button>
+        <button id="download-message">下载</button>
         <button id="close-message">关闭</button>
     </dialog>
     <script src="//cdn.jsdelivr.net/npm/eruda"></script>
@@ -1443,6 +1451,8 @@ function concatArrayBuffers(...arrayBuffers) {
         
         class RawByteDecoder{
             constructor (callback){
+                this.onstart=null;
+                this.onend=null;
                 this.callback= callback;
                 this.buffer = []
                 this.syncBuffer=[];
@@ -1457,7 +1467,6 @@ function concatArrayBuffers(...arrayBuffers) {
 
             feed(bit){
                 this.buffer.push(bit);
-                console.log(this.buffer+"", this.syncBuffer, this.sync)
                 if (this.sync) {
                     this.syncBuffer.push(bit);
                     this._correlate();
@@ -1468,7 +1477,7 @@ function concatArrayBuffers(...arrayBuffers) {
                     for (let i = 0; i < 8; i++) {
                         byte = (byte << 1) | this.buffer[i];
                     }
-                    this.callback(byte);
+                    if (!this.sync) this.callback(byte);
                     this.buffer =[];
                 }
             }
@@ -1487,6 +1496,7 @@ function concatArrayBuffers(...arrayBuffers) {
                    if (isCorrelated) { // 如果找到了同步码
                        this.buffer = []; // 清空数据缓冲区，因为同步码不是数据哦
                        this.sync = false; // 设置为不同步模式，就不再找同步码了
+                       if (this.onstart) this.onstart();
                    }
                }
             }
@@ -2676,14 +2686,43 @@ function concatArrayBuffers(...arrayBuffers) {
             constructor() {
                 this.date = new Date();
                 this.data = [];
+                this.binaryMode = false;
+                this.bytes=[];
+            }
+            
+            setBinaryMode(){
+                this.binaryMode = true;
             }
 
             write(str) {
                 this.data.push(str)
             }
+            
+            writeByte(byte){
+                this.bytes.push(byte);
+            }
 
             toString() {
-                return this.data.join('');
+                return this.binaryMode ? `Blob: ${this.bytes.length} bytes` : this.data.join('');
+            }
+            
+            download(){
+                // 创建一个 Blob 对象，把字节数组放进去
+  const blob = new Blob([new Uint8Array (this.bytes)], { type: "application/octet-stream" });
+
+  // 创建一个 URL 对象，指向 Blob 对象
+  const url = URL.createObjectURL(blob);
+
+  // 创建一个 <a> 元素，用来触发下载
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = "download.dat"; // 设置下载的文件名
+
+  // 模拟点击 <a> 元素，触发下载
+  a.click();
+
+  // 释放 URL 对象，防止内存泄漏
+  URL.revokeObjectURL(url);
             }
 
             preview() {
@@ -2991,6 +3030,7 @@ function concatArrayBuffers(...arrayBuffers) {
         const messageDate = document.getElementById("message-date");
         const messageContent = document.getElementById("message-content");
         const copyMessageButton = document.getElementById("copy-message");
+        const downloadMessageButton = document.getElementById("download-message");
         const closeMessageButton = document.getElementById("close-message");
 
         copyMessageButton.addEventListener('click', () => {
@@ -3004,6 +3044,10 @@ function concatArrayBuffers(...arrayBuffers) {
         closeMessageButton.addEventListener('click', () => {
             messageModal.close()
         });
+        
+        downloadMessageButton.addEventListener('click',()=>{
+            messages[messageModal.dataset.msgId].download();
+        });
 
 
         function updateMessageList() {
@@ -3014,7 +3058,8 @@ function concatArrayBuffers(...arrayBuffers) {
                 li.addEventListener('click', () => {
                     messageDate.textContent = `接收时间: ${msg.date.toLocaleString()}`;
                     messageContent.textContent = msg.toString();
-                    messageModal.showModal()
+                    messageModal.dataset.msgId = index;
+                    messageModal.showModal() 
                 });
                 messageList.appendChild(li);
             });
@@ -3321,11 +3366,26 @@ function concatArrayBuffers(...arrayBuffers) {
             })
             
             const rawDecoder=new RawByteDecoder(byte=>{
-                  receivedChar(byte>=32&&byte<=126?
+                const received = byte>=32&&byte<=126?
                             String.fromCharCode(byte):
                             `\\x${byte.toString(16).padStart(2, '0')}`
-                            );
+                            
+                  receivedChar(received);
+                  if (rxMessage) {
+                            rxMessage.writeByte(byte);
+                        }
+                            
             });
+            rawDecoder.onstart=()=>{
+                rxMessage = new Message();
+                rxMessage.setBinaryMode();
+                 messages.push(rxMessage);
+                 updateMessageList();
+            }
+            rawDecoder.onend=()=>{
+                rxMessage = null;
+                updateMessageList();
+            }
 
 
             const source = audioCtx.createMediaStreamSource(stream)
@@ -3464,25 +3524,30 @@ function concatArrayBuffers(...arrayBuffers) {
                 txBtn.textContent = '中止';
                 progressBar.style.display = 'block';
             }
+            
+            function transmitRawPacket(bytes){
+                const buffer = new ArrayBuffer(36);
+                        const u8 = new Uint8Array(buffer);
+                        for(let i=0;i<32;i++){
+                            u8[i*2]=0x55;
+                            u8[i*2+1]=0xaa;
+                        }
+                        u8[32]=0x1a;
+                        u8[33]=0xcf;
+                        u8[34]=0xfc;
+                        u8[35]=0x1d;
+                        
+                        const txContent= concatArrayBuffers(buffer, bytes);
+                        transmitBitArray (arrayBufferToBitArray(txContent), baudRate)
+                    
+            }
 
             txBtn.addEventListener('click', () => {
                 if (!txStart) {
                     const string = document.getElementById('transmit').value;
                     if(txRawMode) {
-                        const buffer = new ArrayBuffer(8);
-                        const u8 = new Uint8Array(buffer);
-                        u8[0]=0x55;
-                        u8[1]=0xaa;
-                        u8[2]=0x55;
-                        u8[3]=0xaa;
-                        u8[4]=0x1a;
-                        u8[5]=0xcf;
-                        u8[6]=0xfc;
-                        u8[7]=0x1d;
-                        
-                        const txContent= concatArrayBuffers(buffer, new TextEncoder().encode(string));
-                        transmitBitArray (arrayBufferToBitArray(txContent), baudRate)
-                    }
+                        transmitRawPacket(new TextEncoder().encode(string))
+                        }
                     else transmitOrdArray(stringToOrdArray(string));
                 } else {
                     modulator.stop();
@@ -3557,6 +3622,19 @@ function concatArrayBuffers(...arrayBuffers) {
                     transmitOrdArray(ordArray, 5)
                 };
             })
+            
+            const txFileInput = document.getElementById('txFile');
+        const txFileBtn = document.getElementById('txFileBtn');
+        txFileBtn.addEventListener('click', () => {
+                const file = txFileInput.files[0];
+                if (!file) return;
+                const reader = new FileReader();
+                reader.onload = function (e) {
+                    const buffer = e.target.result;
+                    transmitRawPacket(buffer);
+                };
+                reader.readAsArrayBuffer(file);
+                });
         })
 
 
@@ -3870,6 +3948,9 @@ function concatArrayBuffers(...arrayBuffers) {
 
             return value;
         }
+        
+        
+                
 
 
         const gainWaves = new Oscilloscope(
