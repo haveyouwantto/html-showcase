@@ -3273,7 +3273,7 @@ function concatArrayBuffers(...arrayBuffers) {
         }
 
         let rxBuffer = [];
-        let rxRawMode=true;
+        let rxRawMode=false;
 
         function receivedChar(c) {
             if (baudRate < 200) {
@@ -3471,7 +3471,7 @@ function concatArrayBuffers(...arrayBuffers) {
             constellation.clear();
         }
         
-        let txRawMode=true;
+        let txRawMode=false;
 
         audioCtx.audioWorklet.addModule(workletData).then(() => {
             let oscillator;
