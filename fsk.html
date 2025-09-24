@@ -585,7 +585,7 @@
             }
 
             function calculateGamma(bd) {
-                return clamp(50 / bd, 0.1, 5);
+                return clamp(200 / bd, 0.1, 5);
             }
 
             function clamp(v, min, max) {
@@ -817,7 +817,7 @@
                     this.alpha = calculateAlpha(this.baudRate);
                     this.beta = calculateBeta(this.baudRate);
                     this.gamma = calculateGamma(this.baudRate); // Add this line
-                    this.gainAlpha = clamp((baudRate / 100) * 0.01, 0.001, 0.1);
+                    this.gainAlpha = clamp((baudRate / 10000), 0.001, 0.1);
                 }
 
                 process(inputs, outputs, parameters) {
@@ -843,8 +843,8 @@
                     this.gain = clamp(this.gain * (1 - this.gainAlpha) + newGain * this.gainAlpha, 1, 1e6);
                     for (let j = 0; j < i.length; ++j) {
                         if (this.count + this.mu >= 0) {
-                            let currI = i[j] * this.gain;
-                            let currQ = q[j] * this.gain;
+                            let currI = clamp(i[j] * this.gain, -2, 2);
+                            let currQ = clamp(q[j] * this.gain, -2, 2);
 
                             this.out[0] = new Complex(currI, currQ);
                             this.outRail[0] = new Complex(Number(this.out[0].real > 0), Number(this.out[0].imag > 0));
@@ -853,7 +853,7 @@
                             let y = this.out[0].sub(this.out[2]).mul(this.outRail[1].conj()).real;
                             let mmVal = y - x;
 
-                            this.mu += this.samplesPerSymbol + this.gamma * mmVal;
+                            this.mu += this.samplesPerSymbol + clamp(this.gamma * mmVal, -this.samplesPerSymbol / 2, this.samplesPerSymbol / 2);
                             let offset = Math.floor(this.mu);
                             this.count -= offset;
                             this.mu -= offset;
@@ -878,7 +878,7 @@
                             this.phase += this.freq + this.alpha * error;
                             if (this.phase > 2 * Math.PI) this.phase -= 2 * Math.PI;
                             if (this.phase < 0) this.phase += 2 * Math.PI;
-                            this.port.postMessage({ i: clamp(out.real, -2, 2), q: clamp(out.imag, -2, 2), gain: this.gain, freq: this.freq, offset: offset - this.samplesPerSymbol });
+                            this.port.postMessage({ i: out.real, q: out.imag, gain: this.gain, freq: this.freq, offset: offset - this.samplesPerSymbol });
                         }
 
                         this.count++;
@@ -922,7 +922,7 @@
                     this.beta = calculateBeta(this.baudRate);
                     this.gamma = calculateGamma(this.baudRate); // Add this line
 
-                    this.gainAlpha = clamp((baudRate / 100) * 0.01, 0.001, 0.1);
+                    this.gainAlpha = clamp(baudRate / 10000, 0.001, 0.1);
                 }
 
                 process(inputs, outputs, parameters) {
@@ -949,8 +949,8 @@
 
                     for (let j = 0; j < i.length; ++j) {
                         if (this.count >= 0) {
-                            let currI = i[j] * this.gain;
-                            let currQ = q[j] * this.gain;
+                            let currI = clamp(i[j] * this.gain, -2, 2);
+                            let currQ = clamp(q[j] * this.gain, -2, 2);
 
                             this.out[0] = new Complex(currI, currQ);
                             this.outRail[0] = new Complex(Number(this.out[0].real > 0), Number(this.out[0].imag > 0));
@@ -959,7 +959,7 @@
                             let y = this.out[0].sub(this.out[2]).mul(this.outRail[1].conj()).real;
                             let mmVal = y - x;
 
-                            this.mu += this.samplesPerSymbol + this.gamma * mmVal;
+                            this.mu += this.samplesPerSymbol + clamp(this.gamma * mmVal, -this.samplesPerSymbol / 2, this.samplesPerSymbol / 2);
                             let offset = Math.floor(this.mu);
                             this.count -= offset;
                             this.mu -= offset;
@@ -981,7 +981,7 @@
                             this.phase += this.freq + this.alpha * error;
                             if (this.phase > 2 * Math.PI) this.phase -= 2 * Math.PI;
                             if (this.phase < 0) this.phase += 2 * Math.PI;
-                            this.port.postMessage({ i: clamp(out.real, -2, 2), q: clamp(out.imag, -2, 2), gain: this.gain, freq: this.freq, offset: offset - this.samplesPerSymbol });
+                            this.port.postMessage({ i: out.real, q: out.imag, gain: this.gain, freq: this.freq, offset: offset - this.samplesPerSymbol });
                         }
 
                         this.count++;
@@ -1037,7 +1037,7 @@
                     this.alpha = calculateAlpha(this.baudRate);
                     this.beta = calculateBeta(this.baudRate);
                     this.gamma = calculateGamma(this.baudRate); // Add this line
-                    this.gainAlpha = clamp((baudRate / 1200) * 0.01, 0.001, 0.1);
+                    this.gainAlpha = clamp(baudRate / 12000, 0.001, 0.1);
                 }
 
                 nearest8psk(sample) {
@@ -1077,8 +1077,8 @@
 
                     for (let j = 0; j < i.length; ++j) {
                         if (this.count >= 0) {
-                            let currI = i[j] * this.gain;
-                            let currQ = q[j] * this.gain;
+                            let currI = clamp(i[j] * this.gain, -2, 2);
+                            let currQ = clamp(q[j] * this.gain, -2, 2);
 
                             this.out[0] = new Complex(currI, currQ);
                             this.outRail[0] = this.nearest8psk(this.out[0]);
@@ -1087,7 +1087,7 @@
                             let y = this.out[0].sub(this.out[2]).mul(this.outRail[1].conj()).real;
                             let mmVal = y - x;
 
-                            this.mu += this.samplesPerSymbol + this.gamma * mmVal;
+                            this.mu += this.samplesPerSymbol + clamp(this.gamma * mmVal, -this.samplesPerSymbol / 2, this.samplesPerSymbol / 2);
                             let offset = Math.floor(this.mu);
                             this.count -= offset;
                             this.mu -= offset;
@@ -1107,7 +1107,7 @@
                             this.phase += this.freq + this.alpha * error;
                             if (this.phase > 2 * Math.PI) this.phase -= 2 * Math.PI;
                             if (this.phase < 0) this.phase += 2 * Math.PI;
-                            this.port.postMessage({ i: clamp(out.real, -2, 2), q: clamp(out.imag, -2, 2), gain: this.gain, freq: this.freq, offset: offset - this.samplesPerSymbol });
+                            this.port.postMessage({ i: out.real, q: out.imag, gain: this.gain, freq: this.freq, offset: offset - this.samplesPerSymbol });
                         }
 
                         this.count++;
@@ -2109,6 +2109,11 @@
                     startSync.push(...[1, 0])
                 }
 
+                // Add 1 seconds of random bits to train the symbol timing recovery
+                for (let i = 0; i < this.baudRate; i++) {
+                    startSync.push(Math.random() > 0.5 ? 1 : 0)
+                }
+
                 codedArray = startSync.concat(codedArray)
                 this.bits = codedArray.length
 
@@ -2165,6 +2170,11 @@
                 // Use 1 second of alternating symbols for robust lock-in
                 for (let i = 0; i < this.baudRate; i++) {
                     startSync.push(...[0, 2])
+                }
+
+                // Add 1 seconds of random bits to train the symbol timing recovery
+                for (let i = 0; i < this.baudRate; i++) {
+                    startSync.push(Math.floor(Math.random() * 4))
                 }
 
                 codedArray = startSync.concat(codedArray)
@@ -2237,6 +2247,11 @@
                 // Use 1 second of alternating symbols for robust lock-in
                 for (let i = 0; i < this.baudRate; i++) {
                     startSync.push(...[0, 4])
+                }
+
+                // Add 1 seconds of random bits to train the symbol timing recovery
+                for (let i = 0; i < this.baudRate; i++) {
+                    startSync.push(Math.floor(Math.random() * 4))
                 }
 
                 codedArray = startSync.concat(codedArray)
