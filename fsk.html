@@ -1146,7 +1146,7 @@
             symbolTime = samplePerSymbol / sampleRate;
             bandwidth = baudRate * freqMulti
             constellation.maxLen = Math.max(1, bd / 8);
-            offsetWaves.markers = [-samplePerSymbol, samplePerSymbol]
+            offsetWaves.markers = [-samplePerSymbol * 0.5, samplePerSymbol * 0.5]
             freqWaves.markers = [-4, 4]
         }
 
@@ -3961,8 +3961,8 @@
         gainWaves.hasNegative = false;
         gainWaves.markers = [30, 60, 90, 120];
         const offsetWaves = new Oscilloscope(
-            document.getElementById('offsetCanvas'), document.getElementById('offsetLabel'), 500, 3);
-        offsetWaves.precision = 3;
+            document.getElementById('offsetCanvas'), document.getElementById('offsetLabel'), 500);
+        offsetWaves.precision = 0;
         offsetWaves.title = 'Offset'
         offsetWaves.unit = 'sp'
         const freqWaves = new Oscilloscope(
