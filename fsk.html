@@ -494,8 +494,8 @@
         <button id="close-message">关闭</button>
     </dialog>
     <script src="//cdn.jsdelivr.net/npm/eruda"></script>
-        <script>eruda.init();</script>
-        
+    <script>eruda.init();</script>
+
     <script>
 
         let baudRate = 32; // 波特率
@@ -585,7 +585,7 @@
             }
 
             function calculateGamma(bd) {
-                return clamp(50 / bd, 0.1, 5); 
+                return clamp(50 / bd, 0.1, 5);
             }
 
             function clamp(v, min, max) {
@@ -801,7 +801,7 @@
                     this.phase = 0;
                     this.freq = 0;
 
-                    this.gain = 1; 
+                    this.gain = 1;
 
                     this.port.onmessage = (event) => {
                         if (event.data.type === "baudRate") {
@@ -833,7 +833,7 @@
                     }
                     sum /= i.length;
                     const rms = Math.sqrt(sum);
-                    
+
                     let newGain = 1 / rms;
 
                     // if diff > 10dB, set immediate gain
@@ -853,7 +853,7 @@
                             let y = this.out[0].sub(this.out[2]).mul(this.outRail[1].conj()).real;
                             let mmVal = y - x;
 
-                            this.mu +=this.samplesPerSymbol+ this.gamma * mmVal;
+                            this.mu += this.samplesPerSymbol + this.gamma * mmVal;
                             let offset = Math.floor(this.mu);
                             this.count -= offset;
                             this.mu -= offset;
@@ -878,7 +878,7 @@
                             this.phase += this.freq + this.alpha * error;
                             if (this.phase > 2 * Math.PI) this.phase -= 2 * Math.PI;
                             if (this.phase < 0) this.phase += 2 * Math.PI;
-                            this.port.postMessage({ i: out.real, q: out.imag, gain: this.gain, freq: this.freq, offset: offset - this.samplesPerSymbol });
+                            this.port.postMessage({ i: clamp(out.real, -2, 2), q: clamp(out.imag, -2, 2), gain: this.gain, freq: this.freq, offset: offset - this.samplesPerSymbol });
                         }
 
                         this.count++;
@@ -959,11 +959,11 @@
                             let y = this.out[0].sub(this.out[2]).mul(this.outRail[1].conj()).real;
                             let mmVal = y - x;
 
-                            this.mu +=this.samplesPerSymbol+ this.gamma * mmVal;
+                            this.mu += this.samplesPerSymbol + this.gamma * mmVal;
                             let offset = Math.floor(this.mu);
                             this.count -= offset;
                             this.mu -= offset;
-                            
+
                             // Shift history
                             this.out[2] = this.out[1];
                             this.out[1] = this.out[0];
@@ -981,7 +981,7 @@
                             this.phase += this.freq + this.alpha * error;
                             if (this.phase > 2 * Math.PI) this.phase -= 2 * Math.PI;
                             if (this.phase < 0) this.phase += 2 * Math.PI;
-                            this.port.postMessage({ i: out.real, q: out.imag, gain: this.gain, freq: this.freq, offset: offset - this.samplesPerSymbol });
+                            this.port.postMessage({ i: clamp(out.real, -2, 2), q: clamp(out.imag, -2, 2), gain: this.gain, freq: this.freq, offset: offset - this.samplesPerSymbol });
                         }
 
                         this.count++;
@@ -1087,11 +1087,11 @@
                             let y = this.out[0].sub(this.out[2]).mul(this.outRail[1].conj()).real;
                             let mmVal = y - x;
 
-                            this.mu +=this.samplesPerSymbol+ this.gamma * mmVal;
+                            this.mu += this.samplesPerSymbol + this.gamma * mmVal;
                             let offset = Math.floor(this.mu);
                             this.count -= offset;
                             this.mu -= offset;
-                            
+
                             // Shift history
                             this.out[2] = this.out[1];
                             this.out[1] = this.out[0];
@@ -1107,7 +1107,7 @@
                             this.phase += this.freq + this.alpha * error;
                             if (this.phase > 2 * Math.PI) this.phase -= 2 * Math.PI;
                             if (this.phase < 0) this.phase += 2 * Math.PI;
-                            this.port.postMessage({ i: out.real, q: out.imag, gain: this.gain, freq: this.freq, offset: offset - this.samplesPerSymbol });
+                            this.port.postMessage({ i: clamp(out.real, -2, 2), q: clamp(out.imag, -2, 2), gain: this.gain, freq: this.freq, offset: offset - this.samplesPerSymbol });
                         }
 
                         this.count++;
@@ -1374,45 +1374,45 @@
             // 否则，value 在 min 和 max 之间，直接返回 value
             return value;
         }
-        
+
         function arrayBufferToBitArray(buffer) {
-  const uint8Array = new Uint8Array(buffer); // 先把 ArrayBuffer 变成 Uint8Array，这样才能方便地读取每个字节
-  const bitArray = []; // 用来存放比特的数组
+            const uint8Array = new Uint8Array(buffer); // 先把 ArrayBuffer 变成 Uint8Array，这样才能方便地读取每个字节
+            const bitArray = []; // 用来存放比特的数组
 
-  for (let i = 0; i < uint8Array.length; i++) { // 遍历每一个字节
-    const byte = uint8Array[i]; // 取出当前的字节
-    for (let j = 7; j >= 0; j--) { // 从最高位到最低位，依次取出每一个比特
-      const bit = (byte >> j) & 1; // 右移 j 位，然后和 1 进行与运算，就可以得到第 j 位的比特
-      bitArray.push(bit); // 把这个比特放到数组里
-    }
-  }
+            for (let i = 0; i < uint8Array.length; i++) { // 遍历每一个字节
+                const byte = uint8Array[i]; // 取出当前的字节
+                for (let j = 7; j >= 0; j--) { // 从最高位到最低位，依次取出每一个比特
+                    const bit = (byte >> j) & 1; // 右移 j 位，然后和 1 进行与运算，就可以得到第 j 位的比特
+                    bitArray.push(bit); // 把这个比特放到数组里
+                }
+            }
 
-  return bitArray; // 返回装满了比特的数组
-}
+            return bitArray; // 返回装满了比特的数组
+        }
 
-function concatArrayBuffers(...arrayBuffers) {
-  // 计算所有 ArrayBuffer 的总长度
-  let totalLength = 0;
-  for (let i = 0; i < arrayBuffers.length; i++) {
-    totalLength += arrayBuffers[i].byteLength;
-  }
+        function concatArrayBuffers(...arrayBuffers) {
+            // 计算所有 ArrayBuffer 的总长度
+            let totalLength = 0;
+            for (let i = 0; i < arrayBuffers.length; i++) {
+                totalLength += arrayBuffers[i].byteLength;
+            }
 
-  // 创建一个新的 ArrayBuffer，长度是所有 ArrayBuffer 的总和
-  const result = new ArrayBuffer(totalLength);
+            // 创建一个新的 ArrayBuffer，长度是所有 ArrayBuffer 的总和
+            const result = new ArrayBuffer(totalLength);
 
-  // 创建一个 Uint8Array 来操作新的 ArrayBuffer
-  const uint8Array = new Uint8Array(result);
+            // 创建一个 Uint8Array 来操作新的 ArrayBuffer
+            const uint8Array = new Uint8Array(result);
 
-  // 依次把每个 ArrayBuffer 的内容复制到新的 ArrayBuffer 中
-  let offset = 0;
-  for (let i = 0; i < arrayBuffers.length; i++) {
-    const currentBuffer = new Uint8Array(arrayBuffers[i]);
-    uint8Array.set(currentBuffer, offset);
-    offset += currentBuffer.byteLength;
-  }
+            // 依次把每个 ArrayBuffer 的内容复制到新的 ArrayBuffer 中
+            let offset = 0;
+            for (let i = 0; i < arrayBuffers.length; i++) {
+                const currentBuffer = new Uint8Array(arrayBuffers[i]);
+                uint8Array.set(currentBuffer, offset);
+                offset += currentBuffer.byteLength;
+            }
 
-  return result;
-}
+            return result;
+        }
 
         class FibonacciDecoder {
             constructor(callback) {
@@ -1448,60 +1448,60 @@ function concatArrayBuffers(...arrayBuffers) {
                 this.callback(total);
             }
         }
-        
-        class RawByteDecoder{
-            constructor (callback){
-                this.onstart=null;
-                this.onend=null;
-                this.callback= callback;
+
+        class RawByteDecoder {
+            constructor(callback) {
+                this.onstart = null;
+                this.onend = null;
+                this.callback = callback;
                 this.buffer = []
-                this.syncBuffer=[];
-                this.syncCode= [
-  0, 0, 0, 1, 1, 0, 1, 0, // 0x1a
-  1, 1, 0, 0, 1, 1, 1, 1, // 0xcf
-  1, 1, 1, 1, 1, 1, 0, 0, // 0xfc
-  0, 0, 0, 1, 1, 1, 0, 1  // 0x1d
-];
-                this.sync=true;
+                this.syncBuffer = [];
+                this.syncCode = [
+                    0, 0, 0, 1, 1, 0, 1, 0, // 0x1a
+                    1, 1, 0, 0, 1, 1, 1, 1, // 0xcf
+                    1, 1, 1, 1, 1, 1, 0, 0, // 0xfc
+                    0, 0, 0, 1, 1, 1, 0, 1  // 0x1d
+                ];
+                this.sync = true;
             }
 
-            feed(bit){
+            feed(bit) {
                 this.buffer.push(bit);
                 if (this.sync) {
                     this.syncBuffer.push(bit);
                     this._correlate();
-                    }
-                if (this.buffer.length>=8){
+                }
+                if (this.buffer.length >= 8) {
                     // 这里Iris来帮你把8个比特变成一个字节哦！
                     let byte = 0;
                     for (let i = 0; i < 8; i++) {
                         byte = (byte << 1) | this.buffer[i];
                     }
                     if (!this.sync) this.callback(byte);
-                    this.buffer =[];
+                    this.buffer = [];
                 }
             }
 
-            _correlate(){
-               if (this.syncBuffer.length > 32){ // 当同步缓冲区里的比特超过32个时
-                   this.syncBuffer.shift(); // 移除最老的那个比特
-                   // 现在我们来检查是不是找到了同步码！
-                   let isCorrelated = true;
-                   for (let i = 0; i < this.syncCode.length; i++) { // 遍历32个比特
-                       if (this.syncBuffer[i] !== this.syncCode[i]) {
-                           isCorrelated = false; // 有一个不一样就不是同步码啦
-                           break;
-                       }
-                   }
-                   if (isCorrelated) { // 如果找到了同步码
-                       this.buffer = []; // 清空数据缓冲区，因为同步码不是数据哦
-                       this.sync = false; // 设置为不同步模式，就不再找同步码了
-                       if (this.onstart) this.onstart();
-                   }
-               }
+            _correlate() {
+                if (this.syncBuffer.length > 32) { // 当同步缓冲区里的比特超过32个时
+                    this.syncBuffer.shift(); // 移除最老的那个比特
+                    // 现在我们来检查是不是找到了同步码！
+                    let isCorrelated = true;
+                    for (let i = 0; i < this.syncCode.length; i++) { // 遍历32个比特
+                        if (this.syncBuffer[i] !== this.syncCode[i]) {
+                            isCorrelated = false; // 有一个不一样就不是同步码啦
+                            break;
+                        }
+                    }
+                    if (isCorrelated) { // 如果找到了同步码
+                        this.buffer = []; // 清空数据缓冲区，因为同步码不是数据哦
+                        this.sync = false; // 设置为不同步模式，就不再找同步码了
+                        if (this.onstart) this.onstart();
+                    }
+                }
             }
         }
-        
+
         // ========== 1. 1D DCT 与 IDCT ==========
         function dct1d(vector) {
             const N = vector.length;
@@ -2687,42 +2687,42 @@ function concatArrayBuffers(...arrayBuffers) {
                 this.date = new Date();
                 this.data = [];
                 this.binaryMode = false;
-                this.bytes=[];
+                this.bytes = [];
             }
-            
-            setBinaryMode(){
+
+            setBinaryMode() {
                 this.binaryMode = true;
             }
 
             write(str) {
                 this.data.push(str)
             }
-            
-            writeByte(byte){
+
+            writeByte(byte) {
                 this.bytes.push(byte);
             }
 
             toString() {
                 return this.binaryMode ? `Blob: ${this.bytes.length} bytes` : this.data.join('');
             }
-            
-            download(){
+
+            download() {
                 // 创建一个 Blob 对象，把字节数组放进去
-  const blob = new Blob([new Uint8Array (this.bytes)], { type: "application/octet-stream" });
+                const blob = new Blob([new Uint8Array(this.bytes)], { type: "application/octet-stream" });
 
-  // 创建一个 URL 对象，指向 Blob 对象
-  const url = URL.createObjectURL(blob);
+                // 创建一个 URL 对象，指向 Blob 对象
+                const url = URL.createObjectURL(blob);
 
-  // 创建一个 <a> 元素，用来触发下载
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = "download.dat"; // 设置下载的文件名
+                // 创建一个 <a> 元素，用来触发下载
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = "download.dat"; // 设置下载的文件名
 
-  // 模拟点击 <a> 元素，触发下载
-  a.click();
+                // 模拟点击 <a> 元素，触发下载
+                a.click();
 
-  // 释放 URL 对象，防止内存泄漏
-  URL.revokeObjectURL(url);
+                // 释放 URL 对象，防止内存泄漏
+                URL.revokeObjectURL(url);
             }
 
             preview() {
@@ -3044,8 +3044,8 @@ function concatArrayBuffers(...arrayBuffers) {
         closeMessageButton.addEventListener('click', () => {
             messageModal.close()
         });
-        
-        downloadMessageButton.addEventListener('click',()=>{
+
+        downloadMessageButton.addEventListener('click', () => {
             messages[messageModal.dataset.msgId].download();
         });
 
@@ -3059,7 +3059,7 @@ function concatArrayBuffers(...arrayBuffers) {
                     messageDate.textContent = `接收时间: ${msg.date.toLocaleString()}`;
                     messageContent.textContent = msg.toString();
                     messageModal.dataset.msgId = index;
-                    messageModal.showModal() 
+                    messageModal.showModal()
                 });
                 messageList.appendChild(li);
             });
@@ -3273,7 +3273,7 @@ function concatArrayBuffers(...arrayBuffers) {
         }
 
         let rxBuffer = [];
-        let rxRawMode=false;
+        let rxRawMode = false;
 
         function receivedChar(c) {
             if (baudRate < 200) {
@@ -3364,25 +3364,25 @@ function concatArrayBuffers(...arrayBuffers) {
                     }
                 }
             })
-            
-            const rawDecoder=new RawByteDecoder(byte=>{
-                const received = byte>=32&&byte<=126?
-                            String.fromCharCode(byte):
-                            `\\x${byte.toString(16).padStart(2, '0')}`
-                            
-                  receivedChar(received);
-                  if (rxMessage) {
-                            rxMessage.writeByte(byte);
-                        }
-                            
+
+            const rawDecoder = new RawByteDecoder(byte => {
+                const received = byte >= 32 && byte <= 126 ?
+                    String.fromCharCode(byte) :
+                    `\\x${byte.toString(16).padStart(2, '0')}`
+
+                receivedChar(received);
+                if (rxMessage) {
+                    rxMessage.writeByte(byte);
+                }
+
             });
-            rawDecoder.onstart=()=>{
+            rawDecoder.onstart = () => {
                 rxMessage = new Message();
                 rxMessage.setBinaryMode();
-                 messages.push(rxMessage);
-                 updateMessageList();
+                messages.push(rxMessage);
+                updateMessageList();
             }
-            rawDecoder.onend=()=>{
+            rawDecoder.onend = () => {
                 rxMessage = null;
                 updateMessageList();
             }
@@ -3396,7 +3396,7 @@ function concatArrayBuffers(...arrayBuffers) {
                 // console.log(data)
                 constellation.addSample(data.sample[0], data.sample[1]);
                 for (let bit of data.bits)
-                    rxRawMode? rawDecoder.feed(bit):decoder.feed(bit)
+                    rxRawMode ? rawDecoder.feed(bit) : decoder.feed(bit)
             })
             demodulator.receive(source)
 
@@ -3470,8 +3470,8 @@ function concatArrayBuffers(...arrayBuffers) {
             rxBtn.textContent = '开始';
             constellation.clear();
         }
-        
-        let txRawMode=false;
+
+        let txRawMode = false;
 
         audioCtx.audioWorklet.addModule(workletData).then(() => {
             let oscillator;
@@ -3491,10 +3491,10 @@ function concatArrayBuffers(...arrayBuffers) {
 
                 const bits = fibonacciEncoding(preparedArray);
 
-                transmitBitArray (bits,baudRate);
+                transmitBitArray(bits, baudRate);
             }
-            
-            function transmitBitArray(bits, baudRate){
+
+            function transmitBitArray(bits, baudRate) {
                 modulator = new selectedMode.modulate();
                 modulator.setBaudRate(baudRate);
                 modulator.setCarrierFreq(carrierFreq);
@@ -3524,30 +3524,30 @@ function concatArrayBuffers(...arrayBuffers) {
                 txBtn.textContent = '中止';
                 progressBar.style.display = 'block';
             }
-            
-            function transmitRawPacket(bytes){
+
+            function transmitRawPacket(bytes) {
                 const buffer = new ArrayBuffer(36);
-                        const u8 = new Uint8Array(buffer);
-                        for(let i=0;i<32;i++){
-                            u8[i*2]=0x55;
-                            u8[i*2+1]=0xaa;
-                        }
-                        u8[32]=0x1a;
-                        u8[33]=0xcf;
-                        u8[34]=0xfc;
-                        u8[35]=0x1d;
-                        
-                        const txContent= concatArrayBuffers(buffer, bytes);
-                        transmitBitArray (arrayBufferToBitArray(txContent), baudRate)
-                    
+                const u8 = new Uint8Array(buffer);
+                for (let i = 0; i < 32; i++) {
+                    u8[i * 2] = 0x55;
+                    u8[i * 2 + 1] = 0xaa;
+                }
+                u8[32] = 0x1a;
+                u8[33] = 0xcf;
+                u8[34] = 0xfc;
+                u8[35] = 0x1d;
+
+                const txContent = concatArrayBuffers(buffer, bytes);
+                transmitBitArray(arrayBufferToBitArray(txContent), baudRate)
+
             }
 
             txBtn.addEventListener('click', () => {
                 if (!txStart) {
                     const string = document.getElementById('transmit').value;
-                    if(txRawMode) {
+                    if (txRawMode) {
                         transmitRawPacket(new TextEncoder().encode(string))
-                        }
+                    }
                     else transmitOrdArray(stringToOrdArray(string));
                 } else {
                     modulator.stop();
@@ -3622,10 +3622,10 @@ function concatArrayBuffers(...arrayBuffers) {
                     transmitOrdArray(ordArray, 5)
                 };
             })
-            
+
             const txFileInput = document.getElementById('txFile');
-        const txFileBtn = document.getElementById('txFileBtn');
-        txFileBtn.addEventListener('click', () => {
+            const txFileBtn = document.getElementById('txFileBtn');
+            txFileBtn.addEventListener('click', () => {
                 const file = txFileInput.files[0];
                 if (!file) return;
                 const reader = new FileReader();
@@ -3634,7 +3634,7 @@ function concatArrayBuffers(...arrayBuffers) {
                     transmitRawPacket(buffer);
                 };
                 reader.readAsArrayBuffer(file);
-                });
+            });
         })
 
 
@@ -3948,9 +3948,9 @@ function concatArrayBuffers(...arrayBuffers) {
 
             return value;
         }
-        
-        
-                
+
+
+
 
 
         const gainWaves = new Oscilloscope(
