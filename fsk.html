@@ -2251,7 +2251,7 @@
 
                 // Add 1 seconds of random bits to train the symbol timing recovery
                 for (let i = 0; i < this.baudRate; i++) {
-                    startSync.push(Math.floor(Math.random() * 4))
+                    startSync.push(Math.floor(Math.random() * 8))
                 }
 
                 codedArray = startSync.concat(codedArray)
