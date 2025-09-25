@@ -817,7 +817,7 @@
                     this.alpha = calculateAlpha(this.baudRate);
                     this.beta = calculateBeta(this.baudRate);
                     this.gamma = calculateGamma(this.baudRate); // Add this line
-                    this.gainAlpha = clamp((baudRate / 10000), 0.001, 0.1);
+                    this.gainAlpha = 0.25;
                 }
 
                 process(inputs, outputs, parameters) {
@@ -827,24 +827,10 @@
 
                     if (!i || !q) return true;
 
-                    let sum = 0;
-                    for (let j = 0; j < i.length; ++j) {
-                        sum += i[j] * i[j] + q[j] * q[j]
-                    }
-                    sum /= i.length;
-                    const rms = Math.sqrt(sum);
-
-                    let newGain = 1 / rms;
-
-                    // if diff > 10dB, set immediate gain
-                    /*if (Math.abs(this.gain - newGain) > 1000) {
-                        this.gain = clamp(newGain, 1, 1e6);
-                    } else*/
-                    this.gain = clamp(this.gain * (1 - this.gainAlpha) + newGain * this.gainAlpha, 1, 1e6);
                     for (let j = 0; j < i.length; ++j) {
                         if (this.count + this.mu >= 0) {
-                            let currI = clamp(i[j] * this.gain, -2, 2);
-                            let currQ = clamp(q[j] * this.gain, -2, 2);
+                            let currI = clamp(i[j], -2, 2);
+                            let currQ = clamp(q[j], -2, 2);
 
                             this.out[0] = new Complex(currI, currQ);
                             this.outRail[0] = new Complex(Number(this.out[0].real > 0), Number(this.out[0].imag > 0));
@@ -853,7 +839,7 @@
                             let y = this.out[0].sub(this.out[2]).mul(this.outRail[1].conj()).real;
                             let mmVal = y - x;
 
-                            this.mu += this.samplesPerSymbol + clamp(this.gamma * mmVal, -this.samplesPerSymbol / 2, this.samplesPerSymbol / 2);
+                            this.mu += this.samplesPerSymbol + clamp(this.gamma * mmVal * this.gain, -this.samplesPerSymbol / 2, this.samplesPerSymbol / 2);
                             let offset = Math.floor(this.mu);
                             this.count -= offset;
                             this.mu -= offset;
@@ -863,6 +849,14 @@
                             this.out[1] = this.out[0];
                             this.outRail[2] = this.outRail[1];
                             this.outRail[1] = this.outRail[0];
+
+                            // Channel estimation and equalization
+                            // For BPSK, we can use a simple decision-directed approach
+                            let actualAmpl = this.out[0].abs();
+                            let desiredGain = 1 / actualAmpl;
+                            this.gain = this.gainAlpha * desiredGain + (1 - this.gainAlpha) * this.gain;
+                            this.gain = clamp(this.gain, 0.1, 1e6);
+                            this.out[0] = new Complex(this.out[0].real * this.gain, this.out[0].imag * this.gain);
 
                             // Costas Loop
                             let costas = new Complex(Math.cos(this.phase), -Math.sin(this.phase));
@@ -922,7 +916,7 @@
                     this.beta = calculateBeta(this.baudRate);
                     this.gamma = calculateGamma(this.baudRate); // Add this line
 
-                    this.gainAlpha = clamp(baudRate / 10000, 0.001, 0.1);
+                    this.gainAlpha = 0.25;
                 }
 
                 process(inputs, outputs, parameters) {
@@ -932,25 +926,10 @@
 
                     if (!i || !q) return true;
 
-                    let sum = 0;
-                    for (let j = 0; j < i.length; ++j) {
-                        sum += i[j] * i[j] + q[j] * q[j]
-                    }
-                    sum /= i.length;
-                    const rms = Math.sqrt(sum)
-
-
-                    let newGain = 1 / rms;
-                    // if diff > 10dB, set immediate gain
-                    //if (this.baudRate <= 64 || Math.abs(this.gain - newGain) > 100) {
-                    //    this.gain = clamp(newGain, 1, 1e6);
-                    //} else
-                    this.gain = clamp(this.gain * (1 - this.gainAlpha) + newGain * this.gainAlpha, 1, 1e6);
-
                     for (let j = 0; j < i.length; ++j) {
                         if (this.count >= 0) {
-                            let currI = clamp(i[j] * this.gain, -2, 2);
-                            let currQ = clamp(q[j] * this.gain, -2, 2);
+                            let currI = clamp(i[j], -2, 2);
+                            let currQ = clamp(q[j], -2, 2);
 
                             this.out[0] = new Complex(currI, currQ);
                             this.outRail[0] = new Complex(Number(this.out[0].real > 0), Number(this.out[0].imag > 0));
@@ -959,7 +938,7 @@
                             let y = this.out[0].sub(this.out[2]).mul(this.outRail[1].conj()).real;
                             let mmVal = y - x;
 
-                            this.mu += this.samplesPerSymbol + clamp(this.gamma * mmVal, -this.samplesPerSymbol / 2, this.samplesPerSymbol / 2);
+                            this.mu += this.samplesPerSymbol + clamp(this.gamma * mmVal * this.gain, -this.samplesPerSymbol / 2, this.samplesPerSymbol / 2);
                             let offset = Math.floor(this.mu);
                             this.count -= offset;
                             this.mu -= offset;
@@ -969,6 +948,14 @@
                             this.out[1] = this.out[0];
                             this.outRail[2] = this.outRail[1];
                             this.outRail[1] = this.outRail[0];
+                            
+                            // Channel estimation and equalization
+                            // For BPSK, we can use a simple decision-directed approach
+                            let actualAmpl = this.out[0].abs();
+                            let desiredGain = 1 / actualAmpl;
+                            this.gain = this.gainAlpha * desiredGain + (1 - this.gainAlpha) * this.gain;
+                            this.gain = clamp(this.gain, 0.1, 1e6);
+                            this.out[0] = new Complex(this.out[0].real * this.gain, this.out[0].imag * this.gain);
 
                             // Costas Loop
                             let costas = new Complex(Math.cos(this.phase), -Math.sin(this.phase));
@@ -976,7 +963,10 @@
                             let error = this.errorFunc(out); // errorFunc 需要根据实际情况进行修改
                             this.freq += this.beta * error;
 
-                            this.freq = clamp(this.freq, -Math.PI * 0.25, Math.PI * 0.25);
+                            // Clamp freq 
+                            let radianPerHz = Math.PI * 2 / this.baudRate;
+                            let maxRadian = 4 * radianPerHz;
+                            this.freq = clamp(this.freq, -maxRadian, maxRadian);
 
                             this.phase += this.freq + this.alpha * error;
                             if (this.phase > 2 * Math.PI) this.phase -= 2 * Math.PI;
@@ -1037,7 +1027,7 @@
                     this.alpha = calculateAlpha(this.baudRate);
                     this.beta = calculateBeta(this.baudRate);
                     this.gamma = calculateGamma(this.baudRate); // Add this line
-                    this.gainAlpha = clamp(baudRate / 12000, 0.001, 0.1);
+                    this.gainAlpha = 0.25;
                 }
 
                 nearest8psk(sample) {
@@ -1061,24 +1051,10 @@
 
                     if (!i || !q) return true;
 
-                    let sum = 0;
-                    for (let j = 0; j < i.length; ++j) {
-                        sum += i[j] * i[j] + q[j] * q[j]
-                    }
-                    sum /= i.length;
-                    const rms = Math.sqrt(sum)
-
-                    let newGain = 1 / rms;
-                    // if diff > 10dB, set immediate gain
-                    /*if (this.baudRate <= 64 || Math.abs(this.gain - newGain) > 100) {
-                        this.gain = clamp(newGain, 1, 1e6);
-                    } else*/
-                    this.gain = clamp(this.gain * (1 - this.gainAlpha) + newGain * this.gainAlpha, 1, 1e6);
-
                     for (let j = 0; j < i.length; ++j) {
                         if (this.count >= 0) {
-                            let currI = clamp(i[j] * this.gain, -2, 2);
-                            let currQ = clamp(q[j] * this.gain, -2, 2);
+                            let currI = clamp(i[j], -2, 2);
+                            let currQ = clamp(q[j], -2, 2);
 
                             this.out[0] = new Complex(currI, currQ);
                             this.outRail[0] = this.nearest8psk(this.out[0]);
@@ -1087,7 +1063,7 @@
                             let y = this.out[0].sub(this.out[2]).mul(this.outRail[1].conj()).real;
                             let mmVal = y - x;
 
-                            this.mu += this.samplesPerSymbol + clamp(this.gamma * mmVal, -this.samplesPerSymbol / 2, this.samplesPerSymbol / 2);
+                            this.mu += this.samplesPerSymbol + clamp(this.gamma * mmVal * this.gain, -this.samplesPerSymbol / 2, this.samplesPerSymbol / 2);
                             let offset = Math.floor(this.mu);
                             this.count -= offset;
                             this.mu -= offset;
@@ -1098,12 +1074,25 @@
                             this.outRail[2] = this.outRail[1];
                             this.outRail[1] = this.outRail[0];
 
+                            // Channel estimation and equalization
+                            // For BPSK, we can use a simple decision-directed approach
+                            let actualAmpl = this.out[0].abs();
+                            let desiredGain = 1 / actualAmpl;
+                            this.gain = this.gainAlpha * desiredGain + (1 - this.gainAlpha) * this.gain;
+                            this.gain = clamp(this.gain, 0.1, 1e6);
+                            this.out[0] = new Complex(this.out[0].real * this.gain, this.out[0].imag * this.gain);
+
                             // Costas Loop
                             let costas = new Complex(Math.cos(this.phase), -Math.sin(this.phase));
                             let out = this.out[0].mul(costas);
                             let error = this.phaseDetector8(out);
                             this.freq += this.beta * error;
-                            this.freq = clamp(this.freq, -Math.PI * 0.125, Math.PI * 0.125);
+                            
+                            // Clamp freq 
+                            let radianPerHz = Math.PI * 2 / this.baudRate;
+                            let maxRadian = 4 * radianPerHz;
+                            this.freq = clamp(this.freq, -maxRadian, maxRadian);
+
                             this.phase += this.freq + this.alpha * error;
                             if (this.phase > 2 * Math.PI) this.phase -= 2 * Math.PI;
                             if (this.phase < 0) this.phase += 2 * Math.PI;
