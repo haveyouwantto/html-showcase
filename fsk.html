@@ -493,9 +493,7 @@
         <button id="download-message">下载</button>
         <button id="close-message">关闭</button>
     </dialog>
-    <script src="//cdn.jsdelivr.net/npm/eruda"></script>
-    <script>eruda.init();</script>
-
+    
     <script>
 
         let baudRate = 32; // 波特率
@@ -570,22 +568,15 @@
             }
 
             function calculateAlpha(bd) {
-                // This was previously a fixed value.
-                // Making it dependent on baud rate ensures the phase correction loop
-                // has a consistent bandwidth relative to the symbol rate, improving stability.
-                // The formula is tuned for a critically damped loop.
-                return clamp(12.8 / bd, 0.001, 0.1);
+                return 1.6 / bd
             }
 
             function calculateBeta(bd) {
-                // Beta is for frequency correction and should be much smaller than alpha.
-                // This relationship to alpha helps maintain loop stability.
-                const alpha = calculateAlpha(bd);
-                return clamp((alpha * alpha) / 4.0, 0.00001, 0.005);
+                return calculateAlpha(bd) *0.4
             }
 
             function calculateGamma(bd) {
-                return clamp(200 / bd, 0.1, 5);
+                return clamp(1000 / bd, 0.1, 10); 
             }
 
             function clamp(v, min, max) {
