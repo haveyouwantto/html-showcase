@@ -3412,7 +3412,7 @@
                 
             }
             redetect();
-            ctx.lineWidth = 1.5
+            ctx.lineWidth = 1
             ctx.font = "12px Arial";
             function draw() {
                 const width = canvas.width / window.devicePixelRatio
@@ -3463,7 +3463,7 @@
                     const y = clamp(centerY - sample[1] * plotSize, 0, height);
 
                     ctx.beginPath();
-                    ctx.arc(x, y, 2 , 0, Math.PI * 2); // 使用准确的角度值
+                    ctx.arc(x, y, 1.5, 0, Math.PI * 2); // 使用准确的角度值
                     ctx.fill();
                 }
 
