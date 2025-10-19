@@ -495,7 +495,7 @@
         <button id="download-message">下载</button>
         <button id="close-message">关闭</button>
     </dialog>
-    
+
     <script>
 
         let baudRate = 32; // 波特率
@@ -574,11 +574,11 @@
             }
 
             function calculateBeta(bd) {
-                return calculateAlpha(bd) *0.4
+                return calculateAlpha(bd) * 0.4
             }
 
             function calculateGamma(bd) {
-                return clamp(1000 / bd, 0.1, 10); 
+                return clamp(1000 / bd, 0.1, 10);
             }
 
             function clamp(v, min, max) {
@@ -841,7 +841,7 @@
                             this.out[2] = this.out[1];
                             this.out[1] = this.out[0];
                             this.outRail[2] = this.outRail[1];
-                            this.outRail[1] = this.outRail[0];                            
+                            this.outRail[1] = this.outRail[0];
 
                             // Channel estimation and equalization
                             // For BPSK, we can use a simple decision-directed approach
@@ -941,7 +941,7 @@
                             this.out[1] = this.out[0];
                             this.outRail[2] = this.outRail[1];
                             this.outRail[1] = this.outRail[0];
-                            
+
                             // Channel estimation and equalization
                             // For BPSK, we can use a simple decision-directed approach
                             let actualAmpl = this.out[0].abs();
@@ -1080,7 +1080,7 @@
                             let out = gained.mul(costas);
                             let error = this.phaseDetector8(out);
                             this.freq += this.beta * error;
-                            
+
                             // Clamp freq 
                             let radianPerHz = Math.PI * 2 / this.baudRate;
                             let maxRadian = 4 * radianPerHz;
@@ -3399,8 +3399,8 @@
 
             const canvas = document.getElementById('constellation')
             const ctx = canvas.getContext('2d')
-            
-            
+
+
             function redetect() {
                 const dpr = window.devicePixelRatio || 1;
                 const rect = canvas.getBoundingClientRect();
@@ -3409,9 +3409,10 @@
                 canvas.height = rect.height * dpr;
 
                 ctx.scale(dpr, dpr);
-                
+
             }
             redetect();
+            window.addEventListener('resize', redetect);
             ctx.lineWidth = 1
             ctx.font = "12px Arial";
             function draw() {
@@ -3444,7 +3445,7 @@
                     ctx.beginPath();
                     ctx.arc(x, y, 3, 0, Math.PI * 2);
                     ctx.fill();
-                    ctx.fillText(point.label, x + 4, y -4);
+                    ctx.fillText(point.label, x + 4, y - 4);
                 }
 
 
@@ -3463,7 +3464,7 @@
                     const y = clamp(centerY - sample[1] * plotSize, 0, height);
 
                     ctx.beginPath();
-                    ctx.arc(x, y, 1.5, 0, Math.PI * 2); // 使用准确的角度值
+                    ctx.arc(x, y, 3, 0, Math.PI * 2); // 使用准确的角度值
                     ctx.fill();
                 }
 
