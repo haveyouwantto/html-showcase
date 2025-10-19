@@ -467,7 +467,7 @@
 ">
                 <div class="decode-info-container">
                     <div class="info-container">
-                        <canvas id="constellation" width="500" height="500"></canvas>
+                        <canvas id="constellation" width="300" height="300"></canvas>
                         <label>星座图</label>
                     </div>
                     <div class="oscilloscope-container">
@@ -841,7 +841,7 @@
                             this.out[2] = this.out[1];
                             this.out[1] = this.out[0];
                             this.outRail[2] = this.outRail[1];
-                            this.outRail[1] = this.outRail[0];
+                            this.outRail[1] = this.outRail[0];                            
 
                             // Channel estimation and equalization
                             // For BPSK, we can use a simple decision-directed approach
@@ -849,11 +849,11 @@
                             let desiredGain = 1 / actualAmpl;
                             this.gain = this.gainAlpha * desiredGain + (1 - this.gainAlpha) * this.gain;
                             this.gain = clamp(this.gain, 0.1, 1e6);
-                            this.out[0] = new Complex(this.out[0].real * this.gain, this.out[0].imag * this.gain);
+                            let gained = new Complex(this.out[0].real * this.gain, this.out[0].imag * this.gain);
 
                             // Costas Loop
                             let costas = new Complex(Math.cos(this.phase), -Math.sin(this.phase));
-                            let out = this.out[0].mul(costas);
+                            let out = gained.mul(costas);
                             let error = out.real * out.imag;
                             this.freq += this.beta * error;
 
@@ -948,11 +948,11 @@
                             let desiredGain = 1 / actualAmpl;
                             this.gain = this.gainAlpha * desiredGain + (1 - this.gainAlpha) * this.gain;
                             this.gain = clamp(this.gain, 0.1, 1e6);
-                            this.out[0] = new Complex(this.out[0].real * this.gain, this.out[0].imag * this.gain);
+                            let gained = new Complex(this.out[0].real * this.gain, this.out[0].imag * this.gain);
 
                             // Costas Loop
                             let costas = new Complex(Math.cos(this.phase), -Math.sin(this.phase));
-                            let out = this.out[0].mul(costas);
+                            let out = gained.mul(costas);
                             let error = this.errorFunc(out); // errorFunc 需要根据实际情况进行修改
                             this.freq += this.beta * error;
 
@@ -1073,11 +1073,11 @@
                             let desiredGain = 1 / actualAmpl;
                             this.gain = this.gainAlpha * desiredGain + (1 - this.gainAlpha) * this.gain;
                             this.gain = clamp(this.gain, 0.1, 1e6);
-                            this.out[0] = new Complex(this.out[0].real * this.gain, this.out[0].imag * this.gain);
+                            let gained = new Complex(this.out[0].real * this.gain, this.out[0].imag * this.gain);
 
                             // Costas Loop
                             let costas = new Complex(Math.cos(this.phase), -Math.sin(this.phase));
-                            let out = this.out[0].mul(costas);
+                            let out = gained.mul(costas);
                             let error = this.phaseDetector8(out);
                             this.freq += this.beta * error;
                             
@@ -2846,7 +2846,7 @@
 
                 // 绘制波形
                 ctx.beginPath();
-                ctx.lineWidth = 2;
+                ctx.lineWidth = 1;
                 ctx.strokeStyle = this.lineColor;
 
                 let scaleY, centerY;
@@ -3399,27 +3399,42 @@
 
             const canvas = document.getElementById('constellation')
             const ctx = canvas.getContext('2d')
-            ctx.lineWidth = 1
+            
+            
+            function redetect() {
+                const dpr = window.devicePixelRatio || 1;
+                const rect = canvas.getBoundingClientRect();
+
+                canvas.width = rect.width * dpr;
+                canvas.height = rect.height * dpr;
+
+                ctx.scale(dpr, dpr);
+                
+            }
+            redetect();
+            ctx.lineWidth = 1.5
+            ctx.font = "12px Arial";
             function draw() {
-                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                const width = canvas.width / window.devicePixelRatio
+                const height = canvas.height / window.devicePixelRatio
+                ctx.clearRect(0, 0, width, height);
 
                 // 绘制参考轴线
                 ctx.strokeStyle = 'red';
                 ctx.beginPath();
-                ctx.moveTo(0, canvas.height / 2);
-                ctx.lineTo(canvas.width, canvas.height / 2);
+                ctx.moveTo(0, height / 2);
+                ctx.lineTo(width, height / 2);
                 ctx.stroke();
 
                 ctx.strokeStyle = 'green';
                 ctx.beginPath();
-                ctx.moveTo(canvas.width / 2, 0);
-                ctx.lineTo(canvas.width / 2, canvas.height);
+                ctx.moveTo(width / 2, 0);
+                ctx.lineTo(width / 2, height);
                 ctx.stroke();
 
-
-                const centerX = canvas.width / 2;
-                const centerY = canvas.height / 2;
-                const plotSize = Math.min(canvas.width, canvas.height) * 0.3; // 使用画布短边的40%作为绘图区域
+                const centerX = width / 2;
+                const centerY = height / 2;
+                const plotSize = Math.min(width, height) * 0.3; // 使用画布短边的40%作为绘图区域
 
                 // 绘制判定点
                 ctx.fillStyle = 'gray';
@@ -3427,9 +3442,9 @@
                     const x = centerX + point.i * plotSize;
                     const y = centerY - point.q * plotSize;
                     ctx.beginPath();
-                    ctx.arc(x, y, 4, 0, Math.PI * 2);
+                    ctx.arc(x, y, 3, 0, Math.PI * 2);
                     ctx.fill();
-                    ctx.fillText(point.label, x + 8, y - 8);
+                    ctx.fillText(point.label, x + 4, y -4);
                 }
 
 
@@ -3437,18 +3452,18 @@
 
                 ctx.strokeStyle = "gray"
                 ctx.beginPath();
-                ctx.arc(canvas.width / 2, canvas.height / 2, plotSize, 0, Math.PI * 2);
+                ctx.arc(width / 2, height / 2, plotSize, 0, Math.PI * 2);
                 ctx.stroke();
 
                 ctx.fillStyle = 'white';
 
                 for (let sample of constellation.getSamples()) {
                     // 将I/Q信号映射到绘图区域
-                    const x = clamp(centerX + sample[0] * plotSize, 0, canvas.width);
-                    const y = clamp(centerY - sample[1] * plotSize, 0, canvas.height);
+                    const x = clamp(centerX + sample[0] * plotSize, 0, width);
+                    const y = clamp(centerY - sample[1] * plotSize, 0, height);
 
                     ctx.beginPath();
-                    ctx.arc(x, y, 4, 0, Math.PI * 2); // 使用准确的角度值
+                    ctx.arc(x, y, 2 , 0, Math.PI * 2); // 使用准确的角度值
                     ctx.fill();
                 }
 
