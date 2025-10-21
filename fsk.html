@@ -1211,9 +1211,9 @@
             for (let i = 0; i < string.length; i++) {
                 const ord = string.codePointAt(i);
                 if (ord < 128) {
-                    result.push(VARICODE.indexOf(string[i]) + 2)
+                    result.push(VARICODE.indexOf(string[i]) + 1)
                 } else {
-                    result.push(ord + 2);
+                    result.push(ord + 1);
                     if (ord > 0xffff) i++;
                 }
             }
@@ -3348,15 +3348,15 @@
                         if (dec >= 2001000) {
                             imgParser.feed(dec - 2001000);
                         } else imgParser.feed(dec);
-                    } else if (dec >= 2 && dec <= 129) { // Varicode characters
-                        receivedChar(VARICODE[dec - 2]);
+                    } else if (dec >= 1 && dec <= 128) { // Varicode characters
+                        receivedChar(VARICODE[dec - 1]);
                         if (rxMessage) {
-                            rxMessage.write(VARICODE[dec - 2]);
+                            rxMessage.write(VARICODE[dec - 1]);
                         }
                     } else { // Regular characters
-                        receivedChar(String.fromCodePoint(dec - 2));
+                        receivedChar(String.fromCodePoint(dec - 1));
                         if (rxMessage) {
-                            rxMessage.write(String.fromCodePoint(dec - 2));
+                            rxMessage.write(String.fromCodePoint(dec - 1));
                         }
                     }
                 }

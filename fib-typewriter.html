@@ -1,0 +1,544 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fibonacci Typewriter</title>
+    <style>
+        :root {
+            --bg-color: #1a1a2e;
+            --card-bg: #16213e;
+            --text-color: #e6e6e6;
+            --accent-color: #0f3460;
+            --highlight-color: #e94560;
+            --button-bg: #0f3460;
+            --button-hover: #1c4b82;
+            --toggle-on: #4CAF50;
+            --toggle-off: #555;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            line-height: 1.6;
+            padding: 20px;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        header {
+            text-align: center;
+            margin-bottom: 30px;
+            padding-bottom: 20px;
+            border-bottom: 1px solid var(--accent-color);
+        }
+
+        h1 {
+            color: var(--highlight-color);
+            margin-bottom: 10px;
+        }
+
+        .container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 20px;
+        }
+
+        .main-content {
+            flex: 3;
+            min-width: 300px;
+        }
+
+        .sidebar {
+            flex: 1;
+            min-width: 250px;
+        }
+
+        .card {
+            background-color: var(--card-bg);
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+
+        #output {
+            font-family: 'Courier New', monospace;
+            font-size: 20px;
+            min-height: 150px;
+            padding: 15px;
+            background-color: rgba(0, 0, 0, 0.2);
+            border-radius: 4px;
+            white-space: pre-wrap;
+            overflow-y: auto;
+            max-height: 300px;
+        }
+
+        .key-display {
+            display: flex;
+            gap: 10px;
+            margin: 15px 0;
+            flex-wrap: wrap;
+        }
+
+        .key {
+            padding: 8px 15px;
+            background-color: var(--button-bg);
+            border-radius: 4px;
+            font-weight: bold;
+        }
+
+        .key.active {
+            background-color: var(--highlight-color);
+            transform: scale(1.05);
+        }
+
+        .buffer-display {
+            font-family: 'Courier New', monospace;
+            background-color: rgba(0, 0, 0, 0.2);
+            padding: 10px;
+            border-radius: 4px;
+            margin-top: 10px;
+            min-height: 40px;
+            word-break: break-all;
+        }
+
+        .mode-selector {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+
+        .mode-btn {
+            flex: 1;
+            padding: 10px;
+            background-color: var(--button-bg);
+            border: none;
+            border-radius: 4px;
+            color: var(--text-color);
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+
+        .mode-btn.active {
+            background-color: var(--highlight-color);
+        }
+
+        .mode-btn:hover {
+            background-color: var(--button-hover);
+        }
+
+        .key-config {
+            margin-top: 15px;
+        }
+
+        .toggle-buttons {
+            display: grid;
+            gap: 10px;
+            margin: 15px 0;
+        }
+
+        .toggle-row {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .toggle-btn {
+            padding: 8px 15px;
+            background-color: var(--toggle-off);
+            border: none;
+            border-radius: 4px;
+            color: var(--text-color);
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+
+        .toggle-btn.active {
+            background-color: var(--toggle-on);
+        }
+
+        .toggle-btn:hover {
+            opacity: 0.9;
+        }
+
+        .key-label {
+            min-width: 80px;
+            font-weight: bold;
+        }
+
+        .key-value {
+            min-width: 40px;
+            text-align: center;
+            font-family: 'Courier New', monospace;
+        }
+
+        .setting-instruction {
+            margin-top: 10px;
+            font-style: italic;
+            color: #aaa;
+        }
+
+        .info-panel {
+            margin-top: 20px;
+            font-size: 14px;
+            color: #aaa;
+        }
+
+        .clear-btn {
+            margin-top: 10px;
+            padding: 8px 15px;
+            background-color: var(--button-bg);
+            border: none;
+            border-radius: 4px;
+            color: var(--text-color);
+            cursor: pointer;
+            transition: background-color 0.1s;
+        }
+
+        .clear-btn:hover {
+            background-color: var(--button-hover);
+        }
+
+        .clear-btn:active {
+            background-color: var(--highlight-color);
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                flex-direction: column;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <header>
+        <h1>Fibonacci Typewriter</h1>
+        <p>Type using Fibonacci encoding with customizable key mappings</p>
+    </header>
+
+    <div class="container">
+        <div class="main-content">
+            <div class="card">
+                <h2>Output</h2>
+                <pre id="output"></pre>
+                <button id="clearOutputBtn" class="clear-btn">Clear Output</button>
+            </div>
+
+            <div class="card">
+                <h2>Key Status</h2>
+                <div class="key-display" id="keyDisplay">
+                    <!-- Keys will be dynamically added here -->
+                </div>
+
+                <h3>Bit Buffer</h3>
+                <div class="buffer-display" id="bufferDisplay"></div>
+            </div>
+        </div>
+
+        <div class="sidebar">
+            <div class="card">
+                <h2>Settings</h2>
+
+                <div class="mode-selector">
+                    <button class="mode-btn active" data-mode="2">2-Key Mode</button>
+                    <button class="mode-btn" data-mode="4">4-Key Mode</button>
+                    <button class="mode-btn" data-mode="8">8-Key Mode</button>
+                </div>
+
+                <div class="key-config">
+                    <h3>Key Configuration</h3>
+                    <div class="toggle-buttons" id="toggleButtons">
+                        <!-- Toggle buttons will be dynamically added here -->
+                    </div>
+                    <div class="setting-instruction" id="settingInstruction">
+                        Click a toggle button and press a key to assign it
+                    </div>
+                </div>
+            </div>
+
+            <div class="card info-panel">
+                <h3>How It Works</h3>
+                <p>This typewriter uses Fibonacci encoding to convert binary sequences into characters.</p>
+                <p>Each character is represented by a unique binary sequence that ends with "11".</p>
+                <p>Customize your key mappings for different input modes.</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Fibonacci sequence generation
+        const fib = [...Array(32)].reduce((a, _, i) => i ? [...a, i > 1 ? a[i - 1] + a[i - 2] : 1] : [1], []).slice(1);
+        const varicode = ' eotain\n\rlrs-cdfhmpu,.=AEISTbgvwy\t()0123:BCDFGLMNOPRkx!"#$\'*+/456789;<>HJKQUVWXY[\\]_jqz|\x00\x01\x02\x03\x04\x05\x06\x07\b\v\f\x0E\x0F\x10\x11\x12\x13\x14\x15\x16\x17\x18\x19\x1A\x1B\x1C\x1D\x1E\x1F%&?@Z^`{}~\x7F';
+
+        // Application state
+        const state = {
+            mode: 2, // 2, 4, or 8 key mode
+            keyMappings: {
+                2: {
+                    '0': 'z',
+                    '1': 'x'
+                },
+                4: {
+                    '00': 'z',
+                    '01': 'x',
+                    '10': 'c',
+                    '11': 'v'
+                },
+                8: {
+                    '000': 'z',
+                    '001': 'x',
+                    '010': 'c',
+                    '011': 'v',
+                    '100': 'b',
+                    '101': 'n',
+                    '110': 'm',
+                    '111': ','
+                }
+            },
+            activeKeys: {},
+            settingKey: null
+        };
+
+        // DOM elements
+        const outputDiv = document.getElementById('output');
+        const keyDisplayDiv = document.getElementById('keyDisplay');
+        const bufferDisplayDiv = document.getElementById('bufferDisplay');
+        const toggleButtonsDiv = document.getElementById('toggleButtons');
+        const settingInstructionDiv = document.getElementById('settingInstruction');
+        const modeButtons = document.querySelectorAll('.mode-btn');
+        const clearOutputBtn = document.getElementById('clearOutputBtn');
+
+        // Fibonacci decoder class
+        class FibonacciDecoder {
+            constructor(callback) {
+                this.bitBuffer = [];
+                this.callback = callback;
+            }
+
+            feed(bit) {
+                this.bitBuffer.push(bit);
+
+                // Update buffer display
+                updateBufferDisplay();
+
+                // 检测结束标志
+                if (this.bitBuffer.length >= 2 && this.bitBuffer[this.bitBuffer.length - 1] === 1 && this.bitBuffer[this.bitBuffer.length - 2] === 1) {
+                    try {
+                        this._decode();
+                    } catch (IndexError) {
+                        // 忽略 IndexError 异常
+                    }
+                    this.bitBuffer = []; // 清空 bitBuffer
+                    updateBufferDisplay();
+                }
+
+                if (this.bitBuffer.length > 32) {
+                    this.bitBuffer = []; // 清空 bitBuffer
+                    updateBufferDisplay();
+                }
+            }
+
+            _decode() {
+                let total = 0;
+                for (let i = 0; i < this.bitBuffer.length - 1; i++) {
+                    total += fib[i] * this.bitBuffer[i];
+                }
+
+                this.callback(total);
+            }
+        }
+
+        // Create decoder instance
+        const decoder = new FibonacciDecoder((charCode) => {
+            console.log('Decoded char code:', charCode);
+            if (charCode >= 1 && charCode <= 128) {
+                const character = varicode[charCode - 1];
+                outputDiv.textContent += character;
+            } else {
+                outputDiv.textContent += String.fromCodePoint(charCode - 1);
+            }
+        });
+
+        // Initialize the UI
+        function initUI() {
+            updateModeDisplay();
+            createToggleButtons();
+            updateKeyDisplay();
+        }
+
+        // Update mode display
+        function updateModeDisplay() {
+            modeButtons.forEach(btn => {
+                if (parseInt(btn.dataset.mode) === state.mode) {
+                    btn.classList.add('active');
+                } else {
+                    btn.classList.remove('active');
+                }
+            });
+
+            updateKeyDisplay();
+        }
+
+        // Create toggle buttons for key configuration
+        function createToggleButtons() {
+            toggleButtonsDiv.innerHTML = '';
+            const bits = Math.log2(state.mode);
+            const mappings = state.keyMappings[state.mode];
+
+            const [binary, key] = Object.entries(mappings);
+            // sort keys for consistent display
+            const sortedKeys = Object.entries(mappings).sort((a, b) => a[0].localeCompare(b[0]));
+            for (const [binary, key] of sortedKeys) {
+                const row = document.createElement('div');
+                row.className = 'toggle-row';
+
+                const label = document.createElement('div');
+                label.className = 'key-label';
+                label.textContent = binary;
+
+                const value = document.createElement('div');
+                value.className = 'key-value';
+                value.textContent = key;
+
+                const button = document.createElement('button');
+                button.className = 'toggle-btn';
+                button.textContent = 'Set Key';
+                button.dataset.binary = binary;
+
+                button.addEventListener('click', () => {
+                    if (state.settingKey === binary) {
+                        // Cancel setting
+                        state.settingKey = null;
+                        button.classList.remove('active');
+                        settingInstructionDiv.textContent = 'Click a toggle button and press a key to assign it';
+                    } else {
+                        // Start setting this key
+                        state.settingKey = binary;
+                        // Deactivate other buttons
+                        document.querySelectorAll('.toggle-btn').forEach(btn => {
+                            btn.classList.remove('active');
+                        });
+                        button.classList.add('active');
+                        settingInstructionDiv.textContent = `Press a key to assign to "${binary}"`;
+                    }
+                });
+
+                row.appendChild(label);
+                row.appendChild(value);
+                row.appendChild(button);
+                toggleButtonsDiv.appendChild(row);
+            }
+        }
+
+        // Update key display
+        function updateKeyDisplay() {
+            keyDisplayDiv.innerHTML = '';
+            const mappings = state.keyMappings[state.mode];
+
+            const [binary, key] = Object.entries(mappings);
+            // sort keys for consistent display
+            const sortedKeys = Object.entries(mappings).sort((a, b) => a[0].localeCompare(b[0]));
+            for (const [binary, key] of sortedKeys) {
+                const keyElement = document.createElement('div');
+                keyElement.className = 'key';
+                keyElement.textContent = `${key} (${binary})`;
+                keyElement.dataset.key = key;
+                keyDisplayDiv.appendChild(keyElement);
+            }
+        }
+
+        // Update buffer display
+        function updateBufferDisplay() {
+            bufferDisplayDiv.textContent = decoder.bitBuffer.join('');
+            bufferDisplayDiv.scrollTop = bufferDisplayDiv.scrollHeight;
+        }
+
+        // Handle key events
+        function handleKeyEvent(key) {
+            // Update active keys display
+            const keyElements = document.querySelectorAll('.key');
+            keyElements.forEach(el => {
+                if (el.dataset.key === key) {
+                    el.classList.add('active');
+                    setTimeout(() => {
+                        el.classList.remove('active');
+                    }, 50);
+                }
+            });
+
+            // Handle key setting mode
+            if (state.settingKey) {
+                state.keyMappings[state.mode][state.settingKey] = key;
+
+                // Update UI
+                createToggleButtons();
+                updateKeyDisplay();
+
+                // Exit setting mode
+                state.settingKey = null;
+                settingInstructionDiv.textContent = 'Click a toggle button and press a key to assign it';
+                return;
+            }
+
+            // Handle normal input based on mode
+            const mappings = state.keyMappings[state.mode];
+
+            if (state.mode === 2) {
+                // Direct binary input
+                if (key === mappings['0']) {
+                    decoder.feed(0);
+                } else if (key === mappings['1']) {
+                    decoder.feed(1);
+                }
+            } else {
+                // Multi-bit input
+                for (const [binary, mappedKey] of Object.entries(mappings)) {
+                    if (key === mappedKey) {
+                        // Feed each bit in sequence
+                        for (const bit of binary) {
+                            decoder.feed(parseInt(bit));
+                        }
+                        break;
+                    }
+                }
+            }
+        }
+
+        // Event listeners
+        document.addEventListener('keydown', (event) => {
+            // Prevent default only for keys we're using
+            if (Object.values(state.keyMappings[state.mode]).includes(event.key)) {
+                event.preventDefault();
+            }
+            handleKeyEvent(event.key);
+        });
+
+        clearOutputBtn.addEventListener('click', () => {
+            outputDiv.textContent = '';
+        });
+
+        // Mode button event listeners
+        modeButtons.forEach(btn => {
+            btn.addEventListener('click', () => {
+                state.mode = parseInt(btn.dataset.mode);
+                updateModeDisplay();
+                createToggleButtons();
+            });
+        });
+
+        // Initialize the application
+        initUI();
+    </script>
+</body>
+
+</html>
