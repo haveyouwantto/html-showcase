@@ -862,7 +862,7 @@
                             let costas = new Complex(Math.cos(this.phase), -Math.sin(this.phase));
                             let out = gained.mul(costas);
                             let error = out.real * out.imag;
-                            this.freq += this.beta * error;
+                            this.freq += clamp(this.beta * error, -0.01, 0.01);
 
                             // Clamp freq 
                             let radianPerHz = Math.PI * 2 / this.baudRate;
@@ -961,7 +961,7 @@
                             let costas = new Complex(Math.cos(this.phase), -Math.sin(this.phase));
                             let out = gained.mul(costas);
                             let error = this.errorFunc(out); // errorFunc 需要根据实际情况进行修改
-                            this.freq += this.beta * error;
+                            this.freq += clamp(this.beta * error, -0.01, 0.01);
 
                             // Clamp freq 
                             let radianPerHz = Math.PI * 2 / this.baudRate;
@@ -1086,7 +1086,7 @@
                             let costas = new Complex(Math.cos(this.phase), -Math.sin(this.phase));
                             let out = gained.mul(costas);
                             let error = this.phaseDetector8(out);
-                            this.freq += this.beta * error;
+                            this.freq += clamp(this.beta * error, -0.01, 0.01);
 
                             // Clamp freq 
                             let radianPerHz = Math.PI * 2 / this.baudRate;
