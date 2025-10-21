@@ -212,6 +212,26 @@
             background-color: var(--highlight-color);
         }
 
+        .code {
+            background-color: rgba(0, 0, 0, 0.2);
+            padding: 10px;
+            border-radius: 4px;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            overflow-x: auto;
+            white-space: pre-wrap;
+        }
+
+        iframe {
+            width: 100%;
+            height: 200px;
+            border: none;
+            margin-top: 10px;
+            border-radius: 4px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            background-color: white;
+        }
+
         @media (max-width: 768px) {
             .container {
                 flex-direction: column;
@@ -243,7 +263,23 @@
                 <h3>Bit Buffer</h3>
                 <div class="buffer-display" id="bufferDisplay"></div>
             </div>
-        </div>
+
+            <div class="card">
+                <h2>Instructions</h2>
+                <p>Use the configured keys to input binary sequences.</p>
+                <p>In 2-Key Mode, press the keys mapped to '0' and '1' to input bits directly.</p>
+                <p>In 4-Key and 8-Key Modes, each key corresponds to a multi-bit sequence.</p>
+                <p>Each character is encoded in Fibonacci code and ends with "11".</p>
+                <p>Customize your key mappings in the sidebar.</p>
+            </div>
+
+            <div class="card">
+                <h2>Miniature version</h2>
+                <p>This is a compact version of the Fibonacci Typewriter.</p>
+                <p>It retains the core functionality while being more lightweight.</p>
+                <pre class="code" id="min-code">&lt;!doctype html&gt;&lt;pre id=&quot;o&quot;&gt;&lt;/pre&gt;&lt;script&gt;const f=[...Array(32)].reduce(((t,e,s)=&gt;s?[...t,s&gt;1?t[s-1]+t[s-2]:1]:[1]),[]).slice(1),v=&#39; eotain\n\rlrs-cdfhmpu,.=AEISTbgvwy\t()0123:BCDFGLMNOPRkx!&quot;#$\&#39;*+/456789;&lt;&gt;HJKQUVWXY[\\]_jqz|\x00\x01\x02\x03\x04\x05\x06\x07\b\v\f\x0E\x0F\x10\x11\x12\x13\x14\x15\x16\x17\x18\x19\x1A\x1B\x1C\x1D\x1E\x1F%&amp;?@Z^`{}~\x7F&#39;;class D{constructor(t){this.b=[],this.c=t}f(t){this.b.push(t);let e=this.b.length;if(e&gt;=2&amp;&amp;1===this.b[e-1]&amp;&amp;1===this.b[e-2]){try{this._d()}catch(t){}this.b=[]}this.b.length&gt;32&amp;&amp;(this.b=[])}_d(){let t=0;for(let e=0;e&lt;this.b.length-1;e++)t+=f[e]*this.b[e];this.c(t)}}const o=document.getElementById(&quot;o&quot;),d=new D((t=&gt;{o.textContent+=t&gt;=1&amp;&amp;t&lt;=128?v[t-1]:String.fromCodePoint(t-1)}));document.addEventListener(&quot;keydown&quot;,(t=&gt;{&quot;z&quot;===t.key?d.f(0):d.f(1)}));&lt;/script&gt;</pre>
+                <iframe id="preview"></iframe>
+            </div>
 
         <div class="sidebar">
             <div class="card">
@@ -317,6 +353,8 @@
         const settingInstructionDiv = document.getElementById('settingInstruction');
         const modeButtons = document.querySelectorAll('.mode-btn');
         const clearOutputBtn = document.getElementById('clearOutputBtn');
+        const previewFrame = document.getElementById('preview');
+        const minCodePre = document.getElementById('min-code');
 
         // Fibonacci decoder class
         class FibonacciDecoder {
@@ -526,6 +564,9 @@
         clearOutputBtn.addEventListener('click', () => {
             outputDiv.textContent = '';
         });
+
+        const minCode = minCodePre.textContent.trim();
+        previewFrame.srcdoc = minCode;
 
         // Mode button event listeners
         modeButtons.forEach(btn => {
