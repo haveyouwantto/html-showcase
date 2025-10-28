@@ -134,6 +134,18 @@
             transform: rotate(45deg);
         }
 
+        #fab-icon {
+            width: 48px;
+            height: 48px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transform: translateY(-0.3rem);
+            font-size: 48px;
+            margin: 0;
+            padding: 0;
+        }
+
         #fab-menu {
             position: absolute;
             bottom: 65px;
@@ -157,6 +169,10 @@
 
         .fab-menu-item:hover {
             background-color: #f5f5f5;
+        }
+
+        .fab-hidden {
+            opacity: 0;
         }
 
         #context-menu {
@@ -200,7 +216,9 @@
             <div class="fab-menu-item" id="fab-toggle-controls">隐藏控件</div>
             <div class="fab-menu-item" id="fab-adjust-padding">调整边距</div>
         </div>
-        <div id="fab-button">+</div>
+        <div id="fab-button">
+            <div id="fab-icon">+</div>
+        </div>
     </div>
 
     <input type="file" id="imageUpload" accept="image/*" multiple>
@@ -453,6 +471,7 @@
             });
             fabToggleControls.addEventListener('click', () => {
                 corkboard.classList.toggle('controls-hidden');
+                fabButton.classList.toggle('fab-hidden');
                 fabToggleControls.textContent = corkboard.classList.contains('controls-hidden') ? '显示控件' : '隐藏控件';
                 hideFabMenu();
             });
