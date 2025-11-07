@@ -30,6 +30,12 @@
             gap: 20px;
         }
 
+        #mapContainer {
+            height: 50vh;
+            max-height: 600px;
+            position: relative;
+        }
+
         #map {
             height: 100%;
             background: var(--surface);
@@ -39,6 +45,7 @@
 
         .controls {
             display: flex;
+            flex-wrap: wrap; /* 允许换行 */
             gap: 10px;
             margin-bottom: 20px;
         }
@@ -106,86 +113,81 @@
         }
         
         
-.unit-selectors {
-    margin-bottom: 1.5rem;
-    display: flex;
-    gap: 2rem;
-    font-family: system-ui, -apple-system, sans-serif;
-}
+        .unit-selectors {
+            margin-top: 20px; /* 从控件移到下面 */
+            display: flex;
+            flex-wrap: wrap; /* 允许换行 */
+            gap: 2rem;
+            font-family: system-ui, -apple-system, sans-serif;
+        }
 
-.unit-selectors label {
-    position: relative;
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    font-size: 0.9em;
-    color: #eee;
-}
+        .unit-selectors label {
+            position: relative;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-size: 0.9em;
+            color: #eee;
+        }
 
-.unit-selectors select {
-    appearance: none;
-    -webkit-appearance: none;
-    -moz-appearance: none;
-    min-width: 120px;
-    padding: 8px 32px 8px 12px;
-    border: 1px solid #ddd;
-    border-radius: 6px;
-    background-color: #333;
-    font-size: 14px;
-    color: #eee; 
-    transition: all 0.2s ease;
-    background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23666' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpath d='M6 9l6 6 6-6'/%3e%3c/svg%3e");
-    background-repeat: no-repeat;
-    background-position: right 10px center;
-    background-size: 16px;
-}
+        .unit-selectors select {
+            appearance: none;
+            -webkit-appearance: none;
+            -moz-appearance: none;
+            min-width: 120px;
+            padding: 8px 32px 8px 12px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            background-color: #333;
+            font-size: 14px;
+            color: #eee; 
+            transition: all 0.2s ease;
+            background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23666' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpath d='M6 9l6 6 6-6'/%3e%3c/svg%3e");
+            background-repeat: no-repeat;
+            background-position: right 10px center;
+            background-size: 16px;
+        }
 
-.unit-selectors select:hover {
-    border-color: #999;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-}
+        .unit-selectors select:hover {
+            border-color: #999;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        }
 
-.unit-selectors select:focus {
-    outline: none;
-    border-color: #007AFF;
-    box-shadow: 0 0 0 2px rgba(0,122,255,0.2);
-}
+        .unit-selectors select:focus {
+            outline: none;
+            border-color: #007AFF;
+            box-shadow: 0 0 0 2px rgba(0,122,255,0.2);
+        }
 
-#mapContainer {
-	height: 50vh;
-	max-height: 600px;
-	position: relative;
-}
+        .map-control-btn {
+            position: absolute;
+            top: 15px;
+            right: 15px;
+            z-index: 1000;
+            padding: 8px;
+            background: white;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: all 0.2s;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
 
-.map-control-btn {
-    position: absolute;
-    top: 15px;
-    right: 15px;
-    z-index: 1000;
-    padding: 8px;
-    background: white;
-    border: 1px solid #ddd;
-    border-radius: 4px;
-    cursor: pointer;
-    transition: all 0.2s;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-}
+        .map-control-btn:hover {
+            background: #f8f8f8;
+            transform: scale(1.05);
+            box-shadow: 0 3px 6px rgba(0,0,0,0.15);
+        }
 
-.map-control-btn:hover {
-    background: #f8f8f8;
-    transform: scale(1.05);
-    box-shadow: 0 3px 6px rgba(0,0,0,0.15);
-}
-
-.map-control-btn svg {
-    width: 24px;
-    height: 24px;
-    fill: none;
-    stroke: #666;
-    stroke-width: 2;
-    stroke-linecap: round;
-    stroke-linejoin: round;
-}
+        .map-control-btn svg {
+            width: 24px;
+            height: 24px;
+            fill: none;
+            stroke: #666;
+            stroke-width: 2;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+        }
 
     </style>
 </head>
@@ -195,26 +197,50 @@
             <div class="controls">
                 <button id="toggleBtn" class="primary-btn" onclick="toggleRecording()">开始记录</button>
                 <button class="secondary-btn" onclick="downloadJSON()">导出数据</button>
+                <button class="secondary-btn" onclick="triggerImport()">导入数据</button>
+                <input type="file" id="importFile" accept="application/json" style="display:none;" onchange="importJSON(event)">
                 <button class="danger-btn" onclick="clearRecords()">清除记录</button>
             </div>
-            <!-- 在地图容器中添加按钮 -->
-<div id="mapContainer">
-    <!-- 地图元素 -->
-    <div id="map"></div>
-    
-    <!-- 全屏按钮 -->
-    <button id="fullscreenBtn" class="map-control-btn">
-        <svg class="fullscreen-icon" viewBox="0 0 24 24">
-            <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/>
-        </svg>
-        <svg class="exit-fullscreen-icon" viewBox="0 0 24 24" style="display:none;">
-            <path d="M8 3v3a2 2 0 0 1-2 2H3m18 0h-3a2 2 0 0 1-2-2V3m0 18v-3a2 2 0 0 1 2-2h3M3 12h18"/>
-        </svg>
-    </button>
-</div>
+            
+            <div id="mapContainer">
+                <div id="map"></div>
+                <button id="fullscreenBtn" class="map-control-btn">
+                    <svg class="fullscreen-icon" viewBox="0 0 24 24">
+                        <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/>
+                    </svg>
+                    <svg class="exit-fullscreen-icon" viewBox="0 0 24 24" style="display:none;">
+                        <path d="M8 3v3a2 2 0 0 1-2 2H3m18 0h-3a2 2 0 0 1-2-2V3m0 18v-3a2 2 0 0 1 2-2h3M3 12h18"/>
+                    </svg>
+                </button>
+            </div>
+            
+            <div class="unit-selectors">
+                <label>速度单位：
+                    <select id="speedUnit">
+                        <option value="m/s">m/s</option>
+                        <option value="km/h" selected>km/h</option>
+                        <option value="pace">配速</option>
+                        <option value="mph">mph</option>
+                        <option value="kts">节</option>
+                    </select>
+                </label>
+                <label>距离单位：
+                    <select id="distanceUnit">
+                        <option value="km" selected>km</option>
+                        <option value="mi">英里</option>
+                        <option value="nmi">海里</option>
+                    </select>
+                </label>
+                <label>地图图源：
+                    <select id="tileLayerSelector">
+                        <option value="dark" selected>暗色地图</option>
+                        <option value="osm">街道图 (OSM)</option>
+                        <option value="satellite">卫星图 (Esri)</option>
+                    </select>
+                </label>
+            </div>
+
         </div>
-        
-                
         
         <div class="stats-table">
             <h3>实时数据</h3>
@@ -235,6 +261,10 @@
                     <td>当前速度</td>
                     <td id="speed">-</td>
                 </tr>
+                 <tr>
+                    <td>垂直角度</td>
+                    <td id="verticalAngle">-</td>
+                </tr>
                 <tr>
                     <td>总距离</td>
                     <td id="totalDistance">-</td>
@@ -249,24 +279,6 @@
                 </tr>
             </table>
         </div>
-        
-        <div class="unit-selectors">
-    <label>速度单位：
-        <select id="speedUnit">
-            <option value="m/s">m/s</option>
-            <option value="km/h" selected>km/h</option>
-            <option value="pace">配速</option>
-            <option value="mph">mph</option>
-            <option value="kts">节</option>
-        </select>
-    </label>
-    <label>距离单位：
-        <select id="distanceUnit">
-            <option value="km" selected>km</option>
-            <option value="mi">英里</option>
-            <option value="nmi">海里</option>
-        </select>
-    </label>
     </div>
 
 
@@ -279,8 +291,27 @@
         let trackLine = null;
         let startMarker = null;
         let endMarker = null;
-        let isRecording = false; // 状态标记
-        
+        let isRecording = false; 
+
+        // --- 新增：图源定义 ---
+        const tileLayers = {
+            'dark': L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
+                subdomains: 'abcd',
+                maxZoom: 19
+            }),
+            'osm': L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+                maxZoom: 19
+            }),
+            'satellite': L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+                attribution: 'Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community',
+                maxZoom: 19
+            })
+        };
+        let currentTileLayer = null;
+        // --- 图源定义结束 ---
+
         function convertToDMS(lat, lon) {
             const latDegrees = Math.floor(Math.abs(lat));
             const latMinutes = Math.floor((Math.abs(lat) - latDegrees) * 60);
@@ -293,42 +324,46 @@
             return `${latDegrees}°${latMinutes}'${latSeconds.toFixed(2)}"${latDirection}, ${longDegrees}°${longMinutes}'${longSeconds.toFixed(2)}"${longDirection}`;
         }
         
-        // 单位转换函数
-const unitConverter = {
-    // 速度转换（m/s为基础单位）
-    speed: {
-        'm/s': v => v.toFixed(1),
-        'km/h': v => (v * 3.6).toFixed(1),
-        'mph': v => (v * 2.23694).toFixed(1),
-        'kts': v => (v * 1.94384).toFixed(1),
-        'pace': (v, distanceUnit) => { // 配速特殊处理
-            const kmPerHour = v * 3.6;
-            const base = distanceUnit === 'km' ? 1 : 
-                       distanceUnit === 'mi' ? 1.60934 : 
-                       1.852; // 海里转km
-            return kmPerHour > 0 ? 
-                `${Math.floor(60 / (kmPerHour / base))}:${Math.round((60 / (kmPerHour / base) % 1)*60).toString().padStart(2, '0')} min/${distanceUnit}` 
-                : '-';
-        }
-    },
-    
-    // 距离转换（米为基础单位）
-    distance: {
-        'km': v => (v / 1000).toFixed(2),
-        'mi': v => (v / 1609.34).toFixed(2),
-        'nmi': v => (v / 1852).toFixed(2)
-    }
-};
-
+        const unitConverter = {
+            speed: {
+                'm/s': v => v.toFixed(1),
+                'km/h': v => (v * 3.6).toFixed(1),
+                'mph': v => (v * 2.23694).toFixed(1),
+                'kts': v => (v * 1.94384).toFixed(1),
+                'pace': (v, distanceUnit) => {
+                    const kmPerHour = v * 3.6;
+                    const base = distanceUnit === 'km' ? 1 : 
+                                 distanceUnit === 'mi' ? 1.60934 : 
+                                 1.852; 
+                    if (kmPerHour <= 0) return '-';
+                    const paceMin = 60 / (kmPerHour / base);
+                    const paceSec = (paceMin % 1) * 60;
+                    return `${Math.floor(paceMin)}:${Math.round(paceSec).toString().padStart(2, '0')} min/${distanceUnit}`;
+                }
+            },
+            distance: {
+                'km': v => (v / 1000).toFixed(2),
+                'mi': v => (v / 1609.34).toFixed(2),
+                'nmi': v => (v / 1852).toFixed(2)
+            }
+        };
 
         function initMap() {
             map = L.map('map').setView([0, 0], 13);
-            L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
-                subdomains: 'abcd',
-                maxZoom: 19
-            }).addTo(map);
+            // 默认加载暗色图层
+            currentTileLayer = tileLayers['dark'];
+            currentTileLayer.addTo(map);
         }
+
+        // --- 新增：切换图源函数 ---
+        function changeTileLayer(layerKey) {
+            if (currentTileLayer) {
+                map.removeLayer(currentTileLayer);
+            }
+            currentTileLayer = tileLayers[layerKey];
+            currentTileLayer.addTo(map);
+        }
+        // --- 切换图源函数结束 ---
 
         function getDistance(lat1, lon1, lat2, lon2) {
             const R = 6371e3;
@@ -343,11 +378,11 @@ const unitConverter = {
             return R * c;
         }
 
+        // --- 修改：updateStats 以支持平滑速度和垂直角度 ---
         function updateStats() {
             const statsTable = document.getElementById('statsTable');
-            
             const speedUnit = document.getElementById('speedUnit').value;
-    const distanceUnit = document.getElementById('distanceUnit').value;
+            const distanceUnit = document.getElementById('distanceUnit').value;
             
             if (trackPoints.length === 0) {
                 statsTable.querySelectorAll('td:not(:first-child)').forEach(td => td.textContent = '-');
@@ -361,20 +396,53 @@ const unitConverter = {
             document.getElementById('accuracy').textContent = `${lastPos.acc.toFixed(0)} 米`;
             document.getElementById('altitude').textContent = `${lastPos.alt ? lastPos.alt.toFixed(1) : 'N/A'} 米`;
 
-            // 更新动态数据
-            if (trackPoints.length >= 2) {
-                const currentSpeed = getDistance(
-                    trackPoints[trackPoints.length-2].lat,
-                    trackPoints[trackPoints.length-2].lon,
-                    trackPoints[trackPoints.length-1].lat,
-                    trackPoints[trackPoints.length-1].lon
-                ) / ((lastPos.t - trackPoints[trackPoints.length-2].t) / 1000);
+            // --- 5秒平滑速度 和 垂直角度 计算 ---
+            const now = Date.now();
+            const recentPoints = trackPoints.filter(p => p.t > now - 5000); // 获取最近5秒的点
+            
+            let currentSpeed = 0;
+            let verticalAngle = 'N/A';
 
-                document.getElementById('speed').textContent = 
-        speedUnit === 'pace' ? 
-            unitConverter.speed.pace(currentSpeed, distanceUnit) :
-            `${unitConverter.speed[speedUnit](currentSpeed)} ${speedUnit}`;
-                
+            if (recentPoints.length >= 2) {
+                // 1. 计算5秒内的平滑速度
+                let recentDistance = 0;
+                for (let i = 1; i < recentPoints.length; i++) {
+                    recentDistance += getDistance(
+                        recentPoints[i-1].lat, recentPoints[i-1].lon,
+                        recentPoints[i].lat, recentPoints[i].lon
+                    );
+                }
+                const recentTime = (recentPoints[recentPoints.length - 1].t - recentPoints[0].t) / 1000;
+                currentSpeed = recentTime > 0 ? recentDistance / recentTime : 0; // m/s
+
+                // 2. 计算5秒内的垂直角度
+                const startPoint = recentPoints[0];
+                const endPoint = recentPoints[recentPoints.length - 1];
+                if (startPoint.alt && endPoint.alt) {
+                    const altitudeChange = endPoint.alt - startPoint.alt;
+                    const horizontalDistance = getDistance(startPoint.lat, startPoint.lon, endPoint.lat, endPoint.lon);
+                    
+                    if (horizontalDistance > 0) {
+                        const angleInRadians = Math.atan2(altitudeChange, horizontalDistance);
+                        const angleInDegrees = angleInRadians * (180 / Math.PI);
+                        verticalAngle = `${angleInDegrees.toFixed(1)}°`;
+                    } else {
+                        verticalAngle = '0.0°';
+                    }
+                }
+            }
+
+            // 更新速度和角度显示
+            document.getElementById('speed').textContent = 
+                speedUnit === 'pace' ? 
+                    unitConverter.speed.pace(currentSpeed, distanceUnit) :
+                    `${unitConverter.speed[speedUnit](currentSpeed)} ${speedUnit}`;
+            
+            document.getElementById('verticalAngle').textContent = verticalAngle;
+            // --- 计算结束 ---
+
+            // 更新总距离、平均速度、时长
+            if (trackPoints.length >= 2) {
                 const totalDistance = trackPoints.reduce((sum, point, index) => {
                     if (index === 0) return sum;
                     return sum + getDistance(
@@ -387,24 +455,28 @@ const unitConverter = {
 
                 const totalTime = (lastPos.t - trackPoints[0].t) / 1000;
                 const duration = new Date(totalTime * 1000).toISOString().substr(11, 8);
+                const avgSpeedValue = totalTime > 0 ? totalDistance / totalTime : 0;
                 
                 document.getElementById('totalDistance').textContent = 
-        `${unitConverter.distance[distanceUnit](totalDistance)} ${distanceUnit}`;
+                    `${unitConverter.distance[distanceUnit](totalDistance)} ${distanceUnit}`;
+                
                 document.getElementById('avgSpeed').textContent = 
-        speedUnit === 'pace' ? 
-            unitConverter.speed.pace(totalDistance / (trackPoints.length > 1 ? 
-                (trackPoints[trackPoints.length-1].t - trackPoints[0].t)/1000 : 1), distanceUnit) :
-            `${unitConverter.speed[speedUnit](totalDistance / (trackPoints.length > 1 ? 
-                (trackPoints[trackPoints.length-1].t - trackPoints[0].t)/1000 : 1))} ${speedUnit}`;
+                    speedUnit === 'pace' ? 
+                        unitConverter.speed.pace(avgSpeedValue, distanceUnit) :
+                        `${unitConverter.speed[speedUnit](avgSpeedValue)} ${speedUnit}`;
+                        
                 document.getElementById('duration').textContent = duration;
             }
         }
         
         // 添加单位切换监听
-document.getElementById('speedUnit').addEventListener('change', updateStats);
-document.getElementById('distanceUnit').addEventListener('change', updateStats);
+        document.getElementById('speedUnit').addEventListener('change', updateStats);
+        document.getElementById('distanceUnit').addEventListener('change', updateStats);
+        // --- 新增：图源切换监听 ---
+        document.getElementById('tileLayerSelector').addEventListener('change', (e) => {
+            changeTileLayer(e.target.value);
+        });
 
-        // 修改按钮状态切换逻辑：
         function toggleRecording() {
             const toggleBtn = document.getElementById('toggleBtn');
             if (isRecording) {
@@ -423,8 +495,8 @@ document.getElementById('distanceUnit').addEventListener('change', updateStats);
         function startRecording() {
             if (watchId) return;
 
-            const savedData = localStorage.getItem('gpsTrack');
-            if (savedData) trackPoints = JSON.parse(savedData);
+            // 开始记录时，标记为未导出
+            localStorage.setItem('gpsTrackExported', 'false');
 
             watchId = navigator.geolocation.watchPosition(position => {
                 const point = {
@@ -436,6 +508,8 @@ document.getElementById('distanceUnit').addEventListener('change', updateStats);
                 };
 
                 trackPoints.push(point);
+                // 每次有新数据，都标记为未导出
+                localStorage.setItem('gpsTrackExported', 'false');
                 updateStats();
 
                 if (!trackLine) {
@@ -469,7 +543,6 @@ document.getElementById('distanceUnit').addEventListener('change', updateStats);
             }
             clearInterval(saveInterval);
             localStorage.setItem('gpsTrack', JSON.stringify(trackPoints, null, 0));
-
             isRecording = false;
         }
 
@@ -485,92 +558,176 @@ document.getElementById('distanceUnit').addEventListener('change', updateStats);
             a.click();
             document.body.removeChild(a);
             URL.revokeObjectURL(url);
+            
+            // 导出后，标记为已导出
+            localStorage.setItem('gpsTrackExported', 'true');
         }
 
-        function clearRecords() {
+        // --- 新增：导入功能 ---
+        function triggerImport() {
+            const isExported = localStorage.getItem('gpsTrackExported') === 'true';
+            const hasData = trackPoints.length > 0;
+
+            if (hasData && !isExported) {
+                if (!confirm('您当前有未导出的记录，导入新数据将会覆盖它们。确定要导入吗？')) {
+                    return;
+                }
+            }
+            document.getElementById('importFile').click();
+        }
+
+        function importJSON(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const importedData = JSON.parse(e.target.result);
+                    if (!Array.isArray(importedData)) {
+                        alert('文件格式不正确。');
+                        return;
+                    }
+                    
+                    if (isRecording) {
+                        toggleRecording(); // 停止当前记录
+                    }
+                    
+                    clearRecords(true); // 清空当前数据 (跳过确认)
+                    
+                    trackPoints = importedData;
+                    localStorage.setItem('gpsTrack', JSON.stringify(trackPoints));
+                    // 导入后，标记为已导出 (因为数据来自文件)
+                    localStorage.setItem('gpsTrackExported', 'true'); 
+                    
+                    redrawMap(); 
+                    updateStats();
+
+                } catch (error) {
+                    alert('导入数据失败：' + error.message);
+                }
+            };
+            reader.readAsText(file);
+            event.target.value = null; // 重置文件输入
+        }
+        // --- 导入功能结束 ---
+
+        // --- 修改：clearRecords 增加导出确认 ---
+        function clearRecords(skipConfirm = false) {
+            if (!skipConfirm) {
+                const isExported = localStorage.getItem('gpsTrackExported') === 'true';
+                const hasData = trackPoints.length > 0;
+                if (hasData && !isExported) {
+                    if (!confirm('您有未导出的记录，确定要清除吗？')) {
+                        return;
+                    }
+                }
+            }
+
             trackPoints = [];
             localStorage.removeItem('gpsTrack');
+            // 清空后，标记为已导出 (因为没有数据了)
+            localStorage.setItem('gpsTrackExported', 'true');
+
+            redrawMap(); // 使用重绘函数
+            
+            // 重置统计数据
+            document.getElementById('position').textContent = '-';
+            document.getElementById('accuracy').textContent = '-';
+            document.getElementById('altitude').textContent = '-';
+            document.getElementById('speed').textContent = '-';
+            document.getElementById('verticalAngle').textContent = '-'; // 清空新字段
+            document.getElementById('totalDistance').textContent = '-';
+            document.getElementById('avgSpeed').textContent = '-';
+            document.getElementById('duration').textContent = '-';
+        }
+
+        // --- 新增：重绘地图函数 (用于加载和导入) ---
+        function redrawMap() {
             if (trackLine) trackLine.remove();
             if (startMarker) startMarker.remove();
             if (endMarker) endMarker.remove();
             trackLine = null;
-            document.getElementById('stats').innerHTML = '';
-        }
-
-        initMap();
-        const savedData = localStorage.getItem('gpsTrack');
-        if (savedData) {
-            trackPoints = JSON.parse(savedData);
+            startMarker = null;
+            endMarker = null;
+            
             if (trackPoints.length > 0) {
                 const points = trackPoints.map(p => [p.lat, p.lon]);
                 trackLine = L.polyline(points, {color: 'red'}).addTo(map);
                 startMarker = L.marker([trackPoints[0].lat, trackPoints[0].lon], {title: '起点'}).addTo(map);
                 endMarker = L.marker([trackPoints[trackPoints.length-1].lat, trackPoints[trackPoints.length-1].lon], {title: '终点'}).addTo(map);
                 map.fitBounds(trackLine.getBounds());
+            }
+        }
+        
+        initMap();
+        
+        // --- 修改：初始化加载 ---
+        const savedData = localStorage.getItem('gpsTrack');
+        if (savedData) {
+            trackPoints = JSON.parse(savedData);
+            if (trackPoints.length > 0) {
+                redrawMap(); // 使用重绘函数
                 updateStats();
             }
         }
         
-        // 全屏控制功能
-const fullscreenBtn = document.getElementById('fullscreenBtn');
-const mapContainer = document.getElementById('mapContainer');
+        // --- 全屏控制 (未修改) ---
+        const fullscreenBtn = document.getElementById('fullscreenBtn');
+        const mapContainer = document.getElementById('mapContainer');
 
-function toggleFullscreen() {
-    if (!document.fullscreenElement) {
-        if (mapContainer.requestFullscreen) {
-            mapContainer.requestFullscreen();
-        } else if (mapContainer.mozRequestFullScreen) { /* Firefox */
-            mapContainer.mozRequestFullScreen();
-        } else if (mapContainer.webkitRequestFullscreen) { /* Chrome, Safari & Opera */
-            mapContainer.webkitRequestFullscreen();
-        } else if (mapContainer.msRequestFullscreen) { /* IE/Edge */
-            mapContainer.msRequestFullscreen();
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                if (mapContainer.requestFullscreen) {
+                    mapContainer.requestFullscreen();
+                } else if (mapContainer.mozRequestFullScreen) { /* Firefox */
+                    mapContainer.mozRequestFullScreen();
+                } else if (mapContainer.webkitRequestFullscreen) { /* Chrome, Safari & Opera */
+                    mapContainer.webkitRequestFullscreen();
+                } else if (mapContainer.msRequestFullscreen) { /* IE/Edge */
+                    mapContainer.msRequestFullscreen();
+                }
+            } else {
+                if (document.exitFullscreen) {
+                    document.exitFullscreen();
+                } else if (document.mozCancelFullScreen) {
+                    document.mozCancelFullScreen();
+                } else if (document.webkitExitFullscreen) {
+                    document.webkitExitFullscreen();
+                } else if (document.msExitFullscreen) {
+                    document.msExitFullscreen();
+                }
+            }
         }
-    } else {
-        if (document.exitFullscreen) {
-            document.exitFullscreen();
-        } else if (document.mozCancelFullScreen) {
-            document.mozCancelFullScreen();
-        } else if (document.webkitExitFullscreen) {
-            document.webkitExitFullscreen();
-        } else if (document.msExitFullscreen) {
-            document.msExitFullscreen();
+
+        function updateFullscreenButton() {
+            const isFullscreen = document.fullscreenElement !== null;
+            fullscreenBtn.querySelector('.fullscreen-icon').style.display = 
+                isFullscreen ? 'none' : 'block';
+            fullscreenBtn.querySelector('.exit-fullscreen-icon').style.display = 
+                isFullscreen ? 'block' : 'none';
+            
+            setTimeout(() => {
+                if (window.map) {
+                    window.map.invalidateSize();
+                }
+            }, 300);
         }
-    }
-}
 
-// 更新按钮状态
-function updateFullscreenButton() {
-    const isFullscreen = document.fullscreenElement !== null;
-    fullscreenBtn.querySelector('.fullscreen-icon').style.display = 
-        isFullscreen ? 'none' : 'block';
-    fullscreenBtn.querySelector('.exit-fullscreen-icon').style.display = 
-        isFullscreen ? 'block' : 'none';
-    
-    // 强制地图重绘以适应新尺寸
-    setTimeout(() => {
-        if (window.map) { // 假设地图变量名为map
-            window.map.invalidateSize();
-        }
-    }, 300);
-}
+        fullscreenBtn.addEventListener('click', toggleFullscreen);
+        document.addEventListener('fullscreenchange', updateFullscreenButton);
+        document.addEventListener('mozfullscreenchange', updateFullscreenButton);
+        document.addEventListener('webkitfullscreenchange', updateFullscreenButton);
+        document.addEventListener('msfullscreenchange', updateFullscreenButton);
 
-// 事件监听
-fullscreenBtn.addEventListener('click', toggleFullscreen);
-document.addEventListener('fullscreenchange', updateFullscreenButton);
-document.addEventListener('mozfullscreenchange', updateFullscreenButton);
-document.addEventListener('webkitfullscreenchange', updateFullscreenButton);
-document.addEventListener('msfullscreenchange', updateFullscreenButton);
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && document.fullscreenElement) {
+                toggleFullscreen();
+            }
+        });
 
-// 键盘支持（ESC退出）
-document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && document.fullscreenElement) {
-        toggleFullscreen();
-    }
-});
-
-
-function acquireWakelock() {
+        // --- 屏幕常亮 (未修改) ---
+        function acquireWakelock() {
             if ('wakeLock' in navigator) {
                 try {
                     navigator.wakeLock.request('screen').then(lock => {
