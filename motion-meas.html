@@ -233,9 +233,16 @@
                 </label>
                 <label>地图图源：
                     <select id="tileLayerSelector">
-                        <option value="dark" selected>暗色地图</option>
-                        <option value="osm">街道图 (OSM)</option>
-                        <option value="satellite">卫星图 (Esri)</option>
+                        <option value="osm">OpenStreetMap</option>
+                        <option value="otm">OpenTopoMap</option>
+                        <option value="esri-satellite">Esri 卫星</option>
+                        <option value="esri-topo">Esri 地形</option>
+                        <option value="esri-street">Esri 街道</option>
+                        <option value="carto-positron">CartoDB Positron</option>
+                        <option value="carto-darkmatter" selected>CartoDB Dark Matter</option>
+                        <option value="carto-voyager">CartoDB Voyager</option>
+                        <option value="stadia-outdoors">Stadia Outdoors</option>
+                        <option value="stadia-satellite">Stadia Satellite</option>
                     </select>
                 </label>
             </div>
@@ -295,19 +302,61 @@
 
         // --- 新增：图源定义 ---
         const tileLayers = {
-            'dark': L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
-                subdomains: 'abcd',
-                maxZoom: 19
-            }),
+            // OpenStreetMap series
             'osm': L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
                 attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
                 maxZoom: 19
             }),
-            'satellite': L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+
+            'otm': L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', {
+                attribution: 'Map data: &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors, SRTM | Map style: &copy; <a href="https://opentopomap.org">OpenTopoMap</a> (CC-BY-SA)',
+                maxZoom: 17
+            }),
+
+            // Esri series
+
+            'esri-satellite': L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
                 attribution: 'Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community',
                 maxZoom: 19
+            }),
+
+            'esri-topo': L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}', {
+                attribution: 'Tiles &copy; Esri &mdash; Esri, DeLorme, NAVTEQ',
+                maxZoom: 19
+            }),
+            'esri-street': L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}', {
+                attribution: 'Tiles &copy; Esri &mdash; Source: Esri, DeLorme, NAVTEQ, USGS, Intermap, iPC, NRCAN, Esri Japan, METI, Esri China (Hong Kong), and the GIS User Community',
+                maxZoom: 19
+            }),
+
+            // CartoDB series
+            'carto-positron': L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
+                maxZoom: 19
+            }),
+
+            'carto-darkmatter': L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
+                maxZoom: 19
+            }),
+
+            'carto-voyager': L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
+                maxZoom: 19
+            }),
+
+            // Stadia series
+            'stadia-outdoors': L.tileLayer('https://tiles.stadiamaps.com/tiles/outdoors/{z}/{x}/{y}{r}.jpg', {
+                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://stadiamaps.com/">Stadia Maps</a>, &copy; <a href="https://openmaptiles.org/">OpenMapTiles</a>',
+                maxZoom: 20
+            }),
+
+            'stadia-satellite': L.tileLayer('https://tiles.stadiamaps.com/tiles/alidade_satellite/{z}/{x}/{y}{r}.jpg', {
+                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://stadiamaps.com/">Stadia Maps</a>, &copy; <a href="https://openmaptiles.org/">OpenMapTiles</a>',
+                maxZoom: 20
             })
+
+
         };
         let currentTileLayer = null;
         // --- 图源定义结束 ---
@@ -351,7 +400,7 @@
         function initMap() {
             map = L.map('map').setView([0, 0], 13);
             // 默认加载暗色图层
-            currentTileLayer = tileLayers['dark'];
+            currentTileLayer = tileLayers['carto-darkmatter'];
             currentTileLayer.addTo(map);
         }
 
