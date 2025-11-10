@@ -3692,7 +3692,7 @@
             } else if (channel > 180) {
                 channel = 180
                 channelInput.value = 180
-            } else if (channel > 21 && channel < 120) {
+            } else if (channel > 21 && channel < 120 && channel != 64) {
                 channel = 120
                 channelInput.value = 120
             }
@@ -3703,6 +3703,8 @@
                 carrierFreq = 16000 + 100 * (channel - 120)
             } else if (channel < 0) {
                 carrierFreq = 100 + 5 * channel
+            } else if (channel == 64) {
+                carrierFreq = 8000
             }
 
             document.getElementById('freq').textContent = carrierFreq + ' Hz'
