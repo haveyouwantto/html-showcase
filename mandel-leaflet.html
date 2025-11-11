@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Leaflet.js Mandelbrot Worker Zoomer</title>
+    
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+        integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+        crossorigin="" />
+    
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+        integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+        crossorigin=""></script>
+
+    <style>
+        html, body {
+            height: 100%;
+            margin: 0;
+            padding: 0;
+            background: #111;
+        }
+        #map {
+            height: 100%;
+            width: 100%;
+            background: #000;
+        }
+        /* 可选：为正在加载的瓦片添加一个微妙的占位符 */
+        .leaflet-tile {
+            background: #222;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="map"></div>
+
+    <script id="mandelbrotWorker" type="text/worker">
+        /**
+         * Mandelbrot 迭代计算 (Worker内部)
+         * @param {number} cr - 复数的实部 (c)
+         * @param {number} ci - 复数的虚部 (c)
+         * @param {number} maxIter - 最大迭代次数
+         * @returns {number} 逃逸所需的迭代次数
+         */
+        function mandelbrotIter(cr, ci, maxIter) {
+            let zr = 0, zi = 0;
+            let tr = 0, ti = 0;
+
+            for (let i = 0; i < maxIter; i++) {
+                zi = 2 * zr * zi + ci;
+                zr = tr - ti + cr;
+                
+                tr = zr * zr;
+                ti = zi * zi;
+
+                if (tr + ti > 4) {
+                    return i;
+                }
+            }
+            return maxIter; // 在集合内
+        }
+
+        // Worker 的消息处理器
+        self.onmessage = function(e) {
+            const { workId, coords, zoom, tileSize } = e.data;
+
+            // 解析边界
+            const [[cRealStart, cImagStart], [cRealEnd, cImagEnd]] = coords;
+
+            // 最大迭代次数
+            const maxIter = 200;
+
+            // 我们将使用 Uint32Array 来存储迭代次数，这更高效
+            const iters = new Uint32Array(tileSize * tileSize);
+
+            // 遍历瓦片上的每一个像素
+            for (let j = 0; j < tileSize; j++) { // y 像素 (行)
+                const cImag = cImagStart + (j / tileSize) * (cImagEnd - cImagStart);
+                
+                for (let i = 0; i < tileSize; i++) { // x 像素 (列)
+                    const cReal = cRealStart + (i / tileSize) * (cRealEnd - cRealStart);
+
+                    const iter = mandelbrotIter(cReal, cImag, maxIter);
+                    iters[j * tileSize + i] = iter;
+                }
+            }
+
+            // 发回结果，并将 iters 数组的 ArrayBuffer 
+            // "转移" (transfer) 回主线程，这几乎是零成本的。
+            self.postMessage({
+                workId: workId,
+                iters: iters,
+                maxIter: maxIter,
+                tileSize: tileSize
+            }, [iters.buffer]);
+        };
+    </script>
+
+
+    <script>
+        /**
+         * 调色板生成函数 (如您所提供)
+         */
+        function generateRainbowPalette(numColors) {
+            const rainbowColors = [];
+            const frequency = 0.2; 
+
+            for (let i = 0; i < numColors; i++) {
+                const red = Math.sin(frequency * i) * 127 + 128;
+                const green = Math.sin(frequency * 1.1 * i) * 127 + 128;
+                const blue = Math.sin(frequency * 1.2 * i) * 127 + 128;
+                // 我们将 RGBA 存储为 [R, G, B, A] 数组
+                rainbowColors.push([red | 0, green | 0, blue | 0, 255]);
+            }
+            return rainbowColors;
+        }
+
+        // 6. 创建自定义的 L.GridLayer
+        L.MandelbrotLayer = L.GridLayer.extend({
+            
+            // 在图层添加到地图时调用
+            onAdd: function (map) {
+                this._map = map;
+
+                // 生成并存储调色板
+                this.palette = generateRainbowPalette(256);
+                
+                // 存储正在等待 worker 计算的瓦片
+                this.pendingTiles = new Map();
+                
+                // --- 实例化 Worker ---
+                try {
+                    // 1. 获取 worker 脚本字符串
+                    const workerScript = document.getElementById('mandelbrotWorker').textContent;
+                    // 2. 创建一个 Blob
+                    const blob = new Blob([workerScript], { type: 'application/javascript' });
+                    // 3. 创建一个 URL
+                    const workerUrl = URL.createObjectURL(blob);
+                    // 4. 创建 Worker
+                    this.worker = new Worker(workerUrl);
+                    // 5. 释放 URL
+                    URL.revokeObjectURL(workerUrl);
+
+                    // 6. 设置消息处理器
+                    this.worker.onmessage = this._onWorkerMessage.bind(this);
+
+                } catch (e) {
+                    console.error("无法创建 Worker。Mandelbrot 渲染将失败。", e);
+                }
+                
+                L.GridLayer.prototype.onAdd.call(this, map);
+            },
+
+            // 在图层从地图移除时调用
+            onRemove: function (map) {
+                // 清理 worker 和待处理的瓦片
+                if (this.worker) {
+                    this.worker.terminate();
+                }
+                this.pendingTiles.clear();
+                L.GridLayer.prototype.onRemove.call(this, map);
+            },
+
+            createTile: function (coords, done) {
+                const tileSize = this.getTileSize().x;
+                
+                // 1. 创建 canvas 元素
+                const canvas = L.DomUtil.create('canvas', 'leaflet-tile');
+                canvas.width = canvas.height = tileSize;
+
+                // 2. 生成唯一的 workId (使用瓦片坐标)
+                // L.stamp(canvas) 也可以，但坐标字符串更具描述性
+                const workId = [coords.z, coords.x, coords.y].join(':');
+
+                // 3. 存储 canvas 和 done 回调，以便 worker 完成时调用
+                this.pendingTiles.set(workId, { canvas, done });
+
+                // 4. 计算瓦片在复数平面上的坐标
+                const p1 = coords.scaleBy(this.getTileSize());
+                const p2 = p1.add([tileSize, tileSize]);
+                const topLeft = this._map.unproject(p1, coords.z);
+                const btmRight = this._map.unproject(p2, coords.z);
+
+                // 5. 向 Worker 发送消息
+                // 注意：我们必须额外发送 zoom 和 tileSize
+                // 否则 worker 无法知道要计算多少像素或使用多少迭代
+                if (this.worker) {
+                    this.worker.postMessage({
+                        workId: workId,
+                        // 这是您要求的格式 [[re,im],[re,im]] -> [[lng,lat],[lng,lat]]
+                        coords: [
+                            [topLeft.lng, topLeft.lat],   // [c_real_start, c_imag_start]
+                            [btmRight.lng, btmRight.lat]  // [c_real_end, c_imag_end]
+                        ],
+                        zoom: coords.z,
+                        tileSize: tileSize
+                    });
+                }
+                
+                // 6. 立即返回（空的）canvas
+                return canvas;
+            },
+
+            // Worker 返回消息时的处理函数
+            _onWorkerMessage: function (e) {
+                const { workId, iters, maxIter, tileSize } = e.data;
+
+                // 1. 查找对应的待处理瓦片
+                const tile = this.pendingTiles.get(workId);
+                
+                // 如果瓦片不存在（例如，用户已经移走），则不执行任何操作
+                if (!tile) {
+                    return;
+                }
+
+                // 2. 获取 canvas 上下文
+                const ctx = tile.canvas.getContext('2d');
+                const imgData = ctx.createImageData(tileSize, tileSize);
+                const data = imgData.data;
+                const palette = this.palette;
+                const paletteSize = palette.length;
+                const black = [0, 0, 0, 255]; // 集合内部的颜色
+
+                // 3. 遍历迭代数据并上色
+                for (let k = 0, len = iters.length; k < len; k++) {
+                    const iter = iters[k];
+                    
+                    // 确定颜色
+                    const color = (iter === maxIter) 
+                        ? black 
+                        : palette[iter % paletteSize];
+
+                    // 设置像素数据 (R, G, B, A)
+                    const idx = k * 4;
+                    data[idx]     = color[0];
+                    data[idx + 1] = color[1];
+                    data[idx + 2] = color[2];
+                    data[idx + 3] = color[3];
+                }
+
+                // 4. 将像素数据绘制到 canvas
+                ctx.putImageData(imgData, 0, 0);
+
+                // 5. 通知 Leaflet 瓦片已完成
+                tile.done(null, tile.canvas);
+
+                // 6. 从待处理映射中移除
+                this.pendingTiles.delete(workId);
+            }
+        });
+
+        // 7. 初始化地图
+        const map = L.map('map', {
+            crs: L.CRS.Simple,
+            minZoom: -4,        // 要求的 minZoom
+            maxZoom: 50,        // 要求的 maxZoom
+            detectRetina: true  // 要求的 detectRetina
+        });
+
+        // 8. 添加我们的自定义瓦片图层
+        const mandelbrotLayer = new L.MandelbrotLayer();
+        map.addLayer(mandelbrotLayer);
+
+        // 9. 设置初始视图
+        map.fitBounds([
+            [-1.5, -2.5], // [c_imag, c_real] (左下)
+            [1.5, 1.0]    // [c_imag, c_real] (右上)
+        ]);
+
+    </script>
+</body>
+</html>
