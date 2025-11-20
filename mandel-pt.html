@@ -9,63 +9,126 @@
     <style>
         :root {
             --theme-color: #ff4081;
-            /* Define a theme color */
         }
 
         body {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
+            margin: 0;
+            padding: 0;
             background-color: #1a1a1a;
-            /* Dark background color */
             color: #fff;
-            /* Light text color */
             font-family: Arial, sans-serif;
+            overflow: hidden;
+            /* Prevent scrollbars */
         }
 
-        .container {
-            display: flex;
-            margin: auto;
+        #mandelbrot {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            cursor: grab;
+            background: repeating-linear-gradient(45deg, var(--theme-color), var(--theme-color) 8px, #000 8px, #000 16px);
+            /* For smoother transforms */
+            transform-origin: 0 0;
+            will-change: transform;
         }
 
-        .canvas-container {
-            position: relative;
+        #mandelbrot:active {
+            cursor: grabbing;
+        }
+
+        .transition {
+            transition: transform 0.1s ease-out;
+        }
+
+        #menu-toggle {
+            position: fixed;
+            top: 10px;
+            right: 10px;
+            z-index: 1002;
+            font-size: 24px;
+            width: 40px;
+            height: 40px;
+            background-color: rgba(51, 51, 51, 0.8);
+            color: #fff;
+            border: 1px solid #666;
+            border-radius: 5px;
+            cursor: pointer;
+            line-height: 1;
+        }
+
+        #menu-toggle:hover {
+            background-color: var(--theme-color);
+        }
+
+        #sidebar {
+            position: fixed;
+            top: 0;
+            right: 0;
+            width: 300px;
+            height: 100vh;
+            background-color: #2a2a2a;
+            box-shadow: -5px 0 15px rgba(0, 0, 0, 0.5);
+            transform: translateX(100%);
+            transition: transform 0.3s ease-in-out;
+            z-index: 1001;
+            overflow-y: auto;
+            padding: 10px;
+            box-sizing: border-box;
+        }
+
+        #sidebar.open {
+            transform: translateX(0);
+        }
+
+        #info-overlay {
+            position: fixed;
+            top: 10px;
+            left: 10px;
+            background-color: rgba(0, 0, 0, 0.6);
+            padding: 8px;
+            border-radius: 5px;
+            font-size: 0.9rem;
+            z-index: 1000;
+            pointer-events: none;
+            /* Allow clicks to pass through to the canvas */
+            max-width: 90vw;
+        }
+
+        #info-location {
+            margin-bottom: 5px;
+            word-break: break-all;
         }
 
         .progress-container {
             display: flex;
+            z-index: 999;
+            width: 100%;
+            position: fixed;
+            height: 4px;
         }
 
         .progress {
             background-color: white;
             width: 0;
-            height: 8px;
+            height: 100%;
         }
 
         .guessed-progress {
             background-color: rgba(255, 255, 255, 0.5);
         }
 
+        /* Inherited styles for controls inside sidebar */
         .location {
             display: flex;
             flex-direction: column;
-            margin-left: 8px;
-        }
-
-        #mandelbrot {
-            background: repeating-linear-gradient(45deg, var(--theme-color), var(--theme-color) 8px, #000 8px, #000 16px);
-            /* Adjust colors for dark mode */
-            cursor: crosshair;
-            width: 800px;
-            height: 800px;
         }
 
         button {
             margin-top: 8px;
             background-color: #333;
-            /* Dark button background color */
             color: #fff;
-            /* Light text color for buttons */
             border: none;
             padding: 8px 12px;
             cursor: pointer;
@@ -74,24 +137,14 @@
 
         button:hover {
             background-color: var(--theme-color);
-            /* Change background color on hover */
-        }
-
-        button:focus {
-            outline: none;
-            /* Remove default focus outline */
-            box-shadow: 0 0 3px var(--theme-color);
-            /* Add custom focus effect */
         }
 
         button:disabled {
             filter: brightness(0.5);
-            /* Darker color for disabled buttons */
             cursor: not-allowed;
-            /* Change cursor to indicate disabled state */
         }
 
-        button.icon {
+        .icon {
             font-size: 30px;
             font-family: emoji;
             font-weight: bold;
@@ -104,24 +157,21 @@
 
         textarea {
             background-color: #333;
-            /* Dark textarea background color */
             color: #fff;
-            /* Light text color for textarea */
             border: 1px solid #666;
-            /* Dark border color */
             padding: 4px;
             resize: vertical;
-            /* Allow vertical resizing */
-            transition: background-color 0.3s;
             font-size: 0.8rem;
         }
 
-        textarea:hover,
-        textarea:focus {
-            background-color: #444;
-            border-color: var(--theme-color);
-            outline: none;
-            /* Change background color on hover/focus */
+        .shortcut {
+            display: flex;
+            justify-content: space-between;
+            gap: 8px;
+        }
+
+        .running {
+            cursor: wait !important;
         }
 
         hr {
@@ -250,21 +300,26 @@
 </head>
 
 <body>
-    <div class="container">
+    <canvas id="mandelbrot" width="800" height="800"></canvas>
 
-        <div class="canvas-container">
-            <canvas id="mandelbrot" width="800" height="800"></canvas>
-            <div class="progress-container">
-                <div id="progress" class="progress"></div>
-                <div id="guessed-progress" class="progress guessed-progress"></div>
-            </div>
-            <div>
-                Iterations: <span id="iter-count"></span>
-            </div>
-            <div id="stats">
-            </div>
+    <div id="info-overlay">
+        <div id="info-location">
+            <div>Re: <span id="info-re"></span></div>
+            <div>Im: <span id="info-im"></span></div>
+            <div>Zoom: <span id="info-zoom"></span></div>
+            <div>Iterations: <span id="info-iter"></span></div>
         </div>
+        <div id="stats"></div>
+    </div>
+    <div class="progress-container">
+        <div id="progress" class="progress"></div>
+        <div id="guessed-progress" class="progress guessed-progress"></div>
+    </div>
 
+    <button id="menu-toggle" title="Toggle Controls">&#9776;</button>
+
+    <aside id="sidebar">
+        <!-- 所有原始的控件都移动到这里 -->
         <div class="location">
             Real:
             <textarea id="re" class="large" rows="10"></textarea><br>
@@ -308,8 +363,10 @@
             </select>
             <button id="load-sample" class="control-button">Load</button>
         </div>
-    </div>
-    <div id="more"></div>
+        <div id="more"></div>
+    </aside>
+
+    <!-- Dialogs remain unchanged -->
     <dialog id="palette-dialog">
         <h2>Color Settings</h2>
         <label for="color-step">Color Step:</label>
@@ -337,6 +394,7 @@
         <button id="apply-iter">Apply</button>
         <button id="close-iter-dialog">Close</button>
     </dialog>
+
     <script src="lib/decimal.9.0.0.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/gmp-wasm"></script>
     <script>
@@ -1021,7 +1079,7 @@
         function MPFR2FloatExp(num) {
             let n = num.toNumber();
             if (n === 0 || !isFinite(n)) return parseFloatExp(num.toString());
-            else if ( isNaN(n)) return new FloatExp(0, 0);
+            else if (isNaN(n)) return new FloatExp(0, 0);
 
             return getFloatExp(n); // Temporary simple conversion
             // console.log(num)
@@ -1877,49 +1935,25 @@
                     [1, 1]
                 ]
 
-                canvas.addEventListener('mousedown', e => {
-                    if (e.button === 0 && !this.rendering) {
-                        // Left click: decrease size
-                        console.log(this.getDelta(e.offsetX, e.offsetY));
-                        this.click(
-                            e.offsetX / canvas.offsetWidth * canvas.width,
-                            e.offsetY / canvas.offsetHeight * canvas.height
-                        );
-                        this.update();
-                    }
-                });
+                // NEW: Interaction State
+                this.transformState = { scale: 1, tx: 0, ty: 0 };
+                this.isInteracting = false;
+                this.dragStartPoint = { x: 0, y: 0 };
+                this.transformAtDragStart = { scale: 1, tx: 0, ty: 0 };
+                this.recalculationTimeout = null;
+                this.lastTouchDistance = 0;
 
-                canvas.addEventListener('wheel', (e) => {
-                    e.preventDefault();
-                    if (!this.rendering)
-                        if (e.deltaY < 0) {
-                            this.click(e.offsetX / canvas.offsetWidth * canvas.width, e.offsetY / canvas.offsetHeight * canvas.height);
-                            this.update();
-                        } else if (e.deltaY > 0) {
-                            this.zoomOut();
-                            this.update();
-                        }
-                });
+                window.addEventListener('resize', () => this.resizeCanvas(true));
 
-                canvas.addEventListener('contextmenu', e => {
-                    e.preventDefault();
-                    if (!this.rendering) {
-                        this.zoom(this.size.mul(4));
-                        this.update();
-                    }
-                })
-
-                let iterCountSpan = document.getElementById('iter-count')
-                canvas.addEventListener('mousemove', e => {
-                    let imageX = e.offsetX - canvas.clientLeft;
-                    let imageY = e.offsetY - canvas.clientTop;
-
-                    if (this.smooth) {
-                        iterCountSpan.textContent = (this.iterMap[imageY]?.[imageX])?.toFixed(2) ?? "-";
-                    } else {
-                        iterCountSpan.textContent = this.iterMap[imageY]?.[imageX] ?? "-";
-                    }
-                })
+                this.canvas.addEventListener('mousedown', e => this.handleStart(e));
+                this.canvas.addEventListener('mousemove', e => this.handleMove(e));
+                this.canvas.addEventListener('mouseup', e => this.handleEnd(e));
+                this.canvas.addEventListener('mouseleave', e => this.handleEnd(e));
+                this.canvas.addEventListener('wheel', e => this.handleWheel(e), { passive: false });
+                this.canvas.addEventListener('touchstart', e => this.handleStart(e), { passive: false });
+                this.canvas.addEventListener('touchmove', e => this.handleMove(e), { passive: false });
+                this.canvas.addEventListener('touchend', e => this.handleEnd(e));
+                this.canvas.addEventListener('touchcancel', e => this.handleEnd(e));
 
                 this.stats = {
                     ref: 0,
@@ -1958,6 +1992,156 @@
                     }
                 }
 
+                // Initial setup
+                this.resizeCanvas(false); // Set initial size without triggering update
+            }
+
+            resizeCanvas(triggerUpdate = true) {
+                let dpr = window.devicePixelRatio;
+                this.canvas.width = window.innerWidth * dpr;
+                this.canvas.height = window.innerHeight * dpr;
+                this.context.imageSmoothingEnabled = false;
+                this.iterMap = [...new Array(this.canvas.height)].map(() => new Array(this.canvas.width).fill(0));
+                if (triggerUpdate && !this.rendering) {
+                    this.clear();
+                    this.update();
+                }
+            }
+
+            handleStart(e) {
+                if (this.rendering) return;
+                e.preventDefault();
+                this.isInteracting = true;
+
+                if (e.touches) {
+                    this.dragStartPoint = this.getTouchCenter(e.touches);
+                    if (e.touches.length === 2) {
+                        this.lastTouchDistance = this.getTouchDistance(e.touches);
+                    }
+                } else {
+                    this.dragStartPoint = { x: e.clientX, y: e.clientY };
+                }
+                // Store the state at the beginning of the interaction
+                this.transformAtDragStart = { ...this.transformState };
+            }
+
+            handleMove(e) {
+                if (!this.isInteracting || this.rendering) return;
+                e.preventDefault();
+
+                if (e.touches) {
+                    const currentTouchCenter = this.getTouchCenter(e.touches);
+                    // Pan
+                    const dx = currentTouchCenter.x - this.dragStartPoint.x;
+                    const dy = currentTouchCenter.y - this.dragStartPoint.y;
+                    this.transformState.tx = this.transformAtDragStart.tx + dx;
+                    this.transformState.ty = this.transformAtDragStart.ty + dy;
+
+                    // Pinch zoom
+                    if (e.touches.length === 2) {
+                        const currentDist = this.getTouchDistance(e.touches);
+                        const scaleFactor = currentDist / this.lastTouchDistance;
+                        // Combine with existing scale
+                        const newScale = this.transformAtDragStart.scale * scaleFactor;
+
+                        // Zoom towards the original touch center
+                        const pivot = this.dragStartPoint;
+                        this.transformState.tx = pivot.x - (pivot.x - this.transformAtDragStart.tx) * scaleFactor + dx;
+                        this.transformState.ty = pivot.y - (pivot.y - this.transformAtDragStart.ty) * scaleFactor + dy;
+                        this.transformState.scale = newScale;
+                    }
+                } else { // Mouse drag
+                    const dx = e.clientX - this.dragStartPoint.x;
+                    const dy = e.clientY - this.dragStartPoint.y;
+                    this.transformState.tx = this.transformAtDragStart.tx + dx;
+                    this.transformState.ty = this.transformAtDragStart.ty + dy;
+                }
+
+
+                console.log(this.transformState)
+                this.applyCssTransform();
+            }
+
+            handleEnd(e) {
+                if (!this.isInteracting || this.rendering) return;
+                this.isInteracting = false;
+                this.triggerRecalculation();
+            }
+
+            handleWheel(e) {
+                this.canvas.classList.add('transition')
+                if (this.rendering) return;
+                e.preventDefault();
+
+                const scaleFactor = e.deltaY < 0 ? 2 : 0.5;
+                const pivotX = e.clientX;
+                const pivotY = e.clientY;
+
+                this.transformState.tx = pivotX - (pivotX - this.transformState.tx) * scaleFactor;
+                this.transformState.ty = pivotY - (pivotY - this.transformState.ty) * scaleFactor;
+                this.transformState.scale *= scaleFactor;
+
+                this.applyCssTransform();
+                this.triggerRecalculation();
+            }
+
+            // --- Helper functions for touch events ---
+            getTouchCenter(touches) {
+                let centerX = 0, centerY = 0;
+                for (const touch of touches) {
+                    centerX += touch.clientX;
+                    centerY += touch.clientY;
+                }
+                return { x: centerX / touches.length, y: centerY / touches.length };
+            }
+
+            getTouchDistance(touches) {
+                return Math.hypot(touches[0].clientX - touches[1].clientX, touches[0].clientY - touches[1].clientY);
+            }
+
+            applyCssTransform() {
+                const { scale, tx, ty } = this.transformState;
+                this.canvas.style.transform = `translate(${tx}px, ${ty}px) scale(${scale})`;
+            }
+
+            triggerRecalculation() {
+                clearTimeout(this.recalculationTimeout);
+                this.recalculationTimeout = setTimeout(() => {
+                    if (!this.rendering) this.applyTransformAndRecalculate();
+                }, 200);
+            }
+
+            applyTransformAndRecalculate() {
+                const { scale, tx, ty } = this.transformState;
+
+                if (Math.abs(scale - 1) < 1e-9 && Math.abs(tx) < 1 && Math.abs(ty) < 1) {
+                    return;
+                }
+
+                console.log(`Applying transform: scale=${scale}, tx=${tx}, ty=${ty}`);
+
+                // Map canvas screen delta to canvas coordinate delta
+                const canvasX = ((canvas.width * 0.5) - tx / canvas.offsetWidth * canvas.width) / scale;
+                const canvasY = ((canvas.height * 0.5) - ty / canvas.offsetHeight * canvas.height) / scale;
+
+                console.log(`Canvas delta: ${canvasX}, ${canvasY}`)
+
+                const delta = this.getDelta(canvasX, canvasY);
+                console.log(`Complex delta: ${delta.toString()}`);
+
+                // Update mathematical state
+                this.goto(
+                    this.center.add(delta)
+                )
+
+                this.zoom(this.size.div(scale));
+
+                // Reset visual transform state for the next render
+                this.transformState = { scale: 1, tx: 0, ty: 0 };
+                this.canvas.style.transform = '';
+
+                this.canvas.classList.remove('transition')
+                this.update();
             }
 
             click(x, y) {
@@ -2056,13 +2240,24 @@
             getDelta(x, y, baseX, baseY) {
                 if (!baseX) baseX = this.canvas.width / 2;
                 if (!baseY) baseY = this.canvas.height / 2;
+                let minStep = Math.min(this.canvas.width, this.canvas.height)
+                let deltaPerPixel = this.size.div(minStep);
                 return this.deep ? new FloatExpComplex(
-                    this.size.mul((x - baseX) / this.canvas.width),
-                    this.size.mul((baseY - y) / this.canvas.height)
+                    (x - baseX) * deltaPerPixel,
+                    (baseY - y) * deltaPerPixel
+
                 ) : new Complex(
-                    (x - baseX) / this.canvas.width * this.size,
-                    (baseY - y) / this.canvas.height * this.size
+                    (x - baseX) * deltaPerPixel,
+                    (baseY - y) * deltaPerPixel
                 )
+
+                // return this.deep ? new FloatExpComplex(
+                //     this.size.mul((x - baseX) / this.canvas.width),
+                //     this.size.mul((baseY - y) / this.canvas.height)
+                // ) : new Complex(
+                //     (x - baseX) / this.canvas.width * this.size,
+                //     (baseY - y) / this.canvas.height * this.size
+                // )
             }
 
 
@@ -2106,13 +2301,19 @@
 
             showInfo() {
                 let totalPixels = this.canvas.width * this.canvas.height;
-                let statusText = `Reference: ${this.stats.ref}it\nApproximation: ${this.blaTable?.length ?? 0} levels\nCalculation: ${this.stats.calc} (${(this.stats.calc / totalPixels * 100).toFixed(2)}%)\nGuessed: ${this.stats.guess} (${(this.stats.guess / totalPixels * 100).toFixed(2)}%)\nTime: ${((performance.now() - this.stats.time) / 1000).toFixed(3)}s`;
-                progressBar.style.width = `${((this.stats.calc) / totalPixels * 100).toFixed(2)}%`;
-                guessedProgressBar.style.width = `${((this.stats.guess) / totalPixels * 100).toFixed(2)}%`;
+                let statusText = `Reference: ${this.stats.ref}it\nTime: ${((performance.now() - this.stats.time) / 1000).toFixed(3)}s`;
                 if (!this.rendering) {
                     statusText += "\nDone!";
                 }
                 statsLabel.innerText = statusText;
+                this.updateProgress();
+            }
+
+            // NEW: Separate function for progress bar to be called by worker callback
+            updateProgress() {
+                let totalPixels = this.canvas.width * this.canvas.height;
+                progressBar.style.width = `${((this.stats.calc) / totalPixels * 100).toFixed(2)}%`;
+                guessedProgressBar.style.width = `${((this.stats.guess) / totalPixels * 100).toFixed(2)}%`;
             }
 
             setLocked(locked) {
@@ -2136,6 +2337,7 @@
              *
              */
             async update() {
+                if (this.rendering) return; // Prevent re-entrant calls
                 this.rendering = true;
                 this.setLocked(true)
                 this.stats = {
@@ -2150,9 +2352,10 @@
                 this.deep = this.size.exp < -300;
                 if (prevDeep && !this.deep) this.ref = this.ref.map(e => e.toComplex());
 
-                reInput.value = this.center.re;
-                imInput.value = this.center.im;
-                zoomInput.value = new FloatExp(4).div(this.size).toString()
+                updateInfoOverlay(this.center.re, this.center.im, new FloatExp(4).div(this.size), this.iterations);
+                reInput.value = this.center.re.toString();
+                imInput.value = this.center.im.toString();
+                zoomInput.value = new FloatExp(4).div(this.size).toString();
                 itInput.value = this.iterations;
 
                 this.image = this.context.getImageData(0, 0, this.canvas.width, this.canvas.height);
@@ -2781,6 +2984,22 @@
         }
 
 
+        function formatLongString(str, len = 40, pre = 20, suf = 20) {
+            const s = str.toString();
+            if (s.length > len) {
+                return s.substring(0, pre) + '...' + s.substring(s.length - suf);
+            }
+            return s;
+        }
+
+        function updateInfoOverlay(re, im, zoom, iter) {
+            document.getElementById('info-re').textContent = formatLongString(re);
+            document.getElementById('info-im').textContent = formatLongString(im);
+            document.getElementById('info-zoom').textContent = formatLongString(zoom.toString());
+            document.getElementById('info-iter').textContent = iter;
+        }
+
+
         let c = new DeepComplex(
             new Decimal(0), new Decimal(0));
 
@@ -2851,6 +3070,12 @@
         mandelbrot.zoom(size)
         mandelbrot.update()
 
+
+        document.getElementById('menu-toggle').addEventListener('click', () => {
+            document.getElementById('sidebar').classList.toggle('open');
+        });
+
+
         document.getElementById('goto').addEventListener('click', e => {
             mandelbrot.goto(new DeepComplex(
                 new Decimal(reInput.value),
@@ -2884,13 +3109,13 @@
 
 
         document.getElementById('zoom-in').addEventListener('click', function () {
-            mandelbrot.zoom(mandelbrot.size.div(4));
-            mandelbrot.update()
+            mandelbrot.zoom(mandelbrot.size.div(2)); // Changed to 2x for consistency with wheel
+            mandelbrot.update();
         });
 
         document.getElementById('zoom-out').addEventListener('click', function () {
-            mandelbrot.zoom(mandelbrot.size.mul(4));
-            mandelbrot.update()
+            mandelbrot.zoom(mandelbrot.size.mul(2)); // Changed to 2x
+            mandelbrot.update();
         });
 
         document.getElementById('increase-iter').addEventListener('click', function () {
