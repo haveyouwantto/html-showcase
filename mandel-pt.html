@@ -1924,7 +1924,6 @@
 
                 this.canvas = canvas;
                 this.context = canvas.getContext('2d');
-                this.context.imageSmoothingEnabled = false;
                 this.rendering = false;
                 this.iterMap = [...new Array(this.canvas.height)].map(e => [...new Array(this.canvas.width)].map(e => 0))
                 this.videoRendering = false;
@@ -2000,7 +1999,6 @@
                 let dpr = window.devicePixelRatio;
                 this.canvas.width = window.innerWidth * dpr;
                 this.canvas.height = window.innerHeight * dpr;
-                this.context.imageSmoothingEnabled = false;
                 this.iterMap = [...new Array(this.canvas.height)].map(() => new Array(this.canvas.width).fill(0));
                 if (triggerUpdate && !this.rendering) {
                     this.clear();
@@ -2131,14 +2129,37 @@
 
                 // Update mathematical state
                 this.goto(
-                    this.center.add(delta)
+                    this.center.add(delta), false
                 )
 
                 this.zoom(this.size.div(scale));
 
+                // Calculate the source rectangle from the old canvas content that is currently visible.
+                const sx = -(tx / canvas.offsetWidth * canvas.width) / scale;
+                const sy = -(ty / canvas.offsetHeight * canvas.height) / scale;
+                const sWidth = this.canvas.width / scale;
+                const sHeight = this.canvas.height / scale;
+                console.log(`Source rect: ${sx}, ${sy}, ${sWidth}, ${sHeight}`);
+
+                // The CSS transform is about to be removed. To prevent a flicker,
+                // we use drawImage to "bake" the transformed view into the canvas bitmap.
+                // This creates an immediate, low-resolution preview.
+
+                // Important: FIRST, reset the CSS transform so the canvas snaps back to its original state.
+                // The browser won't render this change until the current script finishes,
+                // so the user won't see the "snap".
+                this.canvas.style.transform = '';
+
+                // THEN, draw the calculated portion of the (now untransformed) canvas back onto itself,
+                // scaled up to fill the whole view. This effectively applies the transform permanently.
+                this.context.drawImage(
+                    this.canvas,   // Source image is the canvas itself
+                    sx, sy, sWidth, sHeight,  // Source rectangle
+                    0, 0, this.canvas.width, this.canvas.height // Destination rectangle (the whole canvas)
+                );
+
                 // Reset visual transform state for the next render
                 this.transformState = { scale: 1, tx: 0, ty: 0 };
-                this.canvas.style.transform = '';
 
                 this.canvas.classList.remove('transition')
                 this.update();
@@ -3211,12 +3232,10 @@
                 a.href = url;
                 a.click();
 
-                ctx.imageSmoothingEnabled = false;
             };
 
             let indexFl = 0;
             let ctx = canvas.getContext('2d')
-            ctx.imageSmoothingEnabled = true;
 
             ctx.font = 'bold 26px Arial';
             ctx.textAlign = 'left';
