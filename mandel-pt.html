@@ -1971,6 +1971,7 @@
                 this.counter = 0;
                 this.workerCounter = 0;
                 this.resolveFunc = null;
+                this.lastUpdateTime = performance.now();
                 // this.workers = []
                 // for (let i = 0; i < CPU_CORES; i++) {
                 //     this.workers[i] = new Worker(workerData);
@@ -2701,15 +2702,20 @@
                             this.calculatePixel(x, y, drawWidth, drawHeight);
                         }
                     }
+                    await this.tryUpdateScreen();
                 }
-                await this.completePass();
             }
 
-            async completePass() {
+            async tryUpdateScreen() {
+                let currentTime = performance.now();
+                if (currentTime - this.lastUpdateTime < 100) {
+                    return; // Skip update if less than 100ms since last update
+                }
                 this.showInfo();
                 this.updateProgress();
                 this.context.putImageData(this.image, 0, 0);
-                await delay(0); // Allow UI to update
+                await delay(10); // Allow UI to update
+                this.lastUpdateTime = currentTime;
             }
 
             async finalPass() {
@@ -2729,9 +2735,9 @@
                             this.calculatePixel(x, y, 1, 2);
                         }
                     }
+                    await this.tryUpdateScreen();
                 }
 
-                await this.completePass();
 
                 for (let y = 1; y < this.canvas.height; y += 2) {
                     for (let x = 0; x < this.canvas.width; x++) {
@@ -2750,9 +2756,9 @@
                             this.calculatePixel(x, y);
                         }
                     }
+                    await this.tryUpdateScreen();
                 }
 
-                await this.completePass();
             }
 
 
