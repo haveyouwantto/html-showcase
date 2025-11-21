@@ -25,8 +25,8 @@
             position: fixed;
             top: 0;
             left: 0;
-            width: 100vw;
-            height: 100vh;
+            width: 100dvw;
+            height: 100dvh;
             cursor: grab;
             background: repeating-linear-gradient(45deg, var(--theme-color), var(--theme-color) 8px, #000 8px, #000 16px);
             /* For smoother transforms */
@@ -67,7 +67,7 @@
             top: 0;
             right: 0;
             width: 300px;
-            height: 100vh;
+            height: 100dvh;
             background-color: #2a2a2a;
             box-shadow: -5px 0 15px rgba(0, 0, 0, 0.5);
             transform: translateX(100%);
@@ -1258,6 +1258,11 @@
             return orbit;
         }
 
+        function floorPowerOfTwo(n) {
+            if (n <= 0) return 0;
+            return Math.pow(2, Math.floor(Math.log2(n)));
+        }
+
         /**
          * Calculates the reference orbit for a given complex number 'c' using the Mandelbrot iteration.
          * @param {DeepComplex} c - The complex number for which the reference orbit is calculated.
@@ -1966,30 +1971,30 @@
                 this.counter = 0;
                 this.workerCounter = 0;
                 this.resolveFunc = null;
-                this.workers = []
-                for (let i = 0; i < CPU_CORES; i++) {
-                    this.workers[i] = new Worker(workerData);
-                    this.workers[i].onmessage = event => {
-                        this.stats.calc += event.data.length;
-                        for (let delta of event.data) {
-                            let [w, h] = this.drawStates[this.drawState];
-                            this.setIter(
-                                delta[1], delta[2],
-                                delta[0],
-                                w, h
-                            );
-                        }
-                        this.counter--;
-                        // if (this.counter % CPU_CORES == 0) {
-                        // };
-                        this.showInfo();
-                        this.context.putImageData(this.image, 0, 0)
+                // this.workers = []
+                // for (let i = 0; i < CPU_CORES; i++) {
+                //     this.workers[i] = new Worker(workerData);
+                //     this.workers[i].onmessage = event => {
+                //         this.stats.calc += event.data.length;
+                //         for (let delta of event.data) {
+                //             let [w, h] = this.drawStates[this.drawState];
+                //             this.setIter(
+                //                 delta[1], delta[2],
+                //                 delta[0],
+                //                 w, h
+                //             );
+                //         }
+                //         this.counter--;
+                //         // if (this.counter % CPU_CORES == 0) {
+                //         // };
+                //         this.showInfo();
+                //         this.context.putImageData(this.image, 0, 0)
 
-                        if (this.counter <= 0) {
-                            this.resolveFunc();
-                        }
-                    }
-                }
+                //         if (this.counter <= 0) {
+                //             this.resolveFunc();
+                //         }
+                //     }
+                // }
 
                 // Initial setup
                 this.resizeCanvas(false); // Set initial size without triggering update
@@ -2162,7 +2167,7 @@
                 this.transformState = { scale: 1, tx: 0, ty: 0 };
 
                 this.canvas.classList.remove('transition')
-                this.update();
+                this.update(floorPowerOfTwo(Math.max(2, scale)));
             }
 
             click(x, y) {
@@ -2357,7 +2362,7 @@
              * Updates the Mandelbrot set visualization.
              *
              */
-            async update() {
+            async update(startBlockSize = 128) {
                 if (this.rendering) return; // Prevent re-entrant calls
                 this.rendering = true;
                 this.setLocked(true)
@@ -2425,202 +2430,205 @@
 
                 console.log(performance.now() + " perturbation")
 
-                let workerRef = this.deep ? this.ref.map(e => fExpComplex2Obj(e)) : this.ref.map(e => [e.re, e.im]);
-                let workerBla = this.deep ?
-                    this.blaTable.map(e => e.map(e2 => {
-                        return { A: fExpComplex2Obj(e2.A), B: fExpComplex2Obj(e2.B), radius: fExp2Obj(e2.radius) }
-                    }))
-                    : this.blaTable.map(e => e.map(e2 => {
-                        return { A: [e2.A.re, e2.A.im], B: [e2.B.re, e2.B.im], radius: e2.radius }
-                    }))
+                // let workerRef = this.deep ? this.ref.map(e => fExpComplex2Obj(e)) : this.ref.map(e => [e.re, e.im]);
+                // let workerBla = this.deep ?
+                //     this.blaTable.map(e => e.map(e2 => {
+                //         return { A: fExpComplex2Obj(e2.A), B: fExpComplex2Obj(e2.B), radius: fExp2Obj(e2.radius) }
+                //     }))
+                //     : this.blaTable.map(e => e.map(e2 => {
+                //         return { A: [e2.A.re, e2.A.im], B: [e2.B.re, e2.B.im], radius: e2.radius }
+                //     }))
 
-                for (let i = 0; i < this.workers.length; i++) {
-                    this.workers[i].postMessage({
-                        type: 'ref',
-                        ref: workerRef,
-                        bla: workerBla,
-                        deep: this.deep
-                    });
-                }
+                // for (let i = 0; i < this.workers.length; i++) {
+                //     this.workers[i].postMessage({
+                //         type: 'ref',
+                //         ref: workerRef,
+                //         bla: workerBla,
+                //         deep: this.deep
+                //     });
+                // }
 
-                let p1 = () => {
-                    return new Promise(async (r, j) => {
-                        this.counter = 0;
-                        this.workerCounter = 0;
-                        this.resolveFunc = r;
-                        this.drawState = 0;
+                // let p1 = () => {
+                //     return new Promise(async (r, j) => {
+                //         this.counter = 0;
+                //         this.workerCounter = 0;
+                //         this.resolveFunc = r;
+                //         this.drawState = 0;
 
-                        // 收集所有需要计算的deltas
-                        let allDeltas = [];
-                        for (let y = 0; y < this.canvas.height; y += 2) {
-                            for (let x = 0; x < this.canvas.width; x += 2) {
-                                if (this.iterMap[y][x] > 0) {
-                                    this.setIter(x, y, this.iterMap[y][x]);
-                                    this.stats.guess++;
-                                    continue;
-                                }
-                                // 计算并收集delta
-                                let delta = this.getDelta(x, y);
-                                allDeltas.push([delta.re, delta.im, x, y]);
-                            }
-                        }
+                //         // 收集所有需要计算的deltas
+                //         let allDeltas = [];
+                //         for (let y = 0; y < this.canvas.height; y += 2) {
+                //             for (let x = 0; x < this.canvas.width; x += 2) {
+                //                 if (this.iterMap[y][x] > 0) {
+                //                     this.setIter(x, y, this.iterMap[y][x]);
+                //                     this.stats.guess++;
+                //                     continue;
+                //                 }
+                //                 // 计算并收集delta
+                //                 let delta = this.getDelta(x, y);
+                //                 allDeltas.push([delta.re, delta.im, x, y]);
+                //             }
+                //         }
 
-                        allDeltas = sortByProximityToCenterPixel(allDeltas, this.canvas.width, this.canvas.height); // 按照距离中心点排序
+                //         allDeltas = sortByProximityToCenterPixel(allDeltas, this.canvas.width, this.canvas.height); // 按照距离中心点排序
 
-                        // 将deltas均分到每个核心
-                        const chunkSize = 64 * 64;
-                        const chunks = Math.ceil(allDeltas.length / chunkSize);
-                        for (let i = 0; i < chunks; i++) {
-                            const start = i * chunkSize;
-                            const end = start + chunkSize;
-                            const deltasChunk = allDeltas.slice(start, end);
-                            if (deltasChunk.length === 0) continue; // 跳过空数据
+                //         // 将deltas均分到每个核心
+                //         const chunkSize = 64 * 64;
+                //         const chunks = Math.ceil(allDeltas.length / chunkSize);
+                //         for (let i = 0; i < chunks; i++) {
+                //             const start = i * chunkSize;
+                //             const end = start + chunkSize;
+                //             const deltasChunk = allDeltas.slice(start, end);
+                //             if (deltasChunk.length === 0) continue; // 跳过空数据
 
-                            const data = {
-                                type: 'calc',
-                                deltas: deltasChunk,
-                                maxIter: this.iterations,
-                                bailout: this.bailout,
-                                smooth: this.smooth
-                            };
+                //             const data = {
+                //                 type: 'calc',
+                //                 deltas: deltasChunk,
+                //                 maxIter: this.iterations,
+                //                 bailout: this.bailout,
+                //                 smooth: this.smooth
+                //             };
 
-                            // 轮询分配Worker
-                            const workerIndex = this.workerCounter % CPU_CORES;
-                            this.workers[workerIndex].postMessage(data);
-                            this.counter++; // 追踪发送的任务总数
-                            this.workerCounter++;
-                        }
+                //             // 轮询分配Worker
+                //             const workerIndex = this.workerCounter % CPU_CORES;
+                //             this.workers[workerIndex].postMessage(data);
+                //             this.counter++; // 追踪发送的任务总数
+                //             this.workerCounter++;
+                //         }
 
-                        if (this.counter <= 0) {
-                            this.resolveFunc();
-                        }
-                    });
-                };
+                //         if (this.counter <= 0) {
+                //             this.resolveFunc();
+                //         }
+                //     });
+                // };
 
-                let p2 = () => {
-                    return new Promise(async (r, j) => {
+                // let p2 = () => {
+                //     return new Promise(async (r, j) => {
 
-                        this.counter = 0;
-                        this.workerCounter = 0;
-                        this.resolveFunc = r;
-                        this.drawState = 1;
+                //         this.counter = 0;
+                //         this.workerCounter = 0;
+                //         this.resolveFunc = r;
+                //         this.drawState = 1;
 
-                        // 收集所有需要计算的deltas
-                        let allDeltas = [];
-                        for (let y = 0; y < this.canvas.height; y += 2) {
-                            for (let x = 1; x < this.canvas.width; x += 2) {
-                                if (this.iterMap[y][x] > 0) {
-                                    this.setIter(x, y, this.iterMap[y][x])
-                                    this.stats.guess++;
-                                    continue
-                                }
-                                let leftColor = this.getIter(x - 1, y);
-                                let rightColor = this.getIter(x + 1, y);
-                                if (Math.floor(leftColor) == Math.floor(rightColor) && leftColor >= 0 && rightColor >= 0) {
-                                    this.setIter(x, y, (leftColor + rightColor) / 2);
-                                    this.stats.guess++;
-                                } else {
-                                    let delta = this.getDelta(x, y);
-                                    allDeltas.push([delta.re, delta.im, x, y]);
-                                }
-                            }
-                        }
+                //         // 收集所有需要计算的deltas
+                //         let allDeltas = [];
+                //         for (let y = 0; y < this.canvas.height; y += 2) {
+                //             for (let x = 1; x < this.canvas.width; x += 2) {
+                //                 if (this.iterMap[y][x] > 0) {
+                //                     this.setIter(x, y, this.iterMap[y][x])
+                //                     this.stats.guess++;
+                //                     continue
+                //                 }
+                //                 let leftColor = this.getIter(x - 1, y);
+                //                 let rightColor = this.getIter(x + 1, y);
+                //                 if (Math.floor(leftColor) == Math.floor(rightColor) && leftColor >= 0 && rightColor >= 0) {
+                //                     this.setIter(x, y, (leftColor + rightColor) / 2);
+                //                     this.stats.guess++;
+                //                 } else {
+                //                     let delta = this.getDelta(x, y);
+                //                     allDeltas.push([delta.re, delta.im, x, y]);
+                //                 }
+                //             }
+                //         }
 
-                        allDeltas = sortByProximityToCenterPixel(allDeltas, this.canvas.width, this.canvas.height);
+                //         allDeltas = sortByProximityToCenterPixel(allDeltas, this.canvas.width, this.canvas.height);
 
-                        // 将deltas均分到每个核心
-                        const chunkSize = 64 * 64;
-                        const chunks = Math.ceil(allDeltas.length / chunkSize);
-                        for (let i = 0; i < chunks; i++) {
-                            const start = i * chunkSize;
-                            const end = start + chunkSize;
-                            const deltasChunk = allDeltas.slice(start, end);
-                            if (deltasChunk.length === 0) continue; // 跳过空数据
+                //         // 将deltas均分到每个核心
+                //         const chunkSize = 64 * 64;
+                //         const chunks = Math.ceil(allDeltas.length / chunkSize);
+                //         for (let i = 0; i < chunks; i++) {
+                //             const start = i * chunkSize;
+                //             const end = start + chunkSize;
+                //             const deltasChunk = allDeltas.slice(start, end);
+                //             if (deltasChunk.length === 0) continue; // 跳过空数据
 
-                            const data = {
-                                type: 'calc',
-                                deltas: deltasChunk,
-                                maxIter: this.iterations,
-                                bailout: this.bailout,
-                                smooth: this.smooth
-                            };
+                //             const data = {
+                //                 type: 'calc',
+                //                 deltas: deltasChunk,
+                //                 maxIter: this.iterations,
+                //                 bailout: this.bailout,
+                //                 smooth: this.smooth
+                //             };
 
-                            // 轮询分配Worker
-                            const workerIndex = this.workerCounter % CPU_CORES;
-                            this.workers[workerIndex].postMessage(data);
-                            this.counter++; // 追踪发送的任务总数
-                            this.workerCounter++;
-                        }
+                //             // 轮询分配Worker
+                //             const workerIndex = this.workerCounter % CPU_CORES;
+                //             this.workers[workerIndex].postMessage(data);
+                //             this.counter++; // 追踪发送的任务总数
+                //             this.workerCounter++;
+                //         }
 
-                        if (this.counter <= 0) {
-                            this.resolveFunc();
-                        }
-                    })
-                }
+                //         if (this.counter <= 0) {
+                //             this.resolveFunc();
+                //         }
+                //     })
+                // }
 
-                let p3 = () => {
-                    return new Promise(async (r, j) => {
-                        this.counter = 0;
-                        this.workerCounter = 0;
-                        this.resolveFunc = r;
-                        this.drawState = 2;
+                // let p3 = () => {
+                //     return new Promise(async (r, j) => {
+                //         this.counter = 0;
+                //         this.workerCounter = 0;
+                //         this.resolveFunc = r;
+                //         this.drawState = 2;
 
-                        let allDeltas = [];
-                        for (let y = 1; y < this.canvas.height; y += 2) {
-                            for (let x = 0; x < this.canvas.width; x++) {
-                                if (this.iterMap[y][x] != 0) {
-                                    this.setIter(x, y, this.iterMap[y][x])
-                                    this.stats.guess++;
-                                    continue
-                                }
+                //         let allDeltas = [];
+                //         for (let y = 1; y < this.canvas.height; y += 2) {
+                //             for (let x = 0; x < this.canvas.width; x++) {
+                //                 if (this.iterMap[y][x] != 0) {
+                //                     this.setIter(x, y, this.iterMap[y][x])
+                //                     this.stats.guess++;
+                //                     continue
+                //                 }
 
-                                let upColor = this.getIter(x, y - 1);
-                                let downColor = this.getIter(x, y + 1);
-                                if (Math.floor(upColor) == Math.floor(downColor) && upColor >= 0 && downColor >= 0) {
-                                    this.setIter(x, y, (upColor + downColor) / 2);
-                                    this.stats.guess++;
-                                } else {
-                                    let delta = this.getDelta(x, y);
-                                    allDeltas.push([delta.re, delta.im, x, y]);
-                                }
-                            }
-                        }
+                //                 let upColor = this.getIter(x, y - 1);
+                //                 let downColor = this.getIter(x, y + 1);
+                //                 if (Math.floor(upColor) == Math.floor(downColor) && upColor >= 0 && downColor >= 0) {
+                //                     this.setIter(x, y, (upColor + downColor) / 2);
+                //                     this.stats.guess++;
+                //                 } else {
+                //                     let delta = this.getDelta(x, y);
+                //                     allDeltas.push([delta.re, delta.im, x, y]);
+                //                 }
+                //             }
+                //         }
 
-                        allDeltas = sortByProximityToCenterPixel(allDeltas, this.canvas.width, this.canvas.height);
+                //         allDeltas = sortByProximityToCenterPixel(allDeltas, this.canvas.width, this.canvas.height);
 
-                        // 将deltas均分到每个核心
-                        const chunkSize = 64 * 64;
-                        const chunks = Math.ceil(allDeltas.length / chunkSize);
-                        for (let i = 0; i < chunks; i++) {
-                            const start = i * chunkSize;
-                            const end = start + chunkSize;
-                            const deltasChunk = allDeltas.slice(start, end);
-                            if (deltasChunk.length === 0) continue; // 跳过空数据
+                //         // 将deltas均分到每个核心
+                //         const chunkSize = 64 * 64;
+                //         const chunks = Math.ceil(allDeltas.length / chunkSize);
+                //         for (let i = 0; i < chunks; i++) {
+                //             const start = i * chunkSize;
+                //             const end = start + chunkSize;
+                //             const deltasChunk = allDeltas.slice(start, end);
+                //             if (deltasChunk.length === 0) continue; // 跳过空数据
 
-                            const data = {
-                                type: 'calc',
-                                deltas: deltasChunk,
-                                maxIter: this.iterations,
-                                bailout: this.bailout,
-                                smooth: this.smooth
-                            };
+                //             const data = {
+                //                 type: 'calc',
+                //                 deltas: deltasChunk,
+                //                 maxIter: this.iterations,
+                //                 bailout: this.bailout,
+                //                 smooth: this.smooth
+                //             };
 
-                            // 轮询分配Worker
-                            const workerIndex = this.workerCounter % CPU_CORES;
-                            this.workers[workerIndex].postMessage(data);
-                            this.counter++; // 追踪发送的任务总数
-                            this.workerCounter++;
-                        }
+                //             // 轮询分配Worker
+                //             const workerIndex = this.workerCounter % CPU_CORES;
+                //             this.workers[workerIndex].postMessage(data);
+                //             this.counter++; // 追踪发送的任务总数
+                //             this.workerCounter++;
+                //         }
 
-                        if (this.counter <= 0) {
-                            this.resolveFunc();
-                        }
-                    })
-                }
+                //         if (this.counter <= 0) {
+                //             this.resolveFunc();
+                //         }
+                //     })
+                // }
 
-                await p1();
-                await p2();
-                await p3();
+                // await p1();
+                // await p2();
+                // await p3();
+
+                await this.successiveRefinment(startBlockSize);
+                await this.finalPass();
 
                 // Distance estimation
                 if (this.distanceEstimation) {
@@ -2662,6 +2670,114 @@
                 window.location.hash = params.toString();
 
                 this.setLocked(false)
+            }
+
+            async successiveRefinment(startSize) {
+                let step = startSize;
+
+                // Initial refinement
+                await this.calculateRegion(0, 0, step, step, step, step);
+
+                // Loop to progressively refine
+                while (step > 2) { // Assuming we stop refining at a 1x1 pixel grid
+                    let halfStep = step >> 1; // Calculate half step size
+
+                    // Refine quadrants
+                    await this.calculateRegion(halfStep, 0, step, step, halfStep, step);
+                    await this.calculateRegion(0, halfStep, halfStep, step, halfStep, halfStep);
+
+                    step = halfStep; // Halve the step size to refine further
+                }
+            }
+
+            async calculateRegion(startX, startY, stepX, stepY, drawWidth, drawHeight) {
+                for (let y = startY; y < this.canvas.height; y += stepY) {
+                    for (let x = startX; x < this.canvas.width; x += stepX) {
+                        if (this.iterMap[y][x] > 0) {
+                            this.setIter(x, y, this.iterMap[y][x]);
+                            this.stats.guess++;
+                            continue;
+                        } else {
+                            this.calculatePixel(x, y, drawWidth, drawHeight);
+                        }
+                    }
+                }
+                await this.completePass();
+            }
+
+            async completePass() {
+                this.showInfo();
+                this.updateProgress();
+                this.context.putImageData(this.image, 0, 0);
+                await delay(0); // Allow UI to update
+            }
+
+            async finalPass() {
+                for (let y = 0; y < this.canvas.height; y += 2) {
+                    for (let x = 1; x < this.canvas.width; x += 2) {
+                        if (this.iterMap[y][x] > 0) {
+                            this.setIter(x, y, this.iterMap[y][x])
+                            this.stats.guess++;
+                            continue
+                        }
+                        let leftColor = this.getIter(x - 1, y);
+                        let rightColor = this.getIter(x + 1, y);
+                        if (Math.floor(leftColor) == Math.floor(rightColor) && leftColor >= 0 && rightColor >= 0) {
+                            this.setIter(x, y, (leftColor + rightColor) / 2);
+                            this.stats.guess++;
+                        } else {
+                            this.calculatePixel(x, y, 1, 2);
+                        }
+                    }
+                }
+
+                await this.completePass();
+
+                for (let y = 1; y < this.canvas.height; y += 2) {
+                    for (let x = 0; x < this.canvas.width; x++) {
+                        if (this.iterMap[y][x] != 0) {
+                            this.setIter(x, y, this.iterMap[y][x])
+                            this.stats.guess++;
+                            continue
+                        }
+
+                        let upColor = this.getIter(x, y - 1);
+                        let downColor = this.getIter(x, y + 1);
+                        if (Math.floor(upColor) == Math.floor(downColor) && upColor >= 0 && downColor >= 0) {
+                            this.setIter(x, y, (upColor + downColor) / 2);
+                            this.stats.guess++;
+                        } else {
+                            this.calculatePixel(x, y);
+                        }
+                    }
+                }
+
+                await this.completePass();
+            }
+
+
+            calculatePixel(x, y, drawWidth, drawHeight) {
+                let delta = this.getDelta(x, y);
+                let iter = this.deep ?
+                    getPTBLAFE(
+                        delta,
+                        this.ref,
+                        this.blaTable,
+                        this.iterations,
+                        this.bailout,
+                        this.smooth
+                    ) :
+                    getPTBLA(
+                        delta,
+                        this.ref,
+                        this.blaTable,
+                        this.iterations,
+                        this.bailout,
+                        this.smooth
+                    );
+
+                this.setIter(x, y, iter, drawWidth, drawHeight);
+                this.stats.calc++;
             }
 
             /**
