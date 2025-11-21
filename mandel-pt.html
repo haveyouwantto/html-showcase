@@ -1258,9 +1258,9 @@
             return orbit;
         }
 
-        function floorPowerOfTwo(n) {
+        function ceilPowerOfTwo(n) {
             if (n <= 0) return 0;
-            return Math.pow(2, Math.floor(Math.log2(n)));
+            return Math.pow(2, Math.ceil(Math.log2(n)));
         }
 
         /**
@@ -2167,7 +2167,7 @@
                 this.transformState = { scale: 1, tx: 0, ty: 0 };
 
                 this.canvas.classList.remove('transition')
-                this.update(floorPowerOfTwo(Math.max(2, scale)));
+                this.update(ceilPowerOfTwo(Math.max(2, scale)));
             }
 
             click(x, y) {
