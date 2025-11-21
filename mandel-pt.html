@@ -1041,7 +1041,7 @@
             let mpzre = ctx.Float(0);
             let mpzim = ctx.Float(0);
 
-            console.log("Starting MPFR orbit calculation with", cre.toString(), cim.toString(), precisionBits);
+            let updateTimer = performance.now();
 
             for (let i = 0; i < iterations; i++) {
                 dzdc = z.add(z).mulMut(dzdc).addMut(one);
@@ -1067,10 +1067,13 @@
                     break;
                 };
                 if (z.norm() > 16.0) break;
-                if (i % reportInterval == 0) {
+
+                let currentTime = performance.now();
+                if (currentTime - updateTimer > 100) {
+                    updateTimer = currentTime;
                     yield i;
-                    await delay(1);
-                };
+                    await delay(5);
+                }
             }
 
             ctx.destroy();
@@ -1129,6 +1132,8 @@
             let mpzre = ctx.Float(0);
             let mpzim = ctx.Float(0);
 
+            let updateTimer = performance.now();
+
             for (let i = 0; i < iterations; i++) {
                 dzdc = z.add(z).mulMut(dzdc).add(one);
 
@@ -1147,10 +1152,13 @@
                 orbit.push(z);
                 if (dzdc.norm().mul(radius).mul(2).compareTo(z.norm()) > 0) break;
                 if (z.norm().doubleValue() > 16.0) break;
-                if (i % reportInterval == 0) {
+
+                let currentTime = performance.now();
+                if (currentTime - updateTimer > 100) {
+                    updateTimer = currentTime;
                     yield i;
-                    await delay(1);
-                };
+                    await delay(5);
+                }
             }
             ctx.destroy();
             return orbit;
@@ -1258,9 +1266,9 @@
             return orbit;
         }
 
-        function ceilPowerOfTwo(n) {
+        function floorPowerOfTwo(n) {
             if (n <= 0) return 0;
-            return Math.pow(2, Math.ceil(Math.log2(n)));
+            return Math.pow(2, Math.floor(Math.log2(n)));
         }
 
         /**
@@ -2168,7 +2176,7 @@
                 this.transformState = { scale: 1, tx: 0, ty: 0 };
 
                 this.canvas.classList.remove('transition')
-                this.update(ceilPowerOfTwo(Math.max(2, scale)));
+                this.update(floorPowerOfTwo(Math.max(2, scale)));
             }
 
             click(x, y) {
@@ -2270,8 +2278,8 @@
                 let minStep = Math.min(this.canvas.width, this.canvas.height)
                 let deltaPerPixel = this.size.div(minStep);
                 return this.deep ? new FloatExpComplex(
-                    (x - baseX) * deltaPerPixel,
-                    (baseY - y) * deltaPerPixel
+                    deltaPerPixel.mul(x - baseX),
+                   deltaPerPixel.mul (baseY - y)
 
                 ) : new Complex(
                     (x - baseX) * deltaPerPixel,
