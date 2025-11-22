@@ -445,6 +445,12 @@
             static buffer = new ArrayBuffer(8); // Create an 8-byte buffer
             static floatView = new Float64Array(FloatExp.buffer); // Float64 view for the double
             static int32View = new Int32Array(FloatExp.buffer); // Int32 view to access 64 bits as two 32-bit chunks
+
+            static ZERO = new FloatExp(0, 0);
+            static ONE = new FloatExp(1, 0);
+            static NEGATIVE_ONE = new FloatExp(-1, 0);
+            static TWO = new FloatExp(2, 0);
+
             static {
                 this.expTable = [];
                 for (let i = 0; i < 324 + 308; i++) {
@@ -505,13 +511,13 @@
                 return Math.floor(actualExp * LOG10_2);
             }
 
-            constructor(base, exp = 0) {
+            constructor(base, exp = 0, normalize = true) {
                 if (isNaN(base) || isNaN(exp) || !isFinite(base) || !isFinite(exp)) {
                     throw new Error("Invalid FloatExp: " + JSON.stringify({ base, exp }));
                 }
                 this.base = base;
                 this.exp = exp;
-                this.norm();
+                if(normalize) this.norm();
             }
 
             norm() {
@@ -647,7 +653,7 @@
             }
 
             copy() {
-                return new FloatExp(this.base, this.exp);
+                return new FloatExp(this.base, this.exp, false);
             }
 
             square() {
@@ -658,6 +664,10 @@
                 this.base *= this.base;
                 this.exp *= 2;
                 return this.norm();
+            }
+
+            equals(o) {
+                return this.compareTo(o) === 0;
             }
 
             compareTo(o) {
@@ -880,6 +890,11 @@
         }
 
         class FloatExpComplex {
+            static ZERO = new FloatExpComplex(FloatExp.ZERO, FloatExp.ZERO);
+            static ONE = new FloatExpComplex(FloatExp.ONE, FloatExp.ZERO);
+            static NEGATIVE_ONE = new FloatExpComplex(FloatExp.NEGATIVE_ONE, FloatExp.ZERO);
+            static TWO = new FloatExpComplex(FloatExp.TWO, FloatExp.ZERO);
+
             constructor(re, im) {
                 this.re = getFloatExp(re);
                 this.im = getFloatExp(im);
@@ -891,7 +906,16 @@
 
             mul(other) {
                 if (typeof other === 'number') {
-                    return new FloatExpComplex(this.re.mul(new FloatExp(other, 0)), this.im.mul(new FloatExp(other, 0)));
+                    switch(other) {
+                        case 0:
+                            return new FloatExpComplex(0, 0);
+                        case 1:
+                            return this.copy();
+                        case -1:
+                            return new FloatExpComplex(this.re.rev(), this.im.rev());
+                        default:
+                            return new FloatExpComplex(this.re.mul(new FloatExp(other, 0)), this.im.mul(new FloatExp(other, 0)));
+                    }
                 } else
                     return new FloatExpComplex(
                         this.re.mul(other.re).subMut(this.im.mul(other.im)),
@@ -963,9 +987,24 @@
             }
 
             square() {
-                const realPart = this.re.square().subMut(this.im.square()); // a^2 - b^2
-                const imagPart = this.re.mul(this.im).mulMut(new FloatExp(2));     // 2ab
-                return new FloatExpComplex(realPart, imagPart);
+                const x = this.re;
+                const y = this.im;
+                return new FloatExpComplex(
+                    x.square().subMut(y.square()),
+                    x.mul(y).mulMut(FloatExp.TWO)
+                );
+            }
+
+            squareMut() {
+                const x = this.re;
+                const y = this.im;
+                this.re = x.square().subMut(y.square());
+                this.im = x.mulMut(y).mulMut(FloatExp.TWO);
+                return this;
+            }
+
+            equals(o) {
+                return this.re.equals(o.re) && this.im.equals(o.im);
             }
         }
 
@@ -1107,7 +1146,7 @@
         function MPFR2FloatExp(num) {
             let n = num.toNumber();
             if (n === 0 || !isFinite(n)) return parseFloatExp(num.toString());
-            else if (isNaN(n)) return new FloatExp(0, 0);
+            else if (isNaN(n)) return FloatExp.ZERO;
 
             return getFloatExp(n); // Temporary simple conversion
         }
@@ -1440,12 +1479,12 @@
         }
 
         function getPTBLAFE(dc, ref, table, maxIter, bailout, smooth = false) {
-            let dz = new FloatExpComplex(0, 0)
+            let dz = FloatExpComplex.ZERO.copy();
 
             let iter = -1;
             let refIter = 0;
             let bout = new FloatExp(bailout);
-            let zero = new FloatExp(0);
+            let zero = FloatExp.ZERO;
             let dcNorm = dc.norm();
 
             while (iter < maxIter) {
