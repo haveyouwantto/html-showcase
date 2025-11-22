@@ -2192,6 +2192,7 @@
                 // The browser won't render this change until the current script finishes,
                 // so the user won't see the "snap".
                 this.canvas.style.transform = '';
+                this.context.globalCompositeOperation = 'copy';
 
                 // THEN, draw the calculated portion of the (now untransformed) canvas back onto itself,
                 // scaled up to fill the whole view. This effectively applies the transform permanently.
