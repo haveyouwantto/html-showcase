@@ -2106,7 +2106,7 @@
             handleEnd(e) {
                 if (!this.isInteracting) return;
                 this.isInteracting = false;
-                this.triggerRecalculation();
+                this.applyTransformAndRecalculate();
             }
 
             handleWheel(e) {
