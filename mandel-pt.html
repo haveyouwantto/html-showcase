@@ -1776,8 +1776,17 @@
                     this.transformState.ty = this.transformAtDragStart.ty + dy;
                 }
 
-
-                console.log(this.transformState)
+                // Update overlay info during interaction, if not in deep mode for performance
+                if (!this.deep) {
+                    const delta = this.getCurrentUIDelta();
+                    const newCenter = this.center.add(delta);
+                    updateInfoOverlay(
+                        newCenter.re,
+                        newCenter.im,
+                        FloatExp.FOUR.div(this.size.div(this.transformState.scale)),
+                        this.iterations
+                    )
+                }
                 this.applyCssTransform();
             }
 
@@ -1829,6 +1838,14 @@
                 }, 100);
             }
 
+            getCurrentUIDelta() {
+                const { scale, tx, ty } = this.transformState;
+                const canvasX = ((canvas.width * 0.5) - tx / canvas.offsetWidth * canvas.width) / scale;
+                const canvasY = ((canvas.height * 0.5) - ty / canvas.offsetHeight * canvas.height) / scale;
+                const delta = this.getDelta(canvasX, canvasY);
+                return delta
+            }
+
             applyTransformAndRecalculate() {
                 const { scale, tx, ty } = this.transformState;
 
@@ -1839,13 +1856,7 @@
                 console.log(`Applying transform: scale=${scale}, tx=${tx}, ty=${ty}`);
 
                 // Map canvas screen delta to canvas coordinate delta
-                const canvasX = ((canvas.width * 0.5) - tx / canvas.offsetWidth * canvas.width) / scale;
-                const canvasY = ((canvas.height * 0.5) - ty / canvas.offsetHeight * canvas.height) / scale;
-
-                console.log(`Canvas delta: ${canvasX}, ${canvasY}`)
-
-                const delta = this.getDelta(canvasX, canvasY);
-                console.log(`Complex delta: ${delta.toString()}`);
+                const delta = this.getCurrentUIDelta();
 
                 // Update mathematical state
                 this.goto(
@@ -2021,7 +2032,7 @@
                 let elapsedTime = performance.now() - this.stats.time;
                 let estimatedTotalTime = (elapsedTime / (this.stats.calc + this.stats.guess)) * totalPixels;
                 let estimatedRemainingTime = estimatedTotalTime - elapsedTime;
-                let statusText = `Reference: ${this.stats.ref}it\nTime: ${((elapsedTime) / 1000).toFixed(3)}s ETA: ${(estimatedRemainingTime / 1000).toFixed(3)}s\nCalculated: ${this.stats.calc}/${totalPixels} pixels\nGuessed: ${this.stats.guess}/${totalPixels} pixels`;
+                let statusText = `Ref: ${this.stats.ref}it\nRes: ${this.canvas.width}x${this.canvas.height}\nCalc/Guess/Total: ${this.stats.calc}/${this.stats.guess}/${totalPixels} px\nTime: ${((elapsedTime) / 1000).toFixed(3)}s ETA: ${(estimatedRemainingTime / 1000).toFixed(3)}s`;
                 if (!this.rendering) {
                     statusText += "\nDone!";
                 }
@@ -2259,7 +2270,6 @@
                         if (this.iterMap[y][x] > 0) {
                             // 只是为了刷新 visuals，重绘一下(可选，如果觉得闪烁可以去掉)
                             this.setIter(x, y, this.iterMap[y][x], step, step);
-                            this.stats.guess++; // 复用 guess 统计，或者不算
                         } else {
                             // 真正的计算，画一个 step x step 的矩形
                             this.calculatePixel(x, y, step, step);
@@ -2277,46 +2287,48 @@
                 const endX = Math.min(startX + w, this.canvas.width);
                 const endY = Math.min(startY + h, this.canvas.height);
 
-                for (let y = startY; y < endY; y++) {
-                    for (let x = startX; x < endX; x++) {
-                        // 1. 如果这个点已经有值 (来自于 step=2,4,8...)，跳过
-                        if (this.iterMap[y][x] > 0) {
-                            // 重绘一下成 1x1 (消除之前的大方块残留)
-                            this.setIter(x, y, this.iterMap[y][x], 1, 1);
-                            continue;
-                        }
+                for (let pass = 0; pass < 3; pass++) {
+                    for (let y = startY; y < endY; y++) {
+                        for (let x = startX; x < endX; x++) {
+                            // 1. 如果这个点已经有值 (来自于 step=2,4,8...)，跳过
+                            if (this.iterMap[y][x] > 0) {
+                                // 重绘一下成 1x1 (消除之前的大方块残留)
+                                this.setIter(x, y, this.iterMap[y][x], 1, 1);
+                                continue;
+                            }
 
-                        // 2. 尝试猜测 (Guessing)
-                        // 检查水平邻居 (Left & Right)
-                        // 注意：因为我们是 Tiled 处理，边界像素可能需要去 getIter 拿其他 Tile 的数据
-                        // this.getIter 应该处理越界返回 0 或 null
-                        let left = this.getIter(x - 1, y);
-                        let right = this.getIter(x + 1, y);
+                            // 2. 尝试猜测 (Guessing)
+                            // 检查水平邻居 (Left & Right)
+                            // 注意：因为我们是 Tiled 处理，边界像素可能需要去 getIter 拿其他 Tile 的数据
+                            // this.getIter 应该处理越界返回 0 或 null
+                            let left = this.getIter(x - 1, y);
+                            let right = this.getIter(x + 1, y);
 
-                        let guessed = false;
+                            let guessed = false;
 
-                        // 水平插值策略
-                        if (left > 0 && right > 0 && Math.floor(left) === Math.floor(right)) {
-                            this.setIter(x, y, (left + right) / 2, 1, 1);
-                            this.stats.guess++;
-                            guessed = true;
-                        }
-
-                        // 如果水平猜不出来，试垂直插值 (Top & Bottom)
-                        if (!guessed) {
-                            let up = this.getIter(x, y - 1);
-                            let down = this.getIter(x, y + 1);
-
-                            if (up > 0 && down > 0 && Math.floor(up) === Math.floor(down)) {
-                                this.setIter(x, y, (up + down) / 2, 1, 1);
+                            // 水平插值策略
+                            if (left > 0 && right > 0 && Math.floor(left) === Math.floor(right)) {
+                                this.setIter(x, y, (left + right) / 2, 1, 1);
                                 this.stats.guess++;
                                 guessed = true;
                             }
-                        }
 
-                        // 3. 实在猜不出来，暴力计算
-                        if (!guessed) {
-                            this.calculatePixel(x, y, 1, 1); // drawWidth=1
+                            // 如果水平猜不出来，试垂直插值 (Top & Bottom)
+                            if (!guessed) {
+                                let up = this.getIter(x, y - 1);
+                                let down = this.getIter(x, y + 1);
+
+                                if (up > 0 && down > 0 && Math.floor(up) === Math.floor(down)) {
+                                    this.setIter(x, y, (up + down) / 2, 1, 1);
+                                    this.stats.guess++;
+                                    guessed = true;
+                                }
+                            }
+
+                            // 3. 实在猜不出来，暴力计算
+                            if (pass === 2 && !guessed) {
+                                this.calculatePixel(x, y, 1, 1); // drawWidth=1
+                            }
                         }
                     }
                 }
@@ -2713,7 +2725,7 @@
         }
 
 
-        function formatLongString(str, len = 40, pre = 20, suf = 20) {
+        function formatLongString(str, len = 30, pre = 15, suf = 15) {
             const s = str.toString();
             if (s.length > len) {
                 return s.substring(0, pre) + '...' + s.substring(s.length - suf);
