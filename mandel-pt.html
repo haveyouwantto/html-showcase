@@ -1094,7 +1094,7 @@
                 if (z.norm() > 16.0) break;
 
                 let currentTime = performance.now();
-                if (currentTime - updateTimer > 100) {
+                if (currentTime - updateTimer > 16) {
                     updateTimer = currentTime;
                     yield i;
                     await delay(5);
@@ -1110,31 +1110,6 @@
             else if (isNaN(n)) return new FloatExp(0, 0);
 
             return getFloatExp(n); // Temporary simple conversion
-            // console.log(num)
-            // if (num.isZero()) return new FloatExp(0, 0);
-
-            // const sign = num.sign();
-            // const absNum = num.abs();
-
-            // // 用 bitLength 估算 10^exponent
-            // const log2 = absNum.precisionBits - 1;
-            // let exponent = Math.floor(log2 / Math.log2(10));
-
-            // // 计算 10^exponent
-            // const pow10 = BigInt("1" + "0".repeat(exponent)); // 或者用 num library 提供的 pow(10, exponent)
-
-            // // 修正 exponent，使 mantissa 落在 [1,10)
-            // let mantissaNum = absNum.div(pow10);
-            // while (mantissaNum >= 10) {
-            //     mantissaNum = mantissaNum / 10;
-            //     exponent++;
-            // }
-            // while (mantissaNum < 1) {
-            //     mantissaNum = mantissaNum * 10;
-            //     exponent--;
-            // }
-
-            // return new FloatExp(Number(mantissaNum) * sign, exponent);
         }
 
         async function* getReferenceOrbitFEMPFR(C, radius, iterations, precisionBits, reportInterval = 10000) {
@@ -1179,88 +1154,13 @@
                 if (z.norm().doubleValue() > 16.0) break;
 
                 let currentTime = performance.now();
-                if (currentTime - updateTimer > 100) {
+                if (currentTime - updateTimer > 16) {
                     updateTimer = currentTime;
                     yield i;
-                    await delay(5);
+                    await delay(0);
                 }
             }
             ctx.destroy();
-            return orbit;
-
-
-            /*
-            let Z = new DeepComplex(0, 0),
-                z = new FloatExpComplex(0, 0),
-                dzdc = new FloatExpComplex(1, 0),
-                one = new FloatExpComplex(1, 0);
-            const orbit = [new FloatExpComplex(0, 0)];
-            for (let i = 0; i < iterations; i++) {
-                dzdc = z.add(z).mulMut(dzdc).add(one);
-
-                Z = Z.mul(Z).add(C);
-
-                z = Z.toFloatExp();
-                orbit.push(z);
-
-                if (dzdc.norm().mul(radius).mul(2).compareTo(z.norm()) > 0) break;
-                if (z.norm().doubleValue() > 16.0) break;
-                if (i % reportInterval == 0) {
-                    yield i;
-                    await delay(1);
-                };
-            }
-            return orbit;
-            */
-        }
-
-
-        async function* getReferenceOrbit(C, radius, iterations, reportInterval = 10000) {
-            let Z = new DeepComplex(0, 0),
-                z = new Complex(0, 0),
-                dzdc = new Complex(1, 0),
-                one = new Complex(1, 0);
-
-            let lpc = C.downCast(), lpz = new Complex(0, 0); // low precision
-            const orbit = [new Complex(0, 0)];
-
-            const waypoints = {};
-
-            for (let i = 1; i < iterations; i++) {
-                dzdc = z.add(z).mulMut(dzdc).addMut(one);
-
-                Z = Z.square().add(C);
-                lpz = lpz.mul(lpz).addMut(lpc)
-
-                z = Z.downCast();
-                orbit.push(z);
-
-                const error = z.sub(lpz).norm();
-                if (error > 1e-13) {
-                    lpz = z;
-                    waypoints[i] = z;
-                }
-
-                if (dzdc.norm() * radius * 2 > z.norm()) {
-                    const predCenter = z.div(dzdc);
-                    console.log(predCenter);
-                    break;
-                };
-                if (z.norm() > 16.0) break;
-                if (i % reportInterval == 0) {
-                    yield i;
-                    await delay(1);
-                };
-            }
-            console.log("Compressed ref: ", waypoints)
-            // // Test decompress and compare with original orbit
-            // const orbit2 = decompressRef(C.downCast(), waypoints, iterations);
-            // // Print two orbits side by side
-            // for (let i = 0; i < Math.min(orbit.length, orbit2.length); i++) {
-            //     const original = orbit[i] || new Complex(0, 0);
-            //     const decompressed = orbit2[i] || new Complex(0, 0);
-            //     console.log(`Iteration ${i} Original: ${original.toString()}, Decompressed: ${decompressed.toString()}, Compression Error: ${original.sub(decompressed).abs()}`);
-            // }
             return orbit;
         }
 
@@ -1295,64 +1195,6 @@
             if (n <= 0) return 0;
             return Math.pow(2, Math.floor(Math.log2(n)));
         }
-
-        /**
-         * Calculates the reference orbit for a given complex number 'c' using the Mandelbrot iteration.
-         * @param {DeepComplex} c - The complex number for which the reference orbit is calculated.
-         * @param {number} iterations - The number of iterations to perform.
-         * @returns {FloatExpComplex[]} - An array containing the reference orbit.
-         */
-        async function* getReferenceOrbitFE(C, radius, iterations, reportInterval = 10000) {
-            let Z = new DeepComplex(0, 0),
-                z = new FloatExpComplex(0, 0),
-                dzdc = new FloatExpComplex(1, 0),
-                one = new FloatExpComplex(1, 0);
-            const orbit = [new FloatExpComplex(0, 0)];
-            for (let i = 0; i < iterations; i++) {
-                dzdc = z.add(z).mulMut(dzdc).add(one);
-
-                Z = Z.mul(Z).add(C);
-
-                z = Z.toFloatExp();
-                orbit.push(z);
-
-                if (dzdc.norm().mul(radius).mul(2).compareTo(z.norm()) > 0) break;
-                if (z.norm().doubleValue() > 16.0) break;
-                if (i % reportInterval == 0) {
-                    yield i;
-                    await delay(1);
-                };
-            }
-            return orbit;
-        }
-
-
-        /**
-         * Calculates the number of iterations required for a complex number to exceed a given bailout value.
-         *
-         * @param {number} re - The real part of the complex number.
-         * @param {number} im - The imaginary part of the complex number.
-         * @param {number} bailout - The bailout value.
-         * @param {number} maxiter - The maximum number of iterations to perform.
-         * @returns {number} - The number of iterations required for the complex number to exceed the bailout value.
-         */
-        function getDirect(re, im, bailout, maxiter) {
-            let it = 0;
-            let re1 = re;
-            let im1 = im;
-
-            while (it <= maxiter) {
-                let re2 = re * re;
-                let im2 = im * im;
-                if (re2 + im2 > bailout) return it;
-                let temp = re2 - im2 + re1;
-                im = 2 * re * im + im1;
-                re = temp;
-                it++;
-            }
-            return it;
-        }
-
 
         /**
          * Generate BLA table
@@ -1706,30 +1548,6 @@
             return result;
         }
 
-        function sortByProximityToCenterPixel(array, imageWidth, imageHeight) {
-            // 预先计算中心点坐标
-            const centerX = imageWidth / 2;
-            const centerY = imageHeight / 2;
-
-            // 使用map创建带距离平方的临时数组
-            const withDistSq = array.map(item => {
-                const centerItemX = item[2];  // 元素中心X
-                const centerItemY = item[3];  // 元素中心Y
-                const dx = centerItemX - centerX;         // X方向差值
-                const dy = centerItemY - centerY;         // Y方向差值
-                return {
-                    item: item,
-                    distSq: dx * dx + dy * dy            // 距离平方（避免开方）
-                };
-            });
-
-            // 按距离平方排序（升序）
-            withDistSq.sort((a, b) => a.distSq - b.distSq);
-
-            // 提取原始元素
-            return withDistSq.map(entry => entry.item);
-        }
-
         function base64ToByteArray(base64String) {
             try {
                 // 还原字符并将URL安全的Base64转换为标准Base64
@@ -1773,155 +1591,6 @@
 
             return base64;
         }
-        // ============================
-
-        function fExp2Obj(fExp) {
-            return { mant: fExp.base, exp: fExp.exp }
-        }
-        function fExpComplex2Obj(fExpComplex) {
-            return {
-                re: fExp2Obj(fExpComplex.re),
-                im: fExp2Obj(fExpComplex.im)
-            }
-        }
-
-        function createWorker() {
-
-            function constructRef(refArray) {
-                let ref = [];
-                for (let i = 0; i < refArray.length; i++) {
-                    ref.push(new Complex(refArray[i][0], refArray[i][1]));
-                }
-                return ref;
-            }
-
-            function constructBla(blaArray) {
-                let out = []
-                for (let i = 0; i < blaArray.length; i++) {
-                    out.push([])
-                    for (let j = 0; j < blaArray[i].length; j++) {
-                        out[i].push({
-                            A: new Complex(blaArray[i][j].A[0], blaArray[i][j].A[1]),
-                            B: new Complex(blaArray[i][j].B[0], blaArray[i][j].B[1]),
-                            radius: blaArray[i][j].radius
-                        })
-                    }
-                }
-                return out
-            }
-
-            function obj2FExp(obj) {
-                return new FloatExp(obj.mant, obj.exp)
-            }
-
-            function obj2FExpComplex(obj) {
-                return new FloatExpComplex(obj2FExp(obj.re), obj2FExp(obj.im))
-            }
-            function constructRefFE(refArray) {
-                let ref = [];
-                for (let i = 0; i < refArray.length; i++) {
-                    ref.push(obj2FExpComplex(refArray[i]));
-                }
-                return ref;
-            }
-
-            function constructBlaFE(blaArray) {
-                let out = []
-                for (let i = 0; i < blaArray.length; i++) {
-                    out.push([])
-                    for (let j = 0; j < blaArray[i].length; j++) {
-                        out[i].push({
-                            A: obj2FExpComplex(blaArray[i][j].A),
-                            B: obj2FExpComplex(blaArray[i][j].B),
-                            radius: obj2FExp(blaArray[i][j].radius)
-                        })
-                    }
-                }
-                return out
-            }
-
-            self.onmessage = function (event) {
-                let calc = []
-                switch (event.data.type) {
-                    case 'ref':
-                        if (!event.data.deep) {
-                            self.refArray = constructRef(event.data.ref);
-                            self.blaArray = constructBla(event.data.bla);
-                        } else {
-                            self.refArray = constructRefFE(event.data.ref);
-                            self.blaArray = constructBlaFE(event.data.bla);
-                        }
-                        self.deep = event.data.deep;
-                        break
-                    case 'calc':
-                        const calc = [];
-                        if (!self.deep) {
-                            for (let delta of event.data.deltas) {
-                                try {
-                                    let it = getPTBLA(
-                                        // 0: re, 1: im, 2: x, 3: y, 4: w, 5: h
-                                        new Complex(delta[0], delta[1]),
-                                        self.refArray,
-                                        self.blaArray,
-                                        event.data.maxIter,
-                                        event.data.bailout,
-                                        event.data.smooth
-                                    );
-                                    calc.push([
-                                        it,
-                                        delta[2],
-                                        delta[3]
-                                    ]);
-                                } catch (e) { }
-                            }
-                        } else {
-                            for (let delta of event.data.deltas) {
-                                try {
-                                    let it = getPTBLAFE(
-                                        new FloatExpComplex(
-                                            new FloatExp(delta[0].base, delta[0].exp),
-                                            new FloatExp(delta[1].base, delta[1].exp)
-                                        ),
-                                        self.refArray,
-                                        self.blaArray,
-                                        event.data.maxIter,
-                                        event.data.bailout,
-                                        event.data.smooth
-                                    );
-                                    calc.push([
-                                        it,
-                                        delta[2],
-                                        delta[3]
-                                    ]);
-                                } catch (e) { }
-                            }
-                        }
-                        self.postMessage(calc);
-                }
-
-            };
-        }
-
-
-        function arrayBufferToBase64(buffer) {
-            let binary = '';
-            const bytes = new Uint8Array(buffer);
-            const len = bytes.byteLength;
-            for (let i = 0; i < len; i++) {
-                binary += String.fromCharCode(bytes[i]);
-            }
-            return btoa(binary);
-        }
-
-        const code = new TextEncoder().encode(`
-    ${Complex.toString()}${lookup.toString()};${getPTBLA.toString()}
-    ${FloatExp.toString()}${FloatExpComplex.toString()}${getFloatExp.toString()}
-    ${doubleToFloatExp.toString()}${FEmax.toString()}${FEmin.toString()}
-    ${getPTBLAFE.toString()}${lookupFE.toString()}
-        (
-        ${createWorker.toString()}
-        )();`);
-        const workerData = 'data:application/javascript;base64,' + arrayBufferToBase64(code)
 
         /**
          * Represents a Mandelbrot set visualization.
@@ -1963,14 +1632,8 @@
                 this.canvas = canvas;
                 this.context = canvas.getContext('2d');
                 this.rendering = false;
-                this.iterMap = [...new Array(this.canvas.height)].map(e => [...new Array(this.canvas.width)].map(e => 0))
+                this.iterMap = null;
                 this.videoRendering = false;
-                this.drawState = 0;
-                this.drawStates = [
-                    [2, 2],
-                    [1, 2],
-                    [1, 1]
-                ]
 
                 // NEW: Interaction State
                 this.transformState = { scale: 1, tx: 0, ty: 0 };
@@ -2000,40 +1663,11 @@
                     time: performance.now()
                 }
 
-
-                this.counter = 0;
-                this.workerCounter = 0;
-                this.resolveFunc = null;
                 this.lastUpdateTime = performance.now();
 
                 // Cancelling state
                 this.requestForCancel = false;
                 this.cancelling = false;
-
-                // this.workers = []
-                // for (let i = 0; i < CPU_CORES; i++) {
-                //     this.workers[i] = new Worker(workerData);
-                //     this.workers[i].onmessage = event => {
-                //         this.stats.calc += event.data.length;
-                //         for (let delta of event.data) {
-                //             let [w, h] = this.drawStates[this.drawState];
-                //             this.setIter(
-                //                 delta[1], delta[2],
-                //                 delta[0],
-                //                 w, h
-                //             );
-                //         }
-                //         this.counter--;
-                //         // if (this.counter % CPU_CORES == 0) {
-                //         // };
-                //         this.showInfo();
-                //         this.context.putImageData(this.image, 0, 0)
-
-                //         if (this.counter <= 0) {
-                //             this.resolveFunc();
-                //         }
-                //     }
-                // }
 
                 // Initial setup
                 this.resizeCanvas(false); // Set initial size without triggering update
@@ -2043,7 +1677,7 @@
                 let dpr = window.devicePixelRatio;
                 this.canvas.width = window.innerWidth * dpr;
                 this.canvas.height = window.innerHeight * dpr;
-                this.iterMap = [...new Array(this.canvas.height)].map(() => new Array(this.canvas.width).fill(0));
+                this.iterMap = [...new Array(this.canvas.height)].map(e => new Float64Array(this.canvas.width));
                 if (triggerUpdate) {
                     this.clear();
                     this.update();
@@ -2211,25 +1845,6 @@
                 this.update(floorPowerOfTwo(Math.max(2, scale)));
             }
 
-            click(x, y) {
-                // Calculate the new center and zoom level
-                this.goto(this.center.add(this.getDelta(x, y)), false);
-                this.zoom(this.size.div(4));
-
-                // Capture the clicked section (a quarter of the canvas size around the click point)
-                const zoomWidth = this.canvas.width / 4;
-                const zoomHeight = this.canvas.height / 4;
-                const startX = x - zoomWidth / 2; // Top-left x of the zoomed region
-                const startY = y - zoomHeight / 2; // Top-left y of the zoomed region
-
-                // Scale up the selected region to 4x its size
-                this.context.drawImage(
-                    this.canvas,
-                    startX, startY, zoomWidth, zoomHeight,  // Source region (original size)
-                    0, 0, this.canvas.width, this.canvas.height // Destination (scaled to fit canvas)
-                );
-            }
-
             zoomOut() {
                 let newMap = [...new Array(this.canvas.height)].map(e => [...new Array(this.canvas.width)].map(e => 0))
                 for (let y = 0; y < this.canvas.height; y += 2) {
@@ -2317,14 +1932,6 @@
                     (x - baseX) * deltaPerPixel,
                     (baseY - y) * deltaPerPixel
                 )
-
-                // return this.deep ? new FloatExpComplex(
-                //     this.size.mul((x - baseX) / this.canvas.width),
-                //     this.size.mul((baseY - y) / this.canvas.height)
-                // ) : new Complex(
-                //     (x - baseX) / this.canvas.width * this.size,
-                //     (baseY - y) / this.canvas.height * this.size
-                // )
             }
 
 
@@ -2386,22 +1993,6 @@
                 guessedProgressBar.style.width = `${((this.stats.guess) / totalPixels * 100).toFixed(2)}%`;
             }
 
-            setLocked(locked) {
-                if (locked) {
-                    // Lock buttons
-                    document.querySelectorAll('.control-button').forEach(button => {
-                        button.disabled = true;
-                    });
-                    canvas.classList.add('running')
-                } else {
-                    // Unlock buttons
-                    document.querySelectorAll('.control-button').forEach(button => {
-                        button.disabled = false;
-                    });
-                    canvas.classList.remove('running')
-                }
-            }
-
             /**
              * Updates the Mandelbrot set visualization.
              *
@@ -2411,7 +2002,6 @@
                     await this.cancel()
                 };
                 this.rendering = true;
-                // this.setLocked(true)
                 this.stats = {
                     ref: 0,
                     calc: 0,
@@ -2444,7 +2034,6 @@
 
                     const generator = this.deep ?
                         getReferenceOrbitFEMPFR(base, this.size, this.iterations, Math.ceil((-this.size.exp + 10) * 3.321928094887362), reportInterval) :
-                        // getReferenceOrbit(base, this.size.doubleValue(), this.iterations, reportInterval);
                         getReferenceOrbitMPFR(base, this.size.doubleValue(), this.iterations, Math.ceil((-this.size.exp + 10) * 3.321928094887362), reportInterval);
                     while (!(nextTerm = await generator.next()).done) {
                         this.stats.ref = nextTerm.value;
@@ -2475,203 +2064,6 @@
                 this.setIterations(autoIter);
 
                 console.log(performance.now() + " perturbation")
-
-                // let workerRef = this.deep ? this.ref.map(e => fExpComplex2Obj(e)) : this.ref.map(e => [e.re, e.im]);
-                // let workerBla = this.deep ?
-                //     this.blaTable.map(e => e.map(e2 => {
-                //         return { A: fExpComplex2Obj(e2.A), B: fExpComplex2Obj(e2.B), radius: fExp2Obj(e2.radius) }
-                //     }))
-                //     : this.blaTable.map(e => e.map(e2 => {
-                //         return { A: [e2.A.re, e2.A.im], B: [e2.B.re, e2.B.im], radius: e2.radius }
-                //     }))
-
-                // for (let i = 0; i < this.workers.length; i++) {
-                //     this.workers[i].postMessage({
-                //         type: 'ref',
-                //         ref: workerRef,
-                //         bla: workerBla,
-                //         deep: this.deep
-                //     });
-                // }
-
-                // let p1 = () => {
-                //     return new Promise(async (r, j) => {
-                //         this.counter = 0;
-                //         this.workerCounter = 0;
-                //         this.resolveFunc = r;
-                //         this.drawState = 0;
-
-                //         // 收集所有需要计算的deltas
-                //         let allDeltas = [];
-                //         for (let y = 0; y < this.canvas.height; y += 2) {
-                //             for (let x = 0; x < this.canvas.width; x += 2) {
-                //                 if (this.iterMap[y][x] > 0) {
-                //                     this.setIter(x, y, this.iterMap[y][x]);
-                //                     this.stats.guess++;
-                //                     continue;
-                //                 }
-                //                 // 计算并收集delta
-                //                 let delta = this.getDelta(x, y);
-                //                 allDeltas.push([delta.re, delta.im, x, y]);
-                //             }
-                //         }
-
-                //         allDeltas = sortByProximityToCenterPixel(allDeltas, this.canvas.width, this.canvas.height); // 按照距离中心点排序
-
-                //         // 将deltas均分到每个核心
-                //         const chunkSize = 64 * 64;
-                //         const chunks = Math.ceil(allDeltas.length / chunkSize);
-                //         for (let i = 0; i < chunks; i++) {
-                //             const start = i * chunkSize;
-                //             const end = start + chunkSize;
-                //             const deltasChunk = allDeltas.slice(start, end);
-                //             if (deltasChunk.length === 0) continue; // 跳过空数据
-
-                //             const data = {
-                //                 type: 'calc',
-                //                 deltas: deltasChunk,
-                //                 maxIter: this.iterations,
-                //                 bailout: this.bailout,
-                //                 smooth: this.smooth
-                //             };
-
-                //             // 轮询分配Worker
-                //             const workerIndex = this.workerCounter % CPU_CORES;
-                //             this.workers[workerIndex].postMessage(data);
-                //             this.counter++; // 追踪发送的任务总数
-                //             this.workerCounter++;
-                //         }
-
-                //         if (this.counter <= 0) {
-                //             this.resolveFunc();
-                //         }
-                //     });
-                // };
-
-                // let p2 = () => {
-                //     return new Promise(async (r, j) => {
-
-                //         this.counter = 0;
-                //         this.workerCounter = 0;
-                //         this.resolveFunc = r;
-                //         this.drawState = 1;
-
-                //         // 收集所有需要计算的deltas
-                //         let allDeltas = [];
-                //         for (let y = 0; y < this.canvas.height; y += 2) {
-                //             for (let x = 1; x < this.canvas.width; x += 2) {
-                //                 if (this.iterMap[y][x] > 0) {
-                //                     this.setIter(x, y, this.iterMap[y][x])
-                //                     this.stats.guess++;
-                //                     continue
-                //                 }
-                //                 let leftColor = this.getIter(x - 1, y);
-                //                 let rightColor = this.getIter(x + 1, y);
-                //                 if (Math.floor(leftColor) == Math.floor(rightColor) && leftColor >= 0 && rightColor >= 0) {
-                //                     this.setIter(x, y, (leftColor + rightColor) / 2);
-                //                     this.stats.guess++;
-                //                 } else {
-                //                     let delta = this.getDelta(x, y);
-                //                     allDeltas.push([delta.re, delta.im, x, y]);
-                //                 }
-                //             }
-                //         }
-
-                //         allDeltas = sortByProximityToCenterPixel(allDeltas, this.canvas.width, this.canvas.height);
-
-                //         // 将deltas均分到每个核心
-                //         const chunkSize = 64 * 64;
-                //         const chunks = Math.ceil(allDeltas.length / chunkSize);
-                //         for (let i = 0; i < chunks; i++) {
-                //             const start = i * chunkSize;
-                //             const end = start + chunkSize;
-                //             const deltasChunk = allDeltas.slice(start, end);
-                //             if (deltasChunk.length === 0) continue; // 跳过空数据
-
-                //             const data = {
-                //                 type: 'calc',
-                //                 deltas: deltasChunk,
-                //                 maxIter: this.iterations,
-                //                 bailout: this.bailout,
-                //                 smooth: this.smooth
-                //             };
-
-                //             // 轮询分配Worker
-                //             const workerIndex = this.workerCounter % CPU_CORES;
-                //             this.workers[workerIndex].postMessage(data);
-                //             this.counter++; // 追踪发送的任务总数
-                //             this.workerCounter++;
-                //         }
-
-                //         if (this.counter <= 0) {
-                //             this.resolveFunc();
-                //         }
-                //     })
-                // }
-
-                // let p3 = () => {
-                //     return new Promise(async (r, j) => {
-                //         this.counter = 0;
-                //         this.workerCounter = 0;
-                //         this.resolveFunc = r;
-                //         this.drawState = 2;
-
-                //         let allDeltas = [];
-                //         for (let y = 1; y < this.canvas.height; y += 2) {
-                //             for (let x = 0; x < this.canvas.width; x++) {
-                //                 if (this.iterMap[y][x] != 0) {
-                //                     this.setIter(x, y, this.iterMap[y][x])
-                //                     this.stats.guess++;
-                //                     continue
-                //                 }
-
-                //                 let upColor = this.getIter(x, y - 1);
-                //                 let downColor = this.getIter(x, y + 1);
-                //                 if (Math.floor(upColor) == Math.floor(downColor) && upColor >= 0 && downColor >= 0) {
-                //                     this.setIter(x, y, (upColor + downColor) / 2);
-                //                     this.stats.guess++;
-                //                 } else {
-                //                     let delta = this.getDelta(x, y);
-                //                     allDeltas.push([delta.re, delta.im, x, y]);
-                //                 }
-                //             }
-                //         }
-
-                //         allDeltas = sortByProximityToCenterPixel(allDeltas, this.canvas.width, this.canvas.height);
-
-                //         // 将deltas均分到每个核心
-                //         const chunkSize = 64 * 64;
-                //         const chunks = Math.ceil(allDeltas.length / chunkSize);
-                //         for (let i = 0; i < chunks; i++) {
-                //             const start = i * chunkSize;
-                //             const end = start + chunkSize;
-                //             const deltasChunk = allDeltas.slice(start, end);
-                //             if (deltasChunk.length === 0) continue; // 跳过空数据
-
-                //             const data = {
-                //                 type: 'calc',
-                //                 deltas: deltasChunk,
-                //                 maxIter: this.iterations,
-                //                 bailout: this.bailout,
-                //                 smooth: this.smooth
-                //             };
-
-                //             // 轮询分配Worker
-                //             const workerIndex = this.workerCounter % CPU_CORES;
-                //             this.workers[workerIndex].postMessage(data);
-                //             this.counter++; // 追踪发送的任务总数
-                //             this.workerCounter++;
-                //         }
-
-                //         if (this.counter <= 0) {
-                //             this.resolveFunc();
-                //         }
-                //     })
-                // }
-
-                // await p1();
-                // await p2();
-                // await p3();
 
                 await this.successiveRefinment(startBlockSize);
 
@@ -2713,8 +2105,6 @@
 
                 // 重建哈希字符串
                 window.location.hash = params.toString();
-
-                // this.setLocked(false)
             }
 
             async successiveRefinment(startSize) {
