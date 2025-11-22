@@ -2053,6 +2053,7 @@
             handleStart(e) {
                 e.preventDefault();
                 this.isInteracting = true;
+                this.cancel();
 
                 if (e.touches) {
                     this.dragStartPoint = this.getTouchCenter(e.touches);
@@ -2204,6 +2205,8 @@
                 this.transformState = { scale: 1, tx: 0, ty: 0 };
 
                 this.canvas.classList.remove('transition')
+                this.requestForCancel = false;
+                this.cancelling = false;
                 this.update(floorPowerOfTwo(Math.max(2, scale)));
             }
 
