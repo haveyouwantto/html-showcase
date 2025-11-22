@@ -91,14 +91,39 @@
             border-radius: 5px;
             font-size: 0.9rem;
             z-index: 1000;
-            pointer-events: none;
-            /* Allow clicks to pass through to the canvas */
             max-width: 90vw;
+            transition: 0.3s ease-in-out;
+            margin-top: 10px;
         }
 
         #info-location {
             margin-bottom: 5px;
             word-break: break-all;
+        }
+
+        .info-overlay-collapsed {
+            width: 40px !important;
+            height: 40px !important;
+            padding: 0 !important;
+        }
+
+        .info-overlay-collapsed::after {
+            content: "ℹ️";
+            font-size: 24px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 100%;
+            height: 100%;
+        }
+
+        .info-overlay-collapsed * {
+            display: none !important;
+        }
+
+        .info-overlay-collapsed:hover {
+            background-color: var(--theme-color) !important;
+            cursor: pointer;
         }
 
         .progress-container {
@@ -302,7 +327,7 @@
 <body>
     <canvas id="mandelbrot" width="800" height="800"></canvas>
 
-    <div id="info-overlay">
+    <div id="info-overlay" class="info-overlay-collapsed">
         <div id="info-location">
             <div>Re: <span id="info-re"></span></div>
             <div>Im: <span id="info-im"></span></div>
@@ -3335,6 +3360,10 @@
 
         document.getElementById('menu-toggle').addEventListener('click', () => {
             document.getElementById('sidebar').classList.toggle('open');
+        });
+
+        document.getElementById('info-overlay').addEventListener('click', () => {
+            document.getElementById('info-overlay').classList.toggle('info-overlay-collapsed');
         });
 
 
