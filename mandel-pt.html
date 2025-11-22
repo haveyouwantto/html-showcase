@@ -2050,7 +2050,8 @@
                 }
             }
 
-            handleStart(e) {
+            async handleStart(e) {
+                await this.cancel();
                 e.preventDefault();
                 this.isInteracting = true;
 
@@ -2099,7 +2100,6 @@
                 }
 
 
-                console.log(this.transformState)
                 this.applyCssTransform();
             }
 
@@ -2109,9 +2109,10 @@
                 this.triggerRecalculation();
             }
 
-            handleWheel(e) {
+            async handleWheel(e) {
                 this.canvas.classList.add('transition')
                 e.preventDefault();
+                await this.cancel();
 
                 const scaleFactor = e.deltaY < 0 ? 2 : 0.5;
                 const pivotX = e.clientX;
@@ -2365,7 +2366,7 @@
             showInfo() {
                 let totalPixels = this.canvas.width * this.canvas.height;
                 let elapsedTime = performance.now() - this.stats.time;
-                let estimatedTotalTime = (elapsedTime / (this.stats.calc+this.stats.guess)) * totalPixels;
+                let estimatedTotalTime = (elapsedTime / (this.stats.calc + this.stats.guess)) * totalPixels;
                 let estimatedRemainingTime = estimatedTotalTime - elapsedTime;
                 let statusText = `Reference: ${this.stats.ref}it\nTime: ${((elapsedTime) / 1000).toFixed(3)}s ETA: ${(estimatedRemainingTime / 1000).toFixed(3)}s\nCalculated: ${this.stats.calc}/${totalPixels} pixels\nGuessed: ${this.stats.guess}/${totalPixels} pixels`;
                 if (!this.rendering) {
@@ -2921,13 +2922,15 @@
             }
 
             async cancel() {
-                this.requestForCancel = true;
-                while (true) {
-                    if (this.cancelling) break;
-                    await delay(100); // wait for cancellation to complete
+                if (this.rendering) {
+                    this.requestForCancel = true;
+                    while (true) {
+                        if (this.cancelling) break;
+                        await delay(100); // wait for cancellation to complete
+                    }
+                    this.cancelling = false;
+                    this.requestForCancel = false;
                 }
-                this.cancelling = false;
-                this.requestForCancel = false;
             }
 
             /**
