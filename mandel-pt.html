@@ -2339,7 +2339,10 @@
 
             showInfo() {
                 let totalPixels = this.canvas.width * this.canvas.height;
-                let statusText = `Reference: ${this.stats.ref}it\nTime: ${((performance.now() - this.stats.time) / 1000).toFixed(3)}s`;
+                let elapsedTime = performance.now() - this.stats.time;
+                let estimatedTotalTime = (elapsedTime / (this.stats.calc+this.stats.guess)) * totalPixels;
+                let estimatedRemainingTime = estimatedTotalTime - elapsedTime;
+                let statusText = `Reference: ${this.stats.ref}it\nTime: ${((elapsedTime) / 1000).toFixed(3)}s ETA: ${(estimatedRemainingTime / 1000).toFixed(3)}s\nCalculated: ${this.stats.calc}/${totalPixels} pixels\nGuessed: ${this.stats.guess}/${totalPixels} pixels`;
                 if (!this.rendering) {
                     statusText += "\nDone!";
                 }
