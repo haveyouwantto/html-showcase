@@ -2149,7 +2149,7 @@
                 clearTimeout(this.recalculationTimeout);
                 this.recalculationTimeout = setTimeout(() => {
                     this.applyTransformAndRecalculate();
-                }, 200);
+                }, 100);
             }
 
             applyTransformAndRecalculate() {
@@ -2369,7 +2369,7 @@
             showInfo() {
                 let totalPixels = this.canvas.width * this.canvas.height;
                 let elapsedTime = performance.now() - this.stats.time;
-                let estimatedTotalTime = (elapsedTime / (this.stats.calc+this.stats.guess)) * totalPixels;
+                let estimatedTotalTime = (elapsedTime / (this.stats.calc + this.stats.guess)) * totalPixels;
                 let estimatedRemainingTime = estimatedTotalTime - elapsedTime;
                 let statusText = `Reference: ${this.stats.ref}it\nTime: ${((elapsedTime) / 1000).toFixed(3)}s ETA: ${(estimatedRemainingTime / 1000).toFixed(3)}s\nCalculated: ${this.stats.calc}/${totalPixels} pixels\nGuessed: ${this.stats.guess}/${totalPixels} pixels`;
                 if (!this.rendering) {
@@ -2674,7 +2674,6 @@
                 // await p3();
 
                 await this.successiveRefinment(startBlockSize);
-                await this.finalPass();
 
                 // Distance estimation
                 if (this.distanceEstimation) {
@@ -2719,186 +2718,191 @@
             }
 
             async successiveRefinment(startSize) {
-                let step = startSize;
+                // 1. 初始化配置
+                const TILE_SIZE = 64;
+                const width = this.canvas.width;
+                const height = this.canvas.height;
+                const cx = width / 2;
+                const cy = height / 2;
+                // 预计算最大距离平方，避免开方，提升少许性能
+                const maxDistSq = cx * cx + cy * cy;
 
-                // Initial refinement (Center-out applied here too)
-                await this.calculateRegion(0, 0, step, step, step, step);
+                // 聚焦强度：越大中心越优先。5.0 左右效果很棒。
+                const FOCUS_STRENGTH = 5.0;
+                const initialLog2 = Math.log2(startSize);
 
-                // Loop to progressively refine
-                while (step > 2) {
-                    let halfStep = step >> 1;
+                let priorityQueue = [];
 
-                    // Refine quadrants
-                    // 由于 calculateRegion 现在已经是中心扩散了，这里的顺序其实不太重要了
-                    // 但为了保持逻辑，我们依然并行处理两个偏移层
-                    await this.calculateRegion(halfStep, 0, step, step, halfStep, step);
-                    await this.calculateRegion(0, halfStep, halfStep, step, halfStep, halfStep);
+                // 2. 填充初始任务
+                for (let y = 0; y < height; y += TILE_SIZE) {
+                    for (let x = 0; x < width; x += TILE_SIZE) {
+                        let tcx = x + TILE_SIZE / 2;
+                        let tcy = y + TILE_SIZE / 2;
+                        // 归一化距离 (0~1)
+                        let dist = Math.sqrt((tcx - cx) ** 2 + (tcy - cy) ** 2) / Math.sqrt(maxDistSq);
 
-                    step = halfStep;
+                        priorityQueue.push({
+                            x: x, y: y, w: TILE_SIZE, h: TILE_SIZE,
+                            step: startSize,
+                            dist: dist
+                        });
+                    }
+                }
+
+                // 3. 处理队列
+                while (priorityQueue.length > 0) {
+                    if (this.requestForCancel) {
+                        this.cancelling = true;
+                        return;
+                    }
+
+                    // --- 优先级排序 ---
+                    // Score = Level + (Distance * Strength)
+                    // step=1 的任务 level 很大，通常排后面，但如果 Distance 很小(在中心)，
+                    // 它的 Score 会比边缘的 step=8 还小，从而实现"中心先平滑"的效果。
+                    priorityQueue.sort((a, b) => {
+                        let levelA = initialLog2 - Math.log2(a.step);
+                        let levelB = initialLog2 - Math.log2(b.step);
+
+                        // 这里给 step=1 (Final Pass) 额外加一点点惩罚权重，
+                        // 确保在同一区域内，先把 step=2 铺完再做 step=1，避免数据依赖缺失
+                        if (a.step === 1) levelA += 0.1;
+                        if (b.step === 1) levelB += 0.1;
+
+                        let scoreA = levelA + (a.dist * FOCUS_STRENGTH);
+                        let scoreB = levelB + (b.dist * FOCUS_STRENGTH);
+                        return scoreA - scoreB;
+                    });
+
+                    // 取出任务
+                    const task = priorityQueue.shift();
+
+                    // --- 核心渲染逻辑 ---
+                    if (task.step > 1) {
+                        // > 1: 粗糙渲染模式 (只算网格，画方块)
+                        await this.renderCoarseTile(task);
+
+                        // 分裂任务: 放入下一级 step
+                        task.step >>= 1; // 除以 2
+                        priorityQueue.push(task);
+                    } else {
+                        // = 1: 智能猜测模式 (Final Pass，带插值)
+                        await this.renderFinalTile(task);
+                        // step 1 是终点，不需要再 push 回队列
+                    }
+
+                    // --- 智能刷新 ---
+                    // Final Pass (step=1) 计算量大，刷新频率高一点以展示进度
+                    // Coarse Pass (step>1) 比较快，可以攒一攒
+                    let batchSize = (task.step === 1) ? 1 : 4;
+                    if (priorityQueue.length % batchSize === 0) {
+                        await this.tryUpdateScreen();
+                    }
+                }
+
+                // 结束
+                await this.tryUpdateScreen();
+                this.rendering = false;
+            }
+
+            /**
+             * 模式 A: 粗糙渲染 (Step > 1)
+             * 快速填充网格，绘制大像素
+             */
+            async renderCoarseTile(task) {
+                const { x: startX, y: startY, w, h, step } = task;
+                const endX = Math.min(startX + w, this.canvas.width);
+                const endY = Math.min(startY + h, this.canvas.height);
+
+                // 网格对齐
+                const firstX = startX + (step - (startX % step)) % step;
+                const firstY = startY + (step - (startY % step)) % step;
+
+                for (let y = firstY; y < endY; y += step) {
+                    for (let x = firstX; x < endX; x += step) {
+                        // 如果已经被算过了(比如上一轮 step*2 留下的点)，直接跳过
+                        // 注意：这里需要 ensure iterMap 有值。
+                        // 如果是第一轮，iterMap 可能是 0。
+                        if (this.iterMap[y][x] > 0) {
+                            // 只是为了刷新 visuals，重绘一下(可选，如果觉得闪烁可以去掉)
+                            this.setIter(x, y, this.iterMap[y][x], step, step);
+                            this.stats.guess++; // 复用 guess 统计，或者不算
+                        } else {
+                            // 真正的计算，画一个 step x step 的矩形
+                            this.calculatePixel(x, y, step, step);
+                        }
+                    }
                 }
             }
 
             /**
-             * 优化后的区域计算：从屏幕中心向外呈方形扩散渲染
-             * 空间复杂度: O(1) - 不需要预存坐标数组
+             * 模式 B: 精细渲染 (Step = 1)
+             * 包含“猜测”逻辑，填补 1x1 的空隙
              */
-            async calculateRegion(startX, startY, stepX, stepY, drawWidth, drawHeight) {
-                if (this.requestForCancel) {
-                    this.cancelling = true;
-                    return;
-                }
+            async renderFinalTile(task) {
+                const { x: startX, y: startY, w, h } = task;
+                const endX = Math.min(startX + w, this.canvas.width);
+                const endY = Math.min(startY + h, this.canvas.height);
 
-                const width = this.canvas.width;
-                const height = this.canvas.height;
-
-                // 1. 计算相对于网格的中心点
-                // 我们需要找到最接近屏幕物理中心的那个 grid 点 (startX + n * stepX)
-                const screenCX = width / 2;
-                const screenCY = height / 2;
-
-                // 计算中心点在 Grid 中的索引偏移 (Index Offset)
-                const centerIdxX = Math.floor((screenCX - startX) / stepX);
-                const centerIdxY = Math.floor((screenCY - startY) / stepY);
-
-                // 计算 Grid 中心的实际像素坐标
-                const gridCenterX = startX + centerIdxX * stepX;
-                const gridCenterY = startY + centerIdxY * stepY;
-
-                // 2. 计算最大半径（步数），只需覆盖最远的那个角即可
-                // 这里的半径 r 是指“距离中心的步数”
-                const maxStepsX = Math.max(centerIdxX, Math.ceil((width - gridCenterX) / stepX));
-                const maxStepsY = Math.max(centerIdxY, Math.ceil((height - gridCenterY) / stepY));
-                const maxRadius = Math.max(maxStepsX, maxStepsY);
-
-                // 定义处理单点的逻辑 (避免代码重复)
-                const processPoint = (x, y) => {
-                    if (x < 0 || x >= width || y < 0 || y >= height) return; // 越界检查
-
-                    if (this.iterMap[y][x] > 0) {
-                        this.setIter(x, y, this.iterMap[y][x]);
-                        this.stats.guess++;
-                    } else {
-                        this.calculatePixel(x, y, drawWidth, drawHeight);
-                    }
-                };
-
-                // 3. 核心循环：按半径 r 从 0 开始向外扩散
-                for (let r = 0; r <= maxRadius; r++) {
-
-                    if (r === 0) {
-                        // 特殊处理：中心点
-                        processPoint(gridCenterX, gridCenterY);
-                    } else {
-                        // 每次循环处理一个矩形环 (Ring)
-                        // 上边 (Top Edge) 和 下边 (Bottom Edge)
-                        // 左右边 (Left Edge) 和 右边 (Right Edge)
-
-                        const currentStepX = r * stepX;
-                        const currentStepY = r * stepY;
-
-                        // 预计算当圈的边界坐标
-                        const topY = gridCenterY - currentStepY;
-                        const bottomY = gridCenterY + currentStepY;
-                        const leftX = gridCenterX - currentStepX;
-                        const rightX = gridCenterX + currentStepX;
-
-                        // --- 绘制上下边 ---
-                        // x 范围从 leftX 到 rightX
-                        // 注意：为了不重复绘制四个角，我们让上下边包含角，左右边不包含角
-                        for (let x = leftX; x <= rightX; x += stepX) {
-                            processPoint(x, topY);    // 上边
-                            processPoint(x, bottomY); // 下边
+                for (let y = startY; y < endY; y++) {
+                    for (let x = startX; x < endX; x++) {
+                        // 1. 如果这个点已经有值 (来自于 step=2,4,8...)，跳过
+                        if (this.iterMap[y][x] > 0) {
+                            // 重绘一下成 1x1 (消除之前的大方块残留)
+                            this.setIter(x, y, this.iterMap[y][x], 1, 1);
+                            continue;
                         }
 
-                        // --- 绘制左右边 ---
-                        // y 范围从 topY + stepY 到 bottomY - stepY (避开角)
-                        for (let y = topY + stepY; y <= bottomY - stepY; y += stepY) {
-                            processPoint(leftX, y);   // 左边
-                            processPoint(rightX, y);  // 右边
+                        // 2. 尝试猜测 (Guessing)
+                        // 检查水平邻居 (Left & Right)
+                        // 注意：因为我们是 Tiled 处理，边界像素可能需要去 getIter 拿其他 Tile 的数据
+                        // this.getIter 应该处理越界返回 0 或 null
+                        let left = this.getIter(x - 1, y);
+                        let right = this.getIter(x + 1, y);
+
+                        let guessed = false;
+
+                        // 水平插值策略
+                        if (left > 0 && right > 0 && Math.floor(left) === Math.floor(right)) {
+                            this.setIter(x, y, (left + right) / 2, 1, 1);
+                            this.stats.guess++;
+                            guessed = true;
                         }
-                    }
 
-                    // 每一圈或者每隔几圈尝试更新一次屏幕
-                    // 这样用户会看到一个从中心放大的方框动画
-                    await this.tryUpdateScreen();
+                        // 如果水平猜不出来，试垂直插值 (Top & Bottom)
+                        if (!guessed) {
+                            let up = this.getIter(x, y - 1);
+                            let down = this.getIter(x, y + 1);
 
-                    if (this.requestForCancel) {
-                        this.cancelling = true;
-                        return;
+                            if (up > 0 && down > 0 && Math.floor(up) === Math.floor(down)) {
+                                this.setIter(x, y, (up + down) / 2, 1, 1);
+                                this.stats.guess++;
+                                guessed = true;
+                            }
+                        }
+
+                        // 3. 实在猜不出来，暴力计算
+                        if (!guessed) {
+                            this.calculatePixel(x, y, 1, 1); // drawWidth=1
+                        }
                     }
                 }
             }
 
+            // 配合上述逻辑，tryUpdateScreen 可以稍微降低一点强制间隔，因为我们已经在大循环里做了流控
             async tryUpdateScreen() {
                 let currentTime = performance.now();
-                if (currentTime - this.lastUpdateTime < 100) {
-                    return; // Skip update if less than 100ms since last update
+                // 这里的 16ms (约60fps) 限制配合上面的 batchSize 会非常顺滑
+                if (currentTime - this.lastUpdateTime < 16) {
+                    return;
                 }
                 this.showInfo();
                 this.updateProgress();
                 this.context.putImageData(this.image, 0, 0);
-                await delay(10); // Allow UI to update
+                // 使用 requestAnimationFrame 的这种 await 写法可以让 UI 线程呼吸
+                await delay(0);
                 this.lastUpdateTime = currentTime;
             }
-
-            async finalPass() {
-                if (this.requestForCancel) {
-                    this.cancelling = true;
-                    return;
-                }
-
-                for (let y = 0; y < this.canvas.height; y += 2) {
-                    for (let x = 1; x < this.canvas.width; x += 2) {
-                        if (this.iterMap[y][x] > 0) {
-                            this.setIter(x, y, this.iterMap[y][x])
-                            this.stats.guess++;
-                            continue
-                        }
-                        let leftColor = this.getIter(x - 1, y);
-                        let rightColor = this.getIter(x + 1, y);
-                        if (Math.floor(leftColor) == Math.floor(rightColor) && leftColor >= 0 && rightColor >= 0) {
-                            this.setIter(x, y, (leftColor + rightColor) / 2);
-                            this.stats.guess++;
-                        } else {
-                            this.calculatePixel(x, y, 1, 2);
-                        }
-                    }
-                    await this.tryUpdateScreen();
-                    if (this.requestForCancel) {
-                        this.cancelling = true;
-                        return;
-                    }
-
-                }
-
-
-                for (let y = 1; y < this.canvas.height; y += 2) {
-                    for (let x = 0; x < this.canvas.width; x++) {
-                        if (this.iterMap[y][x] != 0) {
-                            this.setIter(x, y, this.iterMap[y][x])
-                            this.stats.guess++;
-                            continue
-                        }
-
-                        let upColor = this.getIter(x, y - 1);
-                        let downColor = this.getIter(x, y + 1);
-                        if (Math.floor(upColor) == Math.floor(downColor) && upColor >= 0 && downColor >= 0) {
-                            this.setIter(x, y, (upColor + downColor) / 2);
-                            this.stats.guess++;
-                        } else {
-                            this.calculatePixel(x, y);
-                        }
-                    }
-                    await this.tryUpdateScreen();
-                    if (this.requestForCancel) {
-                        this.cancelling = true;
-                        return;
-                    }
-
-                }
-
-            }
-
 
             calculatePixel(x, y, drawWidth, drawHeight) {
                 let delta = this.getDelta(x, y);
