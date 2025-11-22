@@ -1980,6 +1980,11 @@
                 this.workerCounter = 0;
                 this.resolveFunc = null;
                 this.lastUpdateTime = performance.now();
+
+                // Cancelling state
+                this.requestForCancel = false;
+                this.cancelling = false;
+
                 // this.workers = []
                 // for (let i = 0; i < CPU_CORES; i++) {
                 //     this.workers[i] = new Worker(workerData);
@@ -2014,14 +2019,13 @@
                 this.canvas.width = window.innerWidth * dpr;
                 this.canvas.height = window.innerHeight * dpr;
                 this.iterMap = [...new Array(this.canvas.height)].map(() => new Array(this.canvas.width).fill(0));
-                if (triggerUpdate && !this.rendering) {
+                if (triggerUpdate) {
                     this.clear();
                     this.update();
                 }
             }
 
             handleStart(e) {
-                if (this.rendering) return;
                 e.preventDefault();
                 this.isInteracting = true;
 
@@ -2038,7 +2042,7 @@
             }
 
             handleMove(e) {
-                if (!this.isInteracting || this.rendering) return;
+                if (!this.isInteracting) return;
                 e.preventDefault();
 
                 if (e.touches) {
@@ -2075,14 +2079,13 @@
             }
 
             handleEnd(e) {
-                if (!this.isInteracting || this.rendering) return;
+                if (!this.isInteracting) return;
                 this.isInteracting = false;
                 this.triggerRecalculation();
             }
 
             handleWheel(e) {
                 this.canvas.classList.add('transition')
-                if (this.rendering) return;
                 e.preventDefault();
 
                 const scaleFactor = e.deltaY < 0 ? 2 : 0.5;
@@ -2119,7 +2122,7 @@
             triggerRecalculation() {
                 clearTimeout(this.recalculationTimeout);
                 this.recalculationTimeout = setTimeout(() => {
-                    if (!this.rendering) this.applyTransformAndRecalculate();
+                    this.applyTransformAndRecalculate();
                 }, 200);
             }
 
@@ -2372,9 +2375,11 @@
              *
              */
             async update(startBlockSize = 128) {
-                if (this.rendering) return; // Prevent re-entrant calls
+                if (this.rendering) {
+                    await this.cancel()
+                };
                 this.rendering = true;
-                this.setLocked(true)
+                // this.setLocked(true)
                 this.stats = {
                     ref: 0,
                     calc: 0,
@@ -2678,7 +2683,7 @@
                 // 重建哈希字符串
                 window.location.hash = params.toString();
 
-                this.setLocked(false)
+                // this.setLocked(false)
             }
 
             async successiveRefinment(startSize) {
@@ -2706,6 +2711,11 @@
              * 空间复杂度: O(1) - 不需要预存坐标数组
              */
             async calculateRegion(startX, startY, stepX, stepY, drawWidth, drawHeight) {
+                if (this.requestForCancel) {
+                    this.cancelling = true;
+                    return;
+                }
+
                 const width = this.canvas.width;
                 const height = this.canvas.height;
 
@@ -2779,6 +2789,11 @@
                     // 每一圈或者每隔几圈尝试更新一次屏幕
                     // 这样用户会看到一个从中心放大的方框动画
                     await this.tryUpdateScreen();
+
+                    if (this.requestForCancel) {
+                        this.cancelling = true;
+                        return;
+                    }
                 }
             }
 
@@ -2795,6 +2810,11 @@
             }
 
             async finalPass() {
+                if (this.requestForCancel) {
+                    this.cancelling = true;
+                    return;
+                }
+
                 for (let y = 0; y < this.canvas.height; y += 2) {
                     for (let x = 1; x < this.canvas.width; x += 2) {
                         if (this.iterMap[y][x] > 0) {
@@ -2812,6 +2832,11 @@
                         }
                     }
                     await this.tryUpdateScreen();
+                    if (this.requestForCancel) {
+                        this.cancelling = true;
+                        return;
+                    }
+
                 }
 
 
@@ -2833,6 +2858,11 @@
                         }
                     }
                     await this.tryUpdateScreen();
+                    if (this.requestForCancel) {
+                        this.cancelling = true;
+                        return;
+                    }
+
                 }
 
             }
@@ -2860,6 +2890,16 @@
 
                 this.setIter(x, y, iter, drawWidth, drawHeight);
                 this.stats.calc++;
+            }
+
+            async cancel() {
+                this.requestForCancel = true;
+                while (true) {
+                    if (this.cancelling) break;
+                    await delay(100); // wait for cancellation to complete
+                }
+                this.cancelling = false;
+                this.requestForCancel = false;
             }
 
             /**
