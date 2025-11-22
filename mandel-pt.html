@@ -450,6 +450,7 @@
             static ONE = new FloatExp(1, 0);
             static NEGATIVE_ONE = new FloatExp(-1, 0);
             static TWO = new FloatExp(2, 0);
+            static FOUR = new FloatExp(4, 0);
 
             static {
                 this.expTable = [];
@@ -715,7 +716,7 @@
         }
 
         function doubleToFloatExp(num) {
-            if (num === 0) return new FloatExp(0, 0);
+            if (num === 0) return FloatExp.ZERO.copy();
             // Get the exponent
             let exponent = Math.floor(Math.log10(Math.abs(num)));
             // Calculate the significand
@@ -1329,11 +1330,11 @@
                 const point = ref[i];
 
                 const A = point.mul(2);
-                const B = new FloatExpComplex(1, 0);
+                const B = FloatExpComplex.ONE.copy();
                 lv1.push({
                     A: A,
                     B: B,
-                    radius: FEmax(new FloatExp(0),
+                    radius: FEmax(FloatExp.ZERO.copy(),
                         (point.norm().sub(B.norm().mul(scale))).div(A.norm().add(1)).mul(5.96e-8)
                     )
                 })
@@ -1357,7 +1358,7 @@
                         B: bla1.B.mul(bla2.A).add(bla2.B),
                         radius: FEmin(
                             bla1.radius, FEmax(
-                                new FloatExp(0), (bla2.radius.sub(bla1.B.norm().mul(scale))).div(bla1.A.norm())
+                                FloatExp.ZERO.copy(), (bla2.radius.sub(bla1.B.norm().mul(scale))).div(bla1.A.norm())
                             )
                         )
                     })
@@ -1665,7 +1666,7 @@
                 this.bailout = bailout * bailout;
                 this.smooth = false;
 
-                this.size = new FloatExp(4);
+                this.size = FloatExp.FOUR.copy();
                 this.deep = false;
 
                 this.canvas = canvas;
@@ -1945,7 +1946,7 @@
              */
             home() {
                 this.goto(new DeepComplex(new Decimal(0), new Decimal(0)))
-                this.size = new FloatExp(4);
+                this.size = FloatExp.FOUR.copy();
                 this.deep = false;
                 this.iterations = 256;
             }
@@ -2053,10 +2054,10 @@
                 this.deep = this.size.exp < -300;
                 if (prevDeep && !this.deep) this.ref = this.ref.map(e => e.toComplex());
 
-                updateInfoOverlay(this.center.re, this.center.im, new FloatExp(4).div(this.size), this.iterations);
+                updateInfoOverlay(this.center.re, this.center.im, FloatExp.FOUR.div(this.size), this.iterations);
                 reInput.value = this.center.re.toString();
                 imInput.value = this.center.im.toString();
-                zoomInput.value = new FloatExp(4).div(this.size).toString();
+                zoomInput.value = FloatExp.FOUR.div(this.size).toString();
                 itInput.value = this.iterations;
 
                 this.image = this.context.getImageData(0, 0, this.canvas.width, this.canvas.height);
@@ -2135,7 +2136,7 @@
                 // 更新或添加新的参数
                 params.set("rec", compressDecimal(this.center.re.toString()));
                 params.set("imc", compressDecimal(this.center.im.toString()));
-                params.set("zmc", compressDecimal(new FloatExp(4).div(this.size).toString()));
+                params.set("zmc", compressDecimal(FloatExp.FOUR.div(this.size).toString()));
                 params.set("itc", compressDecimal(this.iterations.toString()));
                 params.set("bailout", Math.sqrt(this.bailout).toString());
                 params.set("colorc", byteArrayToBase64(palette.flat(1)));
@@ -2555,7 +2556,7 @@
             load(mandelbrot) {
                 this.re = mandelbrot.center.re.toString();
                 this.im = mandelbrot.center.im.toString();
-                let zoom = new FloatExp(4).div(mandelbrot.size);
+                let zoom = FloatExp.FOUR.div(mandelbrot.size);
                 this.zoom = `${zoom.base}E${zoom.exp}`;
                 this.iter = mandelbrot.iterations.toString();
                 this.iterDiv = (colorStep * palette.length) / 1024
@@ -2728,7 +2729,7 @@
         let c = new DeepComplex(
             new Decimal(0), new Decimal(0));
 
-        let size = new FloatExp(4);
+        let size = FloatExp.FOUR.copy();
         let bailout = 2;
         let iterations = 256;
         let smooth = false;
@@ -2748,7 +2749,7 @@
                     params.delete(key);
                     break;
                 case "zoom":
-                    size = new FloatExp(4).div(getFloatExp(value));
+                    size = FloatExp.FOUR.div(getFloatExp(value));
                     params.delete(key);
                     break;
                 case "iter":
@@ -2778,7 +2779,7 @@
                     c.im = new Decimal(decompressDecimal(value));
                     break;
                 case "zmc":
-                    size = new FloatExp(4).div(parseFloatExp(decompressDecimal(value)));
+                    size = FloatExp.FOUR.div(parseFloatExp(decompressDecimal(value)));
                     break;
                 case "itc":
                     iterations = parseInt(decompressDecimal(value));
@@ -2811,7 +2812,7 @@
                 new Decimal(imInput.value)
             ))
 
-            mandelbrot.zoom(new FloatExp(4).div(parseFloatExp(zoomInput.value)));
+            mandelbrot.zoom(FloatExp.FOUR.div(parseFloatExp(zoomInput.value)));
             mandelbrot.setIterations(parseInt(itInput.value));
 
             mandelbrot.update();
@@ -2831,7 +2832,7 @@
             mandelbrot.goto(new DeepComplex(
                 new Decimal(loc.re), new Decimal(loc.im)
             ))
-            mandelbrot.zoom(new FloatExp(4).div(getFloatExp(loc.zoom)));
+            mandelbrot.zoom(FloatExp.FOUR.div(getFloatExp(loc.zoom)));
             mandelbrot.setIterations(loc.it);
             mandelbrot.update()
         })
@@ -2911,7 +2912,7 @@
             const reader = new KFRReader(arrayBuffer);
 
             mandelbrot.goto(new DeepComplex(reader.re, reader.im))
-            mandelbrot.zoom(new FloatExp(4).div(parseFloatExp(reader.zoom)));
+            mandelbrot.zoom(FloatExp.FOUR.div(parseFloatExp(reader.zoom)));
             mandelbrot.setIterations(reader.iter);
             mandelbrot.smooth = reader.smooth;
             palette = reader.colors;
@@ -3000,7 +3001,7 @@
 
                 more.innerText = indexFl.toFixed(2);
 
-                const scale = new FloatExp(4).div(keyFrames[i].scale);
+                const scale = FloatExp.FOUR.div(keyFrames[i].scale);
                 const currScale = FloatExp.fromLog2(scale.log2Value() + decimalPart);
 
                 let zoomText;
