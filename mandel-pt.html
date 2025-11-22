@@ -2279,7 +2279,7 @@
                 let deltaPerPixel = this.size.div(minStep);
                 return this.deep ? new FloatExpComplex(
                     deltaPerPixel.mul(x - baseX),
-                   deltaPerPixel.mul (baseY - y)
+                    deltaPerPixel.mul(baseY - y)
 
                 ) : new Complex(
                     (x - baseX) * deltaPerPixel,
@@ -2684,32 +2684,100 @@
             async successiveRefinment(startSize) {
                 let step = startSize;
 
-                // Initial refinement
+                // Initial refinement (Center-out applied here too)
                 await this.calculateRegion(0, 0, step, step, step, step);
 
                 // Loop to progressively refine
-                while (step > 2) { // Assuming we stop refining at a 1x1 pixel grid
-                    let halfStep = step >> 1; // Calculate half step size
+                while (step > 2) {
+                    let halfStep = step >> 1;
 
                     // Refine quadrants
+                    // 由于 calculateRegion 现在已经是中心扩散了，这里的顺序其实不太重要了
+                    // 但为了保持逻辑，我们依然并行处理两个偏移层
                     await this.calculateRegion(halfStep, 0, step, step, halfStep, step);
                     await this.calculateRegion(0, halfStep, halfStep, step, halfStep, halfStep);
 
-                    step = halfStep; // Halve the step size to refine further
+                    step = halfStep;
                 }
             }
 
+            /**
+             * 优化后的区域计算：从屏幕中心向外呈方形扩散渲染
+             * 空间复杂度: O(1) - 不需要预存坐标数组
+             */
             async calculateRegion(startX, startY, stepX, stepY, drawWidth, drawHeight) {
-                for (let y = startY; y < this.canvas.height; y += stepY) {
-                    for (let x = startX; x < this.canvas.width; x += stepX) {
-                        if (this.iterMap[y][x] > 0) {
-                            this.setIter(x, y, this.iterMap[y][x]);
-                            this.stats.guess++;
-                            continue;
-                        } else {
-                            this.calculatePixel(x, y, drawWidth, drawHeight);
+                const width = this.canvas.width;
+                const height = this.canvas.height;
+
+                // 1. 计算相对于网格的中心点
+                // 我们需要找到最接近屏幕物理中心的那个 grid 点 (startX + n * stepX)
+                const screenCX = width / 2;
+                const screenCY = height / 2;
+
+                // 计算中心点在 Grid 中的索引偏移 (Index Offset)
+                const centerIdxX = Math.floor((screenCX - startX) / stepX);
+                const centerIdxY = Math.floor((screenCY - startY) / stepY);
+
+                // 计算 Grid 中心的实际像素坐标
+                const gridCenterX = startX + centerIdxX * stepX;
+                const gridCenterY = startY + centerIdxY * stepY;
+
+                // 2. 计算最大半径（步数），只需覆盖最远的那个角即可
+                // 这里的半径 r 是指“距离中心的步数”
+                const maxStepsX = Math.max(centerIdxX, Math.ceil((width - gridCenterX) / stepX));
+                const maxStepsY = Math.max(centerIdxY, Math.ceil((height - gridCenterY) / stepY));
+                const maxRadius = Math.max(maxStepsX, maxStepsY);
+
+                // 定义处理单点的逻辑 (避免代码重复)
+                const processPoint = (x, y) => {
+                    if (x < 0 || x >= width || y < 0 || y >= height) return; // 越界检查
+
+                    if (this.iterMap[y][x] > 0) {
+                        this.setIter(x, y, this.iterMap[y][x]);
+                        this.stats.guess++;
+                    } else {
+                        this.calculatePixel(x, y, drawWidth, drawHeight);
+                    }
+                };
+
+                // 3. 核心循环：按半径 r 从 0 开始向外扩散
+                for (let r = 0; r <= maxRadius; r++) {
+
+                    if (r === 0) {
+                        // 特殊处理：中心点
+                        processPoint(gridCenterX, gridCenterY);
+                    } else {
+                        // 每次循环处理一个矩形环 (Ring)
+                        // 上边 (Top Edge) 和 下边 (Bottom Edge)
+                        // 左右边 (Left Edge) 和 右边 (Right Edge)
+
+                        const currentStepX = r * stepX;
+                        const currentStepY = r * stepY;
+
+                        // 预计算当圈的边界坐标
+                        const topY = gridCenterY - currentStepY;
+                        const bottomY = gridCenterY + currentStepY;
+                        const leftX = gridCenterX - currentStepX;
+                        const rightX = gridCenterX + currentStepX;
+
+                        // --- 绘制上下边 ---
+                        // x 范围从 leftX 到 rightX
+                        // 注意：为了不重复绘制四个角，我们让上下边包含角，左右边不包含角
+                        for (let x = leftX; x <= rightX; x += stepX) {
+                            processPoint(x, topY);    // 上边
+                            processPoint(x, bottomY); // 下边
+                        }
+
+                        // --- 绘制左右边 ---
+                        // y 范围从 topY + stepY 到 bottomY - stepY (避开角)
+                        for (let y = topY + stepY; y <= bottomY - stepY; y += stepY) {
+                            processPoint(leftX, y);   // 左边
+                            processPoint(rightX, y);  // 右边
                         }
                     }
+
+                    // 每一圈或者每隔几圈尝试更新一次屏幕
+                    // 这样用户会看到一个从中心放大的方框动画
                     await this.tryUpdateScreen();
                 }
             }
