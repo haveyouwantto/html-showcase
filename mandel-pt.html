@@ -56,6 +56,9 @@
             border-radius: 5px;
             cursor: pointer;
             line-height: 1;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
         }
 
         #menu-toggle:hover {
@@ -518,7 +521,7 @@
                 }
                 this.base = base;
                 this.exp = exp;
-                if(normalize) this.norm();
+                if (normalize) this.norm();
             }
 
             norm() {
@@ -907,7 +910,7 @@
 
             mul(other) {
                 if (typeof other === 'number') {
-                    switch(other) {
+                    switch (other) {
                         case 0:
                             return new FloatExpComplex(0, 0);
                         case 1:
