@@ -1866,8 +1866,14 @@
                     this.center.add(delta), false
                 )
 
-                this.zoom(this.size.div(scale));
+                if (scale !=1){
 
+                this.zoom(this.size.div(scale));
+                }else {
+                    const translateX = tx / canvas.offsetWidth * canvas.width;
+                    const translateY = ty / canvas.offsetHeight * canvas.height;
+                    this.translate(translateX, translateY);
+                }
                 // Calculate the source rectangle from the old canvas content that is currently visible.
                 const sx = -(tx / canvas.offsetWidth * canvas.width) / scale;
                 const sy = -(ty / canvas.offsetHeight * canvas.height) / scale;
@@ -2406,6 +2412,12 @@
                             this.image.data[i + 1] = color[1];
                             this.image.data[i + 2] = color[2];
                             this.image.data[i + 3] = 255;
+                        } else {
+                            let i = (y * this.canvas.width + x) << 2;
+                            this.image.data[i] = 0;
+                            this.image.data[i + 1] = 0;
+                            this.image.data[i + 2] = 0;
+                            this.image.data[i + 3] = 0;
                         }
                     }
                 }
@@ -2441,6 +2453,48 @@
                     }
                 }
                 this.update()
+            }
+
+            /** 
+             * Translates the iteration map by the specified delta values. Fill -1 for new areas.
+             * This is to move the view when panning without recalculating everything.
+             * @param {number} deltaX - The delta in the x direction.
+             * @param {number} deltaY - The delta in the y direction.
+            */
+            translate(deltaX, deltaY) {
+                // Use inplace translation to avoid extra memory allocation
+                let xStart, xEnd, yStart, yEnd;
+                let xStep, yStep;
+                if (deltaX > 0) {
+                    xStart = this.canvas.width - 1;
+                    xEnd = -1;
+                    xStep = -1;
+                } else {
+                    xStart = 0;
+                    xEnd = this.canvas.width;
+                    xStep = 1;
+                }
+                if (deltaY > 0) {
+                    yStart = this.canvas.height - 1;
+                    yEnd = -1;
+                    yStep = -1;
+                } else {
+                    yStart = 0;
+                    yEnd = this.canvas.height;
+                    yStep = 1;
+                }
+                for (let y = yStart; y != yEnd; y += yStep) {
+                    for (let x = xStart; x != xEnd; x += xStep) {
+                        let srcX = x - deltaX;
+                        let srcY = y - deltaY;
+                        if (srcX >= 0 && srcX < this.canvas.width && srcY >= 0 && srcY < this.canvas.height) {
+                            this.iterMap[y][x] = this.iterMap[srcY]?.[srcX] ?? -1;
+                        } else {
+                            this.iterMap[y][x] = -1;
+                        }
+                    }
+                }
+                
             }
 
             async renderFrames() {
