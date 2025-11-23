@@ -1137,7 +1137,7 @@
                 if (z.norm() > 16.0) break;
 
                 let currentTime = performance.now();
-                if (currentTime - updateTimer > 16) {
+                if (currentTime - updateTimer > 100) {
                     updateTimer = currentTime;
                     yield i;
                     await delay(5);
@@ -1197,7 +1197,7 @@
                 if (z.norm().doubleValue() > 16.0) break;
 
                 let currentTime = performance.now();
-                if (currentTime - updateTimer > 16) {
+                if (currentTime - updateTimer > 100) {
                     updateTimer = currentTime;
                     yield i;
                     await delay(0);
@@ -1931,7 +1931,7 @@
              * Clear iteration map
              */
             clear() {
-                this.iterMap.forEach(e => e.fill(0))
+                this.iterMap.forEach(e => e.fill(-1))
             }
 
             /**
@@ -2014,17 +2014,22 @@
                 const color = getColor(it, this.iterations);
 
                 let i = (y * this.canvas.width + x) << 2;
-                for (let dy = 0; dy < h; dy++) {
-                    for (let dx = 0; dx < w; dx++) {
-                        let j = (dy * this.canvas.width + dx) << 2;
-                        this.image.data[i + j] = color[0]
-                        this.image.data[i + j + 1] = color[1]
-                        this.image.data[i + j + 2] = color[2]
-                        this.image.data[i + j + 3] = 255
+                if (w == 1 && h == 1) {
+                    this.image.data[i] = color[0]
+                    this.image.data[i + 1] = color[1]
+                    this.image.data[i + 2] = color[2]
+                    this.image.data[i + 3] = 255
+                } else {
+                    for (let dy = 0; dy < h; dy++) {
+                        for (let dx = 0; dx < w; dx++) {
+                            let j = (dy * this.canvas.width + dx) << 2;
+                            this.image.data[i + j] = color[0]
+                            this.image.data[i + j + 1] = color[1]
+                            this.image.data[i + j + 2] = color[2]
+                            this.image.data[i + j + 3] = 255
+                        }
                     }
                 }
-                // this.context.fillStyle = `rgb(${color[0]}, ${color[1]}, ${color[2]})`
-                // this.context.fillRect(x, y, w, h)
             }
 
             showInfo() {
@@ -2266,10 +2271,10 @@
                     for (let x = firstX; x < endX; x += step) {
                         // 如果已经被算过了(比如上一轮 step*2 留下的点)，直接跳过
                         // 注意：这里需要 ensure iterMap 有值。
-                        // 如果是第一轮，iterMap 可能是 0。
-                        if (this.iterMap[y][x] > 0) {
+                        // 如果是第一轮，iterMap 可能是 -1。
+                        if (this.iterMap[y][x] > -1) {
                             // 只是为了刷新 visuals，重绘一下(可选，如果觉得闪烁可以去掉)
-                            this.setIter(x, y, this.iterMap[y][x], step, step);
+                            // this.setIter(x, y, this.iterMap[y][x], step, step);
                         } else {
                             // 真正的计算，画一个 step x step 的矩形
                             this.calculatePixel(x, y, step, step);
@@ -2291,9 +2296,9 @@
                     for (let y = startY; y < endY; y++) {
                         for (let x = startX; x < endX; x++) {
                             // 1. 如果这个点已经有值 (来自于 step=2,4,8...)，跳过
-                            if (this.iterMap[y][x] > 0) {
+                            if (this.iterMap[y][x] > -1) {
                                 // 重绘一下成 1x1 (消除之前的大方块残留)
-                                this.setIter(x, y, this.iterMap[y][x], 1, 1);
+                                // this.setIter(x, y, this.iterMap[y][x], 1, 1);
                                 continue;
                             }
 
@@ -2307,7 +2312,7 @@
                             let guessed = false;
 
                             // 水平插值策略
-                            if (left > 0 && right > 0 && Math.floor(left) === Math.floor(right)) {
+                            if (left > -1 && right > -1 && Math.floor(left) === Math.floor(right)) {
                                 this.setIter(x, y, (left + right) / 2, 1, 1);
                                 this.stats.guess++;
                                 guessed = true;
@@ -2318,7 +2323,7 @@
                                 let up = this.getIter(x, y - 1);
                                 let down = this.getIter(x, y + 1);
 
-                                if (up > 0 && down > 0 && Math.floor(up) === Math.floor(down)) {
+                                if (up > -1 && down > -1 && Math.floor(up) === Math.floor(down)) {
                                     this.setIter(x, y, (up + down) / 2, 1, 1);
                                     this.stats.guess++;
                                     guessed = true;
@@ -2337,8 +2342,7 @@
             // 配合上述逻辑，tryUpdateScreen 可以稍微降低一点强制间隔，因为我们已经在大循环里做了流控
             async tryUpdateScreen() {
                 let currentTime = performance.now();
-                // 这里的 16ms (约60fps) 限制配合上面的 batchSize 会非常顺滑
-                if (currentTime - this.lastUpdateTime < 16) {
+                if (currentTime - this.lastUpdateTime < 100) {
                     return;
                 }
                 this.showInfo();
