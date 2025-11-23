@@ -1866,8 +1866,9 @@
                     this.center.add(delta), false
                 )
 
-                if (scale !=1){
-
+                // Only zoom if scale is changed, otherwise just translate
+                // Use 1e-9 as threshold to avoid floating point issues
+                if (Math.abs(scale - 1) > 1e-9) {
                 this.zoom(this.size.div(scale));
                 }else {
                     const translateX = tx / canvas.offsetWidth * canvas.width;
