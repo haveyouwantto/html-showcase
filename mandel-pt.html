@@ -247,7 +247,7 @@
             padding: 8px;
             margin: 8px;
             flex-wrap: wrap;
-            max-height: 75vh;
+            max-height: 60dvh;
             overflow-y: auto;
         }
 
@@ -259,7 +259,7 @@
             border: none;
             box-shadow: 0 0 10px rgba(0, 0, 0, 0.5);
             max-width: 90%;
-            max-height: 100dvh;
+            max-height: 90dvh;
         }
 
         #palette-dialog h2 {
@@ -350,9 +350,9 @@
         <!-- 所有原始的控件都移动到这里 -->
         <div class="location">
             Real:
-            <textarea id="re" class="large" rows="10"></textarea><br>
+            <textarea id="re" class="large" rows="6"></textarea><br>
             Imaginary:
-            <textarea id="im" class="large" rows="10"></textarea><br>
+            <textarea id="im" class="large" rows="6"></textarea><br>
             Zoom:
             <textarea id="zoom" rows="2"></textarea><br>
             Iterations:
@@ -373,8 +373,8 @@
                 <button class="icon control-button" id="iteration-button" title="Iteration Settings">🔧</button>
                 <button class="icon control-button" id="kfr" title="Load KFR file">📂</button>
                 <button class="icon control-button" id="save-kfr" title="Save KFR file">💾</button>
+                <button class="icon control-button" id="makeVideo" title="Make Video">🎥</button>
             </div>
-            <button id="makeVideo" class="control-button">Make Video</button>
             <hr>
             Samples
             <select id="samples">
