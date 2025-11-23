@@ -2298,7 +2298,7 @@
                             // 1. 如果这个点已经有值 (来自于 step=2,4,8...)，跳过
                             if (this.iterMap[y][x] > -1) {
                                 // 重绘一下成 1x1 (消除之前的大方块残留)
-                                // this.setIter(x, y, this.iterMap[y][x], 1, 1);
+                                this.setIter(x, y, this.iterMap[y][x], 1, 1);
                                 continue;
                             }
 
@@ -2434,7 +2434,7 @@
                 for (let y = 0; y < this.canvas.height; y++) {
                     for (let x = 0; x < this.canvas.width; x++) {
                         if (this.iterMap[y][x] >= prevIter) {
-                            this.setIter(x, y, 0)
+                            this.setIter(x, y, -1)
                         }
                     }
                 }
