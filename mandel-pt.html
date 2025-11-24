@@ -375,6 +375,9 @@
                 <button class="icon control-button" id="save-kfr" title="Save KFR file">💾</button>
                 <button class="icon control-button" id="makeVideo" title="Make Video">🎥</button>
             </div>
+            <div class="shortcut">
+                <button class="icon control-button" id="fullscreen" title="Toggle Fullscreen">⛶</button>
+            </div>
             <hr>
             Samples
             <select id="samples">
@@ -3108,6 +3111,17 @@
             mandelbrot.setIterations(mandelbrot.iterations / 2);
             mandelbrot.clear();
             mandelbrot.update()
+        });
+
+        const fullscreenBtn = document.getElementById('fullscreen');
+        fullscreenBtn.addEventListener('click', function () {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => {
+                    alert(`Error attempting to enable full-screen mode: ${err.message} (${err.name})`);
+                });
+            } else {
+                document.exitFullscreen();
+            }
         });
 
         // Dynamically create an input element
