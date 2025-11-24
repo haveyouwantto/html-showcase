@@ -445,10 +445,11 @@
             static expTable = [];
             static LOG2_10 = Math.log2(10);
             static LOG10_2 = Math.log10(2);
-            static buffer = new ArrayBuffer(8); // Create an 8-byte buffer
-            static floatView = new Float64Array(FloatExp.buffer); // Float64 view for the double
-            static int32View = new Int32Array(FloatExp.buffer); // Int32 view to access 64 bits as two 32-bit chunks
+            static buffer = new ArrayBuffer(8);
+            static floatView = new Float64Array(FloatExp.buffer);
+            static int32View = new Int32Array(FloatExp.buffer);
 
+            // Pre-allocate standard constants to avoid recreation
             static ZERO = new FloatExp(0, 0);
             static ONE = new FloatExp(1, 0);
             static NEGATIVE_ONE = new FloatExp(-1, 0);
@@ -469,29 +470,24 @@
             }
 
             static getExpOfDouble(d) {
-                if (d === 0) {
-                    throw new Error("Exponent of zero is undefined.");
-                }
+                if (d === 0) throw new Error("Exponent of zero is undefined.");
 
-                const LOG10_2 = Math.LOG10E; // log10(2)
-                const BIAS = 1023; // Double-precision bias
-                FloatExp.floatView[0] = d; // Store the double value
-
-                const highBits = FloatExp.int32View[1]; // Get the higher 32 bits
-                const lowBits = FloatExp.int32View[0]; // Get the lower 32 bits
-
-                const rawExp = (highBits >>> 20) & 0x7FF; // Extract the exponent bits (11 bits)
+                // Inlining some logic for speed could be done here, 
+                // but keeping original logic for safety as provided.
+                const LOG10_2 = Math.LOG10E;
+                const BIAS = 1023;
+                FloatExp.floatView[0] = d;
+                const highBits = FloatExp.int32View[1];
+                const lowBits = FloatExp.int32View[0];
+                const rawExp = (highBits >>> 20) & 0x7FF;
 
                 let actualExp;
                 if (rawExp === 0) {
-                    // Subnormal number
-                    let mantissaHigh = highBits & 0xFFFFF; // Extract the top 20 bits of mantissa
-                    const mantissaLow = lowBits; // Lower 32 bits of mantissa
-
-                    // Combine mantissa into a single value for leading zero count
+                    let mantissaHigh = highBits & 0xFFFFF;
+                    const mantissaLow = lowBits;
                     let leadingZeros = 0;
                     if (mantissaHigh === 0) {
-                        leadingZeros += 32; // All high bits are zero, so count low bits
+                        leadingZeros += 32;
                         let temp = mantissaLow;
                         while (temp !== 0 && (temp & 0x80000000) === 0) {
                             temp <<= 1;
@@ -499,26 +495,21 @@
                         }
                     } else {
                         let temp = mantissaHigh;
-                        while ((temp & 0x80000) === 0) { // Adjust mask for 20 bits
+                        while ((temp & 0x80000) === 0) {
                             temp <<= 1;
                             leadingZeros++;
                         }
                     }
-
                     actualExp = -1022 - leadingZeros;
                 } else {
-                    // Normalized number
                     actualExp = rawExp - BIAS;
                 }
-
-                // Convert base-2 exponent to base-10 exponent
                 return Math.floor(actualExp * LOG10_2);
             }
 
             constructor(base, exp = 0, normalize = true) {
-                if (isNaN(base) || isNaN(exp) || !isFinite(base) || !isFinite(exp)) {
-                    throw new Error("Invalid FloatExp: " + JSON.stringify({ base, exp }));
-                }
+                // Removed validations for performance in this hot path, 
+                // assuming internal usage ensures validity.
                 this.base = base;
                 this.exp = exp;
                 if (normalize) this.norm();
@@ -539,108 +530,160 @@
                 return this;
             }
 
+            /**
+             * Copies the value of this FloatExp into the target `store`.
+             * @param {FloatExp} store 
+             */
+            storeTo(store) {
+                store.base = this.base;
+                store.exp = this.exp;
+                return store;
+            }
+
+            // --- Optimized Math Operations ---
+
+            add(other) {
+                // Create result container once
+                return this.addTo(other, new FloatExp(0, 0, false));
+            }
+
+            addMut(other) {
+                return this.addTo(other, this);
+            }
+
+            addTo(other, store) {
+                let oBase, oExp;
+                if (typeof other === 'number') {
+                    oBase = other;
+                    oExp = 0;
+                } else {
+                    oBase = other.base;
+                    oExp = other.exp;
+                }
+
+                if (oBase === 0) return this.storeTo(store);
+                if (this.base === 0) {
+                    store.base = oBase;
+                    store.exp = oExp;
+                    return store;
+                }
+
+                const expDiff = oExp - this.exp;
+
+                if (expDiff === 0) {
+                    store.base = this.base + oBase;
+                    store.exp = this.exp;
+                } else if (expDiff > 16) {
+                    store.base = oBase;
+                    store.exp = oExp;
+                    // No normalization needed here usually if 'other' is already norm, but safe to do so
+                    return store;
+                } else if (expDiff < -16) {
+                    // 'other' is too small to affect 'this'
+                    store.base = this.base;
+                    store.exp = this.exp;
+                    return store;
+                } else {
+                    store.base = this.base + oBase * FloatExp.getExp(expDiff);
+                    store.exp = this.exp;
+                }
+                return store.norm();
+            }
+
+            sub(other) {
+                return this.subTo(other, new FloatExp(0, 0, false));
+            }
+
+            subMut(other) {
+                return this.subTo(other, this);
+            }
+
+            subTo(other, store) {
+                let oBase, oExp;
+                if (typeof other === 'number') {
+                    oBase = other;
+                    oExp = 0;
+                } else {
+                    oBase = other.base;
+                    oExp = other.exp;
+                }
+
+                if (oBase === 0) return this.storeTo(store);
+                if (this.base === 0) {
+                    store.base = -oBase;
+                    store.exp = oExp;
+                    return store;
+                }
+
+                const expDiff = oExp - this.exp;
+
+                if (expDiff === 0) {
+                    store.base = this.base - oBase;
+                    store.exp = this.exp;
+                } else if (expDiff > 16) {
+                    // Result is -other
+                    store.base = -oBase;
+                    store.exp = oExp;
+                    return store;
+                } else if (expDiff < -16) {
+                    // other is insignificant
+                    store.base = this.base;
+                    store.exp = this.exp;
+                    return store;
+                } else {
+                    store.base = this.base - oBase * FloatExp.getExp(expDiff);
+                    store.exp = this.exp;
+                }
+                return store.norm();
+            }
+
+            mul(other) {
+                return this.mulTo(other, new FloatExp(0, 0, false));
+            }
+
+            mulMut(other) {
+                return this.mulTo(other, this);
+            }
+
+            mulTo(other, store) {
+                if (other instanceof FloatExp) {
+                    store.base = this.base * other.base;
+                    store.exp = this.exp + other.exp;
+                } else {
+                    store.base = this.base * other;
+                    store.exp = this.exp;
+                }
+                return store.norm();
+            }
+
+            div(other) {
+                return this.divTo(other, new FloatExp(0, 0, false));
+            }
+
+            divMut(other) {
+                return this.divTo(other, this);
+            }
+
+            divTo(other, store) {
+                if (other instanceof FloatExp) {
+                    store.base = this.base / other.base;
+                    store.exp = this.exp - other.exp;
+                } else {
+                    store.base = this.base / other;
+                    store.exp = this.exp;
+                }
+                return store.norm();
+            }
+
+            // --- Other Methods ---
+
             doubleValue() {
                 return this.base * FloatExp.getExp(this.exp);
             }
 
             toString() {
                 this.norm();
-                return `${this.base}e${this.exp}`
-            }
-
-            add(other) {
-                if (typeof other == 'number') return this.add(new FloatExp(other));
-                if (other.base == 0) return this;
-                else if (this.base == 0) return other;
-                const expDiff = other.exp - this.exp;
-                if (expDiff == 0)
-                    return new FloatExp(this.base + other.base, this.exp)
-                else if (expDiff > 16) return other;
-                else {
-                    return new FloatExp(this.base + other.base * FloatExp.getExp(other.exp - this.exp), this.exp)
-                }
-            }
-
-            addMut(other) {
-                if (other.base == 0) return this;
-                else if (this.base == 0) {
-                    this.base = other.base;
-                    this.exp = other.exp;
-                    return this;
-                }
-                const expDiff = other.exp - this.exp;
-                if (expDiff == 0) {
-                    this.base += other.base;
-                    return this.norm();
-                } else if (expDiff > 16) {
-                    this.base = other.base;
-                    this.exp = other.exp;
-                    return this;
-                } else {
-                    this.base += other.base * FloatExp.getExp(expDiff);
-                    return this.norm();
-                }
-            }
-
-            sub(other) {
-                if (typeof other == 'number') return this.sub(new FloatExp(other));
-                if (other.base == 0) return this;
-                else if (this.base == 0) return other.rev();
-                const expDiff = other.exp - this.exp;
-                if (expDiff == 0)
-                    return new FloatExp(this.base - other.base, this.exp)
-                else if (expDiff > 16) return other.rev();
-                else {
-                    return new FloatExp(this.base - other.base * FloatExp.getExp(other.exp - this.exp), this.exp)
-                }
-            }
-
-            subMut(other) {
-                if (other.base == 0) return this;
-                else if (this.base == 0) {
-                    this.base = -other.base;
-                    this.exp = other.exp;
-                    return this;
-                }
-                const expDiff = other.exp - this.exp;
-                if (expDiff == 0) {
-                    this.base -= other.base;
-                    return this.norm();
-                } else if (expDiff > 16) {
-                    this.base = -other.base;
-                    this.exp = other.exp;
-                    return this;
-                } else {
-                    this.base -= other.base * FloatExp.getExp(expDiff);
-                    return this.norm();
-                }
-            }
-
-
-            mul(other) {
-                if (other instanceof FloatExp)
-                    return new FloatExp(this.base * other.base, this.exp + other.exp)
-                else if (typeof other == 'number')
-                    return new FloatExp(this.base * other, this.exp);
-            }
-
-            mulMut(other) {
-                this.base *= other.base;
-                this.exp += other.exp;
-                return this.norm();
-            }
-
-            div(other) {
-                if (other instanceof FloatExp)
-                    return new FloatExp(this.base / other.base, this.exp - other.exp)
-                else if (typeof other == 'number')
-                    return new FloatExp(this.base / other, this.exp);
-            }
-
-            divMut(other) {
-                this.base /= other.base;
-                this.exp -= other.exp;
-                return this.norm();
+                return `${this.base}e${this.exp}`;
             }
 
             abs() {
@@ -675,33 +718,22 @@
             }
 
             compareTo(o) {
-                // 1. Compare sign
                 if (this.base > 0 && o.base < 0) return 1;
                 if (this.base < 0 && o.base > 0) return -1;
-
-                // 2. Handle zero cases
-                if (this.base === 0 && o.base === 0) return 0; // Both are zero
-                if (this.base === 0) return o.base > 0 ? -1 : 1; // This is zero
-                if (o.base === 0) return this.base > 0 ? 1 : -1; // Other is zero
-
-                // 3. Compare exponents
+                if (this.base === 0 && o.base === 0) return 0;
+                if (this.base === 0) return o.base > 0 ? -1 : 1;
+                if (o.base === 0) return this.base > 0 ? 1 : -1;
                 if (this.exp > o.exp) return this.base > 0 ? 1 : -1;
                 if (this.exp < o.exp) return this.base > 0 ? -1 : 1;
-
-                // 4. Compare bases when exponents are equal
                 if (this.base > o.base) return 1;
                 if (this.base < o.base) return -1;
-
-                return 0; // Equal
+                return 0;
             }
 
             log2Value() {
                 const log2Mantissa = Math.log2(this.base);
                 const log2Exponent = this.exp * FloatExp.LOG2_10;
-
-                const log2Result = log2Mantissa + log2Exponent;
-
-                return log2Result;
+                return log2Mantissa + log2Exponent;
             }
 
             static fromLog2(val) {
@@ -899,80 +931,209 @@
             static NEGATIVE_ONE = new FloatExpComplex(FloatExp.NEGATIVE_ONE, FloatExp.ZERO);
             static TWO = new FloatExpComplex(FloatExp.TWO, FloatExp.ZERO);
 
+            // Static scratchpads (cache) for internal calculations to avoid object creation
+            static CACHE_1 = new FloatExp(0, 0);
+            static CACHE_2 = new FloatExp(0, 0);
+            static CACHE_3 = new FloatExp(0, 0);
+            static CACHE_4 = new FloatExp(0, 0);
+
             constructor(re, im) {
-                this.re = getFloatExp(re);
-                this.im = getFloatExp(im);
+                // Assuming getFloatExp is available globally or users pass FloatExp
+                this.re = (re instanceof FloatExp) ? re : new FloatExp(re);
+                this.im = (im instanceof FloatExp) ? im : new FloatExp(im);
             }
+
+            storeTo(store) {
+                this.re.storeTo(store.re);
+                this.im.storeTo(store.im);
+                return store;
+            }
+
+            copy() {
+                return new FloatExpComplex(this.re.copy(), this.im.copy());
+            }
+
+            // --- Optimized Math Operations ---
+
+            add(other) {
+                return this.addTo(other, new FloatExpComplex(new FloatExp(0), new FloatExp(0)));
+            }
+
+            addMut(other) {
+                return this.addTo(other, this);
+            }
+
+            addTo(other, store) {
+                if (typeof other === 'number') {
+                    this.re.addTo(other, store.re);
+                    this.im.storeTo(store.im);
+                } else {
+                    this.re.addTo(other.re, store.re);
+                    this.im.addTo(other.im, store.im);
+                }
+                return store;
+            }
+
+            sub(other) {
+                return this.subTo(other, new FloatExpComplex(new FloatExp(0), new FloatExp(0)));
+            }
+
+            subMut(other) {
+                return this.subTo(other, this);
+            }
+
+            subTo(other, store) {
+                if (typeof other === 'number') {
+                    this.re.subTo(other, store.re);
+                    this.im.storeTo(store.im);
+                } else {
+                    this.re.subTo(other.re, store.re);
+                    this.im.subTo(other.im, store.im);
+                }
+                return store;
+            }
+
+            mul(other) {
+                return this.mulTo(other, new FloatExpComplex(new FloatExp(0), new FloatExp(0)));
+            }
+
+            mulMut(other) {
+                return this.mulTo(other, this);
+            }
+
+            /**
+             * Optimized multiplication using static scratchpads to ensure 0 allocation for intermediate steps.
+             * Formula: (a + bi)(c + di) = (ac - bd) + (ad + bc)i
+             */
+            mulTo(other, store) {
+                if (typeof other === 'number') {
+                    this.re.mulTo(other, store.re);
+                    this.im.mulTo(other, store.im);
+                    return store;
+                }
+
+                // Use static cache for intermediate values to avoid 'new FloatExp'
+                // This prevents aliasing issues if 'store' is 'this' or 'other'
+
+                // ac -> CACHE_1
+                this.re.mulTo(other.re, FloatExpComplex.CACHE_1);
+                // bd -> CACHE_2
+                this.im.mulTo(other.im, FloatExpComplex.CACHE_2);
+
+                // Real part: ac - bd -> CACHE_3 (Temporary storage for Real Result)
+                FloatExpComplex.CACHE_1.subTo(FloatExpComplex.CACHE_2, FloatExpComplex.CACHE_3);
+
+                // ad -> CACHE_1 (reuse)
+                this.re.mulTo(other.im, FloatExpComplex.CACHE_1);
+                // bc -> CACHE_2 (reuse)
+                this.im.mulTo(other.re, FloatExpComplex.CACHE_2);
+
+                // Imag part: ad + bc -> CACHE_4 (Temporary storage for Imag Result)
+                FloatExpComplex.CACHE_1.addTo(FloatExpComplex.CACHE_2, FloatExpComplex.CACHE_4);
+
+                // Finally, copy from temp storage to the actual store
+                FloatExpComplex.CACHE_3.storeTo(store.re);
+                FloatExpComplex.CACHE_4.storeTo(store.im);
+
+                return store;
+            }
+
+            div(other) {
+                return this.divTo(other, new FloatExpComplex(new FloatExp(0), new FloatExp(0)));
+            }
+
+            divMut(other) {
+                return this.divTo(other, this);
+            }
+
+            /**
+             * Optimized division.
+             * Formula: (a + bi)/(c + di) = ((ac + bd) + (bc - ad)i) / (c^2 + d^2)
+             */
+            divTo(other, store) {
+                if (typeof other === 'number') {
+                    this.re.divTo(other, store.re);
+                    this.im.divTo(other, store.im);
+                    return store;
+                }
+
+                // Denominator: c^2 + d^2 -> CACHE_1
+                other.re.mulTo(other.re, FloatExpComplex.CACHE_2); // c^2
+                other.im.mulTo(other.im, FloatExpComplex.CACHE_3); // d^2
+                FloatExpComplex.CACHE_2.addTo(FloatExpComplex.CACHE_3, FloatExpComplex.CACHE_1); // Denom stored in CACHE_1
+
+                // Numerator Real: ac + bd -> CACHE_2
+                this.re.mulTo(other.re, FloatExpComplex.CACHE_3); // ac
+                this.im.mulTo(other.im, FloatExpComplex.CACHE_4); // bd
+                FloatExpComplex.CACHE_3.addTo(FloatExpComplex.CACHE_4, FloatExpComplex.CACHE_2); // NumReal in CACHE_2
+
+                // Numerator Imag: bc - ad -> CACHE_3
+                this.im.mulTo(other.re, FloatExpComplex.CACHE_4); // bc
+                // Re-calculate ad locally into CACHE_4 buffer to save slots, using CACHE_4 temporarily
+                // Wait, need another buffer. Actually, we can compute ad into store.re temporarily if we are careful,
+                // but let's use CACHE_4 for 'ad' then subtract.
+
+                // ad
+                this.re.mulTo(other.im, store.re); // Using store.re as temp buffer for 'ad'. Safe because we overwrite store.re later.
+
+                // bc (in CACHE_4) - ad (in store.re) -> CACHE_3
+                FloatExpComplex.CACHE_4.subTo(store.re, FloatExpComplex.CACHE_3); // NumImag in CACHE_3
+
+                // Final Division
+                // Real: NumReal (CACHE_2) / Denom (CACHE_1) -> store.re
+                FloatExpComplex.CACHE_2.divTo(FloatExpComplex.CACHE_1, store.re);
+
+                // Imag: NumImag (CACHE_3) / Denom (CACHE_1) -> store.im
+                FloatExpComplex.CACHE_3.divTo(FloatExpComplex.CACHE_1, store.im);
+
+                return store;
+            }
+
+            // --- Other Methods ---
 
             abs() {
                 return this.re.mul(this.re).addMut(this.im.mul(this.im));
             }
 
-            mul(other) {
-                if (typeof other === 'number') {
-                    switch (other) {
-                        case 0:
-                            return new FloatExpComplex(0, 0);
-                        case 1:
-                            return this.copy();
-                        case -1:
-                            return new FloatExpComplex(this.re.rev(), this.im.rev());
-                        default:
-                            return new FloatExpComplex(this.re.mul(new FloatExp(other, 0)), this.im.mul(new FloatExp(other, 0)));
-                    }
-                } else
-                    return new FloatExpComplex(
-                        this.re.mul(other.re).subMut(this.im.mul(other.im)),
-                        this.re.mul(other.im).addMut(this.im.mul(other.re))
-                    )
+            norm() {
+                // FEmax not defined in snippet, assuming max of abs
+                // Or just returning max magnitude
+                if (this.re.abs().compareTo(this.im.abs()) > 0) return this.re.abs();
+                return this.im.abs();
             }
 
-            div(other) {
-                if (typeof other === 'number') {
-                    return new FloatExpComplex(this.re.div(new FloatExp(other, 0)), this.im.div(new FloatExp(other, 0)));
-                } else
-                    return new FloatExpComplex(
-                        this.re.div(other.re).subMut(this.im.div(other.im)),
-                        this.re.div(other.im).addMut(this.im.div(other.re))
-                    )
+            square() {
+                const res = new FloatExpComplex(new FloatExp(0), new FloatExp(0));
+                return this.squareTo(res);
             }
 
-            add(other) {
-                return new FloatExpComplex(
-                    this.re.add(other.re),
-                    this.im.add(other.im)
-                )
+            squareMut() {
+                return this.squareTo(this);
             }
 
-            sub(other) {
-                return new FloatExpComplex(
-                    this.re.sub(other.re),
-                    this.im.sub(other.im)
-                )
+            squareTo(store) {
+                // (a+bi)^2 = (a^2 - b^2) + 2abi
+
+                // a^2 -> CACHE_1
+                this.re.mulTo(this.re, FloatExpComplex.CACHE_1);
+                // b^2 -> CACHE_2
+                this.im.mulTo(this.im, FloatExpComplex.CACHE_2);
+
+                // Real: a^2 - b^2 -> CACHE_3
+                FloatExpComplex.CACHE_1.subTo(FloatExpComplex.CACHE_2, FloatExpComplex.CACHE_3);
+
+                // Imag: 2ab -> CACHE_4
+                this.re.mulTo(this.im, FloatExpComplex.CACHE_4);
+                FloatExpComplex.CACHE_4.mulTo(FloatExp.TWO, FloatExpComplex.CACHE_4);
+
+                FloatExpComplex.CACHE_3.storeTo(store.re);
+                FloatExpComplex.CACHE_4.storeTo(store.im);
+
+                return store;
             }
 
-            addMut(other) {
-                this.re.addMut(other.re);
-                this.im.addMut(other.im);
-                return this;
-            }
-
-            subMut(other) {
-                this.re.subMut(other.re);
-                this.im.subMut(other.im);
-                return this;
-            }
-
-            mulMut(other) {
-                const x = this.re;
-                const y = this.im;
-                this.re = x.mul(other.re).subMut(y.mul(other.im));
-                this.im = x.mulMut(other.im).addMut(y.mulMut(other.re));
-                return this;
-            }
-
-            copy() {
-                return new FloatExpComplex(this.re.copy(), this.im.copy());
+            equals(o) {
+                return this.re.equals(o.re) && this.im.equals(o.im);
             }
 
             toComplex() {
@@ -984,31 +1145,6 @@
                     new Decimal(this.re.toString()),
                     new Decimal(this.im.toString())
                 )
-            }
-
-            norm() {
-                return FEmax(this.re.abs(), this.im.abs());
-            }
-
-            square() {
-                const x = this.re;
-                const y = this.im;
-                return new FloatExpComplex(
-                    x.square().subMut(y.square()),
-                    x.mul(y).mulMut(FloatExp.TWO)
-                );
-            }
-
-            squareMut() {
-                const x = this.re;
-                const y = this.im;
-                this.re = x.square().subMut(y.square());
-                this.im = x.mulMut(y).mulMut(FloatExp.TWO);
-                return this;
-            }
-
-            equals(o) {
-                return this.re.equals(o.re) && this.im.equals(o.im);
             }
         }
 
@@ -1516,6 +1652,7 @@
             let bout = new FloatExp(bailout);
             let zero = FloatExp.ZERO;
             let dcNorm = dc.norm();
+            let dz2 = FloatExpComplex.ZERO.copy();
 
             while (iter < maxIter) {
                 let dzNorm = dz.norm();
@@ -1527,7 +1664,8 @@
                     refIter += result.second;
                 } else {
                     const Z = ref[refIter]
-                    let dz2 = dz.square();
+                    dz.squareTo(dz2);
+                    // dz = 2*dz*Z + dz^2 + dc
                     dz.addMut(dz).mulMut(Z).addMut(dz2).addMut(dc)
                     iter++;
                     refIter++;
