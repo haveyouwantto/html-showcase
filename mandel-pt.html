@@ -2106,6 +2106,10 @@
                     while (!(nextTerm = await generator.next()).done) {
                         this.stats.ref = nextTerm.value;
                         this.showInfo(); // Update progress
+                        if (this.requestForCancel) {
+                            this.cancelling = true;
+                            return;
+                            }
                     }
                     ref = nextTerm.value;
                     this.stats.ref = ref.length;
