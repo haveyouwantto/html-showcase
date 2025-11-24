@@ -2270,13 +2270,7 @@
                         // step 1 是终点，不需要再 push 回队列
                     }
 
-                    // --- 智能刷新 ---
-                    // Final Pass (step=1) 计算量大，刷新频率高一点以展示进度
-                    // Coarse Pass (step>1) 比较快，可以攒一攒
-                    let batchSize = (task.step === 1) ? 1 : 4;
-                    if (priorityQueue.length % batchSize === 0) {
-                        await this.tryUpdateScreen();
-                    }
+                    // await this.tryUpdateScreen();
                 }
 
                 // 结束
@@ -2310,6 +2304,7 @@
                             this.calculatePixel(x, y, step, step);
                         }
                     }
+                    await this.tryUpdateScreen();
                 }
             }
 
