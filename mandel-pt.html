@@ -1435,22 +1435,31 @@
          * @returns {number|null} - The escape time for the point or null if it doesn't escape.
          */
         function getPTBLA(dc, ref, table, maxIter, bailout, smooth = false) {
+            // Initialize perturbation variables
             let dzRe = 0, dzIm = 0, iter = -1, refIter = 0;
+            let dzNorm, result;
+            let aRe, aIm, bRe, bIm;
+            let newDzRe, newDzIm;
+            let tempRe, tempIm;
+
+            let Z, Z2;
+            let valRe, valIm, valAbsSq;
+            let dzAbsSq;
 
             let dcNorm = Math.max(Math.abs(dc.re), Math.abs(dc.im));
             while (iter < maxIter) {
-                let dzNorm = Math.max(Math.abs(dzRe), Math.abs(dzIm)); // Chebyshev norm
+                dzNorm = Math.max(Math.abs(dzRe), Math.abs(dzIm)); // Chebyshev norm
 
-                let result = lookup(table, refIter, ref.length, dzNorm, dcNorm);
+                result = lookup(table, refIter, ref.length, dzNorm, dcNorm);
 
                 if (result.first != null) {
-                    let aRe = result.first.A.re,
-                        aIm = result.first.A.im;
-                    let bRe = result.first.B.re,
-                        bIm = result.first.B.im;
+                    aRe = result.first.A.re;
+                    aIm = result.first.A.im;
+                    bRe = result.first.B.re;
+                    bIm = result.first.B.im;
 
-                    let newDzRe = dzRe * aRe - dzIm * aIm + dc.re * bRe - dc.im * bIm;
-                    let newDzIm = dzRe * aIm + dzIm * aRe + dc.re * bIm + dc.im * bRe;
+                    newDzRe = dzRe * aRe - dzIm * aIm + dc.re * bRe - dc.im * bIm;
+                    newDzIm = dzRe * aIm + dzIm * aRe + dc.re * bIm + dc.im * bRe;
 
                     dzRe = newDzRe;
                     dzIm = newDzIm;
@@ -1458,10 +1467,10 @@
                     iter += result.second;
                     refIter += result.second;
                 } else {
-                    const Z = ref[refIter];
+                    Z = ref[refIter];
 
-                    let tempRe = dzRe,
-                        tempIm = dzIm;
+                    tempRe = dzRe;
+                    tempIm = dzIm;
 
                     // dz = dz * 2 * Z + dz^2 + dc
                     dzRe = (2 * Z.re + tempRe) * tempRe - (2 * Z.im + tempIm) * tempIm + dc.re;
@@ -1472,12 +1481,12 @@
                 }
 
                 if (refIter >= ref.length) refIter = 0;
-                const Z2 = ref[refIter];
-                let valRe = Z2.re + dzRe;
-                let valIm = Z2.im + dzIm;
+                Z2 = ref[refIter];
+                valRe = Z2.re + dzRe;
+                valIm = Z2.im + dzIm;
 
                 // Squared Euclidean distance (abs squared)
-                let valAbsSq = valRe * valRe + valIm * valIm;
+                valAbsSq = valRe * valRe + valIm * valIm;
                 if (valAbsSq > bailout) {
                     if (smooth) {
                         let fracIter = Math.log(valAbsSq) / 2;
@@ -1489,7 +1498,7 @@
                     }
                 }
 
-                let dzAbsSq = dzRe * dzRe + dzIm * dzIm;
+                dzAbsSq = dzRe * dzRe + dzIm * dzIm;
                 if (valAbsSq < dzAbsSq || refIter == ref.length - 1) {
                     dzRe = valRe;
                     dzIm = valIm;
