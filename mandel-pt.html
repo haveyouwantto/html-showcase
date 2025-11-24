@@ -1872,7 +1872,8 @@
                     calc: 0,
                     guess: 0,
                     approx: 0,
-                    time: performance.now()
+                    time: performance.now(),
+                    statusText: ''
                 }
 
                 this.lastUpdateTime = performance.now();
@@ -2216,9 +2217,7 @@
                 let estimatedTotalTime = (elapsedTime / (this.stats.calc + this.stats.guess)) * totalPixels;
                 let estimatedRemainingTime = estimatedTotalTime - elapsedTime;
                 let statusText = `Ref: ${this.stats.ref.toLocaleString()}it\nRes: ${this.canvas.width}x${this.canvas.height}\nCalc/Guess/Total: ${this.stats.calc.toLocaleString()}/${this.stats.guess.toLocaleString()}/${totalPixels.toLocaleString()} px\nTime: ${((elapsedTime) / 1000).toFixed(3)}s ETA: ${(estimatedRemainingTime / 1000).toFixed(3)}s`;
-                if (!this.rendering) {
-                    statusText += "\nDone!";
-                }
+                statusText += "\n"+ this.stats.statusText;
                 statsLabel.innerText = statusText;
                 this.updateProgress();
             }
@@ -2265,6 +2264,7 @@
                 base = this.center;
                 if (!this.refValid) {
                     console.log(performance.now() + " computing reference")
+                    this.stats.statusText = 'Computing reference'
                     let nextTerm;
 
                     let reportInterval = Math.max(1, Math.floor(200000 / -this.size.exp));
@@ -2293,6 +2293,7 @@
                 console.log("ref iter: " + ref.length)
 
                 console.log(performance.now() + " bla calculation")
+                this.stats.statusText = 'BLA table construction'
 
                 if (this.deep) {
                     this.blaTable = createBLATableFE(ref, this.size);
@@ -2305,6 +2306,7 @@
                 this.setIterations(autoIter);
 
                 console.log(performance.now() + " perturbation")
+                this.stats.statusText = 'Perturbation'
 
                 await this.successiveRefinment(startBlockSize);
 
@@ -2330,6 +2332,7 @@
                 }
 
                 console.log('done!')
+                this.stats.statusText = 'Finished'
                 this.rendering = false;
                 this.showInfo();
                 const params = new URLSearchParams(window.location.hash.substring(1));
