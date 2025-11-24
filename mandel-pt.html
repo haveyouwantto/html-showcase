@@ -1855,8 +1855,6 @@
                 this.recalculationTimeout = null;
                 this.lastTouchDistance = 0;
 
-                window.addEventListener('resize', () => this.resizeCanvas(true));
-
                 this.canvas.addEventListener('mousedown', e => this.handleStart(e));
                 this.canvas.addEventListener('mousemove', e => this.handleMove(e));
                 this.canvas.addEventListener('mouseup', e => this.handleEnd(e));
@@ -1866,6 +1864,12 @@
                 this.canvas.addEventListener('touchmove', e => this.handleMove(e), { passive: false });
                 this.canvas.addEventListener('touchend', e => this.handleEnd(e));
                 this.canvas.addEventListener('touchcancel', e => this.handleEnd(e));
+                
+                const resizeObserver = new ResizeObserver(() => {
+                    this.resizeCanvas();
+                });
+
+                resizeObserver.observe(this.canvas);
 
                 this.stats = {
                     ref: 0,
