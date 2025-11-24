@@ -1654,6 +1654,9 @@
             let dcNorm = dc.norm();
             let dz2 = FloatExpComplex.ZERO.copy();
 
+            let a = FloatExp.ZERO.copy();
+            let val = FloatExpComplex.ZERO.copy();
+
             while (iter < maxIter) {
                 let dzNorm = dz.norm();
                 let result = lookupFE(table, refIter, ref.length, dzNorm, dcNorm)
@@ -1685,8 +1688,10 @@
                         return iter; // If not smooth, just return the iteration count
                     }
                 };
-                if (valAbs.sub(dzNorm).compareTo(zero) < 0 || refIter == ref.length - 1) { // 检测是否需要变基
-                    dz = val;
+                valAbs.subTo(dzNorm, a);
+
+                if (a.compareTo(zero) < 0 || refIter == ref.length - 1) { // 检测是否需要变基
+                    val.storeTo(dz);
                     refIter = 0;
                 }
             }
