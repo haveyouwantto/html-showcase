@@ -1109,21 +1109,30 @@
             let mpzre = ctx.Float(0);
             let mpzim = ctx.Float(0);
 
+
             let updateTimer = performance.now();
+
+            const binding = gmpinit.binding;
+            const tempVars = {
+                re2: ctx.Float(0), im2: ctx.Float(0), reim: ctx.Float(0),
+                temp1: ctx.Float(0), temp2: ctx.Float(0)
+            };
 
             for (let i = 0; i < iterations; i++) {
                 dzdc = z.add(z).mulMut(dzdc).addMut(one);
 
-                // Z = Z.square().add(C);
-                const re = mpzre;
-                const im = mpzim;
+                // 复数平方计算
+                binding.mpfr_mul(tempVars.re2.mpfr_t, mpzre.mpfr_t, mpzre.mpfr_t);
+                binding.mpfr_mul(tempVars.im2.mpfr_t, mpzim.mpfr_t, mpzim.mpfr_t);
+                binding.mpfr_mul(tempVars.reim.mpfr_t, mpzre.mpfr_t, mpzim.mpfr_t);
 
-                const re2 = re.mul(re);       // re^2
-                const im2 = im.mul(im);       // im^2
-                const reim = re.mul(im);      // re*im
+                // 新实部: re^2 - im^2 + cre
+                binding.mpfr_sub(mpzre.mpfr_t, tempVars.re2.mpfr_t, tempVars.im2.mpfr_t);
+                binding.mpfr_add(mpzre.mpfr_t, mpzre.mpfr_t, cre.mpfr_t);
 
-                mpzre = re2.sub(im2).add(cre);
-                mpzim = reim.add(reim).add(cim); // 2*re*im + cim
+                // 新虚部: 2*re*im + cim
+                binding.mpfr_mul_ui(mpzim.mpfr_t, tempVars.reim.mpfr_t, 2);
+                binding.mpfr_add(mpzim.mpfr_t, mpzim.mpfr_t, cim.mpfr_t);
 
 
                 z = new Complex(mpzre.toNumber(), mpzim.toNumber());
@@ -1147,7 +1156,8 @@
             ctx.destroy();
             return orbit;
         }
-        function MPFR2FloatExp(num) {
+
+        function MPFR2FloatExp(ctx, num) {
             let n = num.toNumber();
             if (n === 0 || !isFinite(n)) return parseFloatExp(num.toString());
             else if (isNaN(n)) return FloatExp.ZERO;
@@ -1174,24 +1184,31 @@
             let cim = ctx.Float(C.im.toString());
             let mpzre = ctx.Float(0);
             let mpzim = ctx.Float(0);
-
             let updateTimer = performance.now();
+
+            const binding = gmpinit.binding;
+            const tempVars = {
+                re2: ctx.Float(0), im2: ctx.Float(0), reim: ctx.Float(0),
+                temp1: ctx.Float(0), temp2: ctx.Float(0)
+            };
 
             for (let i = 0; i < iterations; i++) {
                 dzdc = z.add(z).mulMut(dzdc).add(one);
 
-                // Z = Z.square().add(C);
-                const re = mpzre;
-                const im = mpzim;
+                // 复数平方计算
+                binding.mpfr_mul(tempVars.re2.mpfr_t, mpzre.mpfr_t, mpzre.mpfr_t);
+                binding.mpfr_mul(tempVars.im2.mpfr_t, mpzim.mpfr_t, mpzim.mpfr_t);
+                binding.mpfr_mul(tempVars.reim.mpfr_t, mpzre.mpfr_t, mpzim.mpfr_t);
 
-                const re2 = re.mul(re);       // re^2
-                const im2 = im.mul(im);       // im^2
-                const reim = re.mul(im);      // re*im
+                // 新实部: re^2 - im^2 + cre
+                binding.mpfr_sub(mpzre.mpfr_t, tempVars.re2.mpfr_t, tempVars.im2.mpfr_t);
+                binding.mpfr_add(mpzre.mpfr_t, mpzre.mpfr_t, cre.mpfr_t);
 
-                mpzre = re2.sub(im2).add(cre);
-                mpzim = reim.add(reim).add(cim); // 2*re*im + cim
+                // 新虚部: 2*re*im + cim
+                binding.mpfr_mul_ui(mpzim.mpfr_t, tempVars.reim.mpfr_t, 2);
+                binding.mpfr_add(mpzim.mpfr_t, mpzim.mpfr_t, cim.mpfr_t);
 
-                z = new FloatExpComplex(MPFR2FloatExp(mpzre), MPFR2FloatExp(mpzim));
+                z = new FloatExpComplex(MPFR2FloatExp(ctx, mpzre), MPFR2FloatExp(ctx, mpzim));
                 orbit.push(z);
                 if (dzdc.norm().mul(radius).mul(2).compareTo(z.norm()) > 0) break;
                 if (z.norm().doubleValue() > 16.0) break;
@@ -1869,8 +1886,8 @@
                 // Only zoom if scale is changed, otherwise just translate
                 // Use 1e-9 as threshold to avoid floating point issues
                 if (Math.abs(scale - 1) > 1e-9) {
-                this.zoom(this.size.div(scale));
-                }else {
+                    this.zoom(this.size.div(scale));
+                } else {
                     const translateX = tx / canvas.offsetWidth * canvas.width;
                     const translateY = ty / canvas.offsetHeight * canvas.height;
                     this.translate(translateX, translateY);
@@ -2109,7 +2126,7 @@
                         if (this.requestForCancel) {
                             this.cancelling = true;
                             return;
-                            }
+                        }
                     }
                     ref = nextTerm.value;
                     this.stats.ref = ref.length;
@@ -2499,7 +2516,7 @@
                         }
                     }
                 }
-                
+
             }
 
             async renderFrames() {
