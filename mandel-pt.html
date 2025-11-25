@@ -1526,7 +1526,7 @@
                         B: bla1.B.mul(bla2.A).add(bla2.B),
                         radius: FloatExp.min(
                             bla1.radius, bla2.radius.div(bla1.A.norm())
-                        ), 
+                        ),
                         radiusC: FloatExp.min(
                             bla1.radiusC, bla2.radiusC, bla2.radius.div(bla1.B.norm())
                         )
@@ -2532,6 +2532,7 @@
                                 this.calculatePixel(x, y, 1, 1); // drawWidth=1
                             }
                         }
+                        await this.tryUpdateScreen();
                     }
                 }
             }
