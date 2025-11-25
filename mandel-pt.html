@@ -2151,6 +2151,7 @@
                 this.deep = this.size.exp < -300;
                 this.size = size;
                 this.clear();
+                this.stats.predCenter = null;
             }
 
             /**
@@ -2167,6 +2168,7 @@
             goto(c, clear = true) {
                 this.center = c;
                 this.refValid = false;
+                this.stats.predCenter = null;
                 if (clear) {
                     this.context.clearRect(0, 0, this.canvas.width, this.canvas.height);
                     this.clear();
