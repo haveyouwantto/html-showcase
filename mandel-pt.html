@@ -1094,15 +1094,13 @@
 
             // --- Other Methods ---
 
-            abs() {
+            abs2() {
                 return this.re.mul(this.re).addMut(this.im.mul(this.im));
             }
 
+            // Chebyshev norm
             norm() {
-                // FEmax not defined in snippet, assuming max of abs
-                // Or just returning max magnitude
-                if (this.re.abs().compareTo(this.im.abs()) > 0) return this.re.abs();
-                return this.im.abs();
+                return FEmax(this.re.abs(), this.im.abs());
             }
 
             square() {
@@ -1680,7 +1678,7 @@
 
                 const Z2 = ref[refIter]
                 const val = Z2.add(dz);
-                const valAbs = val.abs();
+                const valAbs = val.abs2();
                 if (valAbs.doubleValue() > bailout) {
                     if (smooth) {
                         let fracIter = Math.log(valAbs.doubleValue()) / 2;
