@@ -305,6 +305,25 @@
             margin-bottom: 8px;
         }
 
+        #smart-zoom {
+            position: fixed;
+            top: 60px;
+            right: 10px;
+            z-index: 1002;
+            font-size: 24px;
+            width: 40px;
+            height: 40px;
+            background-color: rgba(51, 51, 51, 0.8);
+            color: #fff;
+            border: 1px solid #666;
+            border-radius: 5px;
+            cursor: pointer;
+            line-height: 1;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+        }
+
 
         @media (max-width: 600px) {
             .container {
@@ -345,6 +364,7 @@
     </div>
 
     <button id="menu-toggle" title="Toggle Controls">&#9776;</button>
+    <button id="smart-zoom" title="Smart Zoom">🔍</button>
 
     <aside id="sidebar">
         <!-- 所有原始的控件都移动到这里 -->
@@ -1239,13 +1259,12 @@
         }
 
         async function* getReferenceOrbitMPFR(C, radius, iterations, precisionBits) {
-            console.log(C)
-
             let Z = new DeepComplex(0, 0),
                 z = new Complex(0, 0),
                 dzdc = new Complex(1, 0),
                 one = new Complex(1, 0);
             const orbit = [new Complex(0, 0)];
+            let predCenter = null;
 
             const roundingMode = gmp.FloatRoundingMode.ROUND_DOWN;
             const options = { precisionBits: precisionBits, roundingMode };
@@ -1288,8 +1307,7 @@
                 orbit.push(z);
 
                 if (dzdc.norm() * radius * 2 > z.norm()) {
-                    const predCenter = z.div(dzdc);
-                    console.log(predCenter);
+                    predCenter = z.div(dzdc);
                     break;
                 };
                 if (z.norm() > 16.0) break;
@@ -1303,7 +1321,10 @@
             }
 
             ctx.destroy();
-            return orbit;
+            return {
+                orbit: orbit,
+                predCenter: predCenter
+            };
         }
 
         function MPFR2FloatExp(ctx, num) {
@@ -1321,6 +1342,7 @@
                 dzdc = new FloatExpComplex(1, 0),
                 one = new FloatExpComplex(1, 0);
             const orbit = [new FloatExpComplex(0, 0)];
+            let predCenter = null;
 
 
             const roundingMode = gmp.FloatRoundingMode.ROUND_DOWN;
@@ -1359,8 +1381,13 @@
 
                 z = new FloatExpComplex(MPFR2FloatExp(ctx, mpzre), MPFR2FloatExp(ctx, mpzim));
                 orbit.push(z);
-                if (dzdc.norm().mul(radius).mul(2).compareTo(z.norm()) > 0) break;
+                if (dzdc.norm().mul(radius).mul(2).compareTo(z.norm()) > 0) {
+                    predCenter = z.div(dzdc);
+                    break;
+                };
                 if (z.norm().doubleValue() > 16.0) break;
+
+
 
                 let currentTime = performance.now();
                 if (currentTime - updateTimer > 100) {
@@ -1370,7 +1397,10 @@
                 }
             }
             ctx.destroy();
-            return orbit;
+            return {
+                orbit: orbit,
+                predCenter: predCenter
+            };
         }
 
         function decompressRef(c, waypoints, maxIter) {
@@ -2067,7 +2097,6 @@
                 const sy = -(ty / canvas.offsetHeight * canvas.height) / scale;
                 const sWidth = this.canvas.width / scale;
                 const sHeight = this.canvas.height / scale;
-                console.log(`Source rect: ${sx}, ${sy}, ${sWidth}, ${sHeight}`);
 
                 // The CSS transform is about to be removed. To prevent a flicker,
                 // we use drawImage to "bake" the transformed view into the canvas bitmap.
@@ -2184,6 +2213,24 @@
                 )
             }
 
+            /**
+             * Converts a delta relative to the this.center to screen coordinates.
+             **/
+            deltaToScreen(delta) {
+                let deltaPerPixel = this.size.div(this.minStep);
+                if (this.deep) {
+                    return {
+                        x: delta.re.div(deltaPerPixel).doubleValue() + this.halfWidth,
+                        y: this.halfHeight - delta.im.div(deltaPerPixel).doubleValue()
+                    }
+                } else {
+                    return {
+                        x: delta.re / deltaPerPixel + this.halfWidth,
+                        y: this.halfHeight - delta.im / deltaPerPixel
+                    }
+                }
+            }
+
 
             /**
              * Retrieves the iteration of a pixel in the Mandelbrot set visualization.
@@ -2297,7 +2344,14 @@
                             return;
                         }
                     }
-                    ref = nextTerm.value;
+                    ref = nextTerm.value.orbit;
+                    let predCenter = nextTerm.value.predCenter;
+                    if (predCenter) {
+                        console.log("Predicted center: ", predCenter)
+                        // predCenter.x = -predCenter.x;
+                        this.stats.predCenter = predCenter;
+                    }
+
                     this.stats.ref = ref.length;
 
                     this.ref = ref;
@@ -2313,7 +2367,7 @@
                 this.stats.statusText = 'BLA table construction'
 
                 if (this.deep) {
-                    this.blaTable = createBLATableFE(ref, this.size);
+                    this.blaTable = createBLATableFE(ref, this.size.div(10));
                 }
                 else
                     this.blaTable = createBLATable(ref, this.size.doubleValue())
@@ -3070,6 +3124,18 @@
             document.getElementById('info-overlay').classList.toggle('info-overlay-collapsed');
         });
 
+        document.getElementById('smart-zoom').addEventListener('click', (e) => {
+            if (mandelbrot.stats.predCenter) {
+                const screenCoord = mandelbrot.deltaToScreen(mandelbrot.stats.predCenter);
+                const fakeEvent = {
+                    clientX: (1 - screenCoord.x / canvas.width) * window.innerWidth,
+                    clientY: (1 - screenCoord.y / canvas.height) * window.innerHeight,
+                    deltaY: -1, // zoom in
+                    preventDefault: () => { }
+                };
+                mandelbrot.handleWheel(fakeEvent);
+            }
+        });
 
         document.getElementById('goto').addEventListener('click', e => {
             mandelbrot.goto(new DeepComplex(
