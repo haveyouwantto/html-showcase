@@ -458,6 +458,8 @@
             static NEGATIVE_ONE = new FloatExp(-1, 0);
             static TWO = new FloatExp(2, 0);
             static FOUR = new FloatExp(4, 0);
+            static INFINITY = new FloatExp(1, Number.MAX_SAFE_INTEGER); // Set a very high exponent to represent infinity
+            static NEGATIVE_INFINITY = new FloatExp(-1, Number.MAX_SAFE_INTEGER);
 
             static {
                 this.expTable = [];
@@ -742,6 +744,26 @@
             static fromLog2(val) {
                 const log10 = val * FloatExp.LOG10_2;
                 return new FloatExp(Math.pow(10, log10 - Math.trunc(log10)), Math.trunc(log10));
+            }
+
+            static max(...a) {
+                let max = a[0];
+                for (let i = 1; i < a.length; i++) {
+                    if (a[i].compareTo(max) > 0) {
+                        max = a[i];
+                    }
+                }
+                return max;
+            }
+
+            static min(...a) {
+                let min = a[0];
+                for (let i = 1; i < a.length; i++) {
+                    if (a[i].compareTo(min) < 0) {
+                        min = a[i];
+                    }
+                }
+                return min;
             }
         }
 
@@ -1100,7 +1122,7 @@
 
             // Chebyshev norm
             norm() {
-                return FEmax(this.re.abs(), this.im.abs());
+                return FloatExp.max(this.re.abs(), this.im.abs());
             }
 
             square() {
@@ -1147,16 +1169,6 @@
                     new Decimal(this.im.toString())
                 )
             }
-        }
-
-        function FEmax(a, b) {
-            if (a.compareTo(b) > 0) return a;
-            else return b;
-        }
-
-        function FEmin(a, b) {
-            if (a.compareTo(b) < 0) return a;
-            else return b;
         }
 
         const samples = {
@@ -1410,9 +1422,8 @@
                 lv1.push({
                     A: A,
                     B: B,
-                    radius: Math.max(0,
-                        (point.norm() - B.norm() * scale) / (A.norm() + 1) * 5.96e-8
-                    )
+                    radius: point.norm() * 5.96e-8,
+                    radiusC: Infinity
                 })
             }
 
@@ -1433,9 +1444,10 @@
                         A: bla1.A.mul(bla2.A),
                         B: bla1.B.mul(bla2.A).add(bla2.B),
                         radius: Math.min(
-                            bla1.radius, Math.max(
-                                0, (bla2.radius - bla1.B.norm() * scale) / bla1.A.norm()
-                            )
+                            bla1.radius, bla2.radius / bla1.A.norm()
+                        ),
+                        radiusC: Math.min(
+                            bla1.radiusC, bla2.radiusC, bla2.radius / bla1.B.norm()
                         )
                     })
 
@@ -1463,7 +1475,7 @@
                 length = 1;
 
             for (let level of table) {
-                if (norm_dz > level[index].radius) {
+                if (norm_dz > level[index].radius || norm_dc > level[index].radiusC) {
                     break;
                 }
                 result.first = level[index];
@@ -1491,9 +1503,8 @@
                 lv1.push({
                     A: A,
                     B: B,
-                    radius: FEmax(FloatExp.ZERO.copy(),
-                        (point.norm().sub(B.norm().mul(scale))).div(A.norm().add(1)).mul(5.96e-8)
-                    )
+                    radius: point.norm().mul(5.96e-8),
+                    radiusC: FloatExp.INFINITY.copy()
                 })
             }
 
@@ -1513,10 +1524,11 @@
                     table[level].push({
                         A: bla1.A.mul(bla2.A),
                         B: bla1.B.mul(bla2.A).add(bla2.B),
-                        radius: FEmin(
-                            bla1.radius, FEmax(
-                                FloatExp.ZERO.copy(), (bla2.radius.sub(bla1.B.norm().mul(scale))).div(bla1.A.norm())
-                            )
+                        radius: FloatExp.min(
+                            bla1.radius, bla2.radius.div(bla1.A.norm())
+                        ), 
+                        radiusC: FloatExp.min(
+                            bla1.radiusC, bla2.radiusC, bla2.radius.div(bla1.B.norm())
                         )
                     })
 
@@ -1865,7 +1877,7 @@
                 this.canvas.addEventListener('touchmove', e => this.handleMove(e), { passive: false });
                 this.canvas.addEventListener('touchend', e => this.handleEnd(e));
                 this.canvas.addEventListener('touchcancel', e => this.handleEnd(e));
-                
+
                 const resizeObserver = new ResizeObserver(() => {
                     this.resizeCanvas();
                 });
@@ -2222,7 +2234,7 @@
                 let estimatedTotalTime = (elapsedTime / (this.stats.calc + this.stats.guess)) * totalPixels;
                 let estimatedRemainingTime = estimatedTotalTime - elapsedTime;
                 let statusText = `Ref: ${this.stats.ref.toLocaleString()}it\nRes: ${this.canvas.width}x${this.canvas.height}\nCalc/Guess/Total: ${this.stats.calc.toLocaleString()}/${this.stats.guess.toLocaleString()}/${totalPixels.toLocaleString()} px\nTime: ${((elapsedTime) / 1000).toFixed(3)}s ETA: ${(estimatedRemainingTime / 1000).toFixed(3)}s`;
-                statusText += "\n"+ this.stats.statusText;
+                statusText += "\n" + this.stats.statusText;
                 statsLabel.innerText = statusText;
                 this.updateProgress();
             }
