@@ -1,0 +1,744 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>拼豆像素提取器</title>
+    <style>
+        :root {
+            --bg-color: #121212;
+            --panel-bg: #1e1e1e;
+            --border-color: #333;
+            --text-main: #e0e0e0;
+            --text-sub: #aaaaaa;
+            --accent: #007acc;
+            --accent-hover: #005f9e;
+            --handle-color: #ff0055;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        /* 顶部工具栏 */
+        header {
+            background-color: var(--panel-bg);
+            border-bottom: 1px solid var(--border-color);
+            padding: 10px 20px;
+            display: flex;
+            align-items: center;
+            gap: 20px;
+            flex-wrap: wrap;
+            z-index: 10;
+        }
+
+        h1 {
+            margin: 0;
+            font-size: 1.2rem;
+            color: var(--accent);
+            margin-right: 20px;
+        }
+
+        .control-group {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 0.9rem;
+        }
+
+        input[type="number"] {
+            background: #2c2c2c;
+            border: 1px solid #444;
+            color: white;
+            padding: 5px;
+            border-radius: 4px;
+            width: 50px;
+        }
+
+        button {
+            background-color: var(--accent);
+            color: white;
+            border: none;
+            padding: 6px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            transition: background 0.2s;
+        }
+
+        button:hover {
+            background-color: var(--accent-hover);
+        }
+
+        button.secondary {
+            background-color: #444;
+        }
+
+        button.danger {
+            background-color: #a33;
+        }
+
+        /* 主区域 */
+        .workspace {
+            display: flex;
+            flex: 1;
+            overflow: hidden;
+        }
+
+        /* 左侧：源图编辑 */
+        .source-pane {
+            flex: 1;
+            position: relative;
+            background-color: #000;
+            overflow: hidden;
+            border-right: 1px solid var(--border-color);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            user-select: none;
+        }
+
+        /* 画布叠加层 */
+        .canvas-stack {
+            position: relative;
+            box-shadow: 0 0 20px rgba(0, 0, 0, 0.5);
+        }
+
+        canvas {
+            display: block;
+        }
+
+        /* 覆盖在源图上的交互层 */
+        #overlayCanvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            cursor: crosshair;
+        }
+
+        /* 右侧：预览与设置 */
+        .sidebar {
+            width: 400px;
+            background-color: var(--panel-bg);
+            display: flex;
+            flex-direction: column;
+            border-left: 1px solid var(--border-color);
+            overflow-y: auto;
+        }
+
+        .panel-section {
+            padding: 15px;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .panel-title {
+            font-weight: bold;
+            margin-bottom: 10px;
+            font-size: 0.95rem;
+            color: var(--text-sub);
+            display: flex;
+            justify-content: space-between;
+        }
+
+        /* 结果预览区 */
+        .preview-container {
+            background: #111;
+            padding: 10px;
+            border-radius: 4px;
+            overflow: auto;
+            max-height: 400px;
+            display: flex;
+            align-items: flex-start;
+        }
+
+        /* 调色板网格 */
+        .palette-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(28px, 1fr));
+            gap: 4px;
+        }
+
+        .swatch {
+            width: 28px;
+            height: 28px;
+            border-radius: 4px;
+            border: 1px solid #444;
+            cursor: pointer;
+            position: relative;
+        }
+
+        .swatch:hover::after {
+            content: '×';
+            position: absolute;
+            inset: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: rgba(0, 0, 0, 0.6);
+            color: white;
+            font-weight: bold;
+        }
+
+        /* 提示信息 */
+        .hint {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 0, 0, 0.7);
+            padding: 8px 16px;
+            border-radius: 20px;
+            pointer-events: none;
+            font-size: 0.85rem;
+        }
+    </style>
+</head>
+
+<body>
+
+    <header>
+        <h1>拼豆像素提取器</h1>
+        <div class="control-group">
+            <label>提取尺寸(宽x高):</label>
+            <input type="number" id="inpWidth" value="30" min="2">
+            <span>x</span>
+            <input type="number" id="inpHeight" value="30" min="2">
+        </div>
+        <div class="control-group">
+            <input type="file" id="inpFile" accept="image/*" style="display:none">
+            <button onclick="document.getElementById('inpFile').click()">📂 上传图片</button>
+        </div>
+        <div class="control-group" style="margin-left: auto;">
+            <button id="btnDownload">💾 下载图纸</button>
+        </div>
+    </header>
+
+    <div class="workspace">
+        <div class="source-pane" id="sourcePane">
+            <div class="canvas-stack" id="canvasStack">
+                <canvas id="imgCanvas"></canvas>
+                <canvas id="overlayCanvas"></canvas>
+            </div>
+            <div class="hint">拖动四个红点调整取样范围</div>
+        </div>
+
+        <div class="sidebar">
+            <div class="panel-section">
+                <div class="panel-title">实时预览</div>
+                <div class="preview-container">
+                    <canvas id="resultCanvas"></canvas>
+                </div>
+                <div style="margin-top: 10px; display: flex; align-items: center; gap: 10px;">
+                    <input type="checkbox" id="chkDither">
+                    <label for="chkDither">开启抖动 (Floyd-Steinberg)</label>
+                </div>
+            </div>
+
+            <div class="panel-section" style="flex: 1;">
+                <div class="panel-title">
+                    <span>调色板 (<span id="lblColorCount">0</span>色)</span>
+                    <div>
+                        <button class="secondary" style="font-size: 0.8rem; padding: 2px 8px;"
+                            onclick="resetPalette()">重置</button>
+                        <button class="secondary" style="font-size: 0.8rem; padding: 2px 8px;" onclick="addColor()">+
+                            添加</button>
+                    </div>
+                </div>
+                <div class="palette-grid" id="paletteBox"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        /**
+         * 核心逻辑：
+         * 1. 维护4个控制点（Corners）。
+         * 2. 使用双线性插值 (Bilinear Interpolation) 计算网格坐标。
+         * 3. 在原图中采样对应坐标的像素。
+         * 4. 颜色量化并显示。
+         */
+
+        // --- 状态管理 ---
+        const state = {
+            gridW: 30,
+            gridH: 30,
+            palette: [],
+            corners: [], // [{x,y}, {x,y}, {x,y}, {x,y}] (TL, TR, BR, BL)
+            isDragging: -1, // index of point being dragged
+            imgData: null, // Source image pixel data
+            srcWidth: 0,
+            srcHeight: 0,
+            dither: false
+        };
+
+        const DEFAULT_PALETTE = [
+            [0, 0, 0], [60, 60, 60], [120, 120, 120], [210, 210, 210], [255, 255, 255],
+            [96, 0, 24], [237, 28, 36], [255, 127, 39], [246, 170, 9], [249, 221, 59],
+            [255, 250, 188], [14, 185, 104], [19, 230, 123], [135, 255, 94], [12, 129, 110],
+            [16, 174, 166], [19, 225, 190], [96, 247, 242], [40, 80, 158], [64, 147, 228],
+            [107, 80, 246], [153, 177, 251], [120, 12, 153], [170, 56, 185], [224, 159, 249],
+            [203, 0, 122], [236, 31, 128], [243, 141, 169], [104, 70, 52], [149, 104, 42],
+            [248, 178, 119]
+        ];
+
+        // --- DOM 元素 ---
+        const els = {
+            imgCanvas: document.getElementById('imgCanvas'),
+            overlayCanvas: document.getElementById('overlayCanvas'),
+            resultCanvas: document.getElementById('resultCanvas'),
+            inpFile: document.getElementById('inpFile'),
+            inpWidth: document.getElementById('inpWidth'),
+            inpHeight: document.getElementById('inpHeight'),
+            paletteBox: document.getElementById('paletteBox'),
+            countLbl: document.getElementById('lblColorCount'),
+            chkDither: document.getElementById('chkDither'),
+            dlBtn: document.getElementById('btnDownload'),
+            canvasStack: document.getElementById('canvasStack')
+        };
+
+        const ctxImg = els.imgCanvas.getContext('2d');
+        const ctxOverlay = els.overlayCanvas.getContext('2d');
+        const ctxRes = els.resultCanvas.getContext('2d');
+
+        // --- 初始化 ---
+        function init() {
+            loadPalette();
+
+            // 事件监听
+            els.inpFile.addEventListener('change', handleFile);
+            els.inpWidth.addEventListener('change', updateGridSize);
+            els.inpHeight.addEventListener('change', updateGridSize);
+            els.chkDither.addEventListener('change', () => { state.dither = els.chkDither.checked; process(); });
+            els.dlBtn.addEventListener('click', downloadResult);
+
+            // Canvas 交互
+            els.overlayCanvas.addEventListener('mousedown', onMouseDown);
+            window.addEventListener('mousemove', onMouseMove);
+            window.addEventListener('mouseup', onMouseUp);
+
+            // 默认空状态
+            resizeCanvas(400, 300);
+            ctxImg.fillStyle = "#222";
+            ctxImg.fillRect(0, 0, 400, 300);
+            ctxImg.fillStyle = "#555";
+            ctxImg.font = "20px Arial";
+            ctxImg.textAlign = "center";
+            ctxImg.fillText("请上传图片", 200, 150);
+        }
+
+        // --- 文件处理 ---
+        function handleFile(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = (evt) => {
+                const img = new Image();
+                img.onload = () => {
+                    setupImage(img);
+                };
+                img.src = evt.target.result;
+            };
+            reader.readAsDataURL(file);
+        }
+
+        function setupImage(img) {
+            // 限制 Canvas 最大显示尺寸，避免过大卡顿
+            const MAX_W = 800;
+            const MAX_H = 600;
+            let w = img.width;
+            let h = img.height;
+
+            // 简单的缩放逻辑适应屏幕
+            const scale = Math.min(1, Math.min(MAX_W / w, MAX_H / h));
+            w = Math.floor(w * scale);
+            h = Math.floor(h * scale);
+
+            state.srcWidth = w;
+            state.srcHeight = h;
+
+            resizeCanvas(w, h);
+
+            // 绘制图片
+            ctxImg.drawImage(img, 0, 0, w, h);
+            // 获取像素数据用于后续处理
+            state.imgData = ctxImg.getImageData(0, 0, w, h);
+
+            // 初始化4个角点 (inset 20%)
+            const padX = w * 0.2;
+            const padY = h * 0.2;
+            state.corners = [
+                { x: padX, y: padY },           // Top Left
+                { x: w - padX, y: padY },       // Top Right
+                { x: w - padX, y: h - padY },   // Bottom Right
+                { x: padX, y: h - padY }        // Bottom Left
+            ];
+
+            updateGridSize(); // 触发重绘
+        }
+
+        function resizeCanvas(w, h) {
+            els.imgCanvas.width = w;
+            els.imgCanvas.height = h;
+            els.overlayCanvas.width = w;
+            els.overlayCanvas.height = h;
+            els.canvasStack.style.width = w + 'px';
+            els.canvasStack.style.height = h + 'px';
+        }
+
+        function updateGridSize() {
+            state.gridW = parseInt(els.inpWidth.value) || 10;
+            state.gridH = parseInt(els.inpHeight.value) || 10;
+            drawOverlay();
+            process();
+        }
+
+        // --- 交互逻辑 (拖动角点) ---
+        function onMouseDown(e) {
+            if (!state.corners.length) return;
+            const { offsetX, offsetY } = e;
+
+            // 检测点击了哪个点 (阈值 15px)
+            let closestIndex = -1;
+            let minDist = 15; // Hit radius
+
+            state.corners.forEach((p, i) => {
+                const dist = Math.hypot(p.x - offsetX, p.y - offsetY);
+                if (dist < minDist) {
+                    minDist = dist;
+                    closestIndex = i;
+                }
+            });
+
+            if (closestIndex !== -1) {
+                state.isDragging = closestIndex;
+            }
+        }
+
+        function onMouseMove(e) {
+            if (state.isDragging === -1) return;
+
+            // 计算相对于 overlayCanvas 的坐标
+            const rect = els.overlayCanvas.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const y = e.clientY - rect.top;
+
+            // 限制坐标在画布内
+            state.corners[state.isDragging].x = Math.max(0, Math.min(state.srcWidth, x));
+            state.corners[state.isDragging].y = Math.max(0, Math.min(state.srcHeight, y));
+
+            drawOverlay();
+            // 实时处理可能较卡，可以用 requestAnimationFrame 优化，这里为了简化直接调用
+            // 为了流畅度，拖拽时可以不做量化处理，只画网格？
+            // 为了体验好，我们只在 UI 更新 overlay，处理稍微节流
+            if (!state.pendingProcess) {
+                state.pendingProcess = setTimeout(() => {
+                    process();
+                    state.pendingProcess = null;
+                }, 30);
+            }
+        }
+
+        function onMouseUp() {
+            state.isDragging = -1;
+            process(); // Final process
+        }
+
+        // --- 绘制覆盖层 (网格和手柄) ---
+        function drawOverlay() {
+            const ctx = ctxOverlay;
+            ctx.clearRect(0, 0, state.srcWidth, state.srcHeight);
+            if (!state.corners.length) return;
+
+            // 1. 绘制扭曲的网格
+            ctx.strokeStyle = "rgba(204, 204, 0, 0.6)";
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+
+            const [tl, tr, br, bl] = state.corners;
+
+            // 绘制垂直线 (Vertical Grid Lines)
+            for (let i = 0; i <= state.gridW; i++) {
+                const u = i / state.gridW;
+                // Top edge interpolation
+                const tx = tl.x + (tr.x - tl.x) * u;
+                const ty = tl.y + (tr.y - tl.y) * u;
+                // Bottom edge interpolation
+                const bx = bl.x + (br.x - bl.x) * u;
+                const by = bl.y + (br.y - bl.y) * u;
+
+                ctx.moveTo(tx, ty);
+                ctx.lineTo(bx, by);
+            }
+
+            // 绘制水平线 (Horizontal Grid Lines)
+            for (let j = 0; j <= state.gridH; j++) {
+                const v = j / state.gridH;
+                // Left edge
+                const lx = tl.x + (bl.x - tl.x) * v;
+                const ly = tl.y + (bl.y - tl.y) * v;
+                // Right edge
+                const rx = tr.x + (br.x - tr.x) * v;
+                const ry = tr.y + (br.y - tr.y) * v;
+
+                ctx.moveTo(lx, ly);
+                ctx.lineTo(rx, ry);
+            }
+            ctx.stroke();
+
+            // 2. 绘制4个控制点手柄
+            state.corners.forEach((p, i) => {
+                ctx.fillStyle = (i === state.isDragging) ? "#fff" : "var(--handle-color)";
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, 6, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.strokeStyle = "#fff";
+                ctx.lineWidth = 2;
+                ctx.stroke();
+            });
+        }
+
+        // --- 像素提取与处理 ---
+        function process() {
+            if (!state.imgData || !state.corners.length) return;
+
+            const w = state.gridW;
+            const h = state.gridH;
+
+            // 准备像素数据数组
+            const pixels = new Uint8ClampedArray(w * h * 4);
+            const src = state.imgData.data;
+            const sw = state.imgData.width;
+            const sh = state.imgData.height;
+
+            const [tl, tr, br, bl] = state.corners;
+
+            // 遍历目标网格的每一个“豆子”
+            for (let y = 0; y < h; y++) {
+                for (let x = 0; x < w; x++) {
+                    // 计算网格中心点 (u, v)
+                    const u = (x + 0.5) / w;
+                    const v = (y + 0.5) / h;
+
+                    // 双线性插值计算在原图中的坐标
+                    // Top point
+                    const tx = tl.x + (tr.x - tl.x) * u;
+                    const ty = tl.y + (tr.y - tl.y) * u;
+                    // Bottom point
+                    const bx = bl.x + (br.x - bl.x) * u;
+                    const by = bl.y + (br.y - bl.y) * u;
+
+                    // Final point
+                    const sx = Math.floor(tx + (bx - tx) * v);
+                    const sy = Math.floor(ty + (by - ty) * v);
+
+                    // 采样颜色
+                    let r = 0, g = 0, b = 0, a = 255;
+
+                    // 边界检查
+                    if (sx >= 0 && sx < sw && sy >= 0 && sy < sh) {
+                        const idx = (sy * sw + sx) * 4;
+                        r = src[idx];
+                        g = src[idx + 1];
+                        b = src[idx + 2];
+                    }
+
+                    const targetIdx = (y * w + x) * 4;
+                    pixels[targetIdx] = r;
+                    pixels[targetIdx + 1] = g;
+                    pixels[targetIdx + 2] = b;
+                    pixels[targetIdx + 3] = 255;
+                }
+            }
+
+            // 抖动与量化
+            if (state.dither) {
+                applyFloydSteinberg(pixels, w, h);
+            } else {
+                applyNearestColor(pixels);
+            }
+
+            // 绘制结果
+            renderPreview(pixels, w, h);
+        }
+
+        // --- 颜色算法 (同上一版) ---
+        function getClosestColor(r, g, b) {
+            let minDist = Infinity;
+            let closest = state.palette[0] || [0, 0, 0];
+
+            for (let col of state.palette) {
+                // 加权距离 (Redmean 近似)
+                const dr = r - col[0];
+                const dg = g - col[1];
+                const db = b - col[2];
+                // 0.299, 0.587, 0.114 is luminance, but usually 0.3, 0.59, 0.11 is used for color distance simple approximation
+                const dist = (dr * dr) * 0.3 + (dg * dg) * 0.59 + (db * db) * 0.11;
+                if (dist < minDist) {
+                    minDist = dist;
+                    closest = col;
+                }
+            }
+            return closest;
+        }
+
+        function applyNearestColor(data) {
+            for (let i = 0; i < data.length; i += 4) {
+                const [r, g, b] = getClosestColor(data[i], data[i + 1], data[i + 2]);
+                data[i] = r;
+                data[i + 1] = g;
+                data[i + 2] = b;
+            }
+        }
+
+        function applyFloydSteinberg(data, w, h) {
+            for (let y = 0; y < h; y++) {
+                for (let x = 0; x < w; x++) {
+                    const i = (y * w + x) * 4;
+                    const oldR = data[i];
+                    const oldG = data[i + 1];
+                    const oldB = data[i + 2];
+
+                    const [newR, newG, newB] = getClosestColor(oldR, oldG, oldB);
+
+                    data[i] = newR;
+                    data[i + 1] = newG;
+                    data[i + 2] = newB;
+
+                    const errR = oldR - newR;
+                    const errG = oldG - newG;
+                    const errB = oldB - newB;
+
+                    // Distribute error
+                    distributeErr(data, x + 1, y, w, h, errR, errG, errB, 7 / 16);
+                    distributeErr(data, x - 1, y + 1, w, h, errR, errG, errB, 3 / 16);
+                    distributeErr(data, x, y + 1, w, h, errR, errG, errB, 5 / 16);
+                    distributeErr(data, x + 1, y + 1, w, h, errR, errG, errB, 1 / 16);
+                }
+            }
+        }
+
+        function distributeErr(data, x, y, w, h, er, eg, eb, f) {
+            if (x < 0 || x >= w || y < 0 || y >= h) return;
+            const i = (y * w + x) * 4;
+            data[i] = Math.min(255, Math.max(0, data[i] + er * f));
+            data[i + 1] = Math.min(255, Math.max(0, data[i + 1] + eg * f));
+            data[i + 2] = Math.min(255, Math.max(0, data[i + 2] + eb * f));
+        }
+
+        // --- 渲染最终效果 (Grid with Gaps) ---
+        function renderPreview(data, w, h) {
+            const beadSize = 16;
+            const gap = 1;
+            const cellSize = beadSize + gap;
+
+            els.resultCanvas.width = w * cellSize + gap;
+            els.resultCanvas.height = h * cellSize + gap;
+
+            // 清除背景
+            ctxRes.fillStyle = "#111"; // 黑色底板
+            ctxRes.fillRect(0, 0, els.resultCanvas.width, els.resultCanvas.height);
+
+            for (let y = 0; y < h; y++) {
+                for (let x = 0; x < w; x++) {
+                    const i = (y * w + x) * 4;
+                    const r = data[i];
+                    const g = data[i + 1];
+                    const b = data[i + 2];
+
+                    // 坐标
+                    const cx = gap + x * cellSize;
+                    const cy = gap + y * cellSize;
+
+                    // 画豆子 (圆形)
+                    ctxRes.fillStyle = `rgb(${r},${g},${b})`;
+                    ctxRes.beginPath();
+                    ctxRes.arc(cx + beadSize / 2, cy + beadSize / 2, beadSize / 2, 0, Math.PI * 2);
+                    ctxRes.fill();
+
+                    // 简单高光
+                    ctxRes.fillStyle = "rgba(255,255,255,0.25)";
+                    ctxRes.beginPath();
+                    ctxRes.arc(cx + beadSize * 0.35, cy + beadSize * 0.35, beadSize * 0.2, 0, Math.PI * 2);
+                    ctxRes.fill();
+                }
+            }
+        }
+
+        // --- 调色板管理 ---
+        function loadPalette() {
+            const saved = localStorage.getItem('pixelBeadPalette');
+            if (saved) {
+                state.palette = JSON.parse(saved);
+            } else {
+                state.palette = JSON.parse(JSON.stringify(DEFAULT_PALETTE));
+            }
+            renderPalette();
+        }
+
+        function renderPalette() {
+            els.paletteBox.innerHTML = '';
+            state.palette.forEach((rgb, idx) => {
+                const div = document.createElement('div');
+                div.className = 'swatch';
+                div.style.backgroundColor = `rgb(${rgb[0]},${rgb[1]},${rgb[2]})`;
+                div.title = `RGB: ${rgb.join(',')}`;
+                div.onclick = () => {
+                    if (confirm("删除此颜色?")) {
+                        state.palette.splice(idx, 1);
+                        savePalette();
+                    }
+                };
+                els.paletteBox.appendChild(div);
+            });
+            els.countLbl.textContent = state.palette.length;
+        }
+
+        function addColor() {
+            const input = document.createElement('input');
+            input.type = 'color';
+            input.onchange = (e) => {
+                const hex = e.target.value;
+                const r = parseInt(hex.substr(1, 2), 16);
+                const g = parseInt(hex.substr(3, 2), 16);
+                const b = parseInt(hex.substr(5, 2), 16);
+                state.palette.push([r, g, b]);
+                savePalette();
+            };
+            input.click();
+        }
+
+        function resetPalette() {
+            state.palette = JSON.parse(JSON.stringify(DEFAULT_PALETTE));
+            savePalette();
+        }
+
+        function savePalette() {
+            localStorage.setItem('pixelBeadPalette', JSON.stringify(state.palette));
+            renderPalette();
+            process();
+        }
+
+        function downloadResult() {
+            const link = document.createElement('a');
+            link.download = 'bead_pattern.png';
+            link.href = els.resultCanvas.toDataURL();
+            link.click();
+        }
+
+        // 启动
+        init();
+
+    </script>
+</body>
+
+</html>
