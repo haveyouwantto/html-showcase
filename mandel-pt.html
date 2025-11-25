@@ -1228,7 +1228,7 @@
             return new Promise(resolve => setTimeout(resolve, ms));
         }
 
-        async function* getReferenceOrbitMPFR(C, radius, iterations, precisionBits, reportInterval = 10000) {
+        async function* getReferenceOrbitMPFR(C, radius, iterations, precisionBits) {
             console.log(C)
 
             let Z = new DeepComplex(0, 0),
@@ -1304,7 +1304,7 @@
             return getFloatExp(n); // Temporary simple conversion
         }
 
-        async function* getReferenceOrbitFEMPFR(C, radius, iterations, precisionBits, reportInterval = 10000) {
+        async function* getReferenceOrbitFEMPFR(C, radius, iterations, precisionBits) {
 
             let Z = new DeepComplex(0, 0),
                 z = new FloatExpComplex(0, 0),
@@ -2274,11 +2274,11 @@
                     this.stats.statusText = 'Computing reference'
                     let nextTerm;
 
-                    let reportInterval = Math.max(1, Math.floor(200000 / -this.size.exp));
+                    let precisionInBits = Math.ceil((-this.size.exp) * 3.321928094887362) + 52; // Add extra double precision bits
 
                     const generator = this.deep ?
-                        getReferenceOrbitFEMPFR(base, this.size, this.iterations, Math.ceil((-this.size.exp + 10) * 3.321928094887362), reportInterval) :
-                        getReferenceOrbitMPFR(base, this.size.doubleValue(), this.iterations, Math.ceil((-this.size.exp + 10) * 3.321928094887362), reportInterval);
+                        getReferenceOrbitFEMPFR(base, this.size, this.iterations, precisionInBits) :
+                        getReferenceOrbitMPFR(base, this.size.doubleValue(), this.iterations, precisionInBits);
                     while (!(nextTerm = await generator.next()).done) {
                         this.stats.ref = nextTerm.value;
                         this.showInfo(); // Update progress
