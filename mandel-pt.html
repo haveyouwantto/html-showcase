@@ -42,6 +42,10 @@
             transition: transform 0.1s ease-out;
         }
 
+        .transition-long {
+            transition: transform 1s ease-in-out;
+        }
+
         #menu-toggle {
             position: fixed;
             top: 10px;
@@ -2017,10 +2021,10 @@
             }
 
             handleWheel(e) {
-                this.canvas.classList.add('transition')
+                this.canvas.classList.add(e.fake ? 'transition-long' : 'transition')
                 e.preventDefault();
 
-                const scaleFactor = e.deltaY < 0 ? 2 : 0.5;
+                const scaleFactor = e.fake ? 16 : e.deltaY < 0 ? 2 : 0.5;
                 const pivotX = e.clientX;
                 const pivotY = e.clientY;
 
@@ -2029,7 +2033,7 @@
                 this.transformState.scale *= scaleFactor;
 
                 this.applyCssTransform();
-                this.triggerRecalculation();
+                this.triggerRecalculation(e.fake ? 1000 : 100);
             }
 
             // --- Helper functions for touch events ---
@@ -2051,11 +2055,11 @@
                 this.canvas.style.transform = `translate(${tx}px, ${ty}px) scale(${scale})`;
             }
 
-            triggerRecalculation() {
+            triggerRecalculation(delay = 100) {
                 clearTimeout(this.recalculationTimeout);
                 this.recalculationTimeout = setTimeout(() => {
                     this.applyTransformAndRecalculate();
-                }, 100);
+                }, delay);
             }
 
             getCurrentUIDelta() {
@@ -2120,6 +2124,7 @@
                 this.transformState = { scale: 1, tx: 0, ty: 0 };
 
                 this.canvas.classList.remove('transition')
+                this.canvas.classList.remove('transition-long')
                 this.requestForCancel = false;
                 this.cancelling = false;
                 this.update(floorPowerOfTwo(Math.max(2, scale)));
@@ -3128,13 +3133,16 @@
 
         document.getElementById('smart-zoom').addEventListener('click', (e) => {
             if (mandelbrot.stats.predCenter) {
+
                 const screenCoord = mandelbrot.deltaToScreen(mandelbrot.stats.predCenter);
                 const fakeEvent = {
                     clientX: (1 - screenCoord.x / canvas.width) * window.innerWidth,
                     clientY: (1 - screenCoord.y / canvas.height) * window.innerHeight,
                     deltaY: -1, // zoom in
-                    preventDefault: () => { }
+                    preventDefault: () => { },
+                    fake: true
                 };
+                mandelbrot.cancel();
                 mandelbrot.handleWheel(fakeEvent);
             }
         });
