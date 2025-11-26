@@ -1590,7 +1590,7 @@
                 length = 1;
 
             for (let level of table) {
-                if (norm_dz.compareTo(level[index].radius) > 0) {
+                if (norm_dz.compareTo(level[index].radius) > 0 || norm_dc.compareTo(level[index].radiusC) > 0) {
                     break;
                 }
                 result.first = level[index];
@@ -1723,7 +1723,7 @@
                 if (refIter >= ref.length) refIter = 0;
 
                 const Z2 = ref[refIter]
-                const val = Z2.add(dz);
+                Z2.addTo(dz, val);
                 const valAbs = val.abs2();
                 if (valAbs.doubleValue() > bailout) {
                     if (smooth) {
