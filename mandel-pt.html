@@ -1294,8 +1294,8 @@
                 dzdc = z.add(z).mulMut(dzdc).addMut(one);
 
                 // 复数平方计算
-                binding.mpfr_mul(tempVars.re2.mpfr_t, mpzre.mpfr_t, mpzre.mpfr_t);
-                binding.mpfr_mul(tempVars.im2.mpfr_t, mpzim.mpfr_t, mpzim.mpfr_t);
+                binding.mpfr_sqr(tempVars.re2.mpfr_t, mpzre.mpfr_t);
+                binding.mpfr_sqr(tempVars.im2.mpfr_t, mpzim.mpfr_t);
                 binding.mpfr_mul(tempVars.reim.mpfr_t, mpzre.mpfr_t, mpzim.mpfr_t);
 
                 // 新实部: re^2 - im^2 + cre
@@ -1303,7 +1303,7 @@
                 binding.mpfr_add(mpzre.mpfr_t, mpzre.mpfr_t, cre.mpfr_t);
 
                 // 新虚部: 2*re*im + cim
-                binding.mpfr_mul_ui(mpzim.mpfr_t, tempVars.reim.mpfr_t, 2);
+                binding.mpfr_mul_2ui(mpzim.mpfr_t, tempVars.reim.mpfr_t, 1);
                 binding.mpfr_add(mpzim.mpfr_t, mpzim.mpfr_t, cim.mpfr_t);
 
 
@@ -1371,8 +1371,8 @@
                 dzdc = z.add(z).mulMut(dzdc).add(one);
 
                 // 复数平方计算
-                binding.mpfr_mul(tempVars.re2.mpfr_t, mpzre.mpfr_t, mpzre.mpfr_t);
-                binding.mpfr_mul(tempVars.im2.mpfr_t, mpzim.mpfr_t, mpzim.mpfr_t);
+                binding.mpfr_sqr(tempVars.re2.mpfr_t, mpzre.mpfr_t);
+                binding.mpfr_sqr(tempVars.im2.mpfr_t, mpzim.mpfr_t);
                 binding.mpfr_mul(tempVars.reim.mpfr_t, mpzre.mpfr_t, mpzim.mpfr_t);
 
                 // 新实部: re^2 - im^2 + cre
@@ -1380,7 +1380,7 @@
                 binding.mpfr_add(mpzre.mpfr_t, mpzre.mpfr_t, cre.mpfr_t);
 
                 // 新虚部: 2*re*im + cim
-                binding.mpfr_mul_ui(mpzim.mpfr_t, tempVars.reim.mpfr_t, 2);
+                binding.mpfr_mul_2ui(mpzim.mpfr_t, tempVars.reim.mpfr_t, 1);
                 binding.mpfr_add(mpzim.mpfr_t, mpzim.mpfr_t, cim.mpfr_t);
 
                 z = new FloatExpComplex(MPFR2FloatExp(ctx, mpzre), MPFR2FloatExp(ctx, mpzim));
@@ -1590,7 +1590,7 @@
                 length = 1;
 
             for (let level of table) {
-                if (norm_dz.compareTo(level[index].radius) > 0) {
+                if (norm_dz.compareTo(level[index].radius) > 0 || norm_dc.compareTo(level[index].radiusC) > 0) {
                     break;
                 }
                 result.first = level[index];
@@ -1723,7 +1723,7 @@
                 if (refIter >= ref.length) refIter = 0;
 
                 const Z2 = ref[refIter]
-                const val = Z2.add(dz);
+                Z2.addTo(dz, val);
                 const valAbs = val.abs2();
                 if (valAbs.doubleValue() > bailout) {
                     if (smooth) {
