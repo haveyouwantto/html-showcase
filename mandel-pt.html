@@ -43,7 +43,7 @@
         }
 
         .transition-long {
-            transition: transform 1s ease-in-out;
+            transition: transform 0.2s ease-in-out;
         }
 
         #menu-toggle {
@@ -2024,7 +2024,7 @@
                 this.canvas.classList.add(e.fake ? 'transition-long' : 'transition')
                 e.preventDefault();
 
-                const scaleFactor = e.fake ? 16 : e.deltaY < 0 ? 2 : 0.5;
+                const scaleFactor = e.fake ? 4 : e.deltaY < 0 ? 2 : 0.5;
                 const pivotX = e.clientX;
                 const pivotY = e.clientY;
 
@@ -2033,7 +2033,7 @@
                 this.transformState.scale *= scaleFactor;
 
                 this.applyCssTransform();
-                this.triggerRecalculation(e.fake ? 1000 : 100);
+                this.triggerRecalculation(e.fake ? 200 : 100);
             }
 
             // --- Helper functions for touch events ---
