@@ -815,9 +815,129 @@
             }
         }
 
+        function normalizeScientificNotation(input) {
+            // 处理输入为数字类型的情况
+            let str = typeof input === 'number' ? String(input) : input.trim();
+
+            // 处理特殊情况
+            if (str === '' || str === 'NaN' || str === 'Infinity' || str === '-Infinity') {
+                return str;
+            }
+
+            // 检查是否为0
+            if (str === '0' || str === '-0' || str === '+0') {
+                return '0e0';
+            }
+
+            // 提取符号
+            let sign = '';
+            if (str.startsWith('-') || str.startsWith('+')) {
+                sign = str[0];
+                str = str.slice(1);
+            }
+
+            // 检查是否已经是科学计数法
+            const eIndex = str.search(/[eE]/);
+            let mantissaStr, originalExponent = 0;
+
+            if (eIndex !== -1) {
+                // 分离尾数和指数
+                mantissaStr = str.slice(0, eIndex);
+                const exponentStr = str.slice(eIndex + 1);
+                originalExponent = parseInt(exponentStr, 10);
+
+                if (isNaN(originalExponent)) {
+                    throw new Error('Invalid exponent format');
+                }
+            } else {
+                // 普通数字格式
+                mantissaStr = str;
+            }
+
+            // 处理尾数部分的符号
+            if (mantissaStr.startsWith('+') || mantissaStr.startsWith('-')) {
+                sign = mantissaStr[0];
+                mantissaStr = mantissaStr.slice(1);
+            }
+
+            // 查找小数点位置
+            const dotIndex = mantissaStr.indexOf('.');
+            let integerPart, fractionalPart;
+
+            if (dotIndex === -1) {
+                // 没有小数点
+                integerPart = mantissaStr;
+                fractionalPart = '';
+            } else {
+                // 有小数点
+                integerPart = mantissaStr.slice(0, dotIndex);
+                fractionalPart = mantissaStr.slice(dotIndex + 1);
+            }
+
+            // 合并所有数字
+            const allDigits = integerPart + fractionalPart;
+
+            // 找到第一个非零数字的位置
+            let firstNonZeroIndex = -1;
+            for (let i = 0; i < allDigits.length; i++) {
+                if (allDigits[i] !== '0') {
+                    firstNonZeroIndex = i;
+                    break;
+                }
+            }
+
+            if (firstNonZeroIndex === -1) {
+                // 全部是零
+                return '0e0';
+            }
+
+            // 找到最后一个非零数字的位置
+            let lastNonZeroIndex = -1;
+            for (let i = allDigits.length - 1; i >= 0; i--) {
+                if (allDigits[i] !== '0') {
+                    lastNonZeroIndex = i;
+                    break;
+                }
+            }
+
+            // 提取有效数字部分
+            const significantDigits = allDigits.slice(firstNonZeroIndex, lastNonZeroIndex + 1);
+
+            // 计算指数
+            let exponent;
+
+            if (dotIndex === -1) {
+                // 没有小数点：指数 = 数字总位数 - 1
+                exponent = allDigits.length - 1;
+            } else {
+                if (firstNonZeroIndex < integerPart.length) {
+                    // 第一个非零数字在整数部分
+                    exponent = integerPart.length - firstNonZeroIndex - 1;
+                } else {
+                    // 第一个非零数字在小数部分
+                    exponent = -(firstNonZeroIndex - integerPart.length + 1);
+                }
+            }
+
+            // 总指数 = 原始指数 + 当前计算的指数
+            const totalExponent = originalExponent + exponent;
+
+            // 构建规格化科学计数法
+            let normalizedMantissa;
+            if (significantDigits.length === 1) {
+                normalizedMantissa = significantDigits[0];
+            } else {
+                normalizedMantissa = significantDigits[0] + '.' + significantDigits.slice(1);
+            }
+
+            // 处理符号
+            const signPrefix = sign === '-' ? '-' : '';
+
+            return [signPrefix + normalizedMantissa, totalExponent];
+        }
+
         function parseFloatExp(string) {
-            var [b, e] = string.toLowerCase().split("e");
-            e = parseInt(e)
+            var [b, e] = normalizeScientificNotation(string)
             var fp = new FloatExp(parseFloat(b), (isNaN(e) ? 0 : e));
             // fp.norm();
             return fp;
@@ -1356,11 +1476,7 @@
         }
 
         function MPFR2FloatExp(ctx, num) {
-            let n = num.toNumber();
-            if (n === 0 || !isFinite(n)) return parseFloatExp(num.toString());
-            else if (isNaN(n)) return FloatExp.ZERO;
-
-            return getFloatExp(n); // Temporary simple conversion
+            return parseFloatExp(num.toString());// Temporary simple conversion
         }
 
         async function* getReferenceOrbitFEMPFR(C, radius, iterations, precisionBits) {
