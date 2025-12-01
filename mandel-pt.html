@@ -956,8 +956,8 @@
                     return new DeepComplex(realPart, imagPart);
                 } else if (other instanceof FloatExpComplex) {
                     other = other.toDeepComplex();
-                    const realPart = this.re.times(re).minus(this.im.times(im));
-                    const imagPart = this.re.times(im).plus(this.im.times(re));
+                    const realPart = this.re.times(other.re).minus(this.im.times(other.im));
+                    const imagPart = this.re.times(other.im).plus(this.im.times(other.re));
                     return new DeepComplex(realPart, imagPart);
                 } else if (typeof other === 'number') {
                     return new DeepComplex(this.re.times(other), this.im.times(other));
