@@ -549,7 +549,8 @@
                     this.exp = 0;
                     return this;
                 }
-                if (this.base != 0 && (this.base > 10 || this.base < 1)) {
+
+                if (this.base != 0 && (Math.abs(this.base) >= 10 || Math.abs(this.base) < 1)) {
                     let exp = FloatExp.getExpOfDouble(this.base);
                     if (exp != 0) {
                         this.exp += exp;
@@ -721,7 +722,18 @@
 
             sqrt() {
                 if (this.base < 0) throw new Error("Cannot take square root of negative number");
-                return new FloatExp(Math.sqrt(this.base), this.exp / 2);
+                if (this.base === 0) return FloatExp.ZERO.copy();
+
+                let newBase = this.base;
+                let newExp = this.exp;
+
+                // 如果指数是奇数，将10的因子转移到base中
+                if (newExp % 2 !== 0) {
+                    newBase *= 10;
+                    newExp -= 1;
+                }
+
+                return new FloatExp(Math.sqrt(newBase), newExp >> 1);
             }
 
             rev() {
