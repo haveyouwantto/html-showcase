@@ -550,14 +550,26 @@
                     return this;
                 }
 
-                if (this.base != 0 && (Math.abs(this.base) >= 10 || Math.abs(this.base) < 1)) {
-                    let exp = FloatExp.getExpOfDouble(this.base);
-                    if (exp != 0) {
-                        this.exp += exp;
-                        this.base /= FloatExp.getExp(exp);
-                    }
+                while (Math.abs(this.base) > 10) {
+                    this.base /= 10;
+                    this.exp++;
                 }
+
+                while (Math.abs(this.base) < 1) {
+                    this.base *= 10;
+                    this.exp--;
+                }
+
                 return this;
+
+                // if (this.base != 0 && (Math.abs(this.base) >= 10 || Math.abs(this.base) < 1)) {
+                //     let exp = FloatExp.getExpOfDouble(this.base);
+                //     if (exp != 0) {
+                //         this.exp += exp;
+                //         this.base /= FloatExp.getExp(exp);
+                //     }
+                // }
+                // return this;
             }
 
             /**
