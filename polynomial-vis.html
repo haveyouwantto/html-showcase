@@ -1,0 +1,526 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>复平面高次多项式可视化</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Serif:ital,wght@0,400;0,700;1,400;1,700&display=swap"
+        rel="stylesheet">
+
+    <style>
+        body,
+        html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: #111;
+            font-family: 'Noto Serif', serif;
+            user-select: none;
+        }
+
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
+
+        /* 拖动符号样式 */
+        .handle {
+            position: absolute;
+            transform: translate(-50%, -50%);
+            color: #fff;
+            font-size: 1.4rem;
+            font-style: italic;
+            cursor: grab;
+            z-index: 10;
+            text-shadow: 0 0 4px #000;
+            padding: 10px;
+            transition: color 0.2s, transform 0.1s;
+        }
+
+        .handle:active {
+            cursor: grabbing;
+            color: #ffd700;
+            z-index: 100;
+            /* 拖拽时置顶 */
+        }
+
+        /* 辅助对齐点 */
+        .handle::after {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 4px;
+            height: 4px;
+            background: currentColor;
+            border-radius: 50%;
+            transform: translate(-50%, -50%);
+            opacity: 0.6;
+            pointer-events: none;
+        }
+
+        /* UI 控制层 */
+        .ui-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            padding: 20px;
+            pointer-events: none;
+            text-align: center;
+            color: white;
+            z-index: 20;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .equation {
+            font-size: 1.8rem;
+            text-shadow: 0 2px 4px rgba(0, 0, 0, 0.9);
+            min-height: 2.5rem;
+            /* 防止高度跳动 */
+        }
+
+        .equation i {
+            font-family: 'Noto Serif', serif;
+            font-style: italic;
+        }
+
+        .controls {
+            background: rgba(0, 0, 0, 0.6);
+            padding: 10px 20px;
+            border-radius: 20px;
+            pointer-events: auto;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            backdrop-filter: blur(5px);
+        }
+
+        .controls label {
+            font-size: 0.9rem;
+            color: #ccc;
+        }
+
+        input[type=range] {
+            cursor: pointer;
+            width: 150px;
+        }
+
+        .guide {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            color: rgba(255, 255, 255, 0.4);
+            font-size: 0.8rem;
+            text-align: right;
+            pointer-events: none;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="ui-layer">
+        <div class="controls">
+            <label for="degree-slider">多项式次数 (Degree): <span id="degree-val">2</span></label>
+            <input type="range" id="degree-slider" min="1" max="10" value="2" step="1">
+        </div>
+        <div class="equation" id="equation-display"></div>
+    </div>
+
+    <div class="guide">
+        靠近坐标轴可自动吸附<br>
+        Range: [-2, 2]
+    </div>
+
+    <div id="handles-container"></div>
+    <canvas id="glCanvas"></canvas>
+
+    <script id="vertex-shader" type="x-shader/x-vertex">
+        attribute vec2 a_position;
+        void main() {
+            gl_Position = vec4(a_position, 0.0, 1.0);
+        }
+    </script>
+
+    <script id="fragment-shader" type="x-shader/x-fragment">
+        precision highp float;
+
+        uniform vec2 u_resolution;
+        uniform int u_degree;
+        // 支持最高10次多项式，即11个系数
+        uniform vec2 u_coeffs[11]; 
+
+        #define PI 3.14159265359
+
+        // 复数乘法: (a+bi)(c+di)
+        vec2 complexMul(vec2 v1, vec2 v2) {
+            return vec2(v1.x * v2.x - v1.y * v2.y, v1.x * v2.y + v1.y * v2.x);
+        }
+
+        vec3 hsv2rgb(vec3 c) {
+            vec4 K = vec4(1.0, 2.0 / 3.0, 1.0 / 3.0, 3.0);
+            vec3 p = abs(fract(c.xxx + K.xyz) * 6.0 - K.www);
+            return c.z * mix(K.xxx, clamp(p - K.xxx, 0.0, 1.0), c.y);
+        }
+
+        void main() {
+            float aspect = u_resolution.x / u_resolution.y;
+            float zoom = 4.0;
+            vec2 st = (gl_FragCoord.xy - u_resolution.xy * 0.5) / min(u_resolution.x, u_resolution.y) * zoom;
+            vec2 z = vec2(st.x, -st.y);
+
+            // --- 秦九韶算法 (Horner's Method) ---
+            // P(z) = (...((c_n * z + c_{n-1}) * z + c_{n-2}) * z + ... ) * z + c_0
+            
+            vec2 w = vec2(0.0, 0.0);
+            
+            // GLSL loops 必须有常量边界，我们循环最大值，然后在内部判断
+            for (int i = 10; i >= 0; i--) {
+                if (i <= u_degree) {
+                    if (i == u_degree) {
+                        // 最高次项系数直接赋值 (避免乘以z前的0)
+                        w = u_coeffs[i];
+                    } else {
+                        w = complexMul(w, z) + u_coeffs[i];
+                    }
+                }
+            }
+
+            // --- 域着色 ---
+            float r = length(w);
+            float theta = atan(w.y, w.x);
+            
+            float hue = theta / (2.0 * PI) + 0.5;
+            float val = 1.0 / (1.0 + 0.4 * log(r + 1.0) * r); 
+            val = clamp(val, 0.05, 1.0);
+            float sat = 0.8;
+            
+            vec3 color = hsv2rgb(vec3(hue, sat, val));
+
+            // --- 网格与坐标轴 ---
+            float pixelSize = zoom / min(u_resolution.x, u_resolution.y);
+            float lineThickness = 1.5 * pixelSize;
+
+            vec2 gridDist = abs(fract(z + 0.5) - 0.5);
+            float gridLine = min(gridDist.x, gridDist.y);
+            float gridIntensity = 1.0 - smoothstep(0.0, lineThickness, gridLine);
+            
+            vec2 axisDist = abs(z);
+            float axisLine = min(axisDist.x, axisDist.y);
+            float axisIntensity = 1.0 - smoothstep(0.0, lineThickness, axisLine);
+
+            // 吸附反馈：如果点z接近某个系数的位置，可以画个小圈? (可选，这里暂时只画基本网格)
+            color = mix(color, vec3(1.0), gridIntensity * 0.1);
+            color = mix(color, vec3(1.0), axisIntensity * 0.5);
+
+            gl_FragColor = vec4(color, 1.0);
+        }
+    </script>
+
+    <script>
+        const canvas = document.getElementById("glCanvas");
+        const gl = canvas.getContext("webgl");
+        const container = document.getElementById("handles-container");
+        const degreeSlider = document.getElementById("degree-slider");
+        const degreeValDisplay = document.getElementById("degree-val");
+
+        // --- Shader Init ---
+        function createShader(gl, type, source) {
+            const shader = gl.createShader(type);
+            gl.shaderSource(shader, source);
+            gl.compileShader(shader);
+            if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+                console.error(gl.getShaderInfoLog(shader)); return null;
+            }
+            return shader;
+        }
+
+        const program = gl.createProgram();
+        gl.attachShader(program, createShader(gl, gl.VERTEX_SHADER, document.getElementById("vertex-shader").text));
+        gl.attachShader(program, createShader(gl, gl.FRAGMENT_SHADER, document.getElementById("fragment-shader").text));
+        gl.linkProgram(program);
+        gl.useProgram(program);
+
+        const buffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, -1, 1, 1, -1, 1, 1]), gl.STATIC_DRAW);
+        const posLoc = gl.getAttribLocation(program, "a_position");
+        gl.enableVertexAttribArray(posLoc);
+        gl.vertexAttribPointer(posLoc, 2, gl.FLOAT, false, 0, 0);
+
+        // --- Uniform Locations ---
+        const locs = {
+            res: gl.getUniformLocation(program, "u_resolution"),
+            degree: gl.getUniformLocation(program, "u_degree"),
+            coeffs: gl.getUniformLocation(program, "u_coeffs") // 数组的第一个位置
+        };
+
+        // --- State Management ---
+        let degree = 2;
+        // 存储系数 (最多11个，对应10次多项式)
+        // 索引 i 对应 z^i 的系数
+        let coefficients = [];
+
+        // 生成系数名称映射 (2次用a,b,c，高次用c_n)
+        function getCoeffLabel(index, totalDegree) {
+            // a z^2 + b z + c (index 2 is a, 1 is b, 0 is c)
+            const map = 'abcdefghijklmnopqrstuvwxy';
+            const charIndex = totalDegree - index;
+            return map[index] || `c<sub>${index}</sub>`;
+        }
+
+        // 初始化系数数组
+        function initCoeffs(newDegree) {
+            // 保留旧系数的值，如果维度增加则添加默认值
+            const newCoeffs = [];
+            for (let i = 0; i <= newDegree; i++) {
+                if (coefficients[i]) {
+                    newCoeffs[i] = coefficients[i];
+                } else {
+                    // 默认布局：最高次项系数为1，常数项为-1，其余为0 (形成单位根分布)
+                    if (i === newDegree) newCoeffs[i] = { r: 1, i: 0 };
+                    else if (i === 0) newCoeffs[i] = { r: -1, i: 0 };
+                    else newCoeffs[i] = { r: 0, i: 0 };
+                }
+            }
+            coefficients = newCoeffs;
+            degree = newDegree;
+            renderHandles();
+            updateEquation();
+            requestAnimationFrame(render);
+        }
+
+        // 创建 DOM Handles
+        function renderHandles() {
+            container.innerHTML = '';
+            for (let i = degree; i >= 0; i--) { // 从最高次开始渲染
+                const div = document.createElement('div');
+                div.className = 'handle';
+                div.innerHTML = getCoeffLabel(i, degree);
+                div.dataset.index = i;
+
+                // 设置初始位置
+                const pos = complexToScreen(coefficients[i].r, coefficients[i].i);
+                div.style.left = pos.x + 'px';
+                div.style.top = pos.y + 'px';
+
+                // 绑定事件
+                div.addEventListener('mousedown', e => handleStart(e, i));
+                div.addEventListener('touchstart', e => handleStart(e, i), { passive: false });
+
+                container.appendChild(div);
+            }
+        }
+
+        // --- Math Helpers ---
+        function complexToScreen(r, i) {
+            const minDim = Math.min(canvas.width, canvas.height);
+            const x = (r * minDim / 4.0) + canvas.width / 2;
+            const y = canvas.height / 2 - (i * minDim / 4.0);
+            return { x, y };
+        }
+
+        function screenToComplex(sx, sy) {
+            const minDim = Math.min(canvas.width, canvas.height);
+            const r = (sx - canvas.width / 2) / minDim * 4.0;
+            const i = -(sy - canvas.height / 2) / minDim * 4.0;
+            return { r, i };
+        }
+
+        // Lazy 格式化复数
+        function formatComplexLazy(r, i, isLeading) {
+            const epsilon = 0.005; // 视为0的阈值
+
+            // 绝对零处理
+            if (Math.abs(r) < epsilon && Math.abs(i) < epsilon) return null; // 完全消失
+
+            let str = "";
+            let showR = Math.abs(r) >= epsilon;
+            let showI = Math.abs(i) >= epsilon;
+
+            // 实部
+            if (showR) {
+                let rStr = Math.abs(r).toFixed(2).replace(/\.00$/, ''); // 去掉 .00
+                if (r < 0) str += isLeading ? "-" : " - ";
+                str += rStr;
+            }
+
+            // 虚部
+            if (showI) {
+                let iStr = Math.abs(i).toFixed(2).replace(/\.00$/, '');
+                // 1i 显示为 i
+                if (iStr === "1") iStr = "";
+
+                if (i < 0) str += (showR || !isLeading) ? " - " : "-";
+                else str += (showR || !isLeading) ? " + " : ""; // 首项正虚部不需要+
+
+                str += iStr + "i";
+            }
+
+            // 括号处理：如果同时有实部和虚部，且不是单独展示，加括号？
+            // 简化逻辑：系数通常需要括号保护，除非它是纯实数或纯虚数且为正
+            let text = str.trim();
+            if (!text) return "0";
+
+            // 如果生成的字符串包含加减号（复合复数），加括号
+            if (showR && showI) return `(${text})`;
+            return text;
+        }
+
+        function updateEquation() {
+            const eqDiv = document.getElementById('equation-display');
+            let html = "<i>f(z)</i> = ";
+            let terms = [];
+
+            for (let i = degree; i >= 0; i--) {
+                const c = coefficients[i];
+                // 格式化系数
+                let coeffStr = formatComplexLazy(c.r, c.i, terms.length === 0);
+
+                if (!coeffStr) continue; // 系数为0，跳过该项
+
+                // 优化：如果是 1 或 -1 (且有 z 项)，省略数字
+                if (i > 0) {
+                    if (coeffStr === "1") coeffStr = "";
+                    if (coeffStr === "-1") coeffStr = "-";
+                    // 如果带括号 (1+i)，则保留
+                }
+
+                // 拼接 z^n
+                let term = coeffStr;
+                if (i === 1) term += "<i>z</i>";
+                else if (i > 1) term += `<i>z</i><sup>${i}</sup>`;
+
+                // 处理项之间的连接符
+                if (terms.length > 0 && !term.startsWith("-") && !term.startsWith(" +") && !term.startsWith(" -")) {
+                    term = " + " + term;
+                } else if (term.startsWith("-") && terms.length > 0) {
+                    term = " - " + term.substring(1);
+                }
+
+                terms.push(term);
+            }
+
+            if (terms.length === 0) html += "0";
+            else html += terms.join("");
+
+            eqDiv.innerHTML = html;
+        }
+
+        // --- Interaction & Snapping ---
+        let dragTargetIndex = null;
+        const SNAP_THRESHOLD = 0.15; // 吸附半径
+
+        function handleStart(e, index) {
+            dragTargetIndex = index;
+            e.preventDefault();
+        }
+
+        function handleMove(e) {
+            if (dragTargetIndex === null) return;
+
+            const cx = e.clientX || e.touches[0].clientX;
+            const cy = e.clientY || e.touches[0].clientY;
+
+            let c = screenToComplex(cx, cy);
+
+            // --- Snapping Logic (吸附) ---
+            let snapped = false;
+
+            // 1. 吸附原点
+            if (Math.abs(c.r) < SNAP_THRESHOLD && Math.abs(c.i) < SNAP_THRESHOLD) {
+                c.r = 0; c.i = 0;
+                snapped = true;
+            } else {
+                // 2. 吸附虚轴 (Re = 0)
+                if (Math.abs(c.r) < SNAP_THRESHOLD) {
+                    c.r = 0; snapped = true;
+                }
+                // 3. 吸附实轴 (Im = 0)
+                if (Math.abs(c.i) < SNAP_THRESHOLD) {
+                    c.i = 0; snapped = true;
+                }
+            }
+
+            // 震动反馈
+            if (snapped && navigator.vibrate) {
+                // 简单的防抖，防止连续震动
+                // navigator.vibrate(5); 
+            }
+
+            // 更新数据
+            coefficients[dragTargetIndex].r = c.r;
+            coefficients[dragTargetIndex].i = c.i;
+
+            // 更新 DOM
+            const el = container.querySelector(`div[data-index="${dragTargetIndex}"]`);
+            const screenPos = complexToScreen(c.r, c.i);
+            el.style.left = screenPos.x + 'px';
+            el.style.top = screenPos.y + 'px';
+
+            updateEquation();
+            requestAnimationFrame(render);
+        }
+
+        function handleEnd() {
+            dragTargetIndex = null;
+        }
+
+        // --- Render Loop ---
+        function render() {
+            if (canvas.width !== window.innerWidth || canvas.height !== window.innerHeight) {
+                canvas.width = window.innerWidth;
+                canvas.height = window.innerHeight;
+                gl.viewport(0, 0, canvas.width, canvas.height);
+                renderHandles(); // 重绘手柄位置
+            }
+
+            gl.uniform2f(locs.res, canvas.width, canvas.height);
+            gl.uniform1i(locs.degree, degree);
+
+            // 构建扁平化数组传递给 uniform
+            // WebGL uniform1fv 或 uniform2fv 需要 Float32Array
+            let flatCoeffs = [];
+            // 必须填满 11 个 vec2 (22个float)，即使 degree < 10
+            for (let i = 0; i < 11; i++) {
+                if (i <= degree) {
+                    flatCoeffs.push(coefficients[i].r, coefficients[i].i);
+                } else {
+                    flatCoeffs.push(0, 0);
+                }
+            }
+            gl.uniform2fv(locs.coeffs, new Float32Array(flatCoeffs));
+
+            gl.drawArrays(gl.TRIANGLES, 0, 6);
+        }
+
+        // Listeners
+        window.addEventListener('mousemove', handleMove);
+        window.addEventListener('touchmove', handleMove, { passive: false });
+        window.addEventListener('mouseup', handleEnd);
+        window.addEventListener('touchend', handleEnd);
+
+        degreeSlider.addEventListener('input', (e) => {
+            const val = parseInt(e.target.value);
+            degreeValDisplay.innerText = val;
+            initCoeffs(val);
+        });
+
+        // Start
+        initCoeffs(2); // 默认二次
+
+    </script>
+</body>
+
+</html>
