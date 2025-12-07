@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="zh-CN">
 
 <head>
     <meta charset="UTF-8">
@@ -7,458 +7,630 @@
     <meta name="description"
         content="Maple-Kaede的个人数字游乐场 🍁 这里集合了各种有趣的小实验：把文字变成图片、和好友在线下棋、生成会唱歌的图片、探索数学分形的奥秘... 用浏览器技术实现各种异想天开的创意，欢迎来玩！">
     <meta name="keywords"
-        content="个人兴趣项目, 网页小实验, 浏览器黑科技, 在线五子棋, 文字转图片工具, 数学艺术可视化, 音频图片转换, 创意编程, 极客小玩具, 数字游乐场, 网页互动游戏, 代码小玩意, 新奇网页应用, 好友联机游戏, 浏览器声波画板">
-
+        content="个人兴趣项目, 网页小实验, 浏览器黑科技, 在线五子棋, 文字转图片工具, 数学艺术可视化, 音频图片转换, 创意编程, 极客小玩具, 数字游乐场">
     <title>Maple Kaede's Playground</title>
+    
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&display=swap" rel="stylesheet">
+
     <style>
-        /* Reset default styles */
+        :root {
+            --bg-color: #0f0f11;
+            --sidebar-bg: #16161a;
+            --card-bg: #1c1c21;
+            --text-main: #ffffff;
+            --text-secondary: #a0a0b0;
+            --accent-color: #7c4dff;
+            --accent-hover: #9e75ff;
+            --border-color: #2a2a35;
+            --card-hover-shadow: rgba(124, 77, 255, 0.15);
+        }
+
         * {
             margin: 0;
             padding: 0;
             box-sizing: border-box;
-            font-family: Roboto, sans-serif;
+            font-family: 'Inter', system-ui, -apple-system, sans-serif;
+            scroll-behavior: smooth;
         }
 
         body {
-            font-family: 'Arial', sans-serif;
-            background-color: #121212;
-            /* Dark background */
-            color: #e0e0e0;
-            /* Light text color */
+            background-color: var(--bg-color);
+            color: var(--text-main);
             display: flex;
-            justify-content: center;
-            align-items: center;
-            flex-direction: column;
-            padding: 20px;
             min-height: 100vh;
         }
 
-        h1 {
-            text-align: center;
-            margin-bottom: 40px;
-            font-size: 2.5em;
-            color: #ffffff;
-        }
-
-        p {
-            text-align: center;
-            color: #bbbbbb;
-            margin-bottom: 40px;
-        }
-
-        .container {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-            gap: 20px;
-            max-width: 1200px;
+        /* Layout */
+        .app-layout {
+            display: flex;
             width: 100%;
+            max-width: 1600px;
+            margin: 0 auto;
         }
 
+        /* Sidebar Navigation */
+        .sidebar {
+            width: 260px;
+            background-color: var(--sidebar-bg);
+            padding: 40px 20px;
+            position: sticky;
+            top: 0;
+            height: 100vh;
+            border-right: 1px solid var(--border-color);
+            display: flex;
+            flex-direction: column;
+            flex-shrink: 0;
+            z-index: 100;
+        }
+
+        .logo {
+            font-size: 1.5rem;
+            font-weight: 800;
+            margin-bottom: 40px;
+            background: linear-gradient(45deg, #fff, #a0a0a0);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            letter-spacing: -0.5px;
+        }
+
+        .nav-links {
+            list-style: none;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .nav-links a {
+            text-decoration: none;
+            color: var(--text-secondary);
+            font-size: 0.95rem;
+            padding: 12px 16px;
+            border-radius: 8px;
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            font-weight: 500;
+        }
+
+        .nav-links a:hover, .nav-links a.active {
+            background-color: rgba(124, 77, 255, 0.1);
+            color: var(--accent-color);
+        }
+
+        .nav-icon {
+            margin-right: 10px;
+        }
+
+        /* Main Content */
+        .main-content {
+            flex: 1;
+            padding: 40px 60px;
+            overflow-x: hidden;
+        }
+
+        header {
+            margin-bottom: 60px;
+            max-width: 800px;
+        }
+
+        h1 {
+            font-size: 3rem;
+            font-weight: 800;
+            margin-bottom: 15px;
+            line-height: 1.1;
+        }
+
+        h1 span {
+            color: var(--accent-color);
+        }
+
+        .intro {
+            color: var(--text-secondary);
+            font-size: 1.1rem;
+            line-height: 1.6;
+            max-width: 600px;
+        }
+
+        /* Category Sections */
+        .category-section {
+            margin-bottom: 80px;
+            scroll-margin-top: 40px;
+        }
+
+        .category-header {
+            display: flex;
+            align-items: center;
+            margin-bottom: 30px;
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 15px;
+        }
+
+        .category-title {
+            font-size: 1.8rem;
+            font-weight: 600;
+            color: var(--text-main);
+        }
+
+        /* Grid System */
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 25px;
+        }
+
+        /* Card Design */
         .card {
-            background-color: #1e1e1e;
-            /* Dark card background */
-            border-radius: 12px;
-            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
-            /* Subtle shadow */
+            background-color: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 16px;
             overflow: hidden;
-            transition: transform 0.3s ease, box-shadow 0.3s ease;
+            transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.3s ease, border-color 0.3s ease;
+            display: flex;
+            flex-direction: column;
+            position: relative;
         }
 
         .card:hover {
-            transform: scale(1.05);
-            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4);
-            /* Hover shadow */
+            transform: translateY(-5px);
+            box-shadow: 0 10px 30px -10px var(--card-hover-shadow);
+            border-color: var(--accent-color);
+        }
+
+        .card-img-wrapper {
+            position: relative;
+            width: 100%;
+            padding-top: 56.25%; /* 16:9 Aspect Ratio */
+            overflow: hidden;
+            background-color: #000;
         }
 
         .card img {
+            position: absolute;
+            top: 0;
+            left: 0;
             width: 100%;
-            height: 200px;
+            height: 100%;
             object-fit: cover;
+            transition: transform 0.5s ease;
+            opacity: 0.8;
+        }
+
+        .card:hover img {
+            transform: scale(1.05);
+            opacity: 1;
         }
 
         .card-content {
             padding: 20px;
+            flex: 1;
+            display: flex;
+            flex-direction: column;
         }
 
         .card-title {
-            font-size: 1.6em;
-            color: #ffffff;
-            font-weight: 400;
-            text-align: center;
-            /* Light title color */
+            font-size: 1.2rem;
+            font-weight: 600;
             margin-bottom: 10px;
+            color: #fff;
         }
 
         .card-description {
-            color: #bbbbbb;
-            /* Light description text */
-            font-size: 1em;
-            line-height: 1.4;
+            font-size: 0.9rem;
+            color: var(--text-secondary);
+            line-height: 1.5;
+            margin-bottom: 20px;
+            flex-grow: 1; /* Push button to bottom */
         }
 
-        /* Material Design-like button */
         .card-button {
-            display: inline-block;
-            padding: 10px 20px;
-            background-color: #6200ea;
-            /* Vibrant purple */
-            color: white;
-            font-weight: bold;
+            display: block;
+            width: 100%;
+            padding: 10px 0;
             text-align: center;
+            background-color: rgba(255, 255, 255, 0.05);
+            color: var(--text-main);
             text-decoration: none;
             border-radius: 8px;
-            margin-top: 20px;
-            transition: background-color 0.3s ease, transform 0.2s ease;
+            font-weight: 500;
+            font-size: 0.9rem;
+            transition: all 0.2s ease;
         }
 
         .card-button:hover {
-            background-color: #3700b3;
-            /* Darker purple on hover */
-            transform: translateY(-2px);
-            /* Button hover effect */
+            background-color: var(--accent-color);
+            color: #fff;
+        }
+
+        /* Mobile Responsive */
+        @media (max-width: 900px) {
+            .app-layout {
+                flex-direction: column;
+            }
+
+            .sidebar {
+                width: 100%;
+                height: auto;
+                position: relative;
+                padding: 20px;
+                border-bottom: 1px solid var(--border-color);
+                border-right: none;
+            }
+
+            .nav-links {
+                flex-direction: row;
+                flex-wrap: wrap;
+                justify-content: center;
+            }
+
+            .logo {
+                text-align: center;
+                margin-bottom: 20px;
+            }
+
+            .main-content {
+                padding: 30px 20px;
+            }
+
+            h1 {
+                font-size: 2.2rem;
+                text-align: center;
+            }
+
+            .intro {
+                text-align: center;
+                margin: 0 auto;
+            }
+        }
+        
+        @media (max-width: 480px) {
+             .nav-links {
+                display: grid;
+                grid-template-columns: 1fr 1fr;
+            }
+            .nav-links a {
+                justify-content: center;
+                font-size: 0.8rem;
+            }
         }
     </style>
 </head>
 
 <body>
-    <h1>Maple Kaede的Web游乐场</h1>
-    <p>在这里，你可以探索由Maple Kaede创建的各种实验项目。</p>
 
+    <div class="app-layout">
+        <!-- Sidebar Navigation -->
+        <nav class="sidebar">
+            <div class="logo">Maple Kaede 🍁</div>
+            <ul class="nav-links">
+                <li><a href="#audio">🔊 音频与信号</a></li>
+                <li><a href="#visuals">🎨 视觉与数学</a></li>
+                <li><a href="#tools">🛠️ 极客工具</a></li>
+                <li><a href="#games">🎮 游戏与交互</a></li>
+            </ul>
+        </nav>
 
-    <div class="container">
-        <!-- Experiment Cards -->
-         <div class="card">
-            <img src="img/polynomial-vis.jpg" alt="多项式可视化工具">
-            <div class="card-content">
-                <h2 class="card-title">多项式可视化工具</h2>
-                <p class="card-description">一个可视化多项式在复平面上行为的可视化工具。</p>
-                <a href="polynomial-vis.html" class="card-button">试试吧</a>
-            </div>
-         </div>
-         <div class="card">
-            <img src="img/pinyin.jpg" alt="拼音输入法">
-            <div class="card-content">
-                <h2 class="card-title">拼音输入法</h2>
-                <p class="card-description">一个基于Trie树结构的拼音输入法。</p>
-                <a href="pinyin.html" class="card-button">试试吧</a>
-            </div>
-         </div>
-         <div class="card">
-            <img src="img/chtest.jpg" alt="声道测试器">
-            <div class="card-content">
-                <h2 class="card-title">声道测试器</h2>
-                <p class="card-description">一个简单的音频测试工具，用于测试浏览器的声道输出。</p>
-                <a href="chtest.html" class="card-button">试试吧</a>
-            </div>
-         </div>
-         <div class="card">
-            <img src="img/stringcraft.jpg" alt="StringCraft">
-            <div class="card-content">
-                <h2 class="card-title">StringCraft</h2>
-                <p class="card-description">一个基于Karplus-Strong算法的合成器，模拟拨弦乐器的声音，支持多种音色和效果。</p>
-                <a href="stringcraft.html" class="card-button">试试吧</a>
-            </div>
-        </div>
-        <div class="card">
-            <img src="img/infinite-player.jpg" alt="无限循环播放器">
-            <div class="card-content">
-                <h2 class="card-title">无限循环播放器</h2>
-                <p class="card-description">一个简单的音频播放器，支持读取ogg文件的循环信息，自动循环播放音频。</p>
-                <a href="infinite-player.html" class="card-button">试试吧</a>
-            </div>
-        </div>
-        <div class="card">
-            <img src="img/fax-recv.jpg" alt="传真接收器">
-            <div class="card-content">
-                <h2 class="card-title">传真接收器</h2>
-                <p class="card-description">通过音频信号接收传真图像，可用于接收短波传真。</p>
-                <a href="fax-recv.html" class="card-button">试试吧</a>
-            </div>
-        </div>
-        <div class="card">
-            <img src="img/color-analyzer.jpg" alt="颜色分析器">
-            <div class="card-content">
-                <h2 class="card-title">颜色分析器</h2>
-                <p class="card-description">分析图片的YUV颜色空间，展示不同颜色的分布和变化。</p>
-                <a href="color-analyzer.html" class="card-button">试试吧</a>
-            </div>
-        </div>
+        <!-- Main Content Area -->
+        <main class="main-content">
+            <header>
+                <h1>Welcome to <br><span>The Playground</span></h1>
+                <p class="intro">这里是 Maple Kaede 的数字实验室。探索浏览器技术的边界，从声波处理到分形艺术，每一行代码都是一次新的实验。</p>
+            </header>
 
-         <div class="card">
-            <img src="img/polar-clock.jpg" alt="极地时钟">
-            <div class="card-content">
-                <h2 class="card-title">极地时钟</h2>
-                <p class="card-description">一个基于极坐标的时钟，展示时间的流逝。</p>
-                <a href="polar-clock.html" class="card-button">试试吧</a>
-            </div>
-         </div>
-        <div class="card">
-            <img src="img/gift.jpg" alt="emoji雨">
-            <div class="card-content">
-                <h2 class="card-title">emoji雨</h2>
-                <p class="card-description">在浏览器中体验emoji雨的乐趣。</p>
-                <a href="gift.html" class="card-button">试试吧</a>
-            </div>
-        </div>
+            <!-- 1. 音频与信号处理 -->
+            <section id="audio" class="category-section">
+                <div class="category-header">
+                    <h2 class="category-title">🔊 音频与信号处理</h2>
+                </div>
+                <div class="grid">
+                    <div class="card">
+                        <div class="card-img-wrapper"><img src="img/stringcraft.jpg" alt="StringCraft"></div>
+                        <div class="card-content">
+                            <h3 class="card-title">StringCraft</h3>
+                            <p class="card-description">基于 Karplus-Strong 算法的物理建模合成器，模拟真实的拨弦声音。</p>
+                            <a href="stringcraft.html" class="card-button">试试吧</a>
+                        </div>
+                    </div>
+                    <div class="card">
+                        <div class="card-img-wrapper"><img src="img/fsk.jpg" alt="音频Modem"></div>
+                        <div class="card-content">
+                            <h3 class="card-title">音频 Modem</h3>
+                            <p class="card-description">复古回潮！通过 FSK/PSK 音频信号在两台设备间传输二进制数据。</p>
+                            <a href="fsk.html" class="card-button">试试吧</a>
+                        </div>
+                    </div>
+                    <div class="card">
+                        <div class="card-img-wrapper"><img src="img/speaker.jpg" alt="Sinc波形播放器"></div> <!-- 假设这里应该有个图，用通用名代替 -->
+                        <div class="card-content">
+                            <h3 class="card-title">Sinc 波形播放器</h3>
+                            <p class="card-description">探索 DSP 的基石，生成并控制理想的 Sinc 函数波形。</p>
+                            <a href="sinc-player.html" class="card-button">试试吧</a>
+                        </div>
+                    </div>
+                    <div class="card">
+                        <div class="card-img-wrapper"><img src="img/fax-recv.jpg" alt="传真接收器"></div>
+                        <div class="card-content">
+                            <h3 class="card-title">传真接收器</h3>
+                            <p class="card-description">通过麦克风接收音频信号并解码为图像，模拟短波传真体验。</p>
+                            <a href="fax-recv.html" class="card-button">试试吧</a>
+                        </div>
+                    </div>
+                     <div class="card">
+                        <div class="card-img-wrapper"><img src="img/sstv.jpg" alt="SSTV生成器"></div>
+                        <div class="card-content">
+                            <h3 class="card-title">SSTV 编码器</h3>
+                            <p class="card-description">生成慢扫描电视信号，让图片通过无线电波传输。</p>
+                            <a href="sstv-encoder.html" class="card-button">试试吧</a>
+                        </div>
+                    </div>
+                     <div class="card">
+                        <div class="card-img-wrapper"><img src="img/picopiano.jpg" alt="迷你钢琴"></div>
+                        <div class="card-content">
+                            <h3 class="card-title">迷你钢琴</h3>
+                            <p class="card-description">轻量级网页合成器，测试音调与和弦组合。</p>
+                            <a href="picopiano.html" class="card-button">试试吧</a>
+                        </div>
+                    </div>
+                    <div class="card">
+                        <div class="card-img-wrapper"><img src="img/visualizer.jpg" alt="音频可视化"></div>
+                        <div class="card-content">
+                            <h3 class="card-title">音频可视化 FFT</h3>
+                            <p class="card-description">实时频谱分析，看见声音的形状。</p>
+                            <a href="visualizer2.html" class="card-button">试试吧</a>
+                        </div>
+                    </div>
+                    <div class="card">
+                        <div class="card-img-wrapper"><img src="img/ultrasonic.jpg" alt="超声波收发器"></div>
+                        <div class="card-content">
+                            <h3 class="card-title">超声波收发器</h3>
+                            <p class="card-description">利用高频单边带 (SSB) 技术进行近场静默通信实验。</p>
+                            <a href="ultrasonic-transceiver.html" class="card-button">试试吧</a>
+                        </div>
+                    </div>
+                     <div class="card">
+                        <div class="card-img-wrapper"><img src="img/infinite-player.jpg" alt="无限循环播放器"></div>
+                        <div class="card-content">
+                            <h3 class="card-title">无缝循环播放器</h3>
+                            <p class="card-description">读取 OGG 循环点元数据，实现游戏背景音乐般的完美无缝循环。</p>
+                            <a href="infinite-player.html" class="card-button">试试吧</a>
+                        </div>
+                    </div>
+                     <div class="card">
+                        <div class="card-img-wrapper"><img src="img/image-tape.jpg" alt="音频图片录音带"></div>
+                        <div class="card-content">
+                            <h3 class="card-title">音频显像带</h3>
+                            <p class="card-description">将音频编码进图片像素中，看图即听声。</p>
+                            <a href="image-tape.html" class="card-button">试试吧</a>
+                        </div>
+                    </div>
+                     <div class="card">
+                        <div class="card-img-wrapper"><img src="img/qfp.jpg" alt="QFP音频压缩"></div>
+                        <div class="card-content">
+                            <h3 class="card-title">JS 音频压缩器</h3>
+                            <p class="card-description">从零手写音频编码器，探索有损压缩的核心原理。</p>
+                            <a href="qfp.html" class="card-button">试试吧</a>
+                        </div>
+                    </div>
+                     <div class="card">
+                        <div class="card-img-wrapper"><img src="img/chtest.jpg" alt="声道测试器"></div>
+                        <div class="card-content">
+                            <h3 class="card-title">声道测试器</h3>
+                            <p class="card-description">立体声与环绕声输出测试工具。</p>
+                            <a href="chtest.html" class="card-button">试试吧</a>
+                        </div>
+                    </div>
+                     <div class="card">
+                        <div class="card-img-wrapper"><img src="img/vido.jpg" alt="原道耳机测试"></div>
+                        <div class="card-content">
+                            <h3 class="card-title">原道模拟器</h3>
+                            <p class="card-description">通过冲激响应卷积（IR）模拟特定耳机的听感。</p>
+                            <a href="vido.html" class="card-button">试试吧</a>
+                        </div>
+                    </div>
+                </div>
+            </section>
 
-        <div class="card">
-            <img src="img/motion-meas.jpg" alt="运动路线记录器">
-            <div class="card-content">
-                <h2 class="card-title">运动路线记录器</h2>
-                <p class="card-description">记录运动路线，展示运动轨迹。</p>
-                <a href="motion-meas.html" class="card-button">试试吧</a>
-            </div>
-        </div>
+            <!-- 2. 视觉与数学艺术 -->
+            <section id="visuals" class="category-section">
+                <div class="category-header">
+                    <h2 class="category-title">🎨 视觉与数学艺术</h2>
+                </div>
+                <div class="grid">
+                    <div class="card">
+                        <div class="card-img-wrapper"><img src="img/polynomial-vis.jpg" alt="多项式可视化"></div>
+                        <div class="card-content">
+                            <h3 class="card-title">多项式可视化</h3>
+                            <p class="card-description">复变函数在复平面上的色彩映射，探索数学之美。</p>
+                            <a href="polynomial-vis.html" class="card-button">试试吧</a>
+                        </div>
+                    </div>
+                    <div class="card">
+                        <div class="card-img-wrapper"><img src="img/mandel.jpg" alt="Mandelbrot集"></div>
+                        <div class="card-content">
+                            <h3 class="card-title">Mandelbrot 深探</h3>
+                            <p class="card-description">使用微扰算法和双线性近似，在浏览器中高效渲染无限分形。</p>
+                            <a href="mandel-pt.html" class="card-button">试试吧</a>
+                        </div>
+                    </div>
+                     <div class="card">
+                        <div class="card-img-wrapper"><img src="img/color-analyzer.jpg" alt="颜色分析器"></div>
+                        <div class="card-content">
+                            <h3 class="card-title">YUV 颜色分析</h3>
+                            <p class="card-description">解构图片的亮度和色度分布，可视化图像数据。</p>
+                            <a href="color-analyzer.html" class="card-button">试试吧</a>
+                        </div>
+                    </div>
+                    <div class="card">
+                        <div class="card-img-wrapper"><img src="img/polar-clock.jpg" alt="极地时钟"></div>
+                        <div class="card-content">
+                            <h3 class="card-title">极地时钟</h3>
+                            <p class="card-description">基于极坐标系的动态时间展示。</p>
+                            <a href="polar-clock.html" class="card-button">试试吧</a>
+                        </div>
+                    </div>
+                     <div class="card">
+                        <div class="card-img-wrapper"><img src="img/lanczous.jpg" alt="Lanczos插值"></div>
+                        <div class="card-content">
+                            <h3 class="card-title">Lanczos 插值实验</h3>
+                            <p class="card-description">图像重采样算法的交互式演示。</p>
+                            <a href="lanczos.html" class="card-button">试试吧</a>
+                        </div>
+                    </div>
+                     <div class="card">
+                        <div class="card-img-wrapper"><img src="img/progressive-dct.jpg" alt="渐进式DCT"></div>
+                        <div class="card-content">
+                            <h3 class="card-title">渐进式 JPEG 模拟</h3>
+                            <p class="card-description">可视化 DCT 系数传输过程，看图片如何从模糊变清晰。</p>
+                            <a href="progressive-dct.html" class="card-button">试试吧</a>
+                        </div>
+                    </div>
+                </div>
+            </section>
 
-        <div class="card">
-            <img src="img/progressive-dct.jpg" alt="渐进式DCT">
-            <div class="card-content">
-                <h2 class="card-title">渐进式DCT</h2>
-                <p class="card-description">通过渐进式传输DCT系数，逐步重建图像，实现低带宽下的图像传输和预览。</p>
-                <a href="progressive-dct.html" class="card-button">试试吧</a>
-            </div>
-        </div>
+            <!-- 3. 极客工具箱 -->
+            <section id="tools" class="category-section">
+                <div class="category-header">
+                    <h2 class="category-title">🛠️ 极客工具箱</h2>
+                </div>
+                <div class="grid">
+                    <div class="card">
+                        <div class="card-img-wrapper"><img src="img/pinyin.jpg" alt="拼音输入法"></div>
+                        <div class="card-content">
+                            <h3 class="card-title">Trie 树输入法</h3>
+                            <p class="card-description">纯前端实现的拼音输入法引擎，基于 Trie 树结构。</p>
+                            <a href="pinyin.html" class="card-button">试试吧</a>
+                        </div>
+                    </div>
+                    <div class="card">
+                        <div class="card-img-wrapper"><img src="img/md2img.jpg" alt="Markdown转图片"></div>
+                        <div class="card-content">
+                            <h3 class="card-title">MD 转长图</h3>
+                            <p class="card-description">将 Markdown 文本渲染为精美的长图片，适合社交分享。</p>
+                            <a href="md2img.html" class="card-button">试试吧</a>
+                        </div>
+                    </div>
+                     <div class="card">
+                        <div class="card-img-wrapper"><img src="img/fp-eval.jpg" alt="浮点数解析"></div>
+                        <div class="card-content">
+                            <h3 class="card-title">IEEE 754 解剖器</h3>
+                            <p class="card-description">位级编辑双精度浮点数，直观理解符号位、指数和尾数。</p>
+                            <a href="fp-eval.html" class="card-button">试试吧</a>
+                        </div>
+                    </div>
+                    <div class="card">
+                        <div class="card-img-wrapper"><img src="img/unicode.jpg" alt="Unicode分析器"></div>
+                        <div class="card-content">
+                            <h3 class="card-title">Unicode 分析器</h3>
+                            <p class="card-description">查看字符的编码详情，支持拖拽和十六进制分析。</p>
+                            <a href="unicode-analyzer.html" class="card-button">试试吧</a>
+                        </div>
+                    </div>
+                    <div class="card">
+                        <div class="card-img-wrapper"><img src="img/digit-compressor.jpg" alt="数字压缩器"></div>
+                        <div class="card-content">
+                            <h3 class="card-title">Base58 压缩</h3>
+                            <p class="card-description">将长数字序列压缩为短字符串，URL 友好的编码方案。</p>
+                            <a href="digit-compressor.html" class="card-button">试试吧</a>
+                        </div>
+                    </div>
+                     <div class="card">
+                        <div class="card-img-wrapper"><img src="img/openai.jpg" alt="OpenAI预设"></div>
+                        <div class="card-content">
+                            <h3 class="card-title">LLM 参数调优</h3>
+                            <p class="card-description">OpenAI 接口参数的可视化配置与测试工具。</p>
+                            <a href="openai-llm.html" class="card-button">试试吧</a>
+                        </div>
+                    </div>
+                    <div class="card">
+                        <div class="card-img-wrapper"><img src="img/googology.jpg" alt="大数格式化"></div>
+                        <div class="card-content">
+                            <h3 class="card-title">Illion 大数展示</h3>
+                            <p class="card-description">Googology 风格的大数字格式化工具。</p>
+                            <a href="googology.html" class="card-button">试试吧</a>
+                        </div>
+                    </div>
+                </div>
+            </section>
 
-        <div class="card">
-            <img src="img/fsk.jpg" alt="音频modem">
-            <div class="card-content">
-                <h2 class="card-title">音频modem</h2>
-                <p class="card-description">基于音频信号的调制解调技术，支持 FSK、PSK 等多种调制方式，实现浏览器之间的二进制数据传输。</p>
-                <a href="fsk.html" class="card-button">试试吧</a>
-            </div>
-        </div>
+            <!-- 4. 游戏与交互 -->
+            <section id="games" class="category-section">
+                <div class="category-header">
+                    <h2 class="category-title">🎮 游戏与交互</h2>
+                </div>
+                <div class="grid">
+                    <div class="card">
+                        <div class="card-img-wrapper"><img src="img/p2p-gomoku.jpg" alt="P2P五子棋"></div>
+                        <div class="card-content">
+                            <h3 class="card-title">P2P 五子棋</h3>
+                            <p class="card-description">基于 WebRTC 的无服务器联机对战，纯点对点连接。</p>
+                            <a href="p2p-gomoku.html" class="card-button">试试吧</a>
+                        </div>
+                    </div>
+                    <div class="card">
+                        <div class="card-img-wrapper"><img src="img/wavesim.jpg" alt="赛博水池"></div>
+                        <div class="card-content">
+                            <h3 class="card-title">赛博水池</h3>
+                            <p class="card-description">交互式流体波动模拟，体验干涉与衍射的物理特性。</p>
+                            <a href="wavesim.html" class="card-button">试试吧</a>
+                        </div>
+                    </div>
+                    <div class="card">
+                        <div class="card-img-wrapper"><img src="img/gol.png" alt="生命游戏"></div>
+                        <div class="card-content">
+                            <h3 class="card-title">康威生命游戏</h3>
+                            <p class="card-description">经典的元胞自动机模拟，观察复杂生命的涌现。</p>
+                            <a href="gol.html" class="card-button">试试吧</a>
+                        </div>
+                    </div>
+                    <div class="card">
+                        <div class="card-img-wrapper"><img src="img/gift.jpg" alt="Emoji雨"></div>
+                        <div class="card-content">
+                            <h3 class="card-title">Emoji 物理雨</h3>
+                            <p class="card-description">让表情包像雨点一样落下并碰撞。</p>
+                            <a href="gift.html" class="card-button">试试吧</a>
+                        </div>
+                    </div>
+                    <div class="card">
+                        <div class="card-img-wrapper"><img src="img/mouse-test.jpg" alt="鼠标刷新率"></div>
+                        <div class="card-content">
+                            <h3 class="card-title">鼠标回报率测试</h3>
+                            <p class="card-description">硬核玩家必备，检测鼠标 Polling Rate。</p>
+                            <a href="mouse-test.html" class="card-button">试试吧</a>
+                        </div>
+                    </div>
+                    <div class="card">
+                        <div class="card-img-wrapper"><img src="img/motion-meas.jpg" alt="运动轨迹"></div>
+                        <div class="card-content">
+                            <h3 class="card-title">运动轨迹记录</h3>
+                            <p class="card-description">利用传感器记录并绘制运动路径。</p>
+                            <a href="motion-meas.html" class="card-button">试试吧</a>
+                        </div>
+                    </div>
+                     <div class="card">
+                        <div class="card-img-wrapper"><img src="img/binary-voice.jpg" alt="二进制语音"></div>
+                        <div class="card-content">
+                            <h3 class="card-title">二进制语音波形</h3>
+                            <p class="card-description">将文本隐藏在波形符号中，一种独特的视觉加密艺术。</p>
+                            <a href="binary-voice.html" class="card-button">试试吧</a>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
 
-
-        <div class="card">
-            <img src="img/md2img.jpg" alt="Markdown转图片">
-            <div class="card-content">
-                <h2 class="card-title">Markdown转图片</h2>
-                <p class="card-description">将Markdown文本转换为图片，采用现代化的风格，支持各种markdown特性。</p>
-                <a href="md2img.html" class="card-button">试试吧</a>
-            </div>
-        </div>
-
-
-        <div class="card">
-            <img src="img/p2p-gomoku.jpg" alt="P2P五子棋">
-            <div class="card-content">
-                <h2 class="card-title">P2P五子棋</h2>
-                <p class="card-description">使用WebRTC技术实现的P2P五子棋游戏，支持在线对战，无需服务器，实现点对点的实时通信。</p>
-                <a href="p2p-gomoku.html" class="card-button">试试吧</a>
-            </div>
-        </div>
-
-        <div class="card">
-            <img src="img/wavesim.jpg" alt="赛博水池">
-            <div class="card-content">
-                <h2 class="card-title">赛博水池</h2>
-                <p class="card-description">来玩赛博水池吧！这是一个超酷的互动玩具，让你用手指创造水波，观察波动、干涉和反射的奇妙效果。</p>
-                <a href="wavesim.html" class="card-button">试试吧</a>
-            </div>
-        </div>
-
-        <div class="card">
-            <img src="img/gol.png" alt="生命游戏">
-            <div class="card-content">
-                <h2 class="card-title">生命游戏</h2>
-                <p class="card-description">探索细胞自动机的奇妙世界，通过简单的规则模拟生命的演化过程，体验无限可能的模式与结构。</p>
-                <a href="gol.html" class="card-button">试试吧</a>
-            </div>
-        </div>
-
-        <div class="card">
-            <img src="img/digit-compressor.jpg" alt="数字压缩器">
-            <div class="card-content">
-                <h2 class="card-title">数字压缩器</h2>
-                <p class="card-description">使用Base58编码算法，将数字数据压缩为更短的字符串，适用于数字数据作为URL参数的压缩和传输。</p>
-                <a href="digit-compressor.html" class="card-button">试试吧</a>
-            </div>
-        </div>
-
-        <div class="card">
-            <img src="img/googology.jpg" alt="illion数字格式化器">
-            <div class="card-content">
-                <h2 class="card-title">illion数字格式化器</h2>
-                <p class="card-description">将大数字转换为illion格式，作为风格化大数显示格式。</p>
-                <a href="googology.html" class="card-button">试试吧</a>
-
-            </div>
-        </div>
-
-        <div class="card">
-            <img src="img/image-tape.jpg" alt="音频图片录音带">
-            <div class="card-content">
-                <h2 class="card-title">音频图片录音带</h2>
-                <p class="card-description">将音频数据录制到图片中，实现图片即音频的效果。接收者只需解码图片即可还原音频。</p>
-                <a href="image-tape.html" class="card-button">试试吧</a>
-            </div>
-        </div>
-
-        <div class="card">
-            <img src="img/mandel.jpg" alt="Mandelbrot集示例">
-            <div class="card-content">
-                <h2 class="card-title">Mandelbrot集示例</h2>
-                <p class="card-description">通过扰动方法（Perturbation）和双线性近似（Bilinear
-                    Approximation）技术高效计算Mandelbrot集合，探索分形的无限可能。</p>
-                <a href="mandel-pt.html" class="card-button">试试吧</a>
-            </div>
-        </div>
-
-        <div class="card">
-            <img src="img/sstv.jpg" alt="SSTV生成器">
-            <div class="card-content">
-                <h2 class="card-title">SSTV生成器</h2>
-                <p class="card-description">通过简单直观的界面生成并传输慢扫描电视（SSTV）图像，适合用于音频图像传输实验。</p>
-                <a href="sstv-encoder.html" class="card-button">试试吧</a>
-            </div>
-        </div>
-
-        <div class="card">
-            <img src="img/qfp.jpg" alt="QFP音频压缩实验">
-            <div class="card-content">
-                <h2 class="card-title">QFP音频压缩实验</h2>
-                <p class="card-description">使用JavaScript自制音频编码器，探索音频数据压缩的原理与实现过程，感受音频压缩技术的核心思想。</p>
-                <a href="qfp.html" class="card-button">试试吧</a>
-            </div>
-        </div>
-
-        <div class="card">
-            <img src="img/openai.jpg" alt="OpenAI预设编辑器">
-            <div class="card-content">
-                <h2 class="card-title">OpenAI预设编辑器</h2>
-                <p class="card-description">使用图形化编辑器配置 OpenAI 模型，提供直观的操作界面，优化模型性能和个性化设置。</p>
-                <a href="openai-llm.html" class="card-button">试试吧</a>
-            </div>
-        </div>
-
-        <div class="card">
-            <img src="img/speaker.jpg" alt="Sinc 波形播放器">
-            <div class="card-content">
-                <h2 class="card-title">Sinc 波形播放器</h2>
-                <p class="card-description">通过调整频率、间隔频率与上变频频率，播放不同的 Sinc 波形，进行不同频段的音频信号生成与实验。</p>
-                <a href="sinc-player.html" class="card-button">试试吧</a>
-            </div>
-        </div>
-
-        <!-- <div class="card">
-            <img src="img/image5.jpg" alt="振荡器测试">
-            <div class="card-content">
-                <h2 class="card-title">振荡器测试</h2>
-                <p class="card-description">Test the retro-style audio oscillator with glowing knobs and waveforms.</p>
-                <a href="#" class="card-button">Try It</a>
-            </div>
-        </div> -->
-
-        <div class="card">
-            <img src="img/picopiano.jpg" alt="迷你钢琴">
-            <div class="card-content">
-                <h2 class="card-title">迷你钢琴</h2>
-                <p class="card-description">使用小型合成器测试钢琴的调式，探索不同音调与和弦的组合，感受音乐的奇妙变化。</p>
-                <a href="picopiano.html" class="card-button">试试吧</a>
-            </div>
-        </div>
-
-        <div class="card">
-            <img src="img/fp-eval.jpg" alt="浮点数解析">
-            <div class="card-content">
-                <h2 class="card-title">浮点数解析</h2>
-                <p class="card-description">自由编辑FP64的二进制表示，直观展示并调整浮点数的结构和精度细节，探索浮点数的内部运作。</p>
-                <a href="fp-eval.html" class="card-button">试试吧</a>
-            </div>
-        </div>
-
-        <div class="card">
-            <img src="img/mouse-test.jpg" alt="鼠标刷新率测试">
-            <div class="card-content">
-                <h2 class="card-title">鼠标刷新率测试</h2>
-                <p class="card-description">测试鼠标的刷新率（Polling Rate），直观显示鼠标每秒发送的数据更新频率。</p>
-                <a href="mouse-test.html" class="card-button">试试吧</a>
-            </div>
-        </div>
-
-        <!-- <div class="card">
-            <img src="img/image7.jpg" alt="字幕转换器">
-            <div class="card-content">
-                <h2 class="card-title">字幕转换器</h2>
-                <p class="card-description">Convert subtitles with a sleek and user-friendly digital editor.</p>
-                <a href="#" class="card-button">Try It</a>
-            </div>
-        </div> -->
-
-        <div class="card">
-            <img src="img/ultrasonic.jpg" alt="超声波收发器">
-            <div class="card-content">
-                <h2 class="card-title">超声波收发器</h2>
-                <p class="card-description">利用调制高频声波，通过单边带（SSB）技术实现声音传输，探索高频音频通信的可能性。</p>
-                <a href="ultrasonic-transceiver.html" class="card-button">试试吧</a>
-            </div>
-        </div>
-
-        <div class="card">
-            <img src="img/unicode.jpg" alt="Unicode分析器">
-            <div class="card-content">
-                <h2 class="card-title">Unicode分析器</h2>
-                <p class="card-description">展示和解析Unicode字符串，显示每个字符的对应Hex值，并支持拖动编辑，探索字符编码的奥秘。</p>
-                <a href="unicode-analyzer.html" class="card-button">试试吧</a>
-            </div>
-        </div>
-
-        <div class="card">
-            <img src="img/vido.jpg" alt="原道耳机在线测试">
-            <div class="card-content">
-                <h2 class="card-title">原道耳机在线测试</h2>
-                <p class="card-description">通过冲激响应测试，评估原道耳机的音质表现，帮助你判断是否值得购买。</p>
-                <a href="vido.html" class="card-button">试试吧</a>
-            </div>
-        </div>
-
-        <div class="card">
-            <img src="img/visualizer.jpg" alt="音频可视化">
-            <div class="card-content">
-                <h2 class="card-title">音频可视化</h2>
-                <p class="card-description">通过简单的 FFT 技术实时显示音频波形，直观感受音频信号的频谱特性。</p>
-                <a href="visualizer2.html" class="card-button">试试吧</a>
-            </div>
-        </div>
-
-        <div class="card">
-            <img src="img/binary-voice.jpg" alt="二进制语音波形">
-            <div class="card-content">
-                <h2 class="card-title">二进制语音波形</h2>
-                <p class="card-description">通过将文本信息隐藏在波形符号中，创造出独特的视觉效果。符号代表二进制位，解码后即可恢复原始文本信息。</p>
-                <a href="binary-voice.html" class="card-button">试试吧</a>
-            </div>
-        </div>
-
-        <!-- <div class="card">
-            <img src="img/image1.jpg" alt="合成示例">
-            <div class="card-content">
-                <h2 class="card-title">合成示例</h2>
-                <p class="card-description">Explore the futuristic digital synthesizer with glowing buttons and sliders,
-                    creating vibrant soundscapes.</p>
-                <a href="#" class="card-button">Try It</a>
-            </div>
-        </div>
-
-        <div class="card">
-            <img src="img/image2.jpg" alt="FPS测试">
-            <div class="card-content">
-                <h2 class="card-title">FPS测试</h2>
-                <p class="card-description">Test the FPS gameplay in a high-tech world with a futuristic HUD and intense
-                    action.</p>
-                <a href="#" class="card-button">Try It</a>
-            </div>
-        </div> -->
-
-        <div class="card">
-            <img src="img/lanczous.jpg" alt="Lanczos算法">
-            <div class="card-content">
-                <h2 class="card-title">Lanczos算法</h2>
-                <p class="card-description">测试1D Lanczos插值的效果，展示不同样本大小和核大小下的插值结果。</p>
-                <a href="lanczos.html" class="card-button">试试吧</a>
-            </div>
-        </div>
-
+    <script>
+        // 简单的交互：点击导航时高亮当前项（也可以添加滚动监听）
+        const navLinks = document.querySelectorAll('.nav-links a');
+        
+        navLinks.forEach(link => {
+            link.addEventListener('click', function() {
+                navLinks.forEach(nav => nav.classList.remove('active'));
+                this.classList.add('active');
+            });
+        });
+    </script>
 </body>
-
 </html>
