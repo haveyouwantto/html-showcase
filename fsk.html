@@ -485,6 +485,10 @@
                             <canvas class="oscilloscope" id="freqCanvas"></canvas>
                             <label id="freqLabel"></label>
                         </div>
+                        <div class="info-container">
+                            <canvas class="oscilloscope" id="snrCanvas"></canvas>
+                            <label id="snrLabel"></label>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -2461,6 +2465,9 @@
                 super()
                 this.lastBit = 0;
                 this.debug = []
+                this.snrArray = new Float32Array(4096);
+                this.snrArray.fill(1);
+                this.arrayIndex = 0;
             }
             setBaudRate(baudRate) {
                 this.baudRate = baudRate;
@@ -2501,6 +2508,33 @@
                     gainWaves.addData(Math.log10(event.data.gain) * 20)
                     offsetWaves.addData(event.data.offset)
                     freqWaves.addData(-event.data.freq / Math.PI * baudRate / 2)
+
+                    let decidecI = event.data.i > 0 ? 1 : 0;
+                    let decidecQ = 0;
+
+                    let error = Math.abs(decidecI - event.data.i) + Math.abs(decidecQ - event.data.q);
+
+                    // Calculate SNR
+                    let signalPower = 1;
+                    let noisePower = error;
+                    let snr = signalPower / noisePower;
+
+                    // Add to snr array
+                    this.snrArray[this.arrayIndex] = snr;
+                    this.arrayIndex++;
+                    if (this.arrayIndex >= this.baudRate) this.arrayIndex = 0;
+
+                    // Calculate average snr
+                    let snrSum = 0;
+                    for (let i = 0; i < this.baudRate; i++) {
+                        snrSum += this.snrArray[i];
+                    }
+                    let snrAverage = snrSum / this.baudRate;
+
+                    // Convert to dB
+                    snrAverage = Math.log10(snrAverage) * 20;
+
+                    snrWaves.addData(Math.min(snrAverage, 120))
                 }
             }
 
@@ -3480,6 +3514,7 @@
                 gainWaves.draw()
                 offsetWaves.draw()
                 freqWaves.draw()
+                snrWaves.draw()
 
                 drawHandle = requestAnimationFrame(draw);
             }
@@ -3973,10 +4008,6 @@
             return value;
         }
 
-
-
-
-
         const gainWaves = new Oscilloscope(
             document.getElementById('gainCanvas'), document.getElementById('gainLabel'), 500, 2);
         gainWaves.precision = 1;
@@ -3994,6 +4025,12 @@
         freqWaves.precision = 3;
         freqWaves.title = 'Frequency'
         freqWaves.unit = 'Hz'
+        const snrWaves = new Oscilloscope(
+            document.getElementById('snrCanvas'), document.getElementById('snrLabel'), 500, 3);
+        snrWaves.precision = 2;
+        snrWaves.title = 'SNR'
+        snrWaves.unit = 'dB'
+        snrWaves.markers = [10, 20, 30, 40, -10];
     </script>
 </body>
 
