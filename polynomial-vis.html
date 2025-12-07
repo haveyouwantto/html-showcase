@@ -124,6 +124,24 @@
             font-size: 0.8rem;
             text-align: right;
             pointer-events: none;
+            line-height: 1.5;
+        }
+
+        /* 新增：左下角数值解显示 */
+        .roots-display {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            color: rgba(255, 255, 255, 0.4);
+            font-size: 0.8rem;
+            text-align: left;
+            pointer-events: none;
+            line-height: 1.4;
+            max-height: 40vh;
+            overflow: hidden;
+        }
+        .roots-display span {
+            display: block;
         }
     </style>
 </head>
@@ -138,8 +156,13 @@
         <div class="equation" id="equation-display"></div>
     </div>
 
+    <!-- 左下角数值解 -->
+    <div class="roots-display" id="roots-container">
+        Roots loading...
+    </div>
+
     <div class="guide">
-        靠近坐标轴可自动吸附<br>
+        靠近坐标轴/整数/其他点可自动吸附<br>
         Range: [-2, 2]
     </div>
 
@@ -220,7 +243,6 @@
             float axisLine = min(axisDist.x, axisDist.y);
             float axisIntensity = 1.0 - smoothstep(0.0, lineThickness, axisLine);
 
-            // 吸附反馈：如果点z接近某个系数的位置，可以画个小圈? (可选，这里暂时只画基本网格)
             color = mix(color, vec3(1.0), gridIntensity * 0.1);
             color = mix(color, vec3(1.0), axisIntensity * 0.5);
 
@@ -234,6 +256,7 @@
         const container = document.getElementById("handles-container");
         const degreeSlider = document.getElementById("degree-slider");
         const degreeValDisplay = document.getElementById("degree-val");
+        const rootsContainer = document.getElementById("roots-container");
 
         // --- Shader Init ---
         function createShader(gl, type, source) {
@@ -263,32 +286,25 @@
         const locs = {
             res: gl.getUniformLocation(program, "u_resolution"),
             degree: gl.getUniformLocation(program, "u_degree"),
-            coeffs: gl.getUniformLocation(program, "u_coeffs") // 数组的第一个位置
+            coeffs: gl.getUniformLocation(program, "u_coeffs")
         };
 
         // --- State Management ---
         let degree = 2;
-        // 存储系数 (最多11个，对应10次多项式)
-        // 索引 i 对应 z^i 的系数
         let coefficients = [];
 
-        // 生成系数名称映射 (2次用a,b,c，高次用c_n)
         function getCoeffLabel(index, totalDegree) {
-            // a z^2 + b z + c (index 2 is a, 1 is b, 0 is c)
             const map = 'abcdefghijklmnopqrstuvwxy';
             const charIndex = totalDegree - index;
             return map[charIndex] || `c<sub>${index}</sub>`;
         }
 
-        // 初始化系数数组
         function initCoeffs(newDegree) {
-            // 保留旧系数的值，如果维度增加则添加默认值
             const newCoeffs = [];
             for (let i = 0; i <= newDegree; i++) {
                 if (coefficients[i]) {
                     newCoeffs[i] = coefficients[i];
                 } else {
-                    // 默认布局：最高次项系数为1，常数项为-1，其余为0 (形成单位根分布)
                     if (i === newDegree) newCoeffs[i] = { r: 1, i: 0 };
                     else if (i === 0) newCoeffs[i] = { r: -1, i: 0 };
                     else newCoeffs[i] = { r: 0, i: 0 };
@@ -301,21 +317,18 @@
             requestAnimationFrame(render);
         }
 
-        // 创建 DOM Handles
         function renderHandles() {
             container.innerHTML = '';
-            for (let i = degree; i >= 0; i--) { // 从最高次开始渲染
+            for (let i = degree; i >= 0; i--) {
                 const div = document.createElement('div');
                 div.className = 'handle';
                 div.innerHTML = getCoeffLabel(i, degree);
                 div.dataset.index = i;
 
-                // 设置初始位置
                 const pos = complexToScreen(coefficients[i].r, coefficients[i].i);
                 div.style.left = pos.x + 'px';
                 div.style.top = pos.y + 'px';
 
-                // 绑定事件
                 div.addEventListener('mousedown', e => handleStart(e, i));
                 div.addEventListener('touchstart', e => handleStart(e, i), { passive: false });
 
@@ -323,7 +336,7 @@
             }
         }
 
-        // --- Math Helpers ---
+        // --- Math Helpers (Basic) ---
         function complexToScreen(r, i) {
             const minDim = Math.min(canvas.width, canvas.height);
             const x = (r * minDim / 4.0) + canvas.width / 2;
@@ -338,44 +351,125 @@
             return { r, i };
         }
 
-        // Lazy 格式化复数
-        function formatComplexLazy(r, i, isLeading) {
-            const epsilon = 0.005; // 视为0的阈值
+        // --- Complex Math for Solver ---
+        const C = {
+            add: (a, b) => ({ r: a.r + b.r, i: a.i + b.i }),
+            sub: (a, b) => ({ r: a.r - b.r, i: a.i - b.i }),
+            mul: (a, b) => ({ r: a.r * b.r - a.i * b.i, i: a.r * b.i + a.i * b.r }),
+            div: (a, b) => {
+                const denom = b.r * b.r + b.i * b.i;
+                return { r: (a.r * b.r + a.i * b.i) / denom, i: (a.i * b.r - a.r * b.i) / denom };
+            },
+            mag: (a) => Math.sqrt(a.r * a.r + a.i * a.i)
+        };
 
-            // 绝对零处理
-            if (Math.abs(r) < epsilon && Math.abs(i) < epsilon) return null; // 完全消失
+        // --- Polynomial Solver (Durand-Kerner Method) ---
+        function solvePolynomial() {
+            // 找到实际的最高次项（避免首项系数为0导致除零）
+            let effDegree = degree;
+            while (effDegree > 0 && C.mag(coefficients[effDegree]) < 1e-6) {
+                effDegree--;
+            }
+
+            if (effDegree < 1) return []; // 常数没有根
+
+            // 归一化系数 (a_n = 1)
+            let normCoeffs = [];
+            let lead = coefficients[effDegree];
+            for (let i = 0; i < effDegree; i++) {
+                normCoeffs[i] = C.div(coefficients[i], lead);
+            }
+
+            // 初始猜测 (Roots of Unity)
+            let roots = [];
+            let radius = 0.4 + Math.random() * 0.5;
+            for (let i = 0; i < effDegree; i++) {
+                let theta = (Math.PI * 2 * i) / effDegree + 0.1; // Offset to avoid symmetry
+                roots.push({ r: radius * Math.cos(theta), i: radius * Math.sin(theta) });
+            }
+
+            // 迭代 (Durand-Kerner)
+            const iterations = 25;
+            for (let iter = 0; iter < iterations; iter++) {
+                for (let i = 0; i < effDegree; i++) {
+                    // Evaluate P(z) at current root guess
+                    let pVal = { r: 1, i: 0 }; // Lead coeff is 1 now
+                    // Horner's method for normalized poly: z^n + a_{n-1}z^{n-1} ...
+                    let val = { r: 0, i: 0 };
+                    // P(z) = z^n + sum( a_k * z^k )
+                    // Calculate P(z) directly using normalized coeffs
+                    let term = { r: 1, i: 0 }; // z^n term coeff is 1
+                    
+                    // Simple evaluation: sum c_k * z^k
+                    let sum = { r: 0, i: 0 };
+                    let zPow = { r: 1, i: 0 }; // z^0
+                    
+                    for(let k=0; k<=effDegree; k++) {
+                        let c = (k === effDegree) ? {r:1, i:0} : normCoeffs[k];
+                        sum = C.add(sum, C.mul(c, zPow));
+                        zPow = C.mul(zPow, roots[i]);
+                    }
+                    
+                    // Product (z - z_j)
+                    let product = { r: 1, i: 0 };
+                    for (let j = 0; j < effDegree; j++) {
+                        if (i !== j) {
+                            product = C.mul(product, C.sub(roots[i], roots[j]));
+                        }
+                    }
+
+                    if (C.mag(product) > 1e-9) {
+                        let correction = C.div(sum, product);
+                        roots[i] = C.sub(roots[i], correction);
+                    }
+                }
+            }
+            
+            // 排序根 (实部优先，虚部次之) 以稳定显示
+            roots.sort((a, b) => a.r - b.r || a.i - b.i);
+            return roots;
+        }
+
+        // --- Formatting ---
+        function formatComplexLazy(r, i, isLeading) {
+            const epsilon = 0.005; 
+            if (Math.abs(r) < epsilon && Math.abs(i) < epsilon) return null;
 
             let str = "";
             let showR = Math.abs(r) >= epsilon;
             let showI = Math.abs(i) >= epsilon;
 
-            // 实部
             if (showR) {
-                let rStr = Math.abs(r).toFixed(2).replace(/\.00$/, ''); // 去掉 .00
+                let rStr = Math.abs(r).toFixed(2).replace(/\.00$/, '');
                 if (r < 0) str += isLeading ? "-" : " - ";
                 str += rStr;
             }
 
-            // 虚部
             if (showI) {
                 let iStr = Math.abs(i).toFixed(2).replace(/\.00$/, '');
-                // 1i 显示为 i
                 if (iStr === "1") iStr = "";
-
                 if (i < 0) str += (showR || !isLeading) ? " - " : "-";
-                else str += (showR || !isLeading) ? " + " : ""; // 首项正虚部不需要+
-
+                else str += (showR || !isLeading) ? " + " : "";
                 str += iStr + "i";
             }
 
-            // 括号处理：如果同时有实部和虚部，且不是单独展示，加括号？
-            // 简化逻辑：系数通常需要括号保护，除非它是纯实数或纯虚数且为正
             let text = str.trim();
             if (!text) return "0";
-
-            // 如果生成的字符串包含加减号（复合复数），加括号
             if (showR && showI) return `(${text})`;
             return text;
+        }
+
+        function formatRoot(c, index) {
+            const epsilon = 0.001;
+            let r = Math.abs(c.r) < epsilon ? 0 : c.r;
+            let i = Math.abs(c.i) < epsilon ? 0 : c.i;
+            
+            let s = `z<sub>${index+1}</sub> = `;
+            s += r.toFixed(3);
+            console.log(i)
+            if (i > 0) s += " + " + i.toFixed(3) + "i";
+            else if (i < 0) s += " - " + Math.abs(i).toFixed(3) + "i";
+            return s;
         }
 
         function updateEquation() {
@@ -385,24 +479,19 @@
 
             for (let i = degree; i >= 0; i--) {
                 const c = coefficients[i];
-                // 格式化系数
                 let coeffStr = formatComplexLazy(c.r, c.i, terms.length === 0);
 
-                if (!coeffStr) continue; // 系数为0，跳过该项
+                if (!coeffStr) continue;
 
-                // 优化：如果是 1 或 -1 (且有 z 项)，省略数字
                 if (i > 0) {
                     if (coeffStr === "1") coeffStr = "";
                     if (coeffStr === "-1") coeffStr = "-";
-                    // 如果带括号 (1+i)，则保留
                 }
 
-                // 拼接 z^n
                 let term = coeffStr;
                 if (i === 1) term += "<i>z</i>";
                 else if (i > 1) term += `<i>z</i><sup>${i}</sup>`;
 
-                // 处理项之间的连接符
                 if (terms.length > 0 && !term.startsWith("-") && !term.startsWith(" +") && !term.startsWith(" -")) {
                     term = " + " + term;
                 } else if (term.startsWith("-") && terms.length > 0) {
@@ -416,11 +505,20 @@
             else html += terms.join("");
 
             eqDiv.innerHTML = html;
+
+            // Update Roots
+            const roots = solvePolynomial();
+            if (roots.length === 0) {
+                rootsContainer.innerHTML = "No roots (Constant)";
+            } else {
+                rootsContainer.innerHTML = roots.map((r, idx) => `<span>${formatRoot(r, idx)}</span>`).join("");
+            }
         }
 
         // --- Interaction & Snapping ---
         let dragTargetIndex = null;
-        const SNAP_THRESHOLD = 0.15; // 吸附半径
+        // 缩小吸附半径
+        const SNAP_THRESHOLD = 0.08; 
 
         function handleStart(e, index) {
             dragTargetIndex = index;
@@ -430,33 +528,57 @@
         function handleMove(e) {
             if (dragTargetIndex === null) return;
 
-            const cx = e.clientX || e.touches[0].clientX;
-            const cy = e.clientY || e.touches[0].clientY;
+            let clientX = e.clientX || e.touches[0].clientX;
+            let clientY = e.clientY || e.touches[0].clientY;
 
-            let c = screenToComplex(cx, cy);
+            // 1. 限制字母不能拖动出屏幕 (保留一点边距)
+            const padding = 20;
+            clientX = Math.max(padding, Math.min(window.innerWidth - padding, clientX));
+            clientY = Math.max(padding, Math.min(window.innerHeight - padding, clientY));
 
-            // --- Snapping Logic (吸附) ---
+            let c = screenToComplex(clientX, clientY);
+
+            // --- Snapping Logic (增强版) ---
             let snapped = false;
 
-            // 1. 吸附原点
-            if (Math.abs(c.r) < SNAP_THRESHOLD && Math.abs(c.i) < SNAP_THRESHOLD) {
-                c.r = 0; c.i = 0;
-                snapped = true;
-            } else {
-                // 2. 吸附虚轴 (Re = 0)
-                if (Math.abs(c.r) < SNAP_THRESHOLD) {
-                    c.r = 0; snapped = true;
-                }
-                // 3. 吸附实轴 (Im = 0)
-                if (Math.abs(c.i) < SNAP_THRESHOLD) {
-                    c.i = 0; snapped = true;
+            // A. 吸附到其他字母 (Peer Snapping)
+            for (let i = 0; i <= degree; i++) {
+                if (i === dragTargetIndex) continue;
+                const other = coefficients[i];
+                const dist = Math.sqrt(Math.pow(c.r - other.r, 2) + Math.pow(c.i - other.i, 2));
+                if (dist < SNAP_THRESHOLD) {
+                    c.r = other.r;
+                    c.i = other.i;
+                    snapped = true;
+                    break;
                 }
             }
 
-            // 震动反馈
-            if (snapped && navigator.vibrate) {
-                // 简单的防抖，防止连续震动
-                // navigator.vibrate(5); 
+            // B. 如果没吸附到字母，尝试吸附整数
+            if (!snapped) {
+                const roundR = Math.round(c.r);
+                const roundI = Math.round(c.i);
+                
+                // 检查实部是否接近整数
+                if (Math.abs(c.r - roundR) < SNAP_THRESHOLD) {
+                    c.r = roundR;
+                    snapped = true;
+                }
+                // 检查虚部是否接近整数
+                if (Math.abs(c.i - roundI) < SNAP_THRESHOLD) {
+                    c.i = roundI;
+                    snapped = true;
+                }
+            }
+
+            // C. 坐标轴吸附 (如果还未完全锁定整数点)
+            if (!snapped) {
+                 if (Math.abs(c.r) < SNAP_THRESHOLD) {
+                    c.r = 0; snapped = true;
+                }
+                if (Math.abs(c.i) < SNAP_THRESHOLD) {
+                    c.i = 0; snapped = true;
+                }
             }
 
             // 更新数据
@@ -483,16 +605,13 @@
                 canvas.width = window.innerWidth;
                 canvas.height = window.innerHeight;
                 gl.viewport(0, 0, canvas.width, canvas.height);
-                renderHandles(); // 重绘手柄位置
+                renderHandles(); 
             }
 
             gl.uniform2f(locs.res, canvas.width, canvas.height);
             gl.uniform1i(locs.degree, degree);
 
-            // 构建扁平化数组传递给 uniform
-            // WebGL uniform1fv 或 uniform2fv 需要 Float32Array
             let flatCoeffs = [];
-            // 必须填满 11 个 vec2 (22个float)，即使 degree < 10
             for (let i = 0; i < 11; i++) {
                 if (i <= degree) {
                     flatCoeffs.push(coefficients[i].r, coefficients[i].i);
@@ -518,7 +637,7 @@
         });
 
         // Start
-        initCoeffs(2); // 默认二次
+        initCoeffs(2); 
 
     </script>
 </body>
