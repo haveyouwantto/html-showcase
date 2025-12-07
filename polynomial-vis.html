@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>复平面高次多项式可视化</title>
+    <title>复平面高次多项式可视化 (迭代版)</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Noto+Serif:ital,wght@0,400;0,700;1,400;1,700&display=swap"
@@ -96,19 +96,30 @@
 
         .controls {
             background: rgba(0, 0, 0, 0.6);
-            padding: 10px 20px;
+            padding: 15px 25px;
             border-radius: 20px;
             pointer-events: auto;
             display: flex;
-            align-items: center;
-            gap: 15px;
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 10px;
             border: 1px solid rgba(255, 255, 255, 0.2);
             backdrop-filter: blur(5px);
+        }
+
+        .control-row {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            width: 100%;
+            justify-content: space-between;
         }
 
         .controls label {
             font-size: 0.9rem;
             color: #ccc;
+            min-width: 160px;
+            text-align: left;
         }
 
         input[type=range] {
@@ -127,7 +138,7 @@
             line-height: 1.5;
         }
 
-        /* 新增：左下角数值解显示 */
+        /* 左下角数值解显示 */
         .roots-display {
             position: absolute;
             bottom: 20px;
@@ -150,8 +161,14 @@
 
     <div class="ui-layer">
         <div class="controls">
-            <label for="degree-slider">多项式次数 (Degree): <span id="degree-val">2</span></label>
-            <input type="range" id="degree-slider" min="1" max="10" value="2" step="1">
+            <div class="control-row">
+                <label for="degree-slider">多项式次数 (Degree): <span id="degree-val">2</span></label>
+                <input type="range" id="degree-slider" min="1" max="10" value="2" step="1">
+            </div>
+            <div class="control-row">
+                <label for="iter-slider">迭代次数 (Iterations): <span id="iter-val">1</span></label>
+                <input type="range" id="iter-slider" min="1" max="30" value="1" step="1">
+            </div>
         </div>
         <div class="equation" id="equation-display"></div>
     </div>
@@ -181,6 +198,7 @@
 
         uniform vec2 u_resolution;
         uniform int u_degree;
+        uniform int u_iterations;
         // 支持最高10次多项式，即11个系数
         uniform vec2 u_coeffs[11]; 
 
@@ -201,37 +219,50 @@
             float aspect = u_resolution.x / u_resolution.y;
             float zoom = 4.0;
             vec2 st = (gl_FragCoord.xy - u_resolution.xy * 0.5) / min(u_resolution.x, u_resolution.y) * zoom;
+            
+            // 初始坐标 z
             vec2 z = vec2(st.x, -st.y);
+            vec2 currentZ = z;
 
-            // --- 秦九韶算法 (Horner's Method) ---
-            // P(z) = (...((c_n * z + c_{n-1}) * z + c_{n-2}) * z + ... ) * z + c_0
-            
-            vec2 w = vec2(0.0, 0.0);
-            
-            // GLSL loops 必须有常量边界，我们循环最大值，然后在内部判断
-            for (int i = 10; i >= 0; i--) {
-                if (i <= u_degree) {
-                    if (i == u_degree) {
-                        // 最高次项系数直接赋值 (避免乘以z前的0)
-                        w = u_coeffs[i];
-                    } else {
-                        w = complexMul(w, z) + u_coeffs[i];
+            // --- 迭代循环 ---
+            // z_{k+1} = P(z_k)
+            // 循环必须是常数次数，我们在内部判断 u_iterations
+            for (int k = 0; k < 50; k++) {
+                if (k >= u_iterations) break;
+
+                // 防止数值爆炸导致 GPU 计算错误，如果模长过大则提前停止 (视为无穷远)
+                if (dot(currentZ, currentZ) > 1.0e8) break;
+
+                // --- 秦九韶算法 (Horner's Method) ---
+                // 计算 w = P(currentZ)
+                vec2 w = vec2(0.0, 0.0);
+                
+                for (int i = 10; i >= 0; i--) {
+                    if (i <= u_degree) {
+                        if (i == u_degree) {
+                            w = u_coeffs[i];
+                        } else {
+                            w = complexMul(w, currentZ) + u_coeffs[i];
+                        }
                     }
                 }
+                currentZ = w;
             }
 
-            // --- 域着色 ---
-            float r = length(w);
-            float theta = atan(w.y, w.x);
+            // --- 域着色 (对最终结果 currentZ 着色) ---
+            float r = length(currentZ);
+            float theta = atan(currentZ.y, currentZ.x);
             
             float hue = theta / (2.0 * PI) + 0.5;
+            // 亮度映射：在 Julia 集外部通常会变成黑色/深色或重复纹理
+            // 这里保持原有的对数映射，可以显示出迭代后的逃逸速度/吸引域纹理
             float val = 1.0 / (1.0 + 0.4 * log(r + 1.0) * r); 
             val = clamp(val, 0.05, 1.0);
             float sat = 0.8;
             
             vec3 color = hsv2rgb(vec3(hue, sat, val));
 
-            // --- 网格与坐标轴 ---
+            // --- 网格与坐标轴 (基于初始坐标 z 绘制，方便定位) ---
             float pixelSize = zoom / min(u_resolution.x, u_resolution.y);
             float lineThickness = 1.5 * pixelSize;
 
@@ -256,6 +287,8 @@
         const container = document.getElementById("handles-container");
         const degreeSlider = document.getElementById("degree-slider");
         const degreeValDisplay = document.getElementById("degree-val");
+        const iterSlider = document.getElementById("iter-slider");
+        const iterValDisplay = document.getElementById("iter-val");
         const rootsContainer = document.getElementById("roots-container");
 
         // --- Shader Init ---
@@ -286,11 +319,13 @@
         const locs = {
             res: gl.getUniformLocation(program, "u_resolution"),
             degree: gl.getUniformLocation(program, "u_degree"),
-            coeffs: gl.getUniformLocation(program, "u_coeffs")
+            coeffs: gl.getUniformLocation(program, "u_coeffs"),
+            iter: gl.getUniformLocation(program, "u_iterations")
         };
 
         // --- State Management ---
         let degree = 2;
+        let iterations = 1;
         let coefficients = [];
 
         function getCoeffLabel(index, totalDegree) {
@@ -365,44 +400,31 @@
 
         // --- Polynomial Solver (Durand-Kerner Method) ---
         function solvePolynomial() {
-            // 找到实际的最高次项（避免首项系数为0导致除零）
             let effDegree = degree;
             while (effDegree > 0 && C.mag(coefficients[effDegree]) < 1e-6) {
                 effDegree--;
             }
 
-            if (effDegree < 1) return []; // 常数没有根
+            if (effDegree < 1) return [];
 
-            // 归一化系数 (a_n = 1)
             let normCoeffs = [];
             let lead = coefficients[effDegree];
             for (let i = 0; i < effDegree; i++) {
                 normCoeffs[i] = C.div(coefficients[i], lead);
             }
 
-            // 初始猜测 (Roots of Unity)
             let roots = [];
             let radius = 0.4 + Math.random() * 0.5;
             for (let i = 0; i < effDegree; i++) {
-                let theta = (Math.PI * 2 * i) / effDegree + 0.1; // Offset to avoid symmetry
+                let theta = (Math.PI * 2 * i) / effDegree + 0.1;
                 roots.push({ r: radius * Math.cos(theta), i: radius * Math.sin(theta) });
             }
 
-            // 迭代 (Durand-Kerner)
             const iterations = 25;
             for (let iter = 0; iter < iterations; iter++) {
                 for (let i = 0; i < effDegree; i++) {
-                    // Evaluate P(z) at current root guess
-                    let pVal = { r: 1, i: 0 }; // Lead coeff is 1 now
-                    // Horner's method for normalized poly: z^n + a_{n-1}z^{n-1} ...
-                    let val = { r: 0, i: 0 };
-                    // P(z) = z^n + sum( a_k * z^k )
-                    // Calculate P(z) directly using normalized coeffs
-                    let term = { r: 1, i: 0 }; // z^n term coeff is 1
-                    
-                    // Simple evaluation: sum c_k * z^k
                     let sum = { r: 0, i: 0 };
-                    let zPow = { r: 1, i: 0 }; // z^0
+                    let zPow = { r: 1, i: 0 };
                     
                     for(let k=0; k<=effDegree; k++) {
                         let c = (k === effDegree) ? {r:1, i:0} : normCoeffs[k];
@@ -410,7 +432,6 @@
                         zPow = C.mul(zPow, roots[i]);
                     }
                     
-                    // Product (z - z_j)
                     let product = { r: 1, i: 0 };
                     for (let j = 0; j < effDegree; j++) {
                         if (i !== j) {
@@ -425,7 +446,6 @@
                 }
             }
             
-            // 排序根 (实部优先，虚部次之) 以稳定显示
             roots.sort((a, b) => a.r - b.r || a.i - b.i);
             return roots;
         }
@@ -466,7 +486,6 @@
             
             let s = `z<sub>${index+1}</sub> = `;
             s += r.toFixed(3);
-            console.log(i)
             if (i > 0) s += " + " + i.toFixed(3) + "i";
             else if (i < 0) s += " - " + Math.abs(i).toFixed(3) + "i";
             return s;
@@ -506,7 +525,6 @@
 
             eqDiv.innerHTML = html;
 
-            // Update Roots
             const roots = solvePolynomial();
             if (roots.length === 0) {
                 rootsContainer.innerHTML = "No roots (Constant)";
@@ -517,7 +535,6 @@
 
         // --- Interaction & Snapping ---
         let dragTargetIndex = null;
-        // 缩小吸附半径
         const SNAP_THRESHOLD = 0.08; 
 
         function handleStart(e, index) {
@@ -531,17 +548,17 @@
             let clientX = e.clientX || e.touches[0].clientX;
             let clientY = e.clientY || e.touches[0].clientY;
 
-            // 1. 限制字母不能拖动出屏幕 (保留一点边距)
+            // 1. 限制字母不能拖动出屏幕
             const padding = 20;
             clientX = Math.max(padding, Math.min(window.innerWidth - padding, clientX));
             clientY = Math.max(padding, Math.min(window.innerHeight - padding, clientY));
 
             let c = screenToComplex(clientX, clientY);
 
-            // --- Snapping Logic (增强版) ---
+            // --- Snapping Logic ---
             let snapped = false;
 
-            // A. 吸附到其他字母 (Peer Snapping)
+            // A. 吸附到其他字母
             for (let i = 0; i <= degree; i++) {
                 if (i === dragTargetIndex) continue;
                 const other = coefficients[i];
@@ -554,24 +571,22 @@
                 }
             }
 
-            // B. 如果没吸附到字母，尝试吸附整数
+            // B. 吸附整数
             if (!snapped) {
                 const roundR = Math.round(c.r);
                 const roundI = Math.round(c.i);
                 
-                // 检查实部是否接近整数
                 if (Math.abs(c.r - roundR) < SNAP_THRESHOLD) {
                     c.r = roundR;
                     snapped = true;
                 }
-                // 检查虚部是否接近整数
                 if (Math.abs(c.i - roundI) < SNAP_THRESHOLD) {
                     c.i = roundI;
                     snapped = true;
                 }
             }
 
-            // C. 坐标轴吸附 (如果还未完全锁定整数点)
+            // C. 坐标轴吸附
             if (!snapped) {
                  if (Math.abs(c.r) < SNAP_THRESHOLD) {
                     c.r = 0; snapped = true;
@@ -581,11 +596,9 @@
                 }
             }
 
-            // 更新数据
             coefficients[dragTargetIndex].r = c.r;
             coefficients[dragTargetIndex].i = c.i;
 
-            // 更新 DOM
             const el = container.querySelector(`div[data-index="${dragTargetIndex}"]`);
             const screenPos = complexToScreen(c.r, c.i);
             el.style.left = screenPos.x + 'px';
@@ -610,6 +623,7 @@
 
             gl.uniform2f(locs.res, canvas.width, canvas.height);
             gl.uniform1i(locs.degree, degree);
+            gl.uniform1i(locs.iter, iterations); // Pass iterations
 
             let flatCoeffs = [];
             for (let i = 0; i < 11; i++) {
@@ -634,6 +648,14 @@
             const val = parseInt(e.target.value);
             degreeValDisplay.innerText = val;
             initCoeffs(val);
+        });
+
+        // 监听迭代次数变化
+        iterSlider.addEventListener('input', (e) => {
+            const val = parseInt(e.target.value);
+            iterValDisplay.innerText = val;
+            iterations = val;
+            requestAnimationFrame(render);
         });
 
         // Start
