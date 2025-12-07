@@ -2967,7 +2967,7 @@
 
             // Getter for `Colors`, converts the raw color data into an array of [r, g, b] tuples
             get colors() {
-                if (!this.data.Colors) return [];
+                if (!this.data.Colors) return defaultPalette;
                 const colorValues = this.data.Colors.split(",").slice(0, -1).map(Number);
                 const rgbArray = [];
                 for (let i = 0; i < colorValues.length; i += 3) {
