@@ -1429,6 +1429,7 @@
             let updateTimer = performance.now();
 
             const binding = gmpinit.binding;
+            console.log(binding)
             const tempVars = {
                 re2: ctx.Float(0), im2: ctx.Float(0), reim: ctx.Float(0),
                 temp1: ctx.Float(0), temp2: ctx.Float(0)
@@ -1450,6 +1451,9 @@
                 binding.mpfr_mul_2ui(mpzim.mpfr_t, tempVars.reim.mpfr_t, 1);
                 binding.mpfr_add(mpzim.mpfr_t, mpzim.mpfr_t, cim.mpfr_t);
 
+                // console.log(1,mpzre.toString(), binding.mpfr_get_exp(mpzre.mpfr_t))
+                // binding.mpfr_set_exp(mpzre.mpfr_t, 0)
+                // console.log(2,mpzre.toString(), binding.mpfr_get_exp(mpzre.mpfr_t))
 
                 z = new Complex(mpzre.toNumber(), mpzim.toNumber());
                 orbit.push(z);
@@ -1475,10 +1479,27 @@
             };
         }
 
-        function MPFR2FloatExp(ctx, num) {
-            let n = num.toNumber();
-            if (Math.abs(n) > 1e-300 && Math.abs(n) < 1e300 && !isNaN(n)) return new FloatExp(n, 0);
-            else return parseFloatExp(num.toString());// Temporary simple conversion
+        function MPFR2FloatExp(ctx, num, binding) {
+            let unscaled = ctx.Float(0);
+            binding.mpfr_set(unscaled.mpfr_t, num.mpfr_t);
+            let exponent = binding.mpfr_get_exp(unscaled.mpfr_t);
+            binding.mpfr_set_exp(unscaled.mpfr_t, 0);
+            let mantissa = unscaled.toNumber();
+
+            if (mantissa === 0) {
+                return FloatExp.ZERO.copy();
+            }
+
+            // 计算以10为底的对数
+            let sign = Math.sign(mantissa);
+            let absMantissa = Math.abs(mantissa);
+            // 计算 log10(absMantissa) + exponent * log10(2)
+            let log10_x = Math.log10(absMantissa) + exponent * FloatExp.LOG10_2;
+
+            let decimalExponent = Math.floor(log10_x);
+            let decimalMantissa = sign * Math.pow(10, log10_x - decimalExponent);
+
+            return new FloatExp(decimalMantissa, decimalExponent);
         }
 
         async function* getReferenceOrbitFEMPFR(C, radius, iterations, precisionBits) {
@@ -1525,7 +1546,7 @@
                 binding.mpfr_mul_2ui(mpzim.mpfr_t, tempVars.reim.mpfr_t, 1);
                 binding.mpfr_add(mpzim.mpfr_t, mpzim.mpfr_t, cim.mpfr_t);
 
-                z = new FloatExpComplex(MPFR2FloatExp(ctx, mpzre), MPFR2FloatExp(ctx, mpzim));
+                z = new FloatExpComplex(MPFR2FloatExp(ctx, mpzre, binding), MPFR2FloatExp(ctx, mpzim, binding));
                 orbit.push(z);
                 if (dzdc.norm().mul(radius).mul(2).compareTo(z.norm()) > 0) {
                     predCenter = z.div(dzdc);
