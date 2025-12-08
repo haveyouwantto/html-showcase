@@ -1479,8 +1479,7 @@
             };
         }
 
-        function MPFR2FloatExp(ctx, num, binding) {
-            let unscaled = ctx.Float(0);
+        function MPFR2FloatExp(ctx, num, binding, unscaled) {
             binding.mpfr_set(unscaled.mpfr_t, num.mpfr_t);
             let exponent = binding.mpfr_get_exp(unscaled.mpfr_t);
             binding.mpfr_set_exp(unscaled.mpfr_t, 0);
@@ -1527,7 +1526,7 @@
             const binding = gmpinit.binding;
             const tempVars = {
                 re2: ctx.Float(0), im2: ctx.Float(0), reim: ctx.Float(0),
-                temp1: ctx.Float(0), temp2: ctx.Float(0)
+                temp1: ctx.Float(0), temp2: ctx.Float(0), buffer: ctx.Float(0)
             };
 
             for (let i = 0; i < iterations; i++) {
@@ -1546,7 +1545,7 @@
                 binding.mpfr_mul_2ui(mpzim.mpfr_t, tempVars.reim.mpfr_t, 1);
                 binding.mpfr_add(mpzim.mpfr_t, mpzim.mpfr_t, cim.mpfr_t);
 
-                z = new FloatExpComplex(MPFR2FloatExp(ctx, mpzre, binding), MPFR2FloatExp(ctx, mpzim, binding));
+                z = new FloatExpComplex(MPFR2FloatExp(ctx, mpzre, binding, tempVars.buffer), MPFR2FloatExp(ctx, mpzim, binding, tempVars.buffer));
                 orbit.push(z);
                 if (dzdc.norm().mul(radius).mul(2).compareTo(z.norm()) > 0) {
                     predCenter = z.div(dzdc);
