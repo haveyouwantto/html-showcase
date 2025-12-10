@@ -1683,7 +1683,11 @@
 
         function createBLATable(ref, scale) {
             let result = createBLAStep(ref, scale);
-            if (!result.bla) return;
+            if (!result.bla || ref.length < 8) return {
+                bla: false,
+                stages: [],
+                steps: []
+            };
             let stageResult;
             do {
                 stageResult = createBLAStage(result.stages, result.steps, ref, scale);
@@ -1776,7 +1780,7 @@
 
                     steps.push(step);
 
-                    if (i + i >= prev[1] || detectDip(result, steps[i + 1].Z)) {
+                    if (i + 1 >= prev[1] || detectDip(result, steps[i + 1].Z)) {
                         step = steps[i];
                         step.next = i;
                         i++;
@@ -1828,7 +1832,7 @@
 
             return {
                 bla: true,
-                steps: step,
+                steps: steps,
                 stages: stages
             }
         }
