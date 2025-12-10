@@ -1015,7 +1015,10 @@
             }
 
             add(other) {
-                return new Complex(this.re + other.re, this.im + other.im);
+                if (typeof other === 'number') {
+                    return new Complex(this.re + other, this.im)
+                } else
+                    return new Complex(this.re + other.re, this.im + other.im);
             }
 
             addMut(other) {
@@ -1025,7 +1028,10 @@
             }
 
             sub(other) {
-                return new Complex(this.re - other.re, this.im - other.im);
+                if (typeof other === 'number') {
+                    return new Complex(this.re - other, this.im)
+                } else
+                    return new Complex(this.re - other.re, this.im - other.im);
             }
 
             subMut(other) {
@@ -1601,6 +1607,74 @@
             return Math.pow(2, Math.floor(Math.log2(n)));
         }
 
+        const VAILD_SCALE = 5.960464477539063e-08;
+        const DIP_DETECTION_THRESHOLD = 0.0009765625;
+
+        function newBLA(i, z) {
+            return {
+                Z: z,
+                A: new Complex(1, 0),
+                B: new Complex(1, 0),
+                radius: 1,
+                radiusC: 1,
+                length: 1,
+                next: i
+            }
+        }
+
+        function createBLA(i, a, b) {
+            return {
+                Z: a,
+                A: b.mul(2),
+                B: b.mul(2).add(1),
+                radius: b.norm() * VAILD_SCALE,
+                radiusC: b.norm() * VAILD_SCALE,
+                length: 2,
+                next: i
+            }
+        }
+
+        function stepBLA(bla, z) {
+            let radius = z.norm() * VAILD_SCALE;
+            let result = {
+                radius: Math.min(bla.radius, radius / bla.A.norm()),
+                radiusC: Math.min(bla.radiusC, radius / bla.B.norm()),
+                A: z.mul(2).mul(bla.A),
+                B: z.mul(2).mul(bla.B).add(1),
+                Z: bla.Z,
+                length: bla.length + 1,
+                next: bla.next
+            }
+            let dipDetected = result.radius < bla.radius * DIP_DETECTION_THRESHOLD;
+            console.log(JSON.stringify(result))
+            return [result, dipDetected]
+        }
+
+        function detectDip(bla, z) {
+            return z.norm() * VAILD_SCALE / bla.A.norm() < bla.radius * DIP_DETECTION_THRESHOLD;
+        }
+
+        function mergeBLA(a, b) {
+            let radius = b.Z.norm() * VAILD_SCALE;
+            let result = {
+                radius: Math.min(a.radius, radius / a.A.norm()),
+                radiusC: Math.min(a.radiusC, radius / a.B.norm()),
+                A: b.Z.mul(a.A).mul(2),
+                B: b.Z.mul(a.B).mul(2)
+            }
+
+            let dipDetected = result.radius < a.radius * DIP_DETECTION_THRESHOLD;
+
+            result.radius = Math.min(result.radius, b.radius / result.A.norm())
+            result.radiusC = Math.min(result.radiusC, b.radius / result.B.norm())
+            result.A = result.A.mul(b.A)
+            result.B = result.B.mul(b.A).add(b.B);
+            result.Z = a.Z;
+            result.length = a.length + b.length;
+            result.next = a.next;
+            return [result, dipDetected]
+        }
+
         /**
          * Generate BLA table
          * @param {Complex[]} ref - The reference orbit
@@ -1608,51 +1682,155 @@
          * */
 
         function createBLATable(ref, scale) {
-            const lv1 = [];
-            const table = [lv1];
-            for (let i = 1; i < ref.length; i++) {
-                const point = ref[i];
+            let result = createBLAStep(ref, scale);
+            if (!result.bla) return;
+            let stageResult;
+            do {
+                stageResult = createBLAStage(result.stages, result.steps, ref, scale);
+            } while (stageResult.bla);
+            return stageResult
+        }
 
-                const A = point.mul(2);
-                const B = new Complex(1, 0);
-                lv1.push({
-                    A: A,
-                    B: B,
-                    radius: point.norm() * 5.96e-8,
-                    radiusC: Infinity
-                })
-            }
+        function createBLAStep(ref, scale) {
+            let period = 0;
 
-            let level = 1;
-            while (true) {
-                table.push([]);
+            let refLen = ref.length - 1
+            console.log(ref)
 
-                for (let i = 0; i < table[level - 1].length; i += 2) {
-                    const bla1 = table[level - 1][i];
-                    const bla2 = table[level - 1][i + 1];
-
-                    if (bla2 == null) {
-                        table[level].push(bla1)
-                        continue;
-                    };
-
-                    table[level].push({
-                        A: bla1.A.mul(bla2.A),
-                        B: bla1.B.mul(bla2.A).add(bla2.B),
-                        radius: Math.min(
-                            bla1.radius, bla2.radius / bla1.A.norm()
-                        ),
-                        radiusC: Math.min(
-                            bla1.radiusC, bla2.radiusC, bla2.radius / bla1.B.norm()
-                        )
-                    })
-
+            let bla = createBLA(0, new Complex(0, 0), ref[1])
+            console.log(JSON.stringify(bla))
+            let i;
+            for (i = 2; i < refLen; i++) {
+                const [result, detected] = stepBLA(bla, ref[i]);
+                if (detected) {
+                    period = i;
+                    break;
                 }
-                if (table[level].length <= 1) break;
-                level++;
+                bla = result;
             }
 
-            return table;
+            let blaStages = [];
+            let blaSteps = [];
+
+            if (!period) {
+                blaStages.push([0, 1]);
+                blaSteps.push(newBLA(0, ref[refLen]))
+                return {
+                    bla: false,
+                    steps: blaSteps,
+                    stages: blaStages
+                }
+            }
+
+            if (i + 1 >= refLen) {
+                bla = newBLA(i, ref[i]);
+                i++;
+            } else {
+                bla = createBLA(i, ref[i], ref[i + 1])
+                i += 2;
+            }
+
+            for (; i < refLen; i++) {
+                const [result, detected] = stepBLA(bla, ref[i]);
+
+                if (detected || bla.length >= period) {
+                    blaSteps.push(bla);
+
+                    if (i + 1 >= refLen || detectDip(result, ref[i + 1])) {
+                        bla = newBLA(i, ref[i])
+                    } else {
+                        bla = createBLA(i, ref[i], ref[i + 1])
+                        i++
+                    }
+                } else {
+                    bla = result;
+                }
+            }
+
+            blaSteps.push(bla);
+            blaStages.push([0, blaSteps.length])
+            blaSteps.push(newBLA(0, ref[refLen]))
+            return {
+                bla: true,
+                steps: blaSteps,
+                stages: blaStages
+            }
+        }
+
+        function createBLAStage(stages, steps, ref, scale) {
+            let prev = stages[stages.length - 1];
+            let begin = steps.length;
+
+            let period = 0;
+            let i = prev[0];
+
+            let step = mergeBLA(steps[i], steps[i + 1])[0]
+            step.next = i
+            i += 2;
+
+            for (; i < prev[1]; i++) {
+                const [result, detected] = mergeBLA(step, steps[i]);
+
+                if (detected) {
+                    period = step.length;
+
+                    steps.push(step);
+
+                    if (i + i >= prev[1] || detectDip(result, steps[i + 1].Z)) {
+                        step = steps[i];
+                        step.next = i;
+                        i++;
+                    } else {
+                        step = mergeBLA(steps[i], steps[i + 1])[0]
+                        step.next = i;
+                        i += 2
+                    }
+                    break
+                }
+                step = result
+            }
+
+            if (!period) {
+                steps.push(step);
+                stages.push([begin, steps.length]);
+                steps.push(steps[prev[1]])
+                return {
+                    bla: false,
+                    steps: steps,
+                    stages: stages
+                }
+            }
+
+
+            for (; i < prev[1]; i++) {
+                const [result, detected] = mergeBLA(step, steps[i]);
+
+                if (detected || step.length >= period) {
+                    steps.push(step);
+
+                    if (i + i >= prev[1] || detectDip(result, steps[i + 1].Z)) {
+                        step = steps[i];
+                        step.next = i;
+                    } else {
+                        step = mergeBLA(steps[i], steps[i + 1])[0]
+                        step.next = i;
+                        i++
+                    }
+                }
+                else {
+                    step = result
+                }
+            }
+
+            steps.push(step);
+            stages.push([begin, steps.length]);
+            steps.push(steps[prev[1]])
+
+            return {
+                bla: true,
+                steps: step,
+                stages: stages
+            }
         }
 
         function lookup(table, i, refLen, norm_dz, norm_dc) {
@@ -1779,78 +1957,135 @@
          * @param {number} bailout - The bailout value used for iteration termination.
          * @returns {number|null} - The escape time for the point or null if it doesn't escape.
          */
-        function getPTBLA(dc, ref, table, maxIter, bailout, smooth = false) {
-            // Initialize perturbation variables
-            let dzRe = 0, dzIm = 0, iter = -1, refIter = 0;
-            let dzNorm, result;
-            let aRe, aIm, bRe, bIm;
-            let newDzRe, newDzIm;
-            let tempRe, tempIm;
+        function getPTBLA(dc, ref, steps, stages, maxIter, bailout, smooth = false) {
+            let dcNorm = dc.norm()
 
-            let Z, Z2;
-            let valRe, valIm, valAbsSq;
-            let dzAbsSq;
+            let dz = new Complex(0, 0);
+            let z = new Complex(0, 0);
+            let Z = new Complex(0, 0)
 
-            let dcNorm = Math.max(Math.abs(dc.re), Math.abs(dc.im));
-            while (iter < maxIter) {
-                dzNorm = Math.max(Math.abs(dzRe), Math.abs(dzIm)); // Chebyshev norm
+            let i = 0, j = 0;
+            let stage = stages.length;
+            if (stage != 0) j = stages[stage - 1][0]
 
-                result = lookup(table, refIter, ref.length, dzNorm, dcNorm);
+            while (stage) {
+                stage--;
+                let begin = stages[stage][0];
+                let end = stages[stage][1];
 
-                if (result.first != null) {
-                    aRe = result.first.A.re;
-                    aIm = result.first.A.im;
-                    bRe = result.first.B.re;
-                    bIm = result.first.B.im;
+                while (i < maxIter) {
+                    let step = steps[j];
+                    const newDz = dz.mul(step.Z.add(z))
+                    if (newDz.norm() > step.radius || dcNorm > step.radiusC) {
+                        j = step.next;
+                        break;
+                    }
 
-                    newDzRe = dzRe * aRe - dzIm * aIm + dc.re * bRe - dc.im * bIm;
-                    newDzIm = dzRe * aIm + dzIm * aRe + dc.re * bIm + dc.im * bRe;
+                    dz = newDz.mul(step.A).add(dc.mul(step.B))
+                    i += step.length;
+                    j++;
 
-                    dzRe = newDzRe;
-                    dzIm = newDzIm;
+                    z = dz.add(steps[j].Z);
 
-                    iter += result.second;
-                    refIter += result.second;
-                } else {
-                    Z = ref[refIter];
-
-                    tempRe = dzRe;
-                    tempIm = dzIm;
-
-                    // dz = dz * 2 * Z + dz^2 + dc
-                    dzRe = (2 * Z.re + tempRe) * tempRe - (2 * Z.im + tempIm) * tempIm + dc.re;
-                    dzIm = 2 * (Z.re * tempIm + Z.im * tempRe + tempRe * tempIm) + dc.im;
-
-                    iter++;
-                    refIter++;
-                }
-
-                if (refIter >= ref.length) refIter = 0;
-                Z2 = ref[refIter];
-                valRe = Z2.re + dzRe;
-                valIm = Z2.im + dzIm;
-
-                // Squared Euclidean distance (abs squared)
-                valAbsSq = valRe * valRe + valIm * valIm;
-                if (valAbsSq > bailout) {
-                    if (smooth) {
-                        let fracIter = Math.log(valAbsSq) / 2;
-                        fracIter = Math.log(fracIter / Math.LN2) / Math.LN2;
-                        iter += 1 - fracIter;
-                        return iter;
-                    } else {
-                        return iter; // If not smooth, just return the iteration count
+                    if (j == end || z.norm() < dz.norm()) {
+                        j = begin;
+                        dz = z;
                     }
                 }
+            }
 
-                dzAbsSq = dzRe * dzRe + dzIm * dzIm;
-                if (valAbsSq < dzAbsSq || refIter == ref.length - 1) {
-                    dzRe = valRe;
-                    dzIm = valIm;
-                    refIter = 0;
+            Z = ref[j];
+
+
+            while (i < maxIter) {
+                dz = dz.mul(Z.add(z)).add(dc);
+
+                i++; j++;
+
+                Z = ref[j];
+                z = Z.add(dz);
+
+                if (z.abs() > bailout) {
+                    break
+                }
+
+                if (j == ref.length-1 ||  z.norm() < dz.norm()){
+                    Z = new Complex(0,0);
+                    dz =z;
+                    j=0;
                 }
             }
-            return iter;
+            return i;
+            // // Initialize perturbation variables
+            // let dzNorm, result;
+            // let aRe, aIm, bRe, bIm;
+            // let newDzRe, newDzIm;
+            // let tempRe, tempIm;
+
+            // let Z, Z2;
+            // let valRe, valIm, valAbsSq;
+            // let dzAbsSq;
+
+            // let dcNorm = Math.max(Math.abs(dc.re), Math.abs(dc.im));
+            // while (iter < maxIter) {
+            //     dzNorm = Math.max(Math.abs(dzRe), Math.abs(dzIm)); // Chebyshev norm
+
+            //     result = lookup(table, refIter, ref.length, dzNorm, dcNorm);
+
+            //     if (result.first != null) {
+            //         aRe = result.first.A.re;
+            //         aIm = result.first.A.im;
+            //         bRe = result.first.B.re;
+            //         bIm = result.first.B.im;
+
+            //         newDzRe = dzRe * aRe - dzIm * aIm + dc.re * bRe - dc.im * bIm;
+            //         newDzIm = dzRe * aIm + dzIm * aRe + dc.re * bIm + dc.im * bRe;
+
+            //         dzRe = newDzRe;
+            //         dzIm = newDzIm;
+
+            //         iter += result.second;
+            //         refIter += result.second;
+            //     } else {
+            //         Z = ref[refIter];
+
+            //         tempRe = dzRe;
+            //         tempIm = dzIm;
+
+            //         // dz = dz * 2 * Z + dz^2 + dc
+            //         dzRe = (2 * Z.re + tempRe) * tempRe - (2 * Z.im + tempIm) * tempIm + dc.re;
+            //         dzIm = 2 * (Z.re * tempIm + Z.im * tempRe + tempRe * tempIm) + dc.im;
+
+            //         iter++;
+            //         refIter++;
+            //     }
+
+            //     if (refIter >= ref.length) refIter = 0;
+            //     Z2 = ref[refIter];
+            //     valRe = Z2.re + dzRe;
+            //     valIm = Z2.im + dzIm;
+
+            //     // Squared Euclidean distance (abs squared)
+            //     valAbsSq = valRe * valRe + valIm * valIm;
+            //     if (valAbsSq > bailout) {
+            //         if (smooth) {
+            //             let fracIter = Math.log(valAbsSq) / 2;
+            //             fracIter = Math.log(fracIter / Math.LN2) / Math.LN2;
+            //             iter += 1 - fracIter;
+            //             return iter;
+            //         } else {
+            //             return iter; // If not smooth, just return the iteration count
+            //         }
+            //     }
+
+            //     dzAbsSq = dzRe * dzRe + dzIm * dzIm;
+            //     if (valAbsSq < dzAbsSq || refIter == ref.length - 1) {
+            //         dzRe = valRe;
+            //         dzIm = valIm;
+            //         refIter = 0;
+            //     }
+            // }
+            // return iter;
         }
 
         function getPTBLAFE(dc, ref, table, maxIter, bailout, smooth = false) {
@@ -2541,6 +2776,8 @@
                 else
                     this.blaTable = createBLATable(ref, this.size.doubleValue())
 
+                console.log(this.blaTable)
+
 
                 let autoIter = Math.max((refLen - 1) * 32, this.iterations);
                 this.setIterations(autoIter);
@@ -2788,7 +3025,8 @@
                     getPTBLA(
                         delta,
                         this.ref,
-                        this.blaTable,
+                        this.blaTable.steps,
+                        this.blaTable.stages,
                         this.iterations,
                         this.bailout,
                         this.smooth
