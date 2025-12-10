@@ -1637,11 +1637,11 @@
         function stepBLA(bla, z) {
             let radius = z.norm() * VAILD_SCALE;
             let result = {
+                Z: bla.Z,
+                A: bla.A.mul(z).mul(2),
+                B: bla.B.mul(z).mul(2).add(1),
                 radius: Math.min(bla.radius, radius / bla.A.norm()),
                 radiusC: Math.min(bla.radiusC, radius / bla.B.norm()),
-                A: z.mul(2).mul(bla.A),
-                B: z.mul(2).mul(bla.B).add(1),
-                Z: bla.Z,
                 length: bla.length + 1,
                 next: bla.next
             }
@@ -1656,10 +1656,13 @@
         function mergeBLA(a, b) {
             let radius = b.Z.norm() * VAILD_SCALE;
             let result = {
+                Z: a.Z,
+                A: a.A.mul(b.Z).mul(2),
+                B: a.B.mul(b.Z).mul(2),
                 radius: Math.min(a.radius, radius / a.A.norm()),
                 radiusC: Math.min(a.radiusC, radius / a.B.norm()),
-                A: b.Z.mul(a.A).mul(2),
-                B: b.Z.mul(a.B).mul(2)
+                length: a.length + b.length,
+                next: a.next
             }
 
             let dipDetected = result.radius < a.radius * DIP_DETECTION_THRESHOLD;
@@ -1668,9 +1671,6 @@
             result.radiusC = Math.min(result.radiusC, b.radius / result.B.norm())
             result.A = result.A.mul(b.A)
             result.B = result.B.mul(b.A).add(b.B);
-            result.Z = a.Z;
-            result.length = a.length + b.length;
-            result.next = a.next;
             return [result, dipDetected]
         }
 
