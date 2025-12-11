@@ -2873,7 +2873,7 @@
                 let elapsedTime = performance.now() - this.stats.time;
                 let estimatedTotalTime = (elapsedTime / (this.stats.calc + this.stats.guess)) * totalPixels;
                 let estimatedRemainingTime = estimatedTotalTime - elapsedTime;
-                let statusText = `Ref: ${this.stats.ref.toLocaleString()}it\nRes: ${this.canvas.width}x${this.canvas.height}\nCalc/Guess/Total: ${this.stats.calc.toLocaleString()}/${this.stats.guess.toLocaleString()}/${totalPixels.toLocaleString()} px\nTime: ${((elapsedTime) / 1000).toFixed(3)}s ETA: ${(estimatedRemainingTime / 1000).toFixed(3)}s`;
+                let statusText = `Ref: ${this.stats.ref.toLocaleString()}it\nBLA: ${this.blaTable?.steps?.length ?? 0} entries\nRes: ${this.canvas.width}x${this.canvas.height}\nCalc/Guess/Total: ${this.stats.calc.toLocaleString()}/${this.stats.guess.toLocaleString()}/${totalPixels.toLocaleString()} px\nTime: ${((elapsedTime) / 1000).toFixed(3)}s ETA: ${(estimatedRemainingTime / 1000).toFixed(3)}s`;
                 statusText += "\n" + this.stats.statusText;
                 statsLabel.innerText = statusText;
                 this.updateProgress();
