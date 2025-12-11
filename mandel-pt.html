@@ -1623,6 +1623,7 @@
         }
 
         function createBLA(i, a, b) {
+            console.log(a)
             return {
                 Z: a,
                 A: b.mul(2),
@@ -1699,6 +1700,9 @@
             let refLen = ref.length - 1
             console.log(ref)
 
+            let blaStages = [];
+            let blaSteps = [];
+
             let bla = createBLA(0, new Complex(0, 0), ref[1])
             let i;
             for (i = 2; i < refLen; i++) {
@@ -1710,8 +1714,7 @@
                 bla = result;
             }
 
-            let blaStages = [];
-            let blaSteps = [];
+            blaSteps.push(bla)
 
             if (!period) {
                 blaStages.push([0, 1]);
@@ -1953,7 +1956,6 @@
          * Calculates the escape time for a point in the Mandelbrot set using perturbation theory.
          * @param {Complex} dc - The perturbation applied to the point.
          * @param {Complex[]} ref - The reference orbit.
-         * @param {Complex[][]} table - The BLA table.
          * @param {number} maxIter - The maximum iteration.
          * @param {number} bailout - The bailout value used for iteration termination.
          * @returns {number|null} - The escape time for the point or null if it doesn't escape.
@@ -1982,7 +1984,7 @@
                         break;
                     }
 
-                    dz = newDz.mul(step.A).add(dc.mul(step.B))
+                    dz = newDz.mul(step.A).addMut(dc.mul(step.B))
                     i += step.length;
                     j++;
 
