@@ -972,93 +972,203 @@
                 return decimalToFloatExp(obj);
             } else return parseFloatExp(obj.toString())
         }
-
         class Complex {
-            absValue;
+            // Static cache variables to avoid object creation in intermediate calculations
+            static CACHE_RE = 0;
+            static CACHE_IM = 0;
+            static CACHE_RE2 = 0;
+            static CACHE_IM2 = 0;
+
             constructor(re, im) {
                 this.re = re;
                 this.im = im;
+                this.absValue = null; // Cache for absolute value squared
             }
 
+            // Clear cache when values change
+            _clearCache() {
+                this.absValue = null;
+            }
+
+            // --- Addition Operations ---
+            add(other) {
+                return this.addTo(other, new Complex(0, 0));
+            }
+
+            addMut(other) {
+                return this.addTo(other, this);
+            }
+
+            addTo(other, store) {
+                if (typeof other === 'number') {
+                    store.re = this.re + other;
+                    store.im = this.im;
+                } else {
+                    store.re = this.re + other.re;
+                    store.im = this.im + other.im;
+                }
+                store._clearCache(); // Clear cache in store
+                return store;
+            }
+
+            // --- Subtraction Operations ---
+            sub(other) {
+                return this.subTo(other, new Complex(0, 0));
+            }
+
+            subMut(other) {
+                return this.subTo(other, this);
+            }
+
+            subTo(other, store) {
+                if (typeof other === 'number') {
+                    store.re = this.re - other;
+                    store.im = this.im;
+                } else {
+                    store.re = this.re - other.re;
+                    store.im = this.im - other.im;
+                }
+                store._clearCache();
+                return store;
+            }
+
+            // --- Multiplication Operations ---
+            mul(other) {
+                return this.mulTo(other, new Complex(0, 0));
+            }
+
+            mulMut(other) {
+                return this.mulTo(other, this);
+            }
+
+            /**
+             * Optimized multiplication using static cache to avoid object creation
+             * (a + bi)(c + di) = (ac - bd) + (ad + bc)i
+             */
+            mulTo(other, store) {
+                if (typeof other === 'number') {
+                    store.re = this.re * other;
+                    store.im = this.im * other;
+                    store._clearCache();
+                    return store;
+                }
+
+                // Use static cache for intermediate values
+                // ac -> CACHE_RE
+                Complex.CACHE_RE = this.re * other.re;
+                // bd -> CACHE_IM
+                Complex.CACHE_IM = this.im * other.im;
+                // Real part: ac - bd -> CACHE_RE2 (temporary for real result)
+                Complex.CACHE_RE2 = Complex.CACHE_RE - Complex.CACHE_IM;
+
+                // ad -> CACHE_RE (reuse)
+                Complex.CACHE_RE = this.re * other.im;
+                // bc -> CACHE_IM (reuse)
+                Complex.CACHE_IM = this.im * other.re;
+                // Imag part: ad + bc -> CACHE_IM2 (temporary for imag result)
+                Complex.CACHE_IM2 = Complex.CACHE_RE + Complex.CACHE_IM;
+
+                // Store results
+                store.re = Complex.CACHE_RE2;
+                store.im = Complex.CACHE_IM2;
+                store._clearCache();
+
+                return store;
+            }
+
+            // --- Division Operations ---
+            div(other) {
+                return this.divTo(other, new Complex(0, 0));
+            }
+
+            divMut(other) {
+                return this.divTo(other, this);
+            }
+
+            /**
+             * Optimized division
+             * (a + bi)/(c + di) = ((ac + bd) + (bc - ad)i) / (c^2 + d^2)
+             */
+            divTo(other, store) {
+                if (typeof other === 'number') {
+                    store.re = this.re / other;
+                    store.im = this.im / other;
+                    store._clearCache();
+                    return store;
+                }
+
+                // Denominator: c^2 + d^2 -> CACHE_RE
+                Complex.CACHE_RE = other.re * other.re + other.im * other.im;
+
+                // Numerator Real: ac + bd -> CACHE_IM
+                Complex.CACHE_IM = this.re * other.re + this.im * other.im;
+
+                // Numerator Imag: bc - ad -> CACHE_RE2
+                Complex.CACHE_RE2 = this.im * other.re - this.re * other.im;
+
+                // Final division
+                store.re = Complex.CACHE_IM / Complex.CACHE_RE;
+                store.im = Complex.CACHE_RE2 / Complex.CACHE_RE;
+                store._clearCache();
+
+                return store;
+            }
+
+            // --- Square Operations ---
+            square() {
+                return this.squareTo(new Complex(0, 0));
+            }
+
+            squareMut() {
+                return this.squareTo(this);
+            }
+
+            squareTo(store) {
+                // (a+bi)^2 = (a^2 - b^2) + 2abi
+                Complex.CACHE_RE = this.re * this.re - this.im * this.im; // Real part
+                Complex.CACHE_IM = 2 * this.re * this.im; // Imag part
+
+                store.re = Complex.CACHE_RE;
+                store.im = Complex.CACHE_IM;
+                store._clearCache();
+
+                return store;
+            }
+
+            // --- Other Methods (updated) ---
             abs() {
-                if (!this.absValue) this.absValue = this.re ** 2 + this.im ** 2;
-                return this.absValue
+                if (this.absValue === null) {
+                    this.absValue = this.re * this.re + this.im * this.im;
+                }
+                return this.absValue;
             }
 
             toNumberArray() {
                 return [this.re, this.im];
             }
 
-            mul(other) {
-                if (typeof other === 'number') {
-                    return new Complex(this.re * other, this.im * other);
-                } else {
-                    return new Complex(
-                        this.re * other.re - this.im * other.im,
-                        this.re * other.im + this.im * other.re
-                    );
-                }
-            }
-
-            mulMut(other) {
-                if (typeof other === 'number') {
-                    this.re *= other;
-                    this.im *= other;
-                    return this;
-                } else {
-                    let re = this.re;
-                    let im = this.im;
-                    this.re = re * other.re - im * other.im
-                    this.im = re * other.im + im * other.re;
-                    return this;
-                }
-            }
-
-            add(other) {
-                if (typeof other === 'number') {
-                    return new Complex(this.re + other, this.im)
-                } else
-                    return new Complex(this.re + other.re, this.im + other.im);
-            }
-
-            addMut(other) {
-                this.re += other.re;
-                this.im += other.im;
-                return this;
-            }
-
-            sub(other) {
-                if (typeof other === 'number') {
-                    return new Complex(this.re - other, this.im)
-                } else
-                    return new Complex(this.re - other.re, this.im - other.im);
-            }
-
-            subMut(other) {
-                this.re -= other.re;
-                this.im -= other.im;
-                return this;
-            }
-
             norm() {
                 return Math.max(Math.abs(this.re), Math.abs(this.im));
             }
 
-            div(other) {
-                if (typeof other === 'number') {
-                    return new Complex(this.re / other, this.im / other);
-                } else {
-                    const denominator = other.re ** 2 + other.im ** 2;
-                    return new Complex(
-                        (this.re * other.re + this.im * other.im) / denominator,
-                        (this.im * other.re - this.re * other.im) / denominator
-                    );
-                }
+            equals(other) {
+                return this.re === other.re && this.im === other.im;
+            }
+
+            copy() {
+                return new Complex(this.re, this.im);
             }
 
             toString() {
                 return `(${this.re}, ${this.im})`;
             }
+
+            // Static methods similar to FloatExpComplex
+            static ZERO = new Complex(0, 0);
+            static ONE = new Complex(1, 0);
+            static I = new Complex(0, 1);
+            static NEGATIVE_ONE = new Complex(-1, 0);
+            static TWO = new Complex(2, 0);
         }
 
         class DeepComplex {
@@ -2082,6 +2192,13 @@
             let z = new Complex(0, 0);
             let Z = new Complex(0, 0)
 
+            let tempVars = {
+                stepZZ: new Complex(0, 0),
+                dzA: new Complex(0, 0),
+                dcB: new Complex(0, 0),
+                newDz: new Complex(0, 0)
+            }
+
             let i = 0, j = 0;
             let stage = stages.length;
             if (stage != 0) j = stages[stage - 1].begin;
@@ -2093,13 +2210,20 @@
 
                 while (i < maxIter) {
                     let step = steps[j];
-                    const newDz = dz.mul(step.Z.add(z))
-                    if (newDz.norm() > step.radius || dcNorm > step.radiusC) {
+                    step.Z.addTo(z, tempVars.stepZZ);
+                    tempVars.stepZZ.mulTo(dz, tempVars.newDz);
+                    // const newDz = dz.mul(step.Z.add(z))
+                    if (tempVars.newDz.norm() > step.radius || dcNorm > step.radiusC) {
                         j = step.next;
                         break;
                     }
 
-                    dz = newDz.mul(step.A).addMut(dc.mul(step.B))
+                    // dz = newDz.mul(step.A).addMut(dc.mul(step.B))
+                    tempVars.newDz.mulTo(step.A, tempVars.dzA);
+                    dc.mulTo(step.B, tempVars.dcB);
+                    tempVars.dzA.addTo(tempVars.dcB, dz);
+
+
                     i += step.length;
                     j++;
 
@@ -2116,7 +2240,10 @@
 
 
             while (i < maxIter) {
-                dz = dz.mul(Z.add(z)).add(dc);
+                // dz = dz.mul(Z.add(z)).add(dc);
+                Z.addTo(z, tempVars.stepZZ);
+                dz.mulTo(tempVars.stepZZ, tempVars.newDz);
+                tempVars.newDz.addTo(dc, dz);
 
                 i++; j++;
 
