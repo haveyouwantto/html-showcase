@@ -1606,236 +1606,351 @@
             if (n <= 0) return 0;
             return Math.pow(2, Math.floor(Math.log2(n)));
         }
-
         const VAILD_SCALE = 5.960464477539063e-08;
         const DIP_DETECTION_THRESHOLD = 0.0009765625;
 
-        function newBLA(i, z) {
-            return {
-                Z: z,
-                A: new Complex(1, 0),
-                B: new Complex(1, 0),
-                radius: 1,
-                radiusC: 1,
-                length: 1,
-                next: i
+        // Complex 类定义（假设已存在）
+        // class Complex { ... }
+
+        class BLAStep {
+            constructor(Z, A, B, radius, radiusC, length, next) {
+                this.Z = Z;           // Complex
+                this.A = A;           // Complex
+                this.B = B;           // Complex
+                this.radius = radius; // number
+                this.radiusC = radiusC; // number
+                this.length = length; // number
+                this.next = next;     // number
+            }
+
+            /**
+             * 执行一步迭代
+             * @param {Complex} z - 下一个迭代点的值
+             * @returns {[BLAStep, boolean]} - 新的步骤和是否检测到下降
+             */
+            step(z) {
+                let radius = z.norm() * VAILD_SCALE;
+                let result = new BLAStep(
+                    this.Z,
+                    this.A.mul(z).mul(2),
+                    this.B.mul(z).mul(2).add(1),
+                    Math.min(this.radius, radius / this.A.norm()),
+                    Math.min(this.radiusC, radius / this.B.norm()),
+                    this.length + 1,
+                    this.next
+                );
+
+                let dipDetected = result.radius < this.radius * DIP_DETECTION_THRESHOLD;
+                return [result, dipDetected];
+            }
+
+            /**
+             * 合并两个步骤
+             * @param {BLAStep} other - 要合并的另一个步骤
+             * @returns {[BLAStep, boolean]} - 合并后的步骤和是否检测到下降
+             */
+            merge(other) {
+                let radius = other.Z.norm() * VAILD_SCALE;
+                let result = new BLAStep(
+                    this.Z,
+                    this.A.mul(other.Z).mul(2),
+                    this.B.mul(other.Z).mul(2),
+                    Math.min(this.radius, radius / this.A.norm()),
+                    Math.min(this.radiusC, radius / this.B.norm()),
+                    this.length + other.length,
+                    this.next
+                );
+
+                let dipDetected = result.radius < this.radius * DIP_DETECTION_THRESHOLD;
+
+                result.radius = Math.min(result.radius, other.radius / result.A.norm());
+                result.radiusC = Math.min(result.radiusC, other.radius / result.B.norm());
+                result.A = result.A.mul(other.A);
+                result.B = result.B.mul(other.A).add(other.B);
+
+                return [result, dipDetected];
+            }
+
+            /**
+             * 检查是否检测到下降
+             * @param {Complex} z - 下一个迭代点的值
+             * @returns {boolean} - 是否检测到下降
+             */
+            detectDip(z) {
+                return z.norm() * VAILD_SCALE / this.A.norm() < this.radius * DIP_DETECTION_THRESHOLD;
+            }
+
+            /**
+             * 转换为普通对象（用于兼容旧的API）
+             */
+            toObject() {
+                return {
+                    Z: this.Z,
+                    A: this.A,
+                    B: this.B,
+                    radius: this.radius,
+                    radiusC: this.radiusC,
+                    length: this.length,
+                    next: this.next
+                };
+            }
+
+            /**
+             * 创建新的BLA步骤
+             * @param {number} i - 索引
+             * @param {Complex} z - Z值
+             * @returns {BLAStep} - 新的步骤
+             */
+            static newBLA(i, z) {
+                return new BLAStep(
+                    z,
+                    new Complex(1, 0),
+                    new Complex(1, 0),
+                    1,
+                    1,
+                    1,
+                    i
+                );
+            }
+
+            /**
+             * 创建初始的BLA步骤
+             * @param {number} i - 索引
+             * @param {Complex} a - A值
+             * @param {Complex} b - B值
+             * @returns {BLAStep} - 新的步骤
+             */
+            static createBLA(i, a, b) {
+                console.log(a);
+                return new BLAStep(
+                    a,
+                    b.mul(2),
+                    b.mul(2).add(1),
+                    b.norm() * VAILD_SCALE,
+                    b.norm() * VAILD_SCALE,
+                    2,
+                    i
+                );
             }
         }
 
-        function createBLA(i, a, b) {
-            console.log(a)
-            return {
-                Z: a,
-                A: b.mul(2),
-                B: b.mul(2).add(1),
-                radius: b.norm() * VAILD_SCALE,
-                radiusC: b.norm() * VAILD_SCALE,
-                length: 2,
-                next: i
+        class BLAStage {
+            constructor(begin, end) {
+                this.begin = begin; // number
+                this.end = end;     // number
+            }
+
+            /**
+             * 获取步骤范围
+             * @returns {[number, number]} - [begin, end]
+             */
+            getRange() {
+                return [this.begin, this.end];
+            }
+
+            /**
+             * 转换为数组格式（用于兼容旧的API）
+             */
+            toArray() {
+                return [this.begin, this.end];
             }
         }
 
-        function stepBLA(bla, z) {
-            let radius = z.norm() * VAILD_SCALE;
-            let result = {
-                Z: bla.Z,
-                A: bla.A.mul(z).mul(2),
-                B: bla.B.mul(z).mul(2).add(1),
-                radius: Math.min(bla.radius, radius / bla.A.norm()),
-                radiusC: Math.min(bla.radiusC, radius / bla.B.norm()),
-                length: bla.length + 1,
-                next: bla.next
-            }
-            let dipDetected = result.radius < bla.radius * DIP_DETECTION_THRESHOLD;
-            return [result, dipDetected]
-        }
-
-        function detectDip(bla, z) {
-            return z.norm() * VAILD_SCALE / bla.A.norm() < bla.radius * DIP_DETECTION_THRESHOLD;
-        }
-
-        function mergeBLA(a, b) {
-            let radius = b.Z.norm() * VAILD_SCALE;
-            let result = {
-                Z: a.Z,
-                A: a.A.mul(b.Z).mul(2),
-                B: a.B.mul(b.Z).mul(2),
-                radius: Math.min(a.radius, radius / a.A.norm()),
-                radiusC: Math.min(a.radiusC, radius / a.B.norm()),
-                length: a.length + b.length,
-                next: a.next
+        class BLATable {
+            constructor() {
+                this.stages = []; // BLAStage[]
+                this.steps = [];  // BLAStep[]
+                this.hasBLA = false;
             }
 
-            let dipDetected = result.radius < a.radius * DIP_DETECTION_THRESHOLD;
+            /**
+             * 生成BLA表
+             * @param {Complex[]} ref - 参考轨道
+             * @param {number} scale - 当前图像比例
+             * @returns {BLATable} - 创建的BLA表
+             */
+            static create(ref, scale) {
+                const table = new BLATable();
+                let result = table._createBLAStep(ref, scale);
 
-            result.radius = Math.min(result.radius, b.radius / result.A.norm())
-            result.radiusC = Math.min(result.radiusC, b.radius / result.B.norm())
-            result.A = result.A.mul(b.A)
-            result.B = result.B.mul(b.A).add(b.B);
-            return [result, dipDetected]
+                if (!result.hasBLA || ref.length < 8) {
+                    table.hasBLA = false;
+                    return table;
+                }
+
+                do {
+                    result = table._createBLAStage(result.stages, result.steps, ref, scale);
+                } while (result.hasBLA);
+
+                table.stages = result.stages;
+                table.steps = result.steps;
+                table.hasBLA = true;
+                return table;
+            }
+
+            _createBLAStep(ref, scale) {
+                let period = 0;
+                let refLen = ref.length - 1;
+                console.log(ref);
+
+                let blaStages = [];
+                let blaSteps = [];
+
+                let bla = BLAStep.createBLA(0, new Complex(0, 0), ref[1]);
+                let i;
+                for (i = 2; i < refLen; i++) {
+                    const [result, detected] = bla.step(ref[i]);
+                    if (detected) {
+                        period = i;
+                        break;
+                    }
+                    bla = result;
+                }
+
+                blaSteps.push(bla);
+
+                if (!period) {
+                    blaStages.push(new BLAStage(0, 1));
+                    blaSteps.push(BLAStep.newBLA(0, ref[refLen]));
+                    return {
+                        hasBLA: false,
+                        steps: blaSteps,
+                        stages: blaStages
+                    };
+                }
+
+                if (i + 1 >= refLen) {
+                    bla = BLAStep.newBLA(i, ref[i]);
+                    i++;
+                } else {
+                    bla = BLAStep.createBLA(i, ref[i], ref[i + 1]);
+                    i += 2;
+                }
+
+                for (; i < refLen; i++) {
+                    const [result, detected] = bla.step(ref[i]);
+
+                    if (detected || bla.length >= period) {
+                        blaSteps.push(bla);
+
+                        if (i + 1 >= refLen || result.detectDip(ref[i + 1])) {
+                            bla = BLAStep.newBLA(i, ref[i]);
+                        } else {
+                            bla = BLAStep.createBLA(i, ref[i], ref[i + 1]);
+                            i++;
+                        }
+                    } else {
+                        bla = result;
+                    }
+                }
+
+                blaSteps.push(bla);
+                blaStages.push(new BLAStage(0, blaSteps.length));
+                blaSteps.push(BLAStep.newBLA(0, ref[refLen]));
+
+                return {
+                    hasBLA: true,
+                    steps: blaSteps,
+                    stages: blaStages
+                };
+            }
+
+            _createBLAStage(stages, steps, ref, scale) {
+                let prev = stages[stages.length - 1];
+                let begin = steps.length;
+
+                let period = 0;
+                let i = prev.begin;
+
+                let step = steps[i].merge(steps[i + 1])[0];
+                step.next = i;
+                i += 2;
+
+                for (; i < prev.end; i++) {
+                    const [result, detected] = step.merge(steps[i]);
+
+                    if (detected) {
+                        period = step.length;
+                        steps.push(step);
+
+                        if (i + 1 >= prev.end || result.detectDip(steps[i + 1].Z)) {
+                            step = steps[i];
+                            step.next = i;
+                            i++;
+                        } else {
+                            step = steps[i].merge(steps[i + 1])[0];
+                            step.next = i;
+                            i += 2;
+                        }
+                        break;
+                    }
+                    step = result;
+                }
+
+                if (!period) {
+                    steps.push(step);
+                    stages.push(new BLAStage(begin, steps.length));
+                    steps.push(steps[prev.end]);
+                    return {
+                        hasBLA: false,
+                        steps: steps,
+                        stages: stages
+                    };
+                }
+
+                for (; i < prev.end; i++) {
+                    const [result, detected] = step.merge(steps[i]);
+
+                    if (detected || step.length >= period) {
+                        steps.push(step);
+
+                        if (i + 1 >= prev.end || result.detectDip(steps[i + 1].Z)) {
+                            step = steps[i];
+                            step.next = i;
+                        } else {
+                            step = steps[i].merge(steps[i + 1])[0];
+                            step.next = i;
+                            i++;
+                        }
+                    } else {
+                        step = result;
+                    }
+                }
+
+                steps.push(step);
+                stages.push(new BLAStage(begin, steps.length));
+                steps.push(steps[prev.end]);
+
+                return {
+                    hasBLA: true,
+                    steps: steps,
+                    stages: stages
+                };
+            }
+
+            /**
+             * 获取BLA信息（用于兼容旧的API）
+             */
+            getBLAInfo() {
+                return {
+                    bla: this.hasBLA,
+                    stages: this.stages.map(stage => stage.toArray()),
+                    steps: this.steps.map(step => step.toObject())
+                };
+            }
         }
 
         /**
-         * Generate BLA table
-         * @param {Complex[]} ref - The reference orbit
-         * @param {number} scale - Current image scale
-         * */
-
+         * 生成BLA表（保持原有的API签名不变）
+         * @param {Complex[]} ref - 参考轨道
+         * @param {number} scale - 当前图像比例
+         * @returns {object} - BLA信息
+         */
         function createBLATable(ref, scale) {
-            let result = createBLAStep(ref, scale);
-            if (!result.bla || ref.length < 8) return {
-                bla: false,
-                stages: [],
-                steps: []
-            };
-            do {
-                result = createBLAStage(result.stages, result.steps, ref, scale);
-            } while (result.bla);
-            return result;
+            const table = BLATable.create(ref, scale);
+            return table;
         }
 
-        function createBLAStep(ref, scale) {
-            let period = 0;
-
-            let refLen = ref.length - 1
-            console.log(ref)
-
-            let blaStages = [];
-            let blaSteps = [];
-
-            let bla = createBLA(0, new Complex(0, 0), ref[1])
-            let i;
-            for (i = 2; i < refLen; i++) {
-                const [result, detected] = stepBLA(bla, ref[i]);
-                if (detected) {
-                    period = i;
-                    break;
-                }
-                bla = result;
-            }
-
-            blaSteps.push(bla)
-
-            if (!period) {
-                blaStages.push([0, 1]);
-                blaSteps.push(newBLA(0, ref[refLen]))
-                return {
-                    bla: false,
-                    steps: blaSteps,
-                    stages: blaStages
-                }
-            }
-
-            if (i + 1 >= refLen) {
-                bla = newBLA(i, ref[i]);
-                i++;
-            } else {
-                bla = createBLA(i, ref[i], ref[i + 1])
-                i += 2;
-            }
-
-            for (; i < refLen; i++) {
-                const [result, detected] = stepBLA(bla, ref[i]);
-
-                if (detected || bla.length >= period) {
-                    blaSteps.push(bla);
-
-                    if (i + 1 >= refLen || detectDip(result, ref[i + 1])) {
-                        bla = newBLA(i, ref[i])
-                    } else {
-                        bla = createBLA(i, ref[i], ref[i + 1])
-                        i++
-                    }
-                } else {
-                    bla = result;
-                }
-            }
-
-            blaSteps.push(bla);
-            blaStages.push([0, blaSteps.length])
-            blaSteps.push(newBLA(0, ref[refLen]))
-            return {
-                bla: true,
-                steps: blaSteps,
-                stages: blaStages
-            }
-        }
-
-        function createBLAStage(stages, steps, ref, scale) {
-            let prev = stages[stages.length - 1];
-            let begin = steps.length;
-
-            let period = 0;
-            let i = prev[0];
-
-            let step = mergeBLA(steps[i], steps[i + 1])[0]
-            step.next = i
-            i += 2;
-
-            for (; i < prev[1]; i++) {
-                const [result, detected] = mergeBLA(step, steps[i]);
-
-                if (detected) {
-                    period = step.length;
-
-                    steps.push(step);
-
-                    if (i + 1 >= prev[1] || detectDip(result, steps[i + 1].Z)) {
-                        step = steps[i];
-                        step.next = i;
-                        i++;
-                    } else {
-                        step = mergeBLA(steps[i], steps[i + 1])[0]
-                        step.next = i;
-                        i += 2
-                    }
-                    break
-                }
-                step = result
-            }
-
-            if (!period) {
-                steps.push(step);
-                stages.push([begin, steps.length]);
-                steps.push(steps[prev[1]])
-                return {
-                    bla: false,
-                    steps: steps,
-                    stages: stages
-                }
-            }
-
-
-            for (; i < prev[1]; i++) {
-                const [result, detected] = mergeBLA(step, steps[i]);
-
-                if (detected || step.length >= period) {
-                    steps.push(step);
-
-                    if (i + 1 >= prev[1] || detectDip(result, steps[i + 1].Z)) {
-                        step = steps[i];
-                        step.next = i;
-                    } else {
-                        step = mergeBLA(steps[i], steps[i + 1])[0]
-                        step.next = i;
-                        i++
-                    }
-                }
-                else {
-                    step = result
-                }
-            }
-
-            steps.push(step);
-            stages.push([begin, steps.length]);
-            steps.push(steps[prev[1]])
-
-            return {
-                bla: true,
-                steps: steps,
-                stages: stages
-            }
-        }
 
         function lookup(table, i, refLen, norm_dz, norm_dc) {
             if (i === 0 || i >= refLen || table.length === 0) {
@@ -1969,12 +2084,12 @@
 
             let i = 0, j = 0;
             let stage = stages.length;
-            if (stage != 0) j = stages[stage - 1][0]
+            if (stage != 0) j = stages[stage - 1].begin;
 
             while (stage) {
                 stage--;
-                let begin = stages[stage][0];
-                let end = stages[stage][1];
+                let begin = stages[stage].begin;
+                let end = stages[stage].end;
 
                 while (i < maxIter) {
                     let step = steps[j];
