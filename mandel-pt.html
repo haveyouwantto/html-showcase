@@ -2165,7 +2165,6 @@
         function getPTBLA(dc, ref, steps, stages, maxIter, bailout, smooth = false) {
             let dcNorm = dc.norm()
 
-
             let Z = new Complex(0, 0)
 
             let dzRe = 0, dzIm = 0;
@@ -2237,9 +2236,18 @@
                 // z = dz.add(Z);
                 zRe = dzRe + Z.re;
                 zIm = dzIm + Z.im;
+                let zAbs = zRe * zRe + zIm * zIm ;
 
-                if (zRe * zRe + zIm * zIm > bailout) {
-                    break
+                if (zAbs> bailout) {
+                    let iter = i - 1;
+                    if (smooth) {
+                        let fracIter = Math.log(zAbs) / 2;
+                        fracIter = Math.log(fracIter / Math.LN2) / Math.LN2;
+                        iter += 1 - fracIter;
+                        return iter;
+                    } else {
+                        return iter; // If not smooth, just return the iteration count
+                    }
                 }
 
                 if (j == ref.length - 1 || chebshev(zRe, zIm) < chebshev(dzRe, dzIm)) {
