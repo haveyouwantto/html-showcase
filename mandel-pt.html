@@ -2454,7 +2454,13 @@
 
             let dz = new FloatExpComplex(0, 0);
             let z = new FloatExpComplex(0, 0);
-            let Z = new FloatExpComplex(0, 0)
+            let Z = new FloatExpComplex(0, 0);
+
+            let tempVars = {
+                stepZZ: FloatExpComplex.ZERO.copy(),
+                dcMulB: FloatExpComplex.ZERO.copy(),
+                newDz: FloatExpComplex.ZERO.copy()
+            }
 
             let i = 0, j = 0;
             let stage = stages.length;
@@ -2467,14 +2473,20 @@
 
                 while (i < maxIter) {
                     let step = steps[j];
-                    const newDz = dz.mul(step.Z.add(z))
 
-                    if (newDz.norm().gt(step.radius) || dcNorm.gt(step.radiusC)) {
+                    // const newDz = dz.mul(step.Z.add(z))
+                    step.Z.addTo(z, tempVars.stepZZ)
+                    tempVars.stepZZ.mulTo(dz, tempVars.newDz)
+
+                    if (tempVars.newDz.norm().gt(step.radius) || dcNorm.gt(step.radiusC)) {
                         j = step.next;
                         break;
                     }
 
-                    dz = newDz.mul(step.A).addMut(dc.mul(step.B))
+                    // dz = tempVars.newDz.mul(step.A).addMut(dc.mul(step.B))
+                    tempVars.newDz.mulMut(step.A)
+                    dc.mulTo(step.B, tempVars.dcMulB)
+                    tempVars.newDz.addTo(tempVars.dcMulB, dz)
 
                     i += step.length;
                     j++;
@@ -2493,16 +2505,18 @@
 
 
             while (i < maxIter) {
-                dz = dz.mul(Z.add(z)).addMut(dc);
+                // dz = dz.mul(Z.add(z)).addMut(dc);
+                Z.addTo(z, tempVars.stepZZ)
+                tempVars.stepZZ.mulTo(dz, tempVars.newDz)
+                tempVars.newDz.addTo(dc, dz)
 
                 i++; j++;
 
                 Z = ref[j];
 
+                // z = dz.add(Z);
                 dz.addTo(Z, z)
 
-
-                // console.log(z)
                 if (z.abs2().doubleValue() > bailout) {
                     let iter = i - 1;
                     if (smooth) {
