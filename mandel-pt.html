@@ -2116,7 +2116,7 @@
             }
 
             detectDip(z) {
-                return z.norm().mul(VAILD_SCALE_FLOATEXP).div(this.A.norm).lt(this.radius.mul(DIP_DETECTION_THRESHOLD_FLOATEXP))
+                return z.norm().mul(VAILD_SCALE_FLOATEXP).div(this.A.norm()).lt(this.radius.mul(DIP_DETECTION_THRESHOLD_FLOATEXP))
             }
 
             static newBLA(i, z) {
@@ -2136,8 +2136,8 @@
                     a,
                     b.mul(2),
                     b.mul(2).add(1),
-                    b.norm().mul(VAILD_SCALE),
-                    b.norm().mul(VAILD_SCALE),
+                    b.norm().mul(VAILD_SCALE_FLOATEXP),
+                    b.norm().mul(VAILD_SCALE_FLOATEXP),
                     2,
                     i
                 );
