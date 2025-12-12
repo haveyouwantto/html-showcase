@@ -3103,6 +3103,7 @@
              *
              */
             async update(startBlockSize = 128) {
+                const lock = await acquireWakelock();
                 try {
                     if (this.rendering) {
                         await this.cancel()
@@ -3115,6 +3116,7 @@
                         approx: 0,
                         time: performance.now()
                     };
+
 
                     let prevDeep = this.deep;
                     this.deep = this.size.exp < -300;
@@ -3233,6 +3235,7 @@
                     alert("Error: " + e);
                 } finally {
                     this.rendering = false;
+                    lock?.release();
                 }
             }
 
@@ -4389,6 +4392,20 @@
                 iterDialog.close();
             });
         });
+
+        async function acquireWakelock() {
+            if ('wakeLock' in navigator) {
+                try {
+                    const lock = await navigator.wakeLock.request('screen');
+                    lock.addEventListener('release', e => {
+                        console.log("wakelock released");
+                    })
+                    return lock;
+                } catch (error) {
+                    console.error(error);
+                }
+            }
+        }
     </script>
 </body>
 
