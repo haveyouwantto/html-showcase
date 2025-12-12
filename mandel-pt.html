@@ -766,9 +766,6 @@
                 return this.norm();
             }
 
-            equals(o) {
-                return this.compareTo(o) === 0;
-            }
 
             compareTo(o) {
                 if (this.base > 0 && o.base < 0) return 1;
@@ -781,6 +778,18 @@
                 if (this.base > o.base) return 1;
                 if (this.base < o.base) return -1;
                 return 0;
+            }
+
+            gt(o) {
+                return this.compareTo(o) > 0;
+            }
+
+            lt(o) {
+                return this.compareTo(o) < 0;
+            }
+
+            equals(o) {
+                return this.compareTo(o) === 0;
             }
 
             log2Value() {
@@ -1800,21 +1809,6 @@
             }
 
             /**
-             * 转换为普通对象（用于兼容旧的API）
-             */
-            toObject() {
-                return {
-                    Z: this.Z,
-                    A: this.A,
-                    B: this.B,
-                    radius: this.radius,
-                    radiusC: this.radiusC,
-                    length: this.length,
-                    next: this.next
-                };
-            }
-
-            /**
              * 创建新的BLA步骤
              * @param {number} i - 索引
              * @param {Complex} z - Z值
@@ -2056,6 +2050,104 @@
                 };
             }
         }
+
+        const VAILD_SCALE_FLOATEXP = new FloatExp(5.960464477539063, -8);
+        const DIP_DETECTION_THRESHOLD_FLOATEXP = new FloatExp(0.0009765625, 0);
+
+        class BLAStepFloatExp {
+            constructor(Z, A, B, radius, radiusC, length, next) {
+                this.Z = Z;           // FloatExpComplex
+                this.A = A;           // FloatExpComplex
+                this.B = B;           // FloatExpComplex
+                this.radius = radius; // number
+                this.radiusC = radiusC; // number
+                this.length = length; // number
+                this.next = next;     // number
+            }
+
+            copy() {
+                return new BLAStepFloatExp(
+                    this.Z.copy(),
+                    this.A.copy(),
+                    this.B.copy(),
+                    this.radius,
+                    this.radiusC,
+                    this.length,
+                    this.next
+                );
+            }
+
+            /**
+             * 执行一步迭代
+             * @param {FloatExpComplex} z - 下一个迭代点的值
+             * @returns {[BLAStepFloatExp, boolean]} - 新的步骤和是否检测到下降
+             */
+            step(z) {
+                let radius = z.norm().mul(VAILD_SCALE_FLOATEXP);
+                let result = new BLAStepFloatExp(
+                    this.Z,
+                    this.A.mul(z).mul(2),
+                    this.B.mul(z).mul(2).add(1),
+                    FloatExp.min(this.radius, radius.div(this.A.norm())),
+                    FloatExp.min(this.radiusC, radius.div(this.B.norm())),
+                    this.length + 1,
+                    this.next
+                );
+                let dipDetected = result.radius.lt(this.radius.mul(DIP_DETECTION_THRESHOLD_FLOATEXP));
+                return [result, dipDetected];
+            }
+
+            merge(other) {
+                let radius = other.Z.norm().mul(VAILD_SCALE_FLOATEXP);
+                let result = new BLAStepFloatExp(
+                    this.Z,
+                    this.A.mul(other.Z).mul(2),
+                    this.B.mul(other.Z).mul(2),
+                    FloatExp.min(this.radius, radius.div(this.A.norm())),
+                    FloatExp.min(this.radiusC, radius.div(this.B.norm())),
+                    this.length + other.length,
+                    this.next
+                )
+                let dipDetected = result.radius.lt(this.radius.mul(DIP_DETECTION_THRESHOLD_FLOATEXP));
+                result.radius = FloatExp.min(result.radius, other.radius.div(result.A.norm()));
+                result.radiusC = FloatExp.min(result.radiusC, other.radius.div(result.B.norm()));
+                result.A = result.A.mul(other.A);
+                result.B = result.B.mul(other.A).add(other.B);
+                return [result, dipDetected];
+            }
+
+            detectDip(z) {
+                return z.norm().mul(VAILD_SCALE_FLOATEXP).div(this.A.norm).lt(this.radius.mul(DIP_DETECTION_THRESHOLD_FLOATEXP))
+            }
+
+            static newBLA(i, z) {
+                return new BLAStepFloatExp(
+                    z,
+                    new FloatExpComplex(1, 0),
+                    new FloatExpComplex(1, 0),
+                    FloatExp.ONE,
+                    FloatExp.ONE,
+                    1,
+                    i
+                );
+            }
+
+            static createBLA(i, a, b) {
+                return new BLAStep(
+                    a,
+                    b.mul(2),
+                    b.mul(2).add(1),
+                    b.norm().mul(VAILD_SCALE),
+                    b.norm().mul(VAILD_SCALE),
+                    2,
+                    i
+                );
+            }
+        }
+
+        /**
+         * 
+        */
 
         /**
          * 生成BLA表（保持原有的API签名不变）
