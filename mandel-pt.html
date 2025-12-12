@@ -1715,11 +1715,9 @@
             if (n <= 0) return 0;
             return Math.pow(2, Math.floor(Math.log2(n)));
         }
+
         const VAILD_SCALE = 5.960464477539063e-08;
         const DIP_DETECTION_THRESHOLD = 0.0009765625;
-
-        // Complex 类定义（假设已存在）
-        // class Complex { ... }
 
         class BLAStep {
             constructor(Z, A, B, radius, radiusC, length, next) {
@@ -1730,6 +1728,18 @@
                 this.radiusC = radiusC; // number
                 this.length = length; // number
                 this.next = next;     // number
+            }
+
+            copy() {
+                return new BLAStep(
+                    this.Z,
+                    this.A,
+                    this.B,
+                    this.radius,
+                    this.radiusC,
+                    this.length,
+                    this.next
+                );
             }
 
             /**
@@ -1899,7 +1909,6 @@
             _createBLAStep(ref, scale) {
                 let period = 0;
                 let refLen = ref.length - 1;
-                console.log(ref);
 
                 let blaStages = [];
                 let blaSteps = [];
@@ -1982,7 +1991,7 @@
                         steps.push(step);
 
                         if (i + 1 >= prev.end || result.detectDip(steps[i + 1].Z)) {
-                            step = steps[i];
+                            step = steps[i].copy();
                             step.next = i;
                             i++;
                         } else {
@@ -2013,7 +2022,7 @@
                         steps.push(step);
 
                         if (i + 1 >= prev.end || result.detectDip(steps[i + 1].Z)) {
-                            step = steps[i];
+                            step = steps[i].copy();
                             step.next = i;
                         } else {
                             step = steps[i].merge(steps[i + 1])[0];
@@ -2057,40 +2066,6 @@
         function createBLATable(ref, scale) {
             const table = BLATable.create(ref, scale);
             return table;
-        }
-
-
-        function lookup(table, i, refLen, norm_dz, norm_dc) {
-            if (i === 0 || i >= refLen || table.length === 0) {
-                return {
-                    first: null,
-                    second: 0
-                };
-            }
-
-            let result = {
-                first: null,
-                second: 0
-            }; // { step, length }
-            let index = i - 1,
-                length = 1;
-
-            for (let level of table) {
-                if (norm_dz > level[index].radius || norm_dc > level[index].radiusC) {
-                    break;
-                }
-                result.first = level[index];
-                result.second = length;
-
-                if (index % 2) {
-                    break;
-                }
-                index >>= 1; // equivalent to index = Math.floor(index / 2)
-                length <<= 1; // equivalent to length *= 2
-            }
-
-            result.second = Math.min(result.second, refLen - i);
-            return result;
         }
 
         function createBLATableFE(ref, scale) {
