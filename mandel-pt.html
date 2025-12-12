@@ -1878,12 +1878,11 @@
             /**
              * 生成BLA表
              * @param {Complex[]} ref - 参考轨道
-             * @param {number} scale - 当前图像比例
              * @returns {BLATable} - 创建的BLA表
              */
-            static create(ref, scale) {
+            static create(ref) {
                 const table = new BLATable();
-                let result = table._createBLAStep(ref, scale);
+                let result = table._createBLAStep(ref);
 
                 if (!result.hasBLA || ref.length < 8) {
                     table.hasBLA = false;
@@ -1891,7 +1890,7 @@
                 }
 
                 do {
-                    result = table._createBLAStage(result.stages, result.steps, ref, scale);
+                    result = table._createBLAStage(result.stages, result.steps, ref);
                 } while (result.hasBLA);
 
                 table.stages = result.stages;
@@ -1900,7 +1899,7 @@
                 return table;
             }
 
-            _createBLAStep(ref, scale) {
+            _createBLAStep(ref) {
                 let period = 0;
                 let refLen = ref.length - 1;
 
@@ -1966,7 +1965,7 @@
                 };
             }
 
-            _createBLAStage(stages, steps, ref, scale) {
+            _createBLAStage(stages, steps, ref) {
                 let prev = stages[stages.length - 1];
                 let begin = steps.length;
 
@@ -2070,8 +2069,8 @@
                     this.Z.copy(),
                     this.A.copy(),
                     this.B.copy(),
-                    this.radius,
-                    this.radiusC,
+                    this.radius.copy(),
+                    this.radiusC.copy(),
                     this.length,
                     this.next
                 );
@@ -2133,7 +2132,7 @@
             }
 
             static createBLA(i, a, b) {
-                return new BLAStep(
+                return new BLAStepFloatExp(
                     a,
                     b.mul(2),
                     b.mul(2).add(1),
@@ -2142,6 +2141,181 @@
                     2,
                     i
                 );
+            }
+        }
+
+        class BLATableFloatExp {
+            constructor() {
+                this.stages = []; // BLAStage[]
+                this.steps = [];  // BLAStepFloatExp[]
+                this.hasBLA = false;
+            }
+
+            /**
+             * 生成BLA表
+             * @param {FloatExpComplex[]} ref - 参考轨道
+             * @returns {BLATableFloatExp} - 创建的BLA表
+             */
+            static create(ref) {
+                const table = new BLATableFloatExp();
+                let result = table._createBLAStep(ref);
+
+                console.log(result)
+
+                if (!result.hasBLA || ref.length < 8) {
+                    table.hasBLA = false;
+                    return table;
+                }
+
+                do {
+                    result = table._createBLAStage(result.stages, result.steps, ref);
+                } while (result.hasBLA);
+
+                table.stages = result.stages;
+                table.steps = result.steps;
+                table.hasBLA = true;
+                return table;
+            }
+
+
+            _createBLAStep(ref) {
+                let period = 0;
+                let refLen = ref.length - 1;
+
+                let blaStages = [];
+                let blaSteps = [];
+
+                let bla = BLAStepFloatExp.createBLA(0, new FloatExpComplex(0, 0), ref[1]);
+                let i;
+                for (i = 2; i < refLen; i++) {
+                    const [result, detected] = bla.step(ref[i]);
+                    if (detected) {
+                        period = i;
+                        break;
+                    }
+                    bla = result;
+                }
+
+                blaSteps.push(bla);
+
+                if (!period) {
+                    blaStages.push(new BLAStage(0, 1));
+                    blaSteps.push(BLAStepFloatExp.newBLA(0, ref[refLen]));
+                    return {
+                        hasBLA: false,
+                        steps: blaSteps,
+                        stages: blaStages
+                    };
+                }
+
+                if (i + 1 >= refLen) {
+                    bla = BLAStepFloatExp.newBLA(i, ref[i]);
+                    i++;
+                } else {
+                    bla = BLAStepFloatExp.createBLA(i, ref[i], ref[i + 1]);
+                    i += 2;
+                }
+
+                for (; i < refLen; i++) {
+                    const [result, detected] = bla.step(ref[i]);
+
+                    if (detected || bla.length >= period) {
+                        blaSteps.push(bla);
+
+                        if (i + 1 >= refLen || result.detectDip(ref[i + 1])) {
+                            bla = BLAStepFloatExp.newBLA(i, ref[i]);
+                        } else {
+                            bla = BLAStepFloatExp.createBLA(i, ref[i], ref[i + 1]);
+                            i++;
+                        }
+                    } else {
+                        bla = result;
+                    }
+                }
+
+                blaSteps.push(bla);
+                blaStages.push(new BLAStage(0, blaSteps.length));
+                blaSteps.push(BLAStepFloatExp.newBLA(0, ref[refLen]));
+
+                return {
+                    hasBLA: true,
+                    steps: blaSteps,
+                    stages: blaStages
+                };
+            }
+
+
+            _createBLAStage(stages, steps, ref) {
+                let prev = stages[stages.length - 1];
+                let begin = steps.length;
+
+                let period = 0;
+                let i = prev.begin;
+
+                let step = steps[i].merge(steps[i + 1])[0];
+                step.next = i;
+                i += 2;
+
+                for (; i < prev.end; i++) {
+                    const [result, detected] = step.merge(steps[i]);
+
+                    if (detected) {
+                        period = step.length;
+                        steps.push(step);
+
+                        if (i + 1 >= prev.end || result.detectDip(steps[i + 1].Z)) {
+                            step = steps[i].copy();
+                            step.next = i;
+                            i++;
+                        } else {
+                            step = steps[i].merge(steps[i + 1])[0];
+                            step.next = i;
+                            i += 2;
+                        }
+                        break;
+                    }
+                    step = result;
+                }
+
+                if (!period) {
+                    steps.push(step);
+                    stages.push(new BLAStage(begin, steps.length));
+                    steps.push(steps[prev.end]);
+                    return {
+                        hasBLA: false,
+                        steps: steps,
+                        stages: stages
+                    };
+                }
+
+                for (; i < prev.end; i++) {
+                    const [result, detected] = step.merge(steps[i]);
+
+                    if (detected || step.length >= period) {
+                        steps.push(step);
+
+                        if (i + 1 >= prev.end || result.detectDip(steps[i + 1].Z)) {
+                            step = steps[i].copy();
+                            step.next = i;
+                        } else {
+                            step = steps[i].merge(steps[i + 1])[0];
+                            step.next = i;
+                            i++;
+                        }
+                    } else {
+                        step = result;
+                    }
+                }
+
+                steps.push(step);
+                stages.push(new BLAStage(begin, steps.length));
+                steps.push(steps[prev.end]);
+
+                return {
+                    hasBLA: true,
+                    steps: steps,
+                    stages: stages
+                };
             }
         }
 
@@ -2155,92 +2329,15 @@
          * @param {number} scale - 当前图像比例
          * @returns {object} - BLA信息
          */
-        function createBLATable(ref, scale) {
-            const table = BLATable.create(ref, scale);
+        function createBLATable(ref) {
+            const table = BLATable.create(ref);
             return table;
         }
 
-        function createBLATableFE(ref, scale) {
-            const lv1 = [];
-            const table = [lv1];
-            for (let i = 1; i < ref.length; i++) {
-                const point = ref[i];
-
-                const A = point.mul(2);
-                const B = FloatExpComplex.ONE.copy();
-                lv1.push({
-                    A: A,
-                    B: B,
-                    radius: point.norm().mul(5.96e-8),
-                    radiusC: FloatExp.INFINITY.copy()
-                })
-            }
-
-            let level = 1;
-            while (true) {
-                table.push([]);
-
-                for (let i = 0; i < table[level - 1].length; i += 2) {
-                    const bla1 = table[level - 1][i];
-                    const bla2 = table[level - 1][i + 1];
-
-                    if (bla2 == null) {
-                        table[level].push(bla1)
-                        continue;
-                    };
-
-                    table[level].push({
-                        A: bla1.A.mul(bla2.A),
-                        B: bla1.B.mul(bla2.A).add(bla2.B),
-                        radius: FloatExp.min(
-                            bla1.radius, bla2.radius.div(bla1.A.norm())
-                        ),
-                        radiusC: FloatExp.min(
-                            bla1.radiusC, bla2.radiusC, bla2.radius.div(bla1.B.norm())
-                        )
-                    })
-
-                }
-                if (table[level].length <= 1) break;
-                level++;
-            }
-
+        function createBLATableFE(ref) {
+            const table = BLATableFloatExp.create(ref);
             return table;
         }
-
-        function lookupFE(table, i, refLen, norm_dz, norm_dc) {
-            if (i === 0 || i >= refLen || table.length === 0) {
-                return {
-                    first: null,
-                    second: 0
-                };
-            }
-
-            let result = {
-                first: null,
-                second: 0
-            }; // { step, length }
-            let index = i - 1,
-                length = 1;
-
-            for (let level of table) {
-                if (norm_dz.compareTo(level[index].radius) > 0 || norm_dc.compareTo(level[index].radiusC) > 0) {
-                    break;
-                }
-                result.first = level[index];
-                result.second = length;
-
-                if (index % 2) {
-                    break;
-                }
-                index >>= 1; // equivalent to index = Math.floor(index / 2)
-                length <<= 1; // equivalent to length *= 2
-            }
-
-            result.second = Math.min(result.second, refLen - i);
-            return result;
-        }
-
 
         function chebshev(re, im) {
             return Math.max(Math.abs(re), Math.abs(im));
@@ -2352,58 +2449,79 @@
             return i;
         }
 
-        function getPTBLAFE(dc, ref, table, maxIter, bailout, smooth = false) {
-            let dz = FloatExpComplex.ZERO.copy();
+        function getPTBLAFE(dc, ref, steps, stages, maxIter, bailout, smooth = false) {
+            let dcNorm = dc.norm()
 
-            let iter = -1;
-            let refIter = 0;
-            let bout = new FloatExp(bailout);
-            let zero = FloatExp.ZERO;
-            let dcNorm = dc.norm();
-            let dz2 = FloatExpComplex.ZERO.copy();
+            let dz = new FloatExpComplex(0, 0);
+            let z = new FloatExpComplex(0, 0);
+            let Z = new FloatExpComplex(0, 0)
 
-            let a = FloatExp.ZERO.copy();
-            let val = FloatExpComplex.ZERO.copy();
+            let i = 0, j = 0;
+            let stage = stages.length;
+            if (stage != 0) j = stages[stage - 1].begin;
 
-            while (iter < maxIter) {
-                let dzNorm = dz.norm();
-                let result = lookupFE(table, refIter, ref.length, dzNorm, dcNorm)
+            while (stage) {
+                stage--;
+                let begin = stages[stage].begin;
+                let end = stages[stage].end;
 
-                if (result.first != null) {
-                    dz.mulMut(result.first.A).addMut(dc.mul(result.first.B));
-                    iter += result.second;
-                    refIter += result.second;
-                } else {
-                    const Z = ref[refIter]
-                    dz.squareTo(dz2);
-                    // dz = 2*dz*Z + dz^2 + dc
-                    dz.addMut(dz).mulMut(Z).addMut(dz2).addMut(dc)
-                    iter++;
-                    refIter++;
+                while (i < maxIter) {
+                    let step = steps[j];
+                    const newDz = dz.mul(step.Z.add(z))
+
+                    if (newDz.norm().gt(step.radius) || dcNorm.gt(step.radiusC)) {
+                        j = step.next;
+                        break;
+                    }
+
+                    dz = newDz.mul(step.A).addMut(dc.mul(step.B))
+
+                    i += step.length;
+                    j++;
+
+                    // z = dz.add(steps[j].Z);
+                    dz.addTo(steps[j].Z, z)
+
+                    if (j == end || z.norm().lt(dz.norm())) {
+                        j = begin;
+                        z.storeTo(dz)
+                    }
                 }
-                if (refIter >= ref.length) refIter = 0;
+            }
 
-                const Z2 = ref[refIter]
-                Z2.addTo(dz, val);
-                const valAbs = val.abs2();
-                if (valAbs.doubleValue() > bailout) {
+            Z = ref[j];
+
+
+            while (i < maxIter) {
+                dz = dz.mul(Z.add(z)).addMut(dc);
+
+                i++; j++;
+
+                Z = ref[j];
+
+                dz.addTo(Z, z)
+
+
+                // console.log(z)
+                if (z.abs2().doubleValue() > bailout) {
+                    let iter = i - 1;
                     if (smooth) {
-                        let fracIter = Math.log(valAbs.doubleValue()) / 2;
+                        let fracIter = Math.log(z.abs2().doubleValue()) / 2;
                         fracIter = Math.log(fracIter / Math.LN2) / Math.LN2;
                         iter += 1 - fracIter;
                         return iter;
                     } else {
                         return iter; // If not smooth, just return the iteration count
                     }
-                };
-                valAbs.subTo(dzNorm, a);
+                }
 
-                if (a.compareTo(zero) < 0 || refIter == ref.length - 1) { // 检测是否需要变基
-                    val.storeTo(dz);
-                    refIter = 0;
+                if (j == ref.length - 1 || z.norm().lt(dz.norm())) {
+                    Z = new FloatExpComplex(0, 0);
+                    z.storeTo(dz);
+                    j = 0;
                 }
             }
-            return iter;
+            return i;
         }
 
         /**
@@ -2814,7 +2932,6 @@
                 Decimal.config({
                     precision: -size.exp + 10
                 })
-                this.deep = this.size.exp < -300;
                 this.size = size;
                 this.clear();
                 this.stats.predCenter = null;
@@ -3098,7 +3215,8 @@
                     // 重建哈希字符串
                     window.location.hash = params.toString();
                 } catch (e) {
-                    alert(e)
+                    console.error(e);
+                    alert("Error: " + e);
                 } finally {
                     this.rendering = false;
                 }
@@ -3293,7 +3411,8 @@
                     getPTBLAFE(
                         delta,
                         this.ref,
-                        this.blaTable,
+                        this.blaTable.steps,
+                        this.blaTable.stages,
                         this.iterations,
                         this.bailout,
                         this.smooth
