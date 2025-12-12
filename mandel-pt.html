@@ -2236,9 +2236,9 @@
                 // z = dz.add(Z);
                 zRe = dzRe + Z.re;
                 zIm = dzIm + Z.im;
-                let zAbs = zRe * zRe + zIm * zIm ;
+                let zAbs = zRe * zRe + zIm * zIm;
 
-                if (zAbs> bailout) {
+                if (zAbs > bailout) {
                     let iter = i - 1;
                     if (smooth) {
                         let fracIter = Math.log(zAbs) / 2;
@@ -2856,7 +2856,13 @@
                 let elapsedTime = performance.now() - this.stats.time;
                 let estimatedTotalTime = (elapsedTime / (this.stats.calc + this.stats.guess)) * totalPixels;
                 let estimatedRemainingTime = estimatedTotalTime - elapsedTime;
-                let statusText = `Ref: ${this.stats.ref.toLocaleString()}it\nBLA: ${this.blaTable?.steps?.length ?? 0} entries\nRes: ${this.canvas.width}x${this.canvas.height}\nCalc/Guess/Total: ${this.stats.calc.toLocaleString()}/${this.stats.guess.toLocaleString()}/${totalPixels.toLocaleString()} px\nTime: ${((elapsedTime) / 1000).toFixed(3)}s ETA: ${(estimatedRemainingTime / 1000).toFixed(3)}s`;
+
+                let statusText = `Ref: ${this.stats.ref.toLocaleString()}it\n`;
+                statusText += `BLA: ${this.blaTable?.steps?.length?.toLocaleString() ?? 0} entries\n`;
+                statusText += `Res: ${this.canvas.width}x${this.canvas.height}\n`;
+                statusText += `Calc/Guess/Total: ${this.stats.calc.toLocaleString()}/${this.stats.guess.toLocaleString()}/${totalPixels.toLocaleString()} px\n`;
+                statusText += `Time: ${(elapsedTime / 1000).toFixed(3)}s ETA: ${(estimatedRemainingTime / 1000).toFixed(3)}s`;
+
                 statusText += "\n" + this.stats.statusText;
                 statsLabel.innerText = statusText;
                 this.updateProgress();
