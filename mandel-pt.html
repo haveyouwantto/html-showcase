@@ -766,9 +766,6 @@
                 return this.norm();
             }
 
-            equals(o) {
-                return this.compareTo(o) === 0;
-            }
 
             compareTo(o) {
                 if (this.base > 0 && o.base < 0) return 1;
@@ -781,6 +778,18 @@
                 if (this.base > o.base) return 1;
                 if (this.base < o.base) return -1;
                 return 0;
+            }
+
+            gt(o) {
+                return this.compareTo(o) > 0;
+            }
+
+            lt(o) {
+                return this.compareTo(o) < 0;
+            }
+
+            equals(o) {
+                return this.compareTo(o) === 0;
             }
 
             log2Value() {
@@ -972,87 +981,203 @@
                 return decimalToFloatExp(obj);
             } else return parseFloatExp(obj.toString())
         }
-
         class Complex {
-            absValue;
+            // Static cache variables to avoid object creation in intermediate calculations
+            static CACHE_RE = 0;
+            static CACHE_IM = 0;
+            static CACHE_RE2 = 0;
+            static CACHE_IM2 = 0;
+
             constructor(re, im) {
                 this.re = re;
                 this.im = im;
+                this.absValue = null; // Cache for absolute value squared
             }
 
+            // Clear cache when values change
+            _clearCache() {
+                this.absValue = null;
+            }
+
+            // --- Addition Operations ---
+            add(other) {
+                return this.addTo(other, new Complex(0, 0));
+            }
+
+            addMut(other) {
+                return this.addTo(other, this);
+            }
+
+            addTo(other, store) {
+                if (typeof other === 'number') {
+                    store.re = this.re + other;
+                    store.im = this.im;
+                } else {
+                    store.re = this.re + other.re;
+                    store.im = this.im + other.im;
+                }
+                store._clearCache(); // Clear cache in store
+                return store;
+            }
+
+            // --- Subtraction Operations ---
+            sub(other) {
+                return this.subTo(other, new Complex(0, 0));
+            }
+
+            subMut(other) {
+                return this.subTo(other, this);
+            }
+
+            subTo(other, store) {
+                if (typeof other === 'number') {
+                    store.re = this.re - other;
+                    store.im = this.im;
+                } else {
+                    store.re = this.re - other.re;
+                    store.im = this.im - other.im;
+                }
+                store._clearCache();
+                return store;
+            }
+
+            // --- Multiplication Operations ---
+            mul(other) {
+                return this.mulTo(other, new Complex(0, 0));
+            }
+
+            mulMut(other) {
+                return this.mulTo(other, this);
+            }
+
+            /**
+             * Optimized multiplication using static cache to avoid object creation
+             * (a + bi)(c + di) = (ac - bd) + (ad + bc)i
+             */
+            mulTo(other, store) {
+                if (typeof other === 'number') {
+                    store.re = this.re * other;
+                    store.im = this.im * other;
+                    store._clearCache();
+                    return store;
+                }
+
+                // Use static cache for intermediate values
+                // ac -> CACHE_RE
+                Complex.CACHE_RE = this.re * other.re;
+                // bd -> CACHE_IM
+                Complex.CACHE_IM = this.im * other.im;
+                // Real part: ac - bd -> CACHE_RE2 (temporary for real result)
+                Complex.CACHE_RE2 = Complex.CACHE_RE - Complex.CACHE_IM;
+
+                // ad -> CACHE_RE (reuse)
+                Complex.CACHE_RE = this.re * other.im;
+                // bc -> CACHE_IM (reuse)
+                Complex.CACHE_IM = this.im * other.re;
+                // Imag part: ad + bc -> CACHE_IM2 (temporary for imag result)
+                Complex.CACHE_IM2 = Complex.CACHE_RE + Complex.CACHE_IM;
+
+                // Store results
+                store.re = Complex.CACHE_RE2;
+                store.im = Complex.CACHE_IM2;
+                store._clearCache();
+
+                return store;
+            }
+
+            // --- Division Operations ---
+            div(other) {
+                return this.divTo(other, new Complex(0, 0));
+            }
+
+            divMut(other) {
+                return this.divTo(other, this);
+            }
+
+            /**
+             * Optimized division
+             * (a + bi)/(c + di) = ((ac + bd) + (bc - ad)i) / (c^2 + d^2)
+             */
+            divTo(other, store) {
+                if (typeof other === 'number') {
+                    store.re = this.re / other;
+                    store.im = this.im / other;
+                    store._clearCache();
+                    return store;
+                }
+
+                // Denominator: c^2 + d^2 -> CACHE_RE
+                Complex.CACHE_RE = other.re * other.re + other.im * other.im;
+
+                // Numerator Real: ac + bd -> CACHE_IM
+                Complex.CACHE_IM = this.re * other.re + this.im * other.im;
+
+                // Numerator Imag: bc - ad -> CACHE_RE2
+                Complex.CACHE_RE2 = this.im * other.re - this.re * other.im;
+
+                // Final division
+                store.re = Complex.CACHE_IM / Complex.CACHE_RE;
+                store.im = Complex.CACHE_RE2 / Complex.CACHE_RE;
+                store._clearCache();
+
+                return store;
+            }
+
+            // --- Square Operations ---
+            square() {
+                return this.squareTo(new Complex(0, 0));
+            }
+
+            squareMut() {
+                return this.squareTo(this);
+            }
+
+            squareTo(store) {
+                // (a+bi)^2 = (a^2 - b^2) + 2abi
+                Complex.CACHE_RE = this.re * this.re - this.im * this.im; // Real part
+                Complex.CACHE_IM = 2 * this.re * this.im; // Imag part
+
+                store.re = Complex.CACHE_RE;
+                store.im = Complex.CACHE_IM;
+                store._clearCache();
+
+                return store;
+            }
+
+            // --- Other Methods (updated) ---
             abs() {
-                if (!this.absValue) this.absValue = this.re ** 2 + this.im ** 2;
-                return this.absValue
+                if (this.absValue === null) {
+                    this.absValue = this.re * this.re + this.im * this.im;
+                }
+                return this.absValue;
             }
 
             toNumberArray() {
                 return [this.re, this.im];
             }
 
-            mul(other) {
-                if (typeof other === 'number') {
-                    return new Complex(this.re * other, this.im * other);
-                } else {
-                    return new Complex(
-                        this.re * other.re - this.im * other.im,
-                        this.re * other.im + this.im * other.re
-                    );
-                }
-            }
-
-            mulMut(other) {
-                if (typeof other === 'number') {
-                    this.re *= other;
-                    this.im *= other;
-                    return this;
-                } else {
-                    let re = this.re;
-                    let im = this.im;
-                    this.re = re * other.re - im * other.im
-                    this.im = re * other.im + im * other.re;
-                    return this;
-                }
-            }
-
-            add(other) {
-                return new Complex(this.re + other.re, this.im + other.im);
-            }
-
-            addMut(other) {
-                this.re += other.re;
-                this.im += other.im;
-                return this;
-            }
-
-            sub(other) {
-                return new Complex(this.re - other.re, this.im - other.im);
-            }
-
-            subMut(other) {
-                this.re -= other.re;
-                this.im -= other.im;
-                return this;
-            }
-
             norm() {
                 return Math.max(Math.abs(this.re), Math.abs(this.im));
             }
 
-            div(other) {
-                if (typeof other === 'number') {
-                    return new Complex(this.re / other, this.im / other);
-                } else {
-                    const denominator = other.re ** 2 + other.im ** 2;
-                    return new Complex(
-                        (this.re * other.re + this.im * other.im) / denominator,
-                        (this.im * other.re - this.re * other.im) / denominator
-                    );
-                }
+            equals(other) {
+                return this.re === other.re && this.im === other.im;
+            }
+
+            copy() {
+                return new Complex(this.re, this.im);
             }
 
             toString() {
                 return `(${this.re}, ${this.im})`;
             }
+
+            // Static methods similar to FloatExpComplex
+            static ZERO = new Complex(0, 0);
+            static ONE = new Complex(1, 0);
+            static I = new Complex(0, 1);
+            static NEGATIVE_ONE = new Complex(-1, 0);
+            static TWO = new Complex(2, 0);
         }
 
         class DeepComplex {
@@ -1429,7 +1554,6 @@
             let updateTimer = performance.now();
 
             const binding = gmpinit.binding;
-            console.log(binding)
             const tempVars = {
                 re2: ctx.Float(0), im2: ctx.Float(0), reim: ctx.Float(0),
                 temp1: ctx.Float(0), temp2: ctx.Float(0)
@@ -1601,240 +1725,712 @@
             return Math.pow(2, Math.floor(Math.log2(n)));
         }
 
+        const VAILD_SCALE = 5.960464477539063e-08;
+        const DIP_DETECTION_THRESHOLD = 0.0009765625;
+
+        class BLAStep {
+            constructor(Z, A, B, radius, radiusC, length, next) {
+                this.Z = Z;           // Complex
+                this.A = A;           // Complex
+                this.B = B;           // Complex
+                this.radius = radius; // number
+                this.radiusC = radiusC; // number
+                this.length = length; // number
+                this.next = next;     // number
+            }
+
+            copy() {
+                return new BLAStep(
+                    this.Z,
+                    this.A,
+                    this.B,
+                    this.radius,
+                    this.radiusC,
+                    this.length,
+                    this.next
+                );
+            }
+
+            /**
+             * 执行一步迭代
+             * @param {Complex} z - 下一个迭代点的值
+             * @returns {[BLAStep, boolean]} - 新的步骤和是否检测到下降
+             */
+            step(z) {
+                let radius = z.norm() * VAILD_SCALE;
+                let result = new BLAStep(
+                    this.Z,
+                    this.A.mul(z).mul(2),
+                    this.B.mul(z).mul(2).add(1),
+                    Math.min(this.radius, radius / this.A.norm()),
+                    Math.min(this.radiusC, radius / this.B.norm()),
+                    this.length + 1,
+                    this.next
+                );
+
+                let dipDetected = result.radius < this.radius * DIP_DETECTION_THRESHOLD;
+                return [result, dipDetected];
+            }
+
+            /**
+             * 合并两个步骤
+             * @param {BLAStep} other - 要合并的另一个步骤
+             * @returns {[BLAStep, boolean]} - 合并后的步骤和是否检测到下降
+             */
+            merge(other) {
+                let radius = other.Z.norm() * VAILD_SCALE;
+                let result = new BLAStep(
+                    this.Z,
+                    this.A.mul(other.Z).mul(2),
+                    this.B.mul(other.Z).mul(2),
+                    Math.min(this.radius, radius / this.A.norm()),
+                    Math.min(this.radiusC, radius / this.B.norm()),
+                    this.length + other.length,
+                    this.next
+                );
+
+                let dipDetected = result.radius < this.radius * DIP_DETECTION_THRESHOLD;
+
+                result.radius = Math.min(result.radius, other.radius / result.A.norm());
+                result.radiusC = Math.min(result.radiusC, other.radius / result.B.norm());
+                result.A = result.A.mul(other.A);
+                result.B = result.B.mul(other.A).add(other.B);
+
+                return [result, dipDetected];
+            }
+
+            /**
+             * 检查是否检测到下降
+             * @param {Complex} z - 下一个迭代点的值
+             * @returns {boolean} - 是否检测到下降
+             */
+            detectDip(z) {
+                return z.norm() * VAILD_SCALE / this.A.norm() < this.radius * DIP_DETECTION_THRESHOLD;
+            }
+
+            /**
+             * 创建新的BLA步骤
+             * @param {number} i - 索引
+             * @param {Complex} z - Z值
+             * @returns {BLAStep} - 新的步骤
+             */
+            static newBLA(i, z) {
+                return new BLAStep(
+                    z,
+                    new Complex(1, 0),
+                    new Complex(1, 0),
+                    1,
+                    1,
+                    1,
+                    i
+                );
+            }
+
+            /**
+             * 创建初始的BLA步骤
+             * @param {number} i - 索引
+             * @param {Complex} a - A值
+             * @param {Complex} b - B值
+             * @returns {BLAStep} - 新的步骤
+             */
+            static createBLA(i, a, b) {
+                return new BLAStep(
+                    a,
+                    b.mul(2),
+                    b.mul(2).add(1),
+                    b.norm() * VAILD_SCALE,
+                    b.norm() * VAILD_SCALE,
+                    2,
+                    i
+                );
+            }
+        }
+
+        class BLAStage {
+            constructor(begin, end) {
+                this.begin = begin; // number
+                this.end = end;     // number
+            }
+
+            /**
+             * 获取步骤范围
+             * @returns {[number, number]} - [begin, end]
+             */
+            getRange() {
+                return [this.begin, this.end];
+            }
+
+            /**
+             * 转换为数组格式（用于兼容旧的API）
+             */
+            toArray() {
+                return [this.begin, this.end];
+            }
+        }
+
+        class BLATable {
+            constructor() {
+                this.stages = []; // BLAStage[]
+                this.steps = [];  // BLAStep[]
+                this.hasBLA = false;
+            }
+
+            /**
+             * 生成BLA表
+             * @param {Complex[]} ref - 参考轨道
+             * @returns {BLATable} - 创建的BLA表
+             */
+            static create(ref) {
+                const table = new BLATable();
+                let result = table._createBLAStep(ref);
+
+                if (!result.hasBLA || ref.length < 8) {
+                    table.hasBLA = false;
+                    return table;
+                }
+
+                do {
+                    result = table._createBLAStage(result.stages, result.steps, ref);
+                } while (result.hasBLA);
+
+                table.stages = result.stages;
+                table.steps = result.steps;
+                table.hasBLA = true;
+                return table;
+            }
+
+            _createBLAStep(ref) {
+                let period = 0;
+                let refLen = ref.length - 1;
+
+                let blaStages = [];
+                let blaSteps = [];
+
+                let bla = BLAStep.createBLA(0, new Complex(0, 0), ref[1]);
+                let i;
+                for (i = 2; i < refLen; i++) {
+                    const [result, detected] = bla.step(ref[i]);
+                    if (detected) {
+                        period = i;
+                        break;
+                    }
+                    bla = result;
+                }
+
+                blaSteps.push(bla);
+
+                if (!period) {
+                    blaStages.push(new BLAStage(0, 1));
+                    blaSteps.push(BLAStep.newBLA(0, ref[refLen]));
+                    return {
+                        hasBLA: false,
+                        steps: blaSteps,
+                        stages: blaStages
+                    };
+                }
+
+                if (i + 1 >= refLen) {
+                    bla = BLAStep.newBLA(i, ref[i]);
+                    i++;
+                } else {
+                    bla = BLAStep.createBLA(i, ref[i], ref[i + 1]);
+                    i += 2;
+                }
+
+                for (; i < refLen; i++) {
+                    const [result, detected] = bla.step(ref[i]);
+
+                    if (detected || bla.length >= period) {
+                        blaSteps.push(bla);
+
+                        if (i + 1 >= refLen || result.detectDip(ref[i + 1])) {
+                            bla = BLAStep.newBLA(i, ref[i]);
+                        } else {
+                            bla = BLAStep.createBLA(i, ref[i], ref[i + 1]);
+                            i++;
+                        }
+                    } else {
+                        bla = result;
+                    }
+                }
+
+                blaSteps.push(bla);
+                blaStages.push(new BLAStage(0, blaSteps.length));
+                blaSteps.push(BLAStep.newBLA(0, ref[refLen]));
+
+                return {
+                    hasBLA: true,
+                    steps: blaSteps,
+                    stages: blaStages
+                };
+            }
+
+            _createBLAStage(stages, steps, ref) {
+                let prev = stages[stages.length - 1];
+                let begin = steps.length;
+
+                let period = 0;
+                let i = prev.begin;
+
+                let step = steps[i].merge(steps[i + 1])[0];
+                step.next = i;
+                i += 2;
+
+                for (; i < prev.end; i++) {
+                    const [result, detected] = step.merge(steps[i]);
+
+                    if (detected) {
+                        period = step.length;
+                        steps.push(step);
+
+                        if (i + 1 >= prev.end || result.detectDip(steps[i + 1].Z)) {
+                            step = steps[i].copy();
+                            step.next = i;
+                            i++;
+                        } else {
+                            step = steps[i].merge(steps[i + 1])[0];
+                            step.next = i;
+                            i += 2;
+                        }
+                        break;
+                    }
+                    step = result;
+                }
+
+                if (!period) {
+                    steps.push(step);
+                    stages.push(new BLAStage(begin, steps.length));
+                    steps.push(steps[prev.end]);
+                    return {
+                        hasBLA: false,
+                        steps: steps,
+                        stages: stages
+                    };
+                }
+
+                for (; i < prev.end; i++) {
+                    const [result, detected] = step.merge(steps[i]);
+
+                    if (detected || step.length >= period) {
+                        steps.push(step);
+
+                        if (i + 1 >= prev.end || result.detectDip(steps[i + 1].Z)) {
+                            step = steps[i].copy();
+                            step.next = i;
+                        } else {
+                            step = steps[i].merge(steps[i + 1])[0];
+                            step.next = i;
+                            i++;
+                        }
+                    } else {
+                        step = result;
+                    }
+                }
+
+                steps.push(step);
+                stages.push(new BLAStage(begin, steps.length));
+                steps.push(steps[prev.end]);
+
+                return {
+                    hasBLA: true,
+                    steps: steps,
+                    stages: stages
+                };
+            }
+
+            /**
+             * 获取BLA信息（用于兼容旧的API）
+             */
+            getBLAInfo() {
+                return {
+                    bla: this.hasBLA,
+                    stages: this.stages.map(stage => stage.toArray()),
+                    steps: this.steps.map(step => step.toObject())
+                };
+            }
+        }
+
+        const VAILD_SCALE_FLOATEXP = new FloatExp(5.960464477539063, -8);
+        const DIP_DETECTION_THRESHOLD_FLOATEXP = new FloatExp(0.0009765625, 0);
+
+        class BLAStepFloatExp {
+            constructor(Z, A, B, radius, radiusC, length, next) {
+                this.Z = Z;           // FloatExpComplex
+                this.A = A;           // FloatExpComplex
+                this.B = B;           // FloatExpComplex
+                this.radius = radius; // number
+                this.radiusC = radiusC; // number
+                this.length = length; // number
+                this.next = next;     // number
+            }
+
+            copy() {
+                return new BLAStepFloatExp(
+                    this.Z.copy(),
+                    this.A.copy(),
+                    this.B.copy(),
+                    this.radius.copy(),
+                    this.radiusC.copy(),
+                    this.length,
+                    this.next
+                );
+            }
+
+            /**
+             * 执行一步迭代
+             * @param {FloatExpComplex} z - 下一个迭代点的值
+             * @returns {[BLAStepFloatExp, boolean]} - 新的步骤和是否检测到下降
+             */
+            step(z) {
+                let radius = z.norm().mul(VAILD_SCALE_FLOATEXP);
+                let result = new BLAStepFloatExp(
+                    this.Z,
+                    this.A.mul(z).mul(2),
+                    this.B.mul(z).mul(2).add(1),
+                    FloatExp.min(this.radius, radius.div(this.A.norm())),
+                    FloatExp.min(this.radiusC, radius.div(this.B.norm())),
+                    this.length + 1,
+                    this.next
+                );
+                let dipDetected = result.radius.lt(this.radius.mul(DIP_DETECTION_THRESHOLD_FLOATEXP));
+                return [result, dipDetected];
+            }
+
+            merge(other) {
+                let radius = other.Z.norm().mul(VAILD_SCALE_FLOATEXP);
+                let result = new BLAStepFloatExp(
+                    this.Z,
+                    this.A.mul(other.Z).mul(2),
+                    this.B.mul(other.Z).mul(2),
+                    FloatExp.min(this.radius, radius.div(this.A.norm())),
+                    FloatExp.min(this.radiusC, radius.div(this.B.norm())),
+                    this.length + other.length,
+                    this.next
+                )
+                let dipDetected = result.radius.lt(this.radius.mul(DIP_DETECTION_THRESHOLD_FLOATEXP));
+                result.radius = FloatExp.min(result.radius, other.radius.div(result.A.norm()));
+                result.radiusC = FloatExp.min(result.radiusC, other.radius.div(result.B.norm()));
+                result.A = result.A.mul(other.A);
+                result.B = result.B.mul(other.A).add(other.B);
+                return [result, dipDetected];
+            }
+
+            detectDip(z) {
+                return z.norm().mul(VAILD_SCALE_FLOATEXP).div(this.A.norm()).lt(this.radius.mul(DIP_DETECTION_THRESHOLD_FLOATEXP))
+            }
+
+            static newBLA(i, z) {
+                return new BLAStepFloatExp(
+                    z,
+                    new FloatExpComplex(1, 0),
+                    new FloatExpComplex(1, 0),
+                    FloatExp.ONE,
+                    FloatExp.ONE,
+                    1,
+                    i
+                );
+            }
+
+            static createBLA(i, a, b) {
+                return new BLAStepFloatExp(
+                    a,
+                    b.mul(2),
+                    b.mul(2).add(1),
+                    b.norm().mul(VAILD_SCALE_FLOATEXP),
+                    b.norm().mul(VAILD_SCALE_FLOATEXP),
+                    2,
+                    i
+                );
+            }
+        }
+
+        class BLATableFloatExp {
+            constructor() {
+                this.stages = []; // BLAStage[]
+                this.steps = [];  // BLAStepFloatExp[]
+                this.hasBLA = false;
+            }
+
+            /**
+             * 生成BLA表
+             * @param {FloatExpComplex[]} ref - 参考轨道
+             * @returns {BLATableFloatExp} - 创建的BLA表
+             */
+            static create(ref) {
+                const table = new BLATableFloatExp();
+                let result = table._createBLAStep(ref);
+
+                console.log(result)
+
+                if (!result.hasBLA || ref.length < 8) {
+                    table.hasBLA = false;
+                    return table;
+                }
+
+                do {
+                    result = table._createBLAStage(result.stages, result.steps, ref);
+                } while (result.hasBLA);
+
+                table.stages = result.stages;
+                table.steps = result.steps;
+                table.hasBLA = true;
+                return table;
+            }
+
+
+            _createBLAStep(ref) {
+                let period = 0;
+                let refLen = ref.length - 1;
+
+                let blaStages = [];
+                let blaSteps = [];
+
+                let bla = BLAStepFloatExp.createBLA(0, new FloatExpComplex(0, 0), ref[1]);
+                let i;
+                for (i = 2; i < refLen; i++) {
+                    const [result, detected] = bla.step(ref[i]);
+                    if (detected) {
+                        period = i;
+                        break;
+                    }
+                    bla = result;
+                }
+
+                blaSteps.push(bla);
+
+                if (!period) {
+                    blaStages.push(new BLAStage(0, 1));
+                    blaSteps.push(BLAStepFloatExp.newBLA(0, ref[refLen]));
+                    return {
+                        hasBLA: false,
+                        steps: blaSteps,
+                        stages: blaStages
+                    };
+                }
+
+                if (i + 1 >= refLen) {
+                    bla = BLAStepFloatExp.newBLA(i, ref[i]);
+                    i++;
+                } else {
+                    bla = BLAStepFloatExp.createBLA(i, ref[i], ref[i + 1]);
+                    i += 2;
+                }
+
+                for (; i < refLen; i++) {
+                    const [result, detected] = bla.step(ref[i]);
+
+                    if (detected || bla.length >= period) {
+                        blaSteps.push(bla);
+
+                        if (i + 1 >= refLen || result.detectDip(ref[i + 1])) {
+                            bla = BLAStepFloatExp.newBLA(i, ref[i]);
+                        } else {
+                            bla = BLAStepFloatExp.createBLA(i, ref[i], ref[i + 1]);
+                            i++;
+                        }
+                    } else {
+                        bla = result;
+                    }
+                }
+
+                blaSteps.push(bla);
+                blaStages.push(new BLAStage(0, blaSteps.length));
+                blaSteps.push(BLAStepFloatExp.newBLA(0, ref[refLen]));
+
+                return {
+                    hasBLA: true,
+                    steps: blaSteps,
+                    stages: blaStages
+                };
+            }
+
+
+            _createBLAStage(stages, steps, ref) {
+                let prev = stages[stages.length - 1];
+                let begin = steps.length;
+
+                let period = 0;
+                let i = prev.begin;
+
+                let step = steps[i].merge(steps[i + 1])[0];
+                step.next = i;
+                i += 2;
+
+                for (; i < prev.end; i++) {
+                    const [result, detected] = step.merge(steps[i]);
+
+                    if (detected) {
+                        period = step.length;
+                        steps.push(step);
+
+                        if (i + 1 >= prev.end || result.detectDip(steps[i + 1].Z)) {
+                            step = steps[i].copy();
+                            step.next = i;
+                            i++;
+                        } else {
+                            step = steps[i].merge(steps[i + 1])[0];
+                            step.next = i;
+                            i += 2;
+                        }
+                        break;
+                    }
+                    step = result;
+                }
+
+                if (!period) {
+                    steps.push(step);
+                    stages.push(new BLAStage(begin, steps.length));
+                    steps.push(steps[prev.end]);
+                    return {
+                        hasBLA: false,
+                        steps: steps,
+                        stages: stages
+                    };
+                }
+
+                for (; i < prev.end; i++) {
+                    const [result, detected] = step.merge(steps[i]);
+
+                    if (detected || step.length >= period) {
+                        steps.push(step);
+
+                        if (i + 1 >= prev.end || result.detectDip(steps[i + 1].Z)) {
+                            step = steps[i].copy();
+                            step.next = i;
+                        } else {
+                            step = steps[i].merge(steps[i + 1])[0];
+                            step.next = i;
+                            i++;
+                        }
+                    } else {
+                        step = result;
+                    }
+                }
+
+                steps.push(step);
+                stages.push(new BLAStage(begin, steps.length));
+                steps.push(steps[prev.end]);
+
+                return {
+                    hasBLA: true,
+                    steps: steps,
+                    stages: stages
+                };
+            }
+        }
+
         /**
-         * Generate BLA table
-         * @param {Complex[]} ref - The reference orbit
-         * @param {number} scale - Current image scale
-         * */
+         * 
+        */
 
-        function createBLATable(ref, scale) {
-            const lv1 = [];
-            const table = [lv1];
-            for (let i = 1; i < ref.length; i++) {
-                const point = ref[i];
-
-                const A = point.mul(2);
-                const B = new Complex(1, 0);
-                lv1.push({
-                    A: A,
-                    B: B,
-                    radius: point.norm() * 5.96e-8,
-                    radiusC: Infinity
-                })
-            }
-
-            let level = 1;
-            while (true) {
-                table.push([]);
-
-                for (let i = 0; i < table[level - 1].length; i += 2) {
-                    const bla1 = table[level - 1][i];
-                    const bla2 = table[level - 1][i + 1];
-
-                    if (bla2 == null) {
-                        table[level].push(bla1)
-                        continue;
-                    };
-
-                    table[level].push({
-                        A: bla1.A.mul(bla2.A),
-                        B: bla1.B.mul(bla2.A).add(bla2.B),
-                        radius: Math.min(
-                            bla1.radius, bla2.radius / bla1.A.norm()
-                        ),
-                        radiusC: Math.min(
-                            bla1.radiusC, bla2.radiusC, bla2.radius / bla1.B.norm()
-                        )
-                    })
-
-                }
-                if (table[level].length <= 1) break;
-                level++;
-            }
-
+        /**
+         * 生成BLA表（保持原有的API签名不变）
+         * @param {Complex[]} ref - 参考轨道
+         * @param {number} scale - 当前图像比例
+         * @returns {object} - BLA信息
+         */
+        function createBLATable(ref) {
+            const table = BLATable.create(ref);
             return table;
         }
 
-        function lookup(table, i, refLen, norm_dz, norm_dc) {
-            if (i === 0 || i >= refLen || table.length === 0) {
-                return {
-                    first: null,
-                    second: 0
-                };
-            }
-
-            let result = {
-                first: null,
-                second: 0
-            }; // { step, length }
-            let index = i - 1,
-                length = 1;
-
-            for (let level of table) {
-                if (norm_dz > level[index].radius || norm_dc > level[index].radiusC) {
-                    break;
-                }
-                result.first = level[index];
-                result.second = length;
-
-                if (index % 2) {
-                    break;
-                }
-                index >>= 1; // equivalent to index = Math.floor(index / 2)
-                length <<= 1; // equivalent to length *= 2
-            }
-
-            result.second = Math.min(result.second, refLen - i);
-            return result;
-        }
-
-        function createBLATableFE(ref, scale) {
-            const lv1 = [];
-            const table = [lv1];
-            for (let i = 1; i < ref.length; i++) {
-                const point = ref[i];
-
-                const A = point.mul(2);
-                const B = FloatExpComplex.ONE.copy();
-                lv1.push({
-                    A: A,
-                    B: B,
-                    radius: point.norm().mul(5.96e-8),
-                    radiusC: FloatExp.INFINITY.copy()
-                })
-            }
-
-            let level = 1;
-            while (true) {
-                table.push([]);
-
-                for (let i = 0; i < table[level - 1].length; i += 2) {
-                    const bla1 = table[level - 1][i];
-                    const bla2 = table[level - 1][i + 1];
-
-                    if (bla2 == null) {
-                        table[level].push(bla1)
-                        continue;
-                    };
-
-                    table[level].push({
-                        A: bla1.A.mul(bla2.A),
-                        B: bla1.B.mul(bla2.A).add(bla2.B),
-                        radius: FloatExp.min(
-                            bla1.radius, bla2.radius.div(bla1.A.norm())
-                        ),
-                        radiusC: FloatExp.min(
-                            bla1.radiusC, bla2.radiusC, bla2.radius.div(bla1.B.norm())
-                        )
-                    })
-
-                }
-                if (table[level].length <= 1) break;
-                level++;
-            }
-
+        function createBLATableFE(ref) {
+            const table = BLATableFloatExp.create(ref);
             return table;
         }
 
-        function lookupFE(table, i, refLen, norm_dz, norm_dc) {
-            if (i === 0 || i >= refLen || table.length === 0) {
-                return {
-                    first: null,
-                    second: 0
-                };
-            }
-
-            let result = {
-                first: null,
-                second: 0
-            }; // { step, length }
-            let index = i - 1,
-                length = 1;
-
-            for (let level of table) {
-                if (norm_dz.compareTo(level[index].radius) > 0 || norm_dc.compareTo(level[index].radiusC) > 0) {
-                    break;
-                }
-                result.first = level[index];
-                result.second = length;
-
-                if (index % 2) {
-                    break;
-                }
-                index >>= 1; // equivalent to index = Math.floor(index / 2)
-                length <<= 1; // equivalent to length *= 2
-            }
-
-            result.second = Math.min(result.second, refLen - i);
-            return result;
+        function chebshev(re, im) {
+            return Math.max(Math.abs(re), Math.abs(im));
         }
-
 
         /**
          * Calculates the escape time for a point in the Mandelbrot set using perturbation theory.
          * @param {Complex} dc - The perturbation applied to the point.
          * @param {Complex[]} ref - The reference orbit.
-         * @param {Complex[][]} table - The BLA table.
          * @param {number} maxIter - The maximum iteration.
          * @param {number} bailout - The bailout value used for iteration termination.
          * @returns {number|null} - The escape time for the point or null if it doesn't escape.
          */
-        function getPTBLA(dc, ref, table, maxIter, bailout, smooth = false) {
-            // Initialize perturbation variables
-            let dzRe = 0, dzIm = 0, iter = -1, refIter = 0;
-            let dzNorm, result;
-            let aRe, aIm, bRe, bIm;
+        function getPTBLA(dc, ref, steps, stages, maxIter, bailout, smooth = false) {
+            let dcNorm = dc.norm()
+
+            let Z = new Complex(0, 0)
+
+            let dzRe = 0, dzIm = 0;
             let newDzRe, newDzIm;
-            let tempRe, tempIm;
 
-            let Z, Z2;
-            let valRe, valIm, valAbsSq;
-            let dzAbsSq;
+            let zRe = 0, zIm = 0;
 
-            let dcNorm = Math.max(Math.abs(dc.re), Math.abs(dc.im));
-            while (iter < maxIter) {
-                dzNorm = Math.max(Math.abs(dzRe), Math.abs(dzIm)); // Chebyshev norm
+            let i = 0, j = 0;
+            let stage = stages.length;
+            if (stage != 0) j = stages[stage - 1].begin;
 
-                result = lookup(table, refIter, ref.length, dzNorm, dcNorm);
+            while (stage) {
+                stage--;
+                let begin = stages[stage].begin;
+                let end = stages[stage].end;
 
-                if (result.first != null) {
-                    aRe = result.first.A.re;
-                    aIm = result.first.A.im;
-                    bRe = result.first.B.re;
-                    bIm = result.first.B.im;
+                while (i < maxIter) {
+                    let step = steps[j];
+                    // const newDz = dz.mul(step.Z.add(z))
+                    let stepZaddzRe = step.Z.re + zRe;
+                    let stepZaddzIm = step.Z.im + zIm;
+                    newDzRe = dzRe * stepZaddzRe - dzIm * stepZaddzIm;
+                    newDzIm = dzRe * stepZaddzIm + dzIm * stepZaddzRe;
 
-                    newDzRe = dzRe * aRe - dzIm * aIm + dc.re * bRe - dc.im * bIm;
-                    newDzIm = dzRe * aIm + dzIm * aRe + dc.re * bIm + dc.im * bRe;
+                    if (chebshev(newDzRe, newDzIm) > step.radius || dcNorm > step.radiusC) {
+                        j = step.next;
+                        break;
+                    }
 
-                    dzRe = newDzRe;
-                    dzIm = newDzIm;
+                    // dz = newDz.mul(step.A).addMut(dc.mul(step.B))
+                    let dzARe = newDzRe * step.A.re - newDzIm * step.A.im;
+                    let dzAIm = newDzRe * step.A.im + newDzIm * step.A.re;
+                    let dcBRe = dc.re * step.B.re - dc.im * step.B.im;
+                    let dcBIm = dc.re * step.B.im + dc.im * step.B.re;
+                    dzRe = dzARe + dcBRe;
+                    dzIm = dzAIm + dcBIm;
 
-                    iter += result.second;
-                    refIter += result.second;
-                } else {
-                    Z = ref[refIter];
+                    i += step.length;
+                    j++;
 
-                    tempRe = dzRe;
-                    tempIm = dzIm;
+                    // z = dz.add(steps[j].Z);
+                    zRe = dzRe + steps[j].Z.re;
+                    zIm = dzIm + steps[j].Z.im;
 
-                    // dz = dz * 2 * Z + dz^2 + dc
-                    dzRe = (2 * Z.re + tempRe) * tempRe - (2 * Z.im + tempIm) * tempIm + dc.re;
-                    dzIm = 2 * (Z.re * tempIm + Z.im * tempRe + tempRe * tempIm) + dc.im;
-
-                    iter++;
-                    refIter++;
+                    if (j == end || chebshev(zRe, zIm) < chebshev(dzRe, dzIm)) {
+                        j = begin;
+                        dzRe = zRe;
+                        dzIm = zIm;
+                    }
                 }
+            }
 
-                if (refIter >= ref.length) refIter = 0;
-                Z2 = ref[refIter];
-                valRe = Z2.re + dzRe;
-                valIm = Z2.im + dzIm;
+            Z = ref[j];
 
-                // Squared Euclidean distance (abs squared)
-                valAbsSq = valRe * valRe + valIm * valIm;
-                if (valAbsSq > bailout) {
+
+            while (i < maxIter) {
+                // dz = dz.mul(Z.add(z)).add(dc);
+                let ZaddzRe = Z.re + zRe;
+                let ZaddzIm = Z.im + zIm;
+                let tempDzRe = dzRe * ZaddzRe - dzIm * ZaddzIm;
+                let tempDzIm = dzRe * ZaddzIm + dzIm * ZaddzRe;
+                dzRe = tempDzRe + dc.re;
+                dzIm = tempDzIm + dc.im;
+
+                i++; j++;
+
+                Z = ref[j];
+
+                // z = dz.add(Z);
+                zRe = dzRe + Z.re;
+                zIm = dzIm + Z.im;
+                let zAbs = zRe * zRe + zIm * zIm;
+
+                if (zAbs > bailout) {
+                    let iter = i - 1;
                     if (smooth) {
-                        let fracIter = Math.log(valAbsSq) / 2;
+                        let fracIter = Math.log(zAbs) / 2;
                         fracIter = Math.log(fracIter / Math.LN2) / Math.LN2;
                         iter += 1 - fracIter;
                         return iter;
@@ -1843,68 +2439,103 @@
                     }
                 }
 
-                dzAbsSq = dzRe * dzRe + dzIm * dzIm;
-                if (valAbsSq < dzAbsSq || refIter == ref.length - 1) {
-                    dzRe = valRe;
-                    dzIm = valIm;
-                    refIter = 0;
+                if (j == ref.length - 1 || chebshev(zRe, zIm) < chebshev(dzRe, dzIm)) {
+                    Z = new Complex(0, 0);
+                    dzRe = zRe;
+                    dzIm = zIm;
+                    j = 0;
                 }
             }
-            return iter;
+            return i;
         }
 
-        function getPTBLAFE(dc, ref, table, maxIter, bailout, smooth = false) {
-            let dz = FloatExpComplex.ZERO.copy();
+        function getPTBLAFE(dc, ref, steps, stages, maxIter, bailout, smooth = false) {
+            let dcNorm = dc.norm()
 
-            let iter = -1;
-            let refIter = 0;
-            let bout = new FloatExp(bailout);
-            let zero = FloatExp.ZERO;
-            let dcNorm = dc.norm();
-            let dz2 = FloatExpComplex.ZERO.copy();
+            let dz = new FloatExpComplex(0, 0);
+            let z = new FloatExpComplex(0, 0);
+            let Z = new FloatExpComplex(0, 0);
 
-            let a = FloatExp.ZERO.copy();
-            let val = FloatExpComplex.ZERO.copy();
+            let tempVars = {
+                stepZZ: FloatExpComplex.ZERO.copy(),
+                dcMulB: FloatExpComplex.ZERO.copy(),
+                newDz: FloatExpComplex.ZERO.copy()
+            }
 
-            while (iter < maxIter) {
-                let dzNorm = dz.norm();
-                let result = lookupFE(table, refIter, ref.length, dzNorm, dcNorm)
+            let i = 0, j = 0;
+            let stage = stages.length;
+            if (stage != 0) j = stages[stage - 1].begin;
 
-                if (result.first != null) {
-                    dz.mulMut(result.first.A).addMut(dc.mul(result.first.B));
-                    iter += result.second;
-                    refIter += result.second;
-                } else {
-                    const Z = ref[refIter]
-                    dz.squareTo(dz2);
-                    // dz = 2*dz*Z + dz^2 + dc
-                    dz.addMut(dz).mulMut(Z).addMut(dz2).addMut(dc)
-                    iter++;
-                    refIter++;
+            while (stage) {
+                stage--;
+                let begin = stages[stage].begin;
+                let end = stages[stage].end;
+
+                while (i < maxIter) {
+                    let step = steps[j];
+
+                    // const newDz = dz.mul(step.Z.add(z))
+                    step.Z.addTo(z, tempVars.stepZZ)
+                    tempVars.stepZZ.mulTo(dz, tempVars.newDz)
+
+                    if (tempVars.newDz.norm().gt(step.radius) || dcNorm.gt(step.radiusC)) {
+                        j = step.next;
+                        break;
+                    }
+
+                    // dz = tempVars.newDz.mul(step.A).addMut(dc.mul(step.B))
+                    tempVars.newDz.mulMut(step.A)
+                    dc.mulTo(step.B, tempVars.dcMulB)
+                    tempVars.newDz.addTo(tempVars.dcMulB, dz)
+
+                    i += step.length;
+                    j++;
+
+                    // z = dz.add(steps[j].Z);
+                    dz.addTo(steps[j].Z, z)
+
+                    if (j == end || z.norm().lt(dz.norm())) {
+                        j = begin;
+                        z.storeTo(dz)
+                    }
                 }
-                if (refIter >= ref.length) refIter = 0;
+            }
 
-                const Z2 = ref[refIter]
-                Z2.addTo(dz, val);
-                const valAbs = val.abs2();
-                if (valAbs.doubleValue() > bailout) {
+            Z = ref[j];
+
+
+            while (i < maxIter) {
+                // dz = dz.mul(Z.add(z)).addMut(dc);
+                Z.addTo(z, tempVars.stepZZ)
+                tempVars.stepZZ.mulTo(dz, tempVars.newDz)
+                tempVars.newDz.addTo(dc, dz)
+
+                i++; j++;
+
+                Z = ref[j];
+
+                // z = dz.add(Z);
+                dz.addTo(Z, z)
+
+                if (z.abs2().doubleValue() > bailout) {
+                    let iter = i - 1;
                     if (smooth) {
-                        let fracIter = Math.log(valAbs.doubleValue()) / 2;
+                        let fracIter = Math.log(z.abs2().doubleValue()) / 2;
                         fracIter = Math.log(fracIter / Math.LN2) / Math.LN2;
                         iter += 1 - fracIter;
                         return iter;
                     } else {
                         return iter; // If not smooth, just return the iteration count
                     }
-                };
-                valAbs.subTo(dzNorm, a);
+                }
 
-                if (a.compareTo(zero) < 0 || refIter == ref.length - 1) { // 检测是否需要变基
-                    val.storeTo(dz);
-                    refIter = 0;
+                if (j == ref.length - 1 || z.norm().lt(dz.norm())) {
+                    Z = new FloatExpComplex(0, 0);
+                    z.storeTo(dz);
+                    j = 0;
                 }
             }
-            return iter;
+            return i;
         }
 
         /**
@@ -2315,7 +2946,6 @@
                 Decimal.config({
                     precision: -size.exp + 10
                 })
-                this.deep = this.size.exp < -300;
                 this.size = size;
                 this.clear();
                 this.stats.predCenter = null;
@@ -2449,7 +3079,13 @@
                 let elapsedTime = performance.now() - this.stats.time;
                 let estimatedTotalTime = (elapsedTime / (this.stats.calc + this.stats.guess)) * totalPixels;
                 let estimatedRemainingTime = estimatedTotalTime - elapsedTime;
-                let statusText = `Ref: ${this.stats.ref.toLocaleString()}it\nRes: ${this.canvas.width}x${this.canvas.height}\nCalc/Guess/Total: ${this.stats.calc.toLocaleString()}/${this.stats.guess.toLocaleString()}/${totalPixels.toLocaleString()} px\nTime: ${((elapsedTime) / 1000).toFixed(3)}s ETA: ${(estimatedRemainingTime / 1000).toFixed(3)}s`;
+
+                let statusText = `Ref: ${this.stats.ref.toLocaleString()}it\n`;
+                statusText += `BLA: ${this.blaTable?.steps?.length?.toLocaleString() ?? 0} entries\n`;
+                statusText += `Res: ${this.canvas.width}x${this.canvas.height}\n`;
+                statusText += `Calc/Guess/Total: ${this.stats.calc.toLocaleString()}/${this.stats.guess.toLocaleString()}/${totalPixels.toLocaleString()} px\n`;
+                statusText += `Time: ${(elapsedTime / 1000).toFixed(3)}s ETA: ${(estimatedRemainingTime / 1000).toFixed(3)}s`;
+
                 statusText += "\n" + this.stats.statusText;
                 statsLabel.innerText = statusText;
                 this.updateProgress();
@@ -2467,128 +3103,140 @@
              *
              */
             async update(startBlockSize = 128) {
-                if (this.rendering) {
-                    await this.cancel()
-                };
-                this.rendering = true;
-                this.stats = {
-                    ref: 0,
-                    calc: 0,
-                    guess: 0,
-                    approx: 0,
-                    time: performance.now()
-                };
+                const lock = await acquireWakelock();
+                try {
+                    if (this.rendering) {
+                        await this.cancel()
+                    };
+                    this.rendering = true;
+                    this.stats = {
+                        ref: 0,
+                        calc: 0,
+                        guess: 0,
+                        approx: 0,
+                        time: performance.now()
+                    };
 
-                let prevDeep = this.deep;
-                this.deep = this.size.exp < -300;
-                if (prevDeep && !this.deep) this.ref = this.ref.map(e => e.toComplex());
 
-                updateInfoOverlay(this.center.re, this.center.im, FloatExp.FOUR.div(this.size), this.iterations);
-                reInput.value = this.center.re.toString();
-                imInput.value = this.center.im.toString();
-                zoomInput.value = FloatExp.FOUR.div(this.size).toString();
-                itInput.value = this.iterations;
+                    let prevDeep = this.deep;
+                    this.deep = this.size.exp < -300;
+                    if (prevDeep && !this.deep) this.ref = this.ref.map(e => e.toComplex());
 
-                this.image = this.context.getImageData(0, 0, this.canvas.width, this.canvas.height);
+                    updateInfoOverlay(this.center.re, this.center.im, FloatExp.FOUR.div(this.size), this.iterations);
+                    reInput.value = this.center.re.toString();
+                    imInput.value = this.center.im.toString();
+                    zoomInput.value = FloatExp.FOUR.div(this.size).toString();
+                    itInput.value = this.iterations;
 
-                let base, ref;
-                let refLen = 0;
+                    this.image = this.context.getImageData(0, 0, this.canvas.width, this.canvas.height);
 
-                base = this.center;
-                if (!this.refValid) {
-                    console.log(performance.now() + " computing reference")
-                    this.stats.statusText = 'Computing reference'
-                    let nextTerm;
+                    let base, ref;
+                    let refLen = 0;
 
-                    let precisionInBits = Math.ceil((-this.size.exp) * 3.321928094887362) + 52; // Add extra double precision bits
+                    base = this.center;
+                    if (!this.refValid) {
+                        console.log(performance.now() + " computing reference")
+                        this.stats.statusText = 'Computing reference'
+                        let nextTerm;
 
-                    const generator = this.deep ?
-                        getReferenceOrbitFEMPFR(base, this.size, this.iterations, precisionInBits) :
-                        getReferenceOrbitMPFR(base, this.size.doubleValue(), this.iterations, precisionInBits);
-                    while (!(nextTerm = await generator.next()).done) {
-                        this.stats.ref = nextTerm.value;
-                        this.showInfo(); // Update progress
-                        if (this.requestForCancel) {
-                            this.cancelling = true;
-                            return;
+                        let precisionInBits = Math.ceil((-this.size.exp) * 3.321928094887362) + 52; // Add extra double precision bits
+
+                        const generator = this.deep ?
+                            getReferenceOrbitFEMPFR(base, this.size, this.iterations, precisionInBits) :
+                            getReferenceOrbitMPFR(base, this.size.doubleValue(), this.iterations, precisionInBits);
+                        while (!(nextTerm = await generator.next()).done) {
+                            this.stats.ref = nextTerm.value;
+                            this.showInfo(); // Update progress
+                            if (this.requestForCancel) {
+                                this.cancelling = true;
+                                return;
+                            }
                         }
-                    }
-                    ref = nextTerm.value.orbit;
-                    let predCenter = nextTerm.value.predCenter;
-                    if (predCenter) {
-                        console.log("Predicted center: ", predCenter)
-                        // predCenter.x = -predCenter.x;
-                        this.stats.predCenter = predCenter;
-                    }
-
-                    this.stats.ref = ref.length;
-
-                    this.ref = ref;
-                    this.refValid = true;
-                } else {
-                    ref = this.ref;
-                    this.stats.ref = ref.length;
-                }
-                refLen = ref.length;
-                console.log("ref iter: " + ref.length)
-
-                console.log(performance.now() + " bla calculation")
-                this.stats.statusText = 'BLA table construction'
-
-                if (this.deep) {
-                    this.blaTable = createBLATableFE(ref, this.size.div(10));
-                }
-                else
-                    this.blaTable = createBLATable(ref, this.size.doubleValue())
-
-
-                let autoIter = Math.max((refLen - 1) * 32, this.iterations);
-                this.setIterations(autoIter);
-
-                console.log(performance.now() + " perturbation")
-                this.stats.statusText = 'Perturbation'
-
-                await this.successiveRefinment(startBlockSize);
-
-                // Distance estimation
-                if (this.distanceEstimation) {
-                    for (let y = 0; y < this.canvas.height - 1; y++) {
-                        for (let x = 0; x < this.canvas.width - 1; x++) {
-                            let gradX = this.iterMap[y][x + 1] - this.iterMap[y][x];
-                            let gradY = this.iterMap[y + 1][x] - this.iterMap[y][x];
-                            let diff = Math.sqrt(gradX * gradX + gradY * gradY);
-
-                            let j = (y * this.canvas.width + x) << 2;
-
-                            let color = getColor(Math.log1p(diff) * 32 / colorStep, 10000);
-
-                            this.image.data[j] = color[0]
-                            this.image.data[j + 1] = color[1]
-                            this.image.data[j + 2] = color[2]
-                            this.image.data[j + 3] = 255
+                        ref = nextTerm.value.orbit;
+                        let predCenter = nextTerm.value.predCenter;
+                        if (predCenter) {
+                            console.log("Predicted center: ", predCenter)
+                            // predCenter.x = -predCenter.x;
+                            this.stats.predCenter = predCenter;
                         }
+
+                        this.stats.ref = ref.length;
+
+                        this.ref = ref;
+                        this.refValid = true;
+                    } else {
+                        ref = this.ref;
+                        this.stats.ref = ref.length;
                     }
-                    this.context.putImageData(this.image, 0, 0)
+                    refLen = ref.length;
+                    console.log("ref iter: " + ref.length)
+
+                    console.log(performance.now() + " bla calculation")
+                    this.stats.statusText = 'BLA table construction'
+
+                    if (this.deep) {
+                        this.blaTable = createBLATableFE(ref, this.size.div(10));
+                    }
+                    else
+                        this.blaTable = createBLATable(ref, this.size.doubleValue())
+
+                    console.log(this.blaTable)
+
+
+                    let autoIter = Math.max((refLen - 1) * 32, this.iterations);
+                    this.setIterations(autoIter);
+
+                    console.log(performance.now() + " perturbation")
+                    this.stats.statusText = 'Perturbation'
+
+                    await this.successiveRefinment(startBlockSize);
+
+                    // Distance estimation
+                    if (this.distanceEstimation) {
+                        for (let y = 0; y < this.canvas.height - 1; y++) {
+                            for (let x = 0; x < this.canvas.width - 1; x++) {
+                                let gradX = this.iterMap[y][x + 1] - this.iterMap[y][x];
+                                let gradY = this.iterMap[y + 1][x] - this.iterMap[y][x];
+                                let diff = Math.sqrt(gradX * gradX + gradY * gradY);
+
+                                let j = (y * this.canvas.width + x) << 2;
+
+                                let color = getColor(Math.log1p(diff) * 32 / colorStep, 10000);
+
+                                this.image.data[j] = color[0]
+                                this.image.data[j + 1] = color[1]
+                                this.image.data[j + 2] = color[2]
+                                this.image.data[j + 3] = 255
+                            }
+                        }
+                        this.context.putImageData(this.image, 0, 0)
+                    }
+
+                    console.log('done!')
+                    this.stats.statusText = 'Finished'
+                    this.rendering = false;
+                    this.showInfo();
+                    const params = new URLSearchParams(window.location.hash.substring(1));
+
+                    // 更新或添加新的参数
+                    params.set("rec", compressDecimal(this.center.re.toString()));
+                    params.set("imc", compressDecimal(this.center.im.toString()));
+                    params.set("zmc", compressDecimal(FloatExp.FOUR.div(this.size).toString()));
+                    params.set("itc", compressDecimal(this.iterations.toString()));
+                    params.set("bailout", Math.sqrt(this.bailout).toString());
+                    params.set("colorc", byteArrayToBase64(palette.flat(1)));
+                    params.set("colorstep", colorStep);
+                    params.set("smooth", this.smooth ? 1 : 0);
+
+                    // 重建哈希字符串
+                    window.location.hash = params.toString();
+                } catch (e) {
+                    console.error(e);
+                    alert("Error: " + e);
+                } finally {
+                    this.rendering = false;
+                    lock?.release();
                 }
-
-                console.log('done!')
-                this.stats.statusText = 'Finished'
-                this.rendering = false;
-                this.showInfo();
-                const params = new URLSearchParams(window.location.hash.substring(1));
-
-                // 更新或添加新的参数
-                params.set("rec", compressDecimal(this.center.re.toString()));
-                params.set("imc", compressDecimal(this.center.im.toString()));
-                params.set("zmc", compressDecimal(FloatExp.FOUR.div(this.size).toString()));
-                params.set("itc", compressDecimal(this.iterations.toString()));
-                params.set("bailout", Math.sqrt(this.bailout).toString());
-                params.set("colorc", byteArrayToBase64(palette.flat(1)));
-                params.set("colorstep", colorStep);
-                params.set("smooth", this.smooth ? 1 : 0);
-
-                // 重建哈希字符串
-                window.location.hash = params.toString();
             }
 
             async successiveRefinment(startSize) {
@@ -2780,7 +3428,8 @@
                     getPTBLAFE(
                         delta,
                         this.ref,
-                        this.blaTable,
+                        this.blaTable.steps,
+                        this.blaTable.stages,
                         this.iterations,
                         this.bailout,
                         this.smooth
@@ -2788,7 +3437,8 @@
                     getPTBLA(
                         delta,
                         this.ref,
-                        this.blaTable,
+                        this.blaTable.steps,
+                        this.blaTable.stages,
                         this.iterations,
                         this.bailout,
                         this.smooth
@@ -3742,6 +4392,20 @@
                 iterDialog.close();
             });
         });
+
+        async function acquireWakelock() {
+            if ('wakeLock' in navigator) {
+                try {
+                    const lock = await navigator.wakeLock.request('screen');
+                    lock.addEventListener('release', e => {
+                        console.log("wakelock released");
+                    })
+                    return lock;
+                } catch (error) {
+                    console.error(error);
+                }
+            }
+        }
     </script>
 </body>
 
