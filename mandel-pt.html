@@ -1464,6 +1464,253 @@
             }
         }
 
+        class ReferenceCompressor {
+            constructor(cRe, cIm) {
+                this.keys = [0];
+                this.values = [Complex.ZERO];
+                this.cRe = cRe;
+                this.cIm = cIm;
+                this.lastIter = 0;
+                this.lastZRe = 0;
+                this.lastZIm = 0;
+
+                // LRU 缓存配置
+                this.lruCache = new Map();  // Map<iter, Complex>
+                this.lruMaxSize = 20;       // 缓存大小，可调整
+
+                // 预计算平方，避免重复计算
+                this.cReSquared = cRe * cRe;
+                this.cImSquared = cIm * cIm;
+
+                // 用于二分查找的辅助数组
+                this.cachedIndices = new Map();  // 缓存最近的查找结果
+            }
+
+            addCheckpoint(iter, z) {
+                this.keys.push(iter);
+                this.values.push(z);
+
+                // 清空缓存中的这个迭代点，因为检查点更精确
+                this.lruCache.delete(iter);
+
+                // 如果需要保持keys有序，但这里看起来本来就是有序的
+            }
+
+            getKey(iter) {
+                // 使用二分查找替代线性查找
+                let left = 0;
+                let right = this.keys.length - 1;
+
+                while (left <= right) {
+                    let mid = (left + right) >> 1;  // 位运算，比Math.floor更快
+                    const midKey = this.keys[mid];
+
+                    if (midKey === iter) {
+                        return mid;
+                    } else if (midKey < iter) {
+                        left = mid + 1;
+                    } else {
+                        right = mid - 1;
+                    }
+                }
+                return -1;
+            }
+
+            getLowerKey(iter) {
+                // 缓存最近的查找结果
+                const cacheKey = `lower_${iter}`;
+                if (this.cachedIndices.has(cacheKey)) {
+                    return this.cachedIndices.get(cacheKey);
+                }
+
+                let left = 0;
+                let right = this.keys.length - 1;
+                let lowerKey = null;
+                let lowerValue = null;
+
+                while (left <= right) {
+                    const mid = (left + right) >> 1;
+                    const midKey = this.keys[mid];
+
+                    if (midKey <= iter) {
+                        lowerKey = midKey;
+                        lowerValue = this.values[mid];
+                        left = mid + 1;
+                    } else {
+                        right = mid - 1;
+                    }
+                }
+
+                const result = [lowerKey, lowerValue];
+                this.cachedIndices.set(cacheKey, result);
+                if (this.cachedIndices.size > 256) {
+                    // 简单LRU，删除第一个条目
+                    const firstKey = this.cachedIndices.keys().next().value;
+                    this.cachedIndices.delete(firstKey);
+                }
+
+                return result;
+            }
+
+            get(iter) {
+                // 1. 检查 LRU 缓存
+                if (this.lruCache.has(iter)) {
+                    const cached = this.lruCache.get(iter);
+                    // 更新LRU顺序
+                    this.lruCache.delete(iter);
+                    this.lruCache.set(iter, cached);
+                    return cached;
+                }
+
+                // 2. 基础情况
+                if (iter === 0) {
+                    return Complex.ZERO;
+                }
+
+                if (iter === this.lastIter) {
+                    return new Complex(this.lastZRe, this.lastZIm);
+                }
+
+                // 3. 特殊情况：连续迭代
+                if (iter === this.lastIter + 1) {
+                    const checkpointIndex = this.getKey(iter);
+                    if (checkpointIndex !== -1) {
+                        this.updateLast(iter, this.values[checkpointIndex]);
+                    } else {
+                        this.calculateNext();
+                    }
+
+                    const result = new Complex(this.lastZRe, this.lastZIm);
+                    this.updateLRUCache(iter, result);
+                    return result;
+                }
+
+                // 4. 从最近的检查点开始计算
+                const [lowerKey, lowerValue] = this.getLowerKey(iter);
+
+                if (lowerKey !== null) {
+                    this.updateLast(lowerKey, lowerValue);
+                } else {
+                    // 没有找到检查点，从头开始
+                    this.lastIter = 0;
+                    this.lastZRe = 0;
+                    this.lastZIm = 0;
+                }
+
+                // 5. 迭代到目标值
+                let checkpointIndex = this.findNextCheckpointIndex(lowerKey !== null ? lowerKey + 1 : 1);
+
+                for (let i = this.lastIter + 1; i <= iter; i++) {
+                    if (checkpointIndex < this.keys.length && this.keys[checkpointIndex] === i) {
+                        // 遇到了检查点
+                        this.updateLast(i, this.values[checkpointIndex]);
+                        checkpointIndex++;
+                    } else {
+                        this.calculateNext();
+                    }
+
+                    // 缓存中间结果（可选，可能占用更多内存）
+                    if (i % 10 === 0 || i === iter) {  // 每10次缓存一次
+                        this.updateLRUCache(i, new Complex(this.lastZRe, this.lastZIm));
+                    }
+                }
+
+                this.lastIter = iter;
+                const result = new Complex(this.lastZRe, this.lastZIm);
+                this.updateLRUCache(iter, result);
+                return result;
+            }
+
+            // 辅助方法
+            calculateNext() {
+                const re = this.lastZRe;
+                const im = this.lastZIm;
+                const reSq = re * re;
+                const imSq = im * im;
+
+                this.lastZRe = reSq - imSq + this.cRe;
+                this.lastZIm = 2 * re * im + this.cIm;
+                this.lastIter++;
+            }
+
+            updateLast(iter, complex) {
+                this.lastIter = iter;
+                this.lastZRe = complex.re;
+                this.lastZIm = complex.im;
+            }
+
+            updateLRUCache(iter, value) {
+                this.lruCache.set(iter, value);
+                if (this.lruCache.size > this.lruMaxSize) {
+                    // 删除最久未使用的（Map的插入顺序）
+                    const firstKey = this.lruCache.keys().next().value;
+                    this.lruCache.delete(firstKey);
+                }
+            }
+
+            findNextCheckpointIndex(startIter) {
+                // 二分查找下一个检查点
+                let left = 0;
+                let right = this.keys.length - 1;
+                let result = this.keys.length;  // 默认没有检查点
+
+                while (left <= right) {
+                    const mid = (left + right) >> 1;
+                    if (this.keys[mid] >= startIter) {
+                        result = mid;
+                        right = mid - 1;
+                    } else {
+                        left = mid + 1;
+                    }
+                }
+
+                return result;
+            }
+
+            // 批量预取，提高后续访问效率
+            prefetch(startIter, endIter, step = 1) {
+                for (let i = startIter; i <= endIter; i += step) {
+                    this.get(i);
+                }
+            }
+
+            // 清理缓存
+            clearCache() {
+                this.lruCache.clear();
+                this.cachedIndices.clear();
+            }
+
+            decompress() {
+                return new DecompressedReference(this);
+            }
+
+            get size() {
+                return this.keys.length;
+            }
+        }
+
+        class DecompressedReference {
+            constructor(comp) {
+                this.comp = comp;
+                this.z = [];
+                for (let i = 0; i < comp.length; i++) {
+                    this.z.push(comp.get(i));
+                }
+            }
+
+            get(iter) {
+                return this.z[iter];
+            }
+
+            get length() {
+                return this.z.length;
+            }
+
+            get size() {
+                return this.comp.size;
+            }
+        }
+
         const samples = {
             seahorse: {
                 re: "-0.74543",
@@ -1531,12 +1778,14 @@
             return new Promise(resolve => setTimeout(resolve, ms));
         }
 
+        const COMPRESS_THRESHOLD = 2 ** -40;
+
         async function* getReferenceOrbitMPFR(C, radius, iterations, precisionBits) {
             let Z = new DeepComplex(0, 0),
                 z = new Complex(0, 0),
                 dzdc = new Complex(1, 0),
                 one = new Complex(1, 0);
-            const orbit = [new Complex(0, 0)];
+            // const orbit = [new Complex(0, 0)];
             let predCenter = null;
 
             const roundingMode = gmp.FloatRoundingMode.ROUND_DOWN;
@@ -1550,6 +1799,11 @@
             let mpzre = ctx.Float(0);
             let mpzim = ctx.Float(0);
 
+            let lpzre = 0;
+            let lpzim = 0;
+            let lpcre = C.re.toNumber();
+            let lpcim = C.im.toNumber();
+
 
             let updateTimer = performance.now();
 
@@ -1559,7 +1813,9 @@
                 temp1: ctx.Float(0), temp2: ctx.Float(0)
             };
 
-            for (let i = 0; i < iterations; i++) {
+            let compressor = new ReferenceCompressor(lpcre, lpcim);
+
+            for (let i = 1; i < iterations; i++) {
                 dzdc = z.add(z).mulMut(dzdc).addMut(one);
 
                 // 复数平方计算
@@ -1575,15 +1831,29 @@
                 binding.mpfr_mul_2ui(mpzim.mpfr_t, tempVars.reim.mpfr_t, 1);
                 binding.mpfr_add(mpzim.mpfr_t, mpzim.mpfr_t, cim.mpfr_t);
 
-                // console.log(1,mpzre.toString(), binding.mpfr_get_exp(mpzre.mpfr_t))
-                // binding.mpfr_set_exp(mpzre.mpfr_t, 0)
-                // console.log(2,mpzre.toString(), binding.mpfr_get_exp(mpzre.mpfr_t))
+                // 更新低精度参考
+
+                let lpzre2 = lpzre * lpzre;
+                let lpzim2 = lpzim * lpzim;
+
+                lpzim = 2 * lpzre * lpzim + lpcim;
+                lpzre = lpzre2 - lpzim2 + lpcre;
 
                 z = new Complex(mpzre.toNumber(), mpzim.toNumber());
-                orbit.push(z);
+                // orbit.push(z);
+
+                // 检查低精度和实际结果的误差
+                let error = new Complex(lpzre, lpzim).sub(z).abs() / z.abs()
+                if (error > COMPRESS_THRESHOLD) {
+                    lpzre = z.re;
+                    lpzim = z.im;
+                    compressor.addCheckpoint(i, z);
+                }
 
                 if (dzdc.norm() * radius * 2 > z.norm()) {
                     predCenter = z.div(dzdc);
+                    compressor.addCheckpoint(i, z);
+                    compressor.length = i + 1;
                     break;
                 };
                 if (z.norm() > 16.0) break;
@@ -1591,14 +1861,15 @@
                 let currentTime = performance.now();
                 if (currentTime - updateTimer > 100) {
                     updateTimer = currentTime;
-                    yield i;
+                    compressor.length = i + 1;
+                    yield compressor;
                     await delay(0);
                 }
             }
 
             ctx.destroy();
             return {
-                orbit: orbit,
+                orbit: compressor.length > 1000000 ? compressor : compressor.decompress(),
                 predCenter: predCenter
             };
         }
@@ -1877,7 +2148,7 @@
 
             /**
              * 生成BLA表
-             * @param {Complex[]} ref - 参考轨道
+             * @param {ReferenceCompressor} ref - 参考轨道
              * @returns {BLATable} - 创建的BLA表
              */
             static create(ref) {
@@ -1906,10 +2177,10 @@
                 let blaStages = [];
                 let blaSteps = [];
 
-                let bla = BLAStep.createBLA(0, new Complex(0, 0), ref[1]);
+                let bla = BLAStep.createBLA(0, new Complex(0, 0), ref.get(1));
                 let i;
                 for (i = 2; i < refLen; i++) {
-                    const [result, detected] = bla.step(ref[i]);
+                    const [result, detected] = bla.step(ref.get(i));
                     if (detected) {
                         period = i;
                         break;
@@ -1921,7 +2192,7 @@
 
                 if (!period) {
                     blaStages.push(new BLAStage(0, 1));
-                    blaSteps.push(BLAStep.newBLA(0, ref[refLen]));
+                    blaSteps.push(BLAStep.newBLA(0, ref.get(refLen)));
                     return {
                         hasBLA: false,
                         steps: blaSteps,
@@ -1930,23 +2201,23 @@
                 }
 
                 if (i + 1 >= refLen) {
-                    bla = BLAStep.newBLA(i, ref[i]);
+                    bla = BLAStep.newBLA(i, ref.get(i));
                     i++;
                 } else {
-                    bla = BLAStep.createBLA(i, ref[i], ref[i + 1]);
+                    bla = BLAStep.createBLA(i, ref.get(i), ref.get(i + 1));
                     i += 2;
                 }
 
                 for (; i < refLen; i++) {
-                    const [result, detected] = bla.step(ref[i]);
+                    const [result, detected] = bla.step(ref.get(i));
 
                     if (detected || bla.length >= period) {
                         blaSteps.push(bla);
 
-                        if (i + 1 >= refLen || result.detectDip(ref[i + 1])) {
-                            bla = BLAStep.newBLA(i, ref[i]);
+                        if (i + 1 >= refLen || result.detectDip(ref.get(i + 1))) {
+                            bla = BLAStep.newBLA(i, ref.get(i));
                         } else {
-                            bla = BLAStep.createBLA(i, ref[i], ref[i + 1]);
+                            bla = BLAStep.createBLA(i, ref.get(i), ref.get(i + 1));
                             i++;
                         }
                     } else {
@@ -1956,7 +2227,7 @@
 
                 blaSteps.push(bla);
                 blaStages.push(new BLAStage(0, blaSteps.length));
-                blaSteps.push(BLAStep.newBLA(0, ref[refLen]));
+                blaSteps.push(BLAStep.newBLA(0, ref.get(refLen)));
 
                 return {
                     hasBLA: true,
@@ -2406,7 +2677,7 @@
                 }
             }
 
-            Z = ref[j];
+            Z = ref.get(j);
 
 
             while (i < maxIter) {
@@ -2420,7 +2691,7 @@
 
                 i++; j++;
 
-                Z = ref[j];
+                Z = ref.get(j);
 
                 // z = dz.add(Z);
                 zRe = dzRe + Z.re;
@@ -2713,6 +2984,7 @@
 
                 this.stats = {
                     ref: 0,
+                    refC: 0,
                     calc: 0,
                     guess: 0,
                     approx: 0,
@@ -3080,7 +3352,7 @@
                 let estimatedTotalTime = (elapsedTime / (this.stats.calc + this.stats.guess)) * totalPixels;
                 let estimatedRemainingTime = estimatedTotalTime - elapsedTime;
 
-                let statusText = `Ref: ${this.stats.ref.toLocaleString()}it\n`;
+                let statusText = `Ref: ${this.stats.ref?.toLocaleString() ?? 0}it -> ${this.stats.refC?.toLocaleString() ?? 0}ckpts\n`;
                 statusText += `BLA: ${this.blaTable?.steps?.length?.toLocaleString() ?? 0} entries\n`;
                 statusText += `Res: ${this.canvas.width}x${this.canvas.height}\n`;
                 statusText += `Calc/Guess/Total: ${this.stats.calc.toLocaleString()}/${this.stats.guess.toLocaleString()}/${totalPixels.toLocaleString()} px\n`;
@@ -3111,6 +3383,7 @@
                     this.rendering = true;
                     this.stats = {
                         ref: 0,
+                        refC: 0,
                         calc: 0,
                         guess: 0,
                         approx: 0,
@@ -3145,7 +3418,8 @@
                             getReferenceOrbitFEMPFR(base, this.size, this.iterations, precisionInBits) :
                             getReferenceOrbitMPFR(base, this.size.doubleValue(), this.iterations, precisionInBits);
                         while (!(nextTerm = await generator.next()).done) {
-                            this.stats.ref = nextTerm.value;
+                            this.stats.ref = nextTerm.value.length;
+                            this.stats.refC = nextTerm.value.size;
                             this.showInfo(); // Update progress
                             if (this.requestForCancel) {
                                 this.cancelling = true;
@@ -3161,15 +3435,17 @@
                         }
 
                         this.stats.ref = ref.length;
+                        this.stats.refC = ref.size;
 
                         this.ref = ref;
                         this.refValid = true;
                     } else {
                         ref = this.ref;
                         this.stats.ref = ref.length;
+                        this.stats.refC = ref.size;
                     }
                     refLen = ref.length;
-                    console.log("ref iter: " + ref.length)
+                    console.log("ref: ", ref)
 
                     console.log(performance.now() + " bla calculation")
                     this.stats.statusText = 'BLA table construction'
