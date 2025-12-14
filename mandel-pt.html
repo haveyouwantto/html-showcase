@@ -1484,6 +1484,8 @@
 
                 // 用于二分查找的辅助数组
                 this.cachedIndices = new Map();  // 缓存最近的查找结果
+
+                this.lookupResult = [null, null];
             }
 
             addCheckpoint(iter, z) {
@@ -1516,11 +1518,13 @@
                 return -1;
             }
 
-            getLowerKey(iter) {
+            lookupLowerKey(iter) {
                 // 缓存最近的查找结果
-                const cacheKey = `lower_${iter}`;
+                const cacheKey = iter;
                 if (this.cachedIndices.has(cacheKey)) {
-                    return this.cachedIndices.get(cacheKey);
+                    this.lookupResult[0] = this.cachedIndices.get(cacheKey)[0];
+                    this.lookupResult[1] = this.cachedIndices.get(cacheKey)[1];
+                    return;
                 }
 
                 let left = 0;
@@ -1541,15 +1545,15 @@
                     }
                 }
 
-                const result = [lowerKey, lowerValue];
-                this.cachedIndices.set(cacheKey, result);
+                // const result = [lowerKey, lowerValue];
+                this.lookupResult[0] = lowerKey;
+                this.lookupResult[1] = lowerValue;
+                this.cachedIndices.set(cacheKey, [...this.lookupResult]);
                 if (this.cachedIndices.size > 256) {
                     // 简单LRU，删除第一个条目
                     const firstKey = this.cachedIndices.keys().next().value;
                     this.cachedIndices.delete(firstKey);
                 }
-
-                return result;
             }
 
             get(iter) {
@@ -1586,7 +1590,9 @@
                 }
 
                 // 4. 从最近的检查点开始计算
-                const [lowerKey, lowerValue] = this.getLowerKey(iter);
+                this.lookupLowerKey(iter);
+                const lowerKey = this.lookupResult[0];
+                const lowerValue = this.lookupResult[1];
 
                 if (lowerKey !== null) {
                     this.updateLast(lowerKey, lowerValue);
