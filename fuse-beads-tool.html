@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>拼豆像素提取器</title>
+    <title>拼豆工具箱</title>
     <style>
         :root {
             --bg-color: #121212;
@@ -44,7 +44,7 @@
         h1 {
             margin: 0;
             font-size: 1.2rem;
-            color: var(--accent);
+            color: #40b3ff;
             margin-right: 20px;
         }
 
@@ -123,6 +123,7 @@
             top: 0;
             left: 0;
             cursor: crosshair;
+            mix-blend-mode: difference;
         }
 
         /* 右侧：预览与设置 */
@@ -200,13 +201,91 @@
             pointer-events: none;
             font-size: 0.85rem;
         }
+
+        /* Dialog */
+        dialog {
+            background: var(--panel-bg);
+            color: var(--text-main);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+        }
+
+        dialog::backdrop {
+            background: rgba(0, 0, 0, 0.6);
+        }
+
+        textarea {
+            width: 100%;
+            height: 200px;
+            background: #111;
+            color: #ccc;
+            border: 1px solid #444;
+            padding: 5px;
+            font-family: monospace;
+            resize: none;
+        }
+
+        .dialog-buttons {
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+            margin-top: 10px;
+        }
+
+        /* Fullscreen Zoom Styles */
+        :fullscreen .preview-container {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background: #000;
+            width: 100vw;
+            height: 100vh;
+            max-height: none;
+            overflow: hidden;
+        }
+
+        :fullscreen #resultCanvas {
+            max-width: none;
+            max-height: none;
+        }
+
+        #btnExitFs {
+            display: none;
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 1000;
+            background: rgba(0, 0, 0, 0.5);
+            border: 1px solid #666;
+            color: white;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+
+        :fullscreen #btnExitFs {
+            display: block;
+        }
     </style>
 </head>
 
 <body>
 
+    <!-- Palette Batch Edit Dialog -->
+    <dialog id="dlgPalette">
+        <h3>批量编辑调色板</h3>
+        <p style="font-size:0.8rem; color:#aaa">每行一个颜色，格式: #RRGGBB</p>
+        <textarea id="txtPaletteBatch" placeholder="#FF0000&#10;#00FF00&#10;..."></textarea>
+        <div class="dialog-buttons">
+            <button class="secondary" onclick="document.getElementById('dlgPalette').close()">取消</button>
+            <button onclick="saveBatchPalette()">保存</button>
+        </div>
+    </dialog>
+
     <header>
-        <h1>拼豆像素提取器</h1>
+        <h1>拼豆工具箱</h1>
         <div class="control-group">
             <label>提取尺寸(宽x高):</label>
             <input type="number" id="inpWidth" value="30" min="2">
@@ -219,6 +298,7 @@
         </div>
         <div class="control-group" style="margin-left: auto;">
             <button id="btnDownload">💾 下载图纸</button>
+            <button id="btnDownloadSource">🖼️ 下载原像素</button>
         </div>
     </header>
 
@@ -233,11 +313,20 @@
 
         <div class="sidebar">
             <div class="panel-section">
-                <div class="panel-title">实时预览</div>
-                <div class="preview-container">
+                <div class="panel-title">
+                    <span>实时预览</span>
+                    <button class="secondary" style="font-size: 0.8rem; padding: 2px 8px;"
+                        onclick="toggleFullscreen()">⛶ 全屏</button>
+                </div>
+                <div class="preview-container" id="previewBox">
                     <canvas id="resultCanvas"></canvas>
+                    <button id="btnExitFs" onclick="toggleFullscreen()">退出全屏</button>
                 </div>
                 <div style="margin-top: 10px; display: flex; align-items: center; gap: 10px;">
+                    <input type="checkbox" id="chkQuantize" checked>
+                    <label for="chkQuantize">开启量化</label>
+                </div>
+                <div style="margin-top: 5px; display: flex; align-items: center; gap: 10px;">
                     <input type="checkbox" id="chkDither">
                     <label for="chkDither">开启抖动 (Floyd-Steinberg)</label>
                 </div>
@@ -247,6 +336,12 @@
                 <div class="panel-title">
                     <span>调色板 (<span id="lblColorCount">0</span>色)</span>
                     <div>
+                        <button class="secondary" style="font-size: 0.8rem; padding: 2px 8px;"
+                            onclick="importPalette()">导入</button>
+                        <button class="secondary" style="font-size: 0.8rem; padding: 2px 8px;"
+                            onclick="exportPalette()">导出</button>
+                        <button class="secondary" style="font-size: 0.8rem; padding: 2px 8px;"
+                            onclick="openBatchPalette()">批量</button>
                         <button class="secondary" style="font-size: 0.8rem; padding: 2px 8px;"
                             onclick="resetPalette()">重置</button>
                         <button class="secondary" style="font-size: 0.8rem; padding: 2px 8px;" onclick="addColor()">+
@@ -275,9 +370,20 @@
             corners: [], // [{x,y}, {x,y}, {x,y}, {x,y}] (TL, TR, BR, BL)
             isDragging: -1, // index of point being dragged
             imgData: null, // Source image pixel data
+            resultPixelData: null, // Processed result data (Uint8ClampedArray)
             srcWidth: 0,
             srcHeight: 0,
-            dither: false
+            srcWidth: 0,
+            srcHeight: 0,
+            dither: false,
+            quantize: true,
+            zoom: 1,
+            panX: 0,
+            panY: 0,
+            isPanning: false,
+            lastMouseX: 0,
+            lastMouseY: 0,
+            wakeLock: null
         };
 
         const DEFAULT_PALETTE = [
@@ -294,15 +400,22 @@
         const els = {
             imgCanvas: document.getElementById('imgCanvas'),
             overlayCanvas: document.getElementById('overlayCanvas'),
+            imgCanvas: document.getElementById('imgCanvas'),
+            overlayCanvas: document.getElementById('overlayCanvas'),
             resultCanvas: document.getElementById('resultCanvas'),
+            previewBox: document.getElementById('previewBox'),
             inpFile: document.getElementById('inpFile'),
             inpWidth: document.getElementById('inpWidth'),
             inpHeight: document.getElementById('inpHeight'),
             paletteBox: document.getElementById('paletteBox'),
             countLbl: document.getElementById('lblColorCount'),
+            chkQuantize: document.getElementById('chkQuantize'),
             chkDither: document.getElementById('chkDither'),
             dlBtn: document.getElementById('btnDownload'),
-            canvasStack: document.getElementById('canvasStack')
+            dlSrcBtn: document.getElementById('btnDownloadSource'),
+            canvasStack: document.getElementById('canvasStack'),
+            dlgPalette: document.getElementById('dlgPalette'),
+            txtPalette: document.getElementById('txtPaletteBatch')
         };
 
         const ctxImg = els.imgCanvas.getContext('2d');
@@ -317,20 +430,31 @@
             els.inpFile.addEventListener('change', handleFile);
             els.inpWidth.addEventListener('change', updateGridSize);
             els.inpHeight.addEventListener('change', updateGridSize);
+            els.chkQuantize.addEventListener('change', () => { state.quantize = els.chkQuantize.checked; process(); });
             els.chkDither.addEventListener('change', () => { state.dither = els.chkDither.checked; process(); });
             els.dlBtn.addEventListener('click', downloadResult);
+            els.dlSrcBtn.addEventListener('click', downloadSourcePixels);
 
             // Canvas 交互
             els.overlayCanvas.addEventListener('mousedown', onMouseDown);
             window.addEventListener('mousemove', onMouseMove);
+            els.overlayCanvas.addEventListener('mousedown', onMouseDown);
+            window.addEventListener('mousemove', onMouseMove);
             window.addEventListener('mouseup', onMouseUp);
+
+            // Fullscreen events
+            document.addEventListener('fullscreenchange', onFullscreenChange);
+            els.previewBox.addEventListener('wheel', onWheel);
+            els.previewBox.addEventListener('mousedown', onPreviewMouseDown);
+            window.addEventListener('mousemove', onPreviewMouseMove);
+            window.addEventListener('mouseup', onPreviewMouseUp);
 
             // 默认空状态
             resizeCanvas(400, 300);
             ctxImg.fillStyle = "#222";
             ctxImg.fillRect(0, 0, 400, 300);
             ctxImg.fillStyle = "#555";
-            ctxImg.font = "20px Arial";
+            ctxImg.font = "40px Arial";
             ctxImg.textAlign = "center";
             ctxImg.fillText("请上传图片", 200, 150);
         }
@@ -460,7 +584,8 @@
             if (!state.corners.length) return;
 
             // 1. 绘制扭曲的网格
-            ctx.strokeStyle = "rgba(204, 204, 0, 0.6)";
+            // 1. 绘制扭曲的网格
+            ctx.strokeStyle = "rgba(255, 255, 255, 0.8)";
             ctx.lineWidth = 1;
             ctx.beginPath();
 
@@ -561,11 +686,17 @@
             }
 
             // 抖动与量化
-            if (state.dither) {
-                applyFloydSteinberg(pixels, w, h);
-            } else {
-                applyNearestColor(pixels);
+            if (state.quantize) {
+                if (state.dither) {
+                    applyFloydSteinberg(pixels, w, h);
+                } else {
+                    applyNearestColor(pixels);
+                }
             }
+            // else: pixels already contain sampled RGB values
+
+            // 保存处理结果供下载使用
+            state.resultPixelData = new Uint8ClampedArray(pixels);
 
             // 绘制结果
             renderPreview(pixels, w, h);
@@ -728,12 +859,234 @@
             process();
         }
 
+        // --- 调色板高级功能 ---
+        function importPalette() {
+            const input = document.createElement('input');
+            input.type = 'file';
+            input.accept = '.json';
+            input.onchange = (e) => {
+                const f = e.target.files[0];
+                if (!f) return;
+                const r = new FileReader();
+                r.onload = (evt) => {
+                    try {
+                        const data = JSON.parse(evt.target.result);
+                        if (Array.isArray(data.palette)) {
+                            // Validate
+                            const valid = data.palette.every(c => Array.isArray(c) && c.length === 3);
+                            if (valid) {
+                                state.palette = data.palette;
+                            } else {
+                                // Try Hex format
+                                const validHex = data.palette.every(c => typeof c === 'string' && /^#[0-9a-fA-F]{6}$/.test(c));
+                                if (validHex) {
+                                    state.palette = data.palette.map(hex => [
+                                        parseInt(hex.substr(1, 2), 16),
+                                        parseInt(hex.substr(3, 2), 16),
+                                        parseInt(hex.substr(5, 2), 16)
+                                    ]);
+                                } else {
+                                    alert("Invalid palette format");
+                                    return;
+                                }
+                            }
+                            savePalette();
+                        } else {
+                            alert("Invalid JSON format. Expected { palette: [...] }");
+                        }
+                    } catch (err) {
+                        alert("Error parsing JSON");
+                    }
+                };
+                r.readAsText(f);
+            };
+            input.click();
+        }
+
+        function exportPalette() {
+            const data = { palette: state.palette };
+            const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+            const link = document.createElement('a');
+            link.download = 'palette.json';
+            link.href = URL.createObjectURL(blob);
+            link.click();
+        }
+
+        function openBatchPalette() {
+            const lines = state.palette.map(c => {
+                const hex = "#" + ((1 << 24) + (c[0] << 16) + (c[1] << 8) + c[2]).toString(16).slice(1);
+                return hex;
+            });
+            els.txtPalette.value = lines.join('\n');
+            els.dlgPalette.showModal();
+        }
+
+        function saveBatchPalette() {
+            const text = els.txtPalette.value;
+            const lines = text.split('\n').map(l => l.trim()).filter(l => l);
+            const newPal = [];
+            for (let line of lines) {
+                if (/^#[0-9a-fA-F]{6}$/.test(line)) {
+                    newPal.push([
+                        parseInt(line.substr(1, 2), 16),
+                        parseInt(line.substr(3, 2), 16),
+                        parseInt(line.substr(5, 2), 16)
+                    ]);
+                }
+            }
+            if (newPal.length > 0) {
+                state.palette = newPal;
+                savePalette();
+                els.dlgPalette.close();
+            } else {
+                alert("没有有效的颜色代码 (格式 #RRGGBB)");
+            }
+        }
+
         function downloadResult() {
             const link = document.createElement('a');
             link.download = 'bead_pattern.png';
             link.href = els.resultCanvas.toDataURL();
             link.click();
         }
+
+        function downloadSourcePixels() {
+            if (!state.resultPixelData || !state.corners.length) {
+                alert("请先上传图片并生成预览");
+                return;
+            }
+
+            const w = state.gridW;
+            const h = state.gridH;
+
+            // Create temporary canvas
+            const cvs = document.createElement('canvas');
+            cvs.width = w;
+            cvs.height = h;
+            const ctx = cvs.getContext('2d');
+
+            // Use the processed result data which respects quantization/dithering settings
+            const imgData = new ImageData(state.resultPixelData, w, h);
+
+            // Put on canvas
+            ctx.putImageData(imgData, 0, 0);
+
+            const link = document.createElement('a');
+            link.download = 'pixel_source_1x1.png';
+            link.href = cvs.toDataURL();
+            link.click();
+        }
+
+        // --- 全屏与 Wake Lock ---
+        async function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                try {
+                    await els.previewBox.requestFullscreen();
+                } catch (err) {
+                    console.error(`Error attempting to enable fullscreen: ${err.message}`);
+                }
+            } else {
+                if (document.exitFullscreen) {
+                    document.exitFullscreen();
+                }
+            }
+        }
+
+        async function onFullscreenChange() {
+            if (document.fullscreenElement) {
+                // Entered fullscreen
+                state.zoom = 1;
+                state.panX = 0;
+                state.panY = 0;
+                updateZoom();
+                await requestWakeLock();
+            } else {
+                // Exited fullscreen
+                state.zoom = 1;
+                state.panX = 0;
+                state.panY = 0;
+                updateZoom();
+                releaseWakeLock();
+            }
+        }
+
+        function onWheel(e) {
+            if (!document.fullscreenElement) return;
+            e.preventDefault();
+
+            const delta = e.deltaY > 0 ? 0.9 : 1.1;
+            state.zoom *= delta;
+
+            // Limit zoom
+            state.zoom = Math.min(Math.max(0.1, state.zoom), 10);
+            updateZoom();
+        }
+
+        function onPreviewMouseDown(e) {
+            if (!document.fullscreenElement) return;
+            state.isPanning = true;
+            state.lastMouseX = e.clientX;
+            state.lastMouseY = e.clientY;
+            els.resultCanvas.style.cursor = 'grabbing';
+        }
+
+        function onPreviewMouseMove(e) {
+            if (!state.isPanning || !document.fullscreenElement) return;
+            e.preventDefault();
+
+            const dx = e.clientX - state.lastMouseX;
+            const dy = e.clientY - state.lastMouseY;
+
+            state.panX += dx;
+            state.panY += dy;
+
+            state.lastMouseX = e.clientX;
+            state.lastMouseY = e.clientY;
+
+            updateZoom();
+        }
+
+        function onPreviewMouseUp() {
+            state.isPanning = false;
+            if (document.fullscreenElement) {
+                els.resultCanvas.style.cursor = 'grab';
+            }
+        }
+
+        function updateZoom() {
+            // Apply zoom to canvas
+            if (document.fullscreenElement) {
+                els.resultCanvas.style.transform = `translate(${state.panX}px, ${state.panY}px) scale(${state.zoom})`;
+                els.resultCanvas.style.cursor = 'grab';
+            } else {
+                els.resultCanvas.style.transform = 'none';
+                els.resultCanvas.style.cursor = 'default';
+            }
+        }
+
+        async function requestWakeLock() {
+            if ('wakeLock' in navigator) {
+                try {
+                    state.wakeLock = await navigator.wakeLock.request('screen');
+                    state.wakeLock.addEventListener('release', () => {
+                        console.log('Wake Lock released');
+                        state.wakeLock = null;
+                    });
+                    console.log('Wake Lock acquired');
+                } catch (err) {
+                    console.error(`${err.name}, ${err.message}`);
+                }
+            }
+        }
+
+        function releaseWakeLock() {
+            if (state.wakeLock !== null) {
+                state.wakeLock.release();
+                state.wakeLock = null;
+            }
+        }
+
+
 
         // 启动
         init();
