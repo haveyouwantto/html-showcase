@@ -1643,7 +1643,7 @@
             get(iter) {
                 return this.z[iter];
             }
-            
+
             getInplace(iter, result) {
                 result.re = this.z[iter].re;
                 result.im = this.z[iter].im;
@@ -1805,12 +1805,14 @@
                 };
                 if (z.norm() > 16.0) break;
 
-                let currentTime = performance.now();
-                if (currentTime - updateTimer > 100) {
-                    updateTimer = currentTime;
-                    compressor.length = i + 1;
-                    yield compressor;
-                    await delay(0);
+                if ((i & 0xff) === 0) {
+                    let currentTime = performance.now();
+                    if (currentTime - updateTimer > 100) {
+                        updateTimer = currentTime;
+                        compressor.length = i + 1;
+                        yield compressor;
+                        await delay(0);
+                    }
                 }
             }
 
@@ -1895,13 +1897,13 @@
                 };
                 if (z.norm().doubleValue() > 16.0) break;
 
-
-
-                let currentTime = performance.now();
-                if (currentTime - updateTimer > 100) {
-                    updateTimer = currentTime;
-                    yield i;
-                    await delay(0);
+                if ((i & 0xff) === 0) {
+                    let currentTime = performance.now();
+                    if (currentTime - updateTimer > 100) {
+                        updateTimer = currentTime;
+                        yield i;
+                        await delay(0);
+                    }
                 }
             }
             ctx.destroy();
