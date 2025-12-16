@@ -201,10 +201,53 @@
             pointer-events: none;
             font-size: 0.85rem;
         }
+
+        /* Dialog */
+        dialog {
+            background: var(--panel-bg);
+            color: var(--text-main);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+        }
+
+        dialog::backdrop {
+            background: rgba(0, 0, 0, 0.6);
+        }
+
+        textarea {
+            width: 100%;
+            height: 200px;
+            background: #111;
+            color: #ccc;
+            border: 1px solid #444;
+            padding: 5px;
+            font-family: monospace;
+            resize: none;
+        }
+
+        .dialog-buttons {
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+            margin-top: 10px;
+        }
     </style>
 </head>
 
 <body>
+
+    <!-- Palette Batch Edit Dialog -->
+    <dialog id="dlgPalette">
+        <h3>批量编辑调色板</h3>
+        <p style="font-size:0.8rem; color:#aaa">每行一个颜色，格式: #RRGGBB</p>
+        <textarea id="txtPaletteBatch" placeholder="#FF0000&#10;#00FF00&#10;..."></textarea>
+        <div class="dialog-buttons">
+            <button class="secondary" onclick="document.getElementById('dlgPalette').close()">取消</button>
+            <button onclick="saveBatchPalette()">保存</button>
+        </div>
+    </dialog>
 
     <header>
         <h1>拼豆像素提取器</h1>
@@ -254,6 +297,12 @@
                     <span>调色板 (<span id="lblColorCount">0</span>色)</span>
                     <div>
                         <button class="secondary" style="font-size: 0.8rem; padding: 2px 8px;"
+                            onclick="importPalette()">导入</button>
+                        <button class="secondary" style="font-size: 0.8rem; padding: 2px 8px;"
+                            onclick="exportPalette()">导出</button>
+                        <button class="secondary" style="font-size: 0.8rem; padding: 2px 8px;"
+                            onclick="openBatchPalette()">批量</button>
+                        <button class="secondary" style="font-size: 0.8rem; padding: 2px 8px;"
                             onclick="resetPalette()">重置</button>
                         <button class="secondary" style="font-size: 0.8rem; padding: 2px 8px;" onclick="addColor()">+
                             添加</button>
@@ -281,6 +330,7 @@
             corners: [], // [{x,y}, {x,y}, {x,y}, {x,y}] (TL, TR, BR, BL)
             isDragging: -1, // index of point being dragged
             imgData: null, // Source image pixel data
+            resultPixelData: null, // Processed result data (Uint8ClampedArray)
             srcWidth: 0,
             srcHeight: 0,
             dither: false,
@@ -311,7 +361,9 @@
             chkDither: document.getElementById('chkDither'),
             dlBtn: document.getElementById('btnDownload'),
             dlSrcBtn: document.getElementById('btnDownloadSource'),
-            canvasStack: document.getElementById('canvasStack')
+            canvasStack: document.getElementById('canvasStack'),
+            dlgPalette: document.getElementById('dlgPalette'),
+            txtPalette: document.getElementById('txtPaletteBatch')
         };
 
         const ctxImg = els.imgCanvas.getContext('2d');
@@ -582,6 +634,9 @@
             }
             // else: pixels already contain sampled RGB values
 
+            // 保存处理结果供下载使用
+            state.resultPixelData = new Uint8ClampedArray(pixels);
+
             // 绘制结果
             renderPreview(pixels, w, h);
         }
@@ -743,6 +798,90 @@
             process();
         }
 
+        // --- 调色板高级功能 ---
+        function importPalette() {
+            const input = document.createElement('input');
+            input.type = 'file';
+            input.accept = '.json';
+            input.onchange = (e) => {
+                const f = e.target.files[0];
+                if (!f) return;
+                const r = new FileReader();
+                r.onload = (evt) => {
+                    try {
+                        const data = JSON.parse(evt.target.result);
+                        if (Array.isArray(data.palette)) {
+                            // Validate
+                            const valid = data.palette.every(c => Array.isArray(c) && c.length === 3);
+                            if (valid) {
+                                state.palette = data.palette;
+                            } else {
+                                // Try Hex format
+                                const validHex = data.palette.every(c => typeof c === 'string' && /^#[0-9a-fA-F]{6}$/.test(c));
+                                if (validHex) {
+                                    state.palette = data.palette.map(hex => [
+                                        parseInt(hex.substr(1, 2), 16),
+                                        parseInt(hex.substr(3, 2), 16),
+                                        parseInt(hex.substr(5, 2), 16)
+                                    ]);
+                                } else {
+                                    alert("Invalid palette format");
+                                    return;
+                                }
+                            }
+                            savePalette();
+                        } else {
+                            alert("Invalid JSON format. Expected { palette: [...] }");
+                        }
+                    } catch (err) {
+                        alert("Error parsing JSON");
+                    }
+                };
+                r.readAsText(f);
+            };
+            input.click();
+        }
+
+        function exportPalette() {
+            const data = { palette: state.palette };
+            const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+            const link = document.createElement('a');
+            link.download = 'palette.json';
+            link.href = URL.createObjectURL(blob);
+            link.click();
+        }
+
+        function openBatchPalette() {
+            const lines = state.palette.map(c => {
+                const hex = "#" + ((1 << 24) + (c[0] << 16) + (c[1] << 8) + c[2]).toString(16).slice(1);
+                return hex;
+            });
+            els.txtPalette.value = lines.join('\n');
+            els.dlgPalette.showModal();
+        }
+
+        function saveBatchPalette() {
+            const text = els.txtPalette.value;
+            const lines = text.split('\n').map(l => l.trim()).filter(l => l);
+            const newPal = [];
+            for (let line of lines) {
+                if (/^#[0-9a-fA-F]{6}$/.test(line)) {
+                    newPal.push([
+                        parseInt(line.substr(1, 2), 16),
+                        parseInt(line.substr(3, 2), 16),
+                        parseInt(line.substr(5, 2), 16)
+                    ]);
+                }
+            }
+            if (newPal.length > 0) {
+                state.palette = newPal;
+                savePalette();
+                els.dlgPalette.close();
+            } else {
+                alert("没有有效的颜色代码 (格式 #RRGGBB)");
+            }
+        }
+
         function downloadResult() {
             const link = document.createElement('a');
             link.download = 'bead_pattern.png';
@@ -751,7 +890,10 @@
         }
 
         function downloadSourcePixels() {
-            if (!state.imgData || !state.corners.length) return;
+            if (!state.resultPixelData || !state.corners.length) {
+                alert("请先上传图片并生成预览");
+                return;
+            }
 
             const w = state.gridW;
             const h = state.gridH;
@@ -762,52 +904,8 @@
             cvs.height = h;
             const ctx = cvs.getContext('2d');
 
-            // Get current processing result (re-run logic partially or just use what we have, 
-            // but process() modifies a local array. Let's just create imageData from what we would have.)
-
-            // Re-run sampling logic simply
-            const imgData = ctx.createImageData(w, h);
-            // We need to re-run the sampling loop because 'process' only renders to preview
-            // Actually 'process' creates 'pixels' array. We could cache it in state if we wanted, 
-            // but re-running is cheap enough for a click action.
-
-            // Copy-paste sampling logic or refactor? Re-running is safer to ensure state consistency.
-            // Let's refactor slightly: extract sampling to a function that returns the pixel array.
-            // For now, to minimize diff, let's just duplicate the sampling logic for the download function
-            // or even better, let 'process' store the last result?
-            // "pixels" in process() is local. Let's make it state or start a new sampling.
-
-            const [tl, tr, br, bl] = state.corners;
-            const src = state.imgData.data;
-            const sw = state.imgData.width;
-            const sh = state.imgData.height;
-            const pixels = imgData.data;
-
-            for (let y = 0; y < h; y++) {
-                for (let x = 0; x < w; x++) {
-                    const u = (x + 0.5) / w;
-                    const v = (y + 0.5) / h;
-                    const tx = tl.x + (tr.x - tl.x) * u;
-                    const ty = tl.y + (tr.y - tl.y) * u;
-                    const bx = bl.x + (br.x - bl.x) * u;
-                    const by = bl.y + (br.y - bl.y) * u;
-                    const sx = Math.floor(tx + (bx - tx) * v);
-                    const sy = Math.floor(ty + (by - ty) * v);
-
-                    let r = 0, g = 0, b = 0;
-                    if (sx >= 0 && sx < sw && sy >= 0 && sy < sh) {
-                        const idx = (sy * sw + sx) * 4;
-                        r = src[idx];
-                        g = src[idx + 1];
-                        b = src[idx + 2];
-                    }
-                    const i = (y * w + x) * 4;
-                    pixels[i] = r;
-                    pixels[i + 1] = g;
-                    pixels[i + 2] = b;
-                    pixels[i + 3] = 255;
-                }
-            }
+            // Use the processed result data which respects quantization/dithering settings
+            const imgData = new ImageData(state.resultPixelData, w, h);
 
             // Put on canvas
             ctx.putImageData(imgData, 0, 0);
@@ -817,6 +915,8 @@
             link.href = cvs.toDataURL();
             link.click();
         }
+
+
 
         // 启动
         init();
