@@ -123,6 +123,7 @@
             top: 0;
             left: 0;
             cursor: crosshair;
+            mix-blend-mode: difference;
         }
 
         /* 右侧：预览与设置 */
@@ -219,6 +220,7 @@
         </div>
         <div class="control-group" style="margin-left: auto;">
             <button id="btnDownload">💾 下载图纸</button>
+            <button id="btnDownloadSource">🖼️ 下载原像素</button>
         </div>
     </header>
 
@@ -238,6 +240,10 @@
                     <canvas id="resultCanvas"></canvas>
                 </div>
                 <div style="margin-top: 10px; display: flex; align-items: center; gap: 10px;">
+                    <input type="checkbox" id="chkQuantize" checked>
+                    <label for="chkQuantize">开启量化</label>
+                </div>
+                <div style="margin-top: 5px; display: flex; align-items: center; gap: 10px;">
                     <input type="checkbox" id="chkDither">
                     <label for="chkDither">开启抖动 (Floyd-Steinberg)</label>
                 </div>
@@ -277,7 +283,8 @@
             imgData: null, // Source image pixel data
             srcWidth: 0,
             srcHeight: 0,
-            dither: false
+            dither: false,
+            quantize: true
         };
 
         const DEFAULT_PALETTE = [
@@ -300,8 +307,10 @@
             inpHeight: document.getElementById('inpHeight'),
             paletteBox: document.getElementById('paletteBox'),
             countLbl: document.getElementById('lblColorCount'),
+            chkQuantize: document.getElementById('chkQuantize'),
             chkDither: document.getElementById('chkDither'),
             dlBtn: document.getElementById('btnDownload'),
+            dlSrcBtn: document.getElementById('btnDownloadSource'),
             canvasStack: document.getElementById('canvasStack')
         };
 
@@ -317,8 +326,10 @@
             els.inpFile.addEventListener('change', handleFile);
             els.inpWidth.addEventListener('change', updateGridSize);
             els.inpHeight.addEventListener('change', updateGridSize);
+            els.chkQuantize.addEventListener('change', () => { state.quantize = els.chkQuantize.checked; process(); });
             els.chkDither.addEventListener('change', () => { state.dither = els.chkDither.checked; process(); });
             els.dlBtn.addEventListener('click', downloadResult);
+            els.dlSrcBtn.addEventListener('click', downloadSourcePixels);
 
             // Canvas 交互
             els.overlayCanvas.addEventListener('mousedown', onMouseDown);
@@ -460,7 +471,8 @@
             if (!state.corners.length) return;
 
             // 1. 绘制扭曲的网格
-            ctx.strokeStyle = "rgba(204, 204, 0, 0.6)";
+            // 1. 绘制扭曲的网格
+            ctx.strokeStyle = "rgba(255, 255, 255, 0.8)";
             ctx.lineWidth = 1;
             ctx.beginPath();
 
@@ -561,11 +573,14 @@
             }
 
             // 抖动与量化
-            if (state.dither) {
-                applyFloydSteinberg(pixels, w, h);
-            } else {
-                applyNearestColor(pixels);
+            if (state.quantize) {
+                if (state.dither) {
+                    applyFloydSteinberg(pixels, w, h);
+                } else {
+                    applyNearestColor(pixels);
+                }
             }
+            // else: pixels already contain sampled RGB values
 
             // 绘制结果
             renderPreview(pixels, w, h);
@@ -732,6 +747,74 @@
             const link = document.createElement('a');
             link.download = 'bead_pattern.png';
             link.href = els.resultCanvas.toDataURL();
+            link.click();
+        }
+
+        function downloadSourcePixels() {
+            if (!state.imgData || !state.corners.length) return;
+
+            const w = state.gridW;
+            const h = state.gridH;
+
+            // Create temporary canvas
+            const cvs = document.createElement('canvas');
+            cvs.width = w;
+            cvs.height = h;
+            const ctx = cvs.getContext('2d');
+
+            // Get current processing result (re-run logic partially or just use what we have, 
+            // but process() modifies a local array. Let's just create imageData from what we would have.)
+
+            // Re-run sampling logic simply
+            const imgData = ctx.createImageData(w, h);
+            // We need to re-run the sampling loop because 'process' only renders to preview
+            // Actually 'process' creates 'pixels' array. We could cache it in state if we wanted, 
+            // but re-running is cheap enough for a click action.
+
+            // Copy-paste sampling logic or refactor? Re-running is safer to ensure state consistency.
+            // Let's refactor slightly: extract sampling to a function that returns the pixel array.
+            // For now, to minimize diff, let's just duplicate the sampling logic for the download function
+            // or even better, let 'process' store the last result?
+            // "pixels" in process() is local. Let's make it state or start a new sampling.
+
+            const [tl, tr, br, bl] = state.corners;
+            const src = state.imgData.data;
+            const sw = state.imgData.width;
+            const sh = state.imgData.height;
+            const pixels = imgData.data;
+
+            for (let y = 0; y < h; y++) {
+                for (let x = 0; x < w; x++) {
+                    const u = (x + 0.5) / w;
+                    const v = (y + 0.5) / h;
+                    const tx = tl.x + (tr.x - tl.x) * u;
+                    const ty = tl.y + (tr.y - tl.y) * u;
+                    const bx = bl.x + (br.x - bl.x) * u;
+                    const by = bl.y + (br.y - bl.y) * u;
+                    const sx = Math.floor(tx + (bx - tx) * v);
+                    const sy = Math.floor(ty + (by - ty) * v);
+
+                    let r = 0, g = 0, b = 0;
+                    if (sx >= 0 && sx < sw && sy >= 0 && sy < sh) {
+                        const idx = (sy * sw + sx) * 4;
+                        r = src[idx];
+                        g = src[idx + 1];
+                        b = src[idx + 2];
+                    }
+                    const i = (y * w + x) * 4;
+                    pixels[i] = r;
+                    pixels[i + 1] = g;
+                    pixels[i + 2] = b;
+                    pixels[i + 3] = 255;
+                }
+            }
+
+            // Put on canvas
+            ctx.putImageData(imgData, 0, 0);
+
+            const link = document.createElement('a');
+            link.download = 'pixel_source_1x1.png';
+            link.href = cvs.toDataURL();
             link.click();
         }
 
