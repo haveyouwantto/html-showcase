@@ -233,6 +233,41 @@
             gap: 10px;
             margin-top: 10px;
         }
+
+        /* Fullscreen Zoom Styles */
+        :fullscreen .preview-container {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background: #000;
+            width: 100vw;
+            height: 100vh;
+            max-height: none;
+            overflow: hidden;
+        }
+
+        :fullscreen #resultCanvas {
+            max-width: none;
+            max-height: none;
+        }
+
+        #btnExitFs {
+            display: none;
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 1000;
+            background: rgba(0, 0, 0, 0.5);
+            border: 1px solid #666;
+            color: white;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+
+        :fullscreen #btnExitFs {
+            display: block;
+        }
     </style>
 </head>
 
@@ -278,9 +313,14 @@
 
         <div class="sidebar">
             <div class="panel-section">
-                <div class="panel-title">实时预览</div>
-                <div class="preview-container">
+                <div class="panel-title">
+                    <span>实时预览</span>
+                    <button class="secondary" style="font-size: 0.8rem; padding: 2px 8px;"
+                        onclick="toggleFullscreen()">⛶ 全屏</button>
+                </div>
+                <div class="preview-container" id="previewBox">
                     <canvas id="resultCanvas"></canvas>
+                    <button id="btnExitFs" onclick="toggleFullscreen()">退出全屏</button>
                 </div>
                 <div style="margin-top: 10px; display: flex; align-items: center; gap: 10px;">
                     <input type="checkbox" id="chkQuantize" checked>
@@ -333,8 +373,17 @@
             resultPixelData: null, // Processed result data (Uint8ClampedArray)
             srcWidth: 0,
             srcHeight: 0,
+            srcWidth: 0,
+            srcHeight: 0,
             dither: false,
-            quantize: true
+            quantize: true,
+            zoom: 1,
+            panX: 0,
+            panY: 0,
+            isPanning: false,
+            lastMouseX: 0,
+            lastMouseY: 0,
+            wakeLock: null
         };
 
         const DEFAULT_PALETTE = [
@@ -351,7 +400,10 @@
         const els = {
             imgCanvas: document.getElementById('imgCanvas'),
             overlayCanvas: document.getElementById('overlayCanvas'),
+            imgCanvas: document.getElementById('imgCanvas'),
+            overlayCanvas: document.getElementById('overlayCanvas'),
             resultCanvas: document.getElementById('resultCanvas'),
+            previewBox: document.getElementById('previewBox'),
             inpFile: document.getElementById('inpFile'),
             inpWidth: document.getElementById('inpWidth'),
             inpHeight: document.getElementById('inpHeight'),
@@ -386,7 +438,16 @@
             // Canvas 交互
             els.overlayCanvas.addEventListener('mousedown', onMouseDown);
             window.addEventListener('mousemove', onMouseMove);
+            els.overlayCanvas.addEventListener('mousedown', onMouseDown);
+            window.addEventListener('mousemove', onMouseMove);
             window.addEventListener('mouseup', onMouseUp);
+
+            // Fullscreen events
+            document.addEventListener('fullscreenchange', onFullscreenChange);
+            els.previewBox.addEventListener('wheel', onWheel);
+            els.previewBox.addEventListener('mousedown', onPreviewMouseDown);
+            window.addEventListener('mousemove', onPreviewMouseMove);
+            window.addEventListener('mouseup', onPreviewMouseUp);
 
             // 默认空状态
             resizeCanvas(400, 300);
@@ -914,6 +975,115 @@
             link.download = 'pixel_source_1x1.png';
             link.href = cvs.toDataURL();
             link.click();
+        }
+
+        // --- 全屏与 Wake Lock ---
+        async function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                try {
+                    await els.previewBox.requestFullscreen();
+                } catch (err) {
+                    console.error(`Error attempting to enable fullscreen: ${err.message}`);
+                }
+            } else {
+                if (document.exitFullscreen) {
+                    document.exitFullscreen();
+                }
+            }
+        }
+
+        async function onFullscreenChange() {
+            if (document.fullscreenElement) {
+                // Entered fullscreen
+                state.zoom = 1;
+                state.panX = 0;
+                state.panY = 0;
+                updateZoom();
+                await requestWakeLock();
+            } else {
+                // Exited fullscreen
+                state.zoom = 1;
+                state.panX = 0;
+                state.panY = 0;
+                updateZoom();
+                releaseWakeLock();
+            }
+        }
+
+        function onWheel(e) {
+            if (!document.fullscreenElement) return;
+            e.preventDefault();
+
+            const delta = e.deltaY > 0 ? 0.9 : 1.1;
+            state.zoom *= delta;
+
+            // Limit zoom
+            state.zoom = Math.min(Math.max(0.1, state.zoom), 10);
+            updateZoom();
+        }
+
+        function onPreviewMouseDown(e) {
+            if (!document.fullscreenElement) return;
+            state.isPanning = true;
+            state.lastMouseX = e.clientX;
+            state.lastMouseY = e.clientY;
+            els.resultCanvas.style.cursor = 'grabbing';
+        }
+
+        function onPreviewMouseMove(e) {
+            if (!state.isPanning || !document.fullscreenElement) return;
+            e.preventDefault();
+
+            const dx = e.clientX - state.lastMouseX;
+            const dy = e.clientY - state.lastMouseY;
+
+            state.panX += dx;
+            state.panY += dy;
+
+            state.lastMouseX = e.clientX;
+            state.lastMouseY = e.clientY;
+
+            updateZoom();
+        }
+
+        function onPreviewMouseUp() {
+            state.isPanning = false;
+            if (document.fullscreenElement) {
+                els.resultCanvas.style.cursor = 'grab';
+            }
+        }
+
+        function updateZoom() {
+            // Apply zoom to canvas
+            if (document.fullscreenElement) {
+                els.resultCanvas.style.transform = `translate(${state.panX}px, ${state.panY}px) scale(${state.zoom})`;
+                els.resultCanvas.style.cursor = 'grab';
+            } else {
+                els.resultCanvas.style.transform = 'none';
+                els.resultCanvas.style.cursor = 'default';
+            }
+        }
+
+        async function requestWakeLock() {
+            if ('wakeLock' in navigator) {
+                try {
+                    state.wakeLock = await navigator.wakeLock.request('screen');
+                    state.wakeLock.addEventListener('release', () => {
+                        console.log('Wake Lock released');
+                        state.wakeLock = null;
+                    });
+                    console.log('Wake Lock acquired');
+                } catch (err) {
+                    console.error(`${err.name}, ${err.message}`);
+                }
+            }
+        }
+
+        function releaseWakeLock() {
+            if (state.wakeLock !== null) {
+                state.wakeLock.release();
+                state.wakeLock = null;
+            }
         }
 
 
