@@ -2904,7 +2904,7 @@
                 this.deep = false;
 
                 this.canvas = canvas;
-                this.context = canvas.getContext('2d');
+                this.context = canvas.getContext('2d', { willReadFrequently: true });
                 this.rendering = false;
                 this.iterMap = null;
                 this.videoRendering = false;
