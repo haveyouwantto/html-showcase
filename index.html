@@ -6,10 +6,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="description"
         content="Maple-Kaede的个人数字游乐场 🍁 这里集合了各种有趣的小实验：把文字变成图片、和好友在线下棋、生成会唱歌的图片、探索数学分形的奥秘... 用浏览器技术实现各种异想天开的创意，欢迎来玩！">
-    <meta name="keywords"
-        content="个人兴趣项目, 网页小实验, 浏览器黑科技, 在线五子棋, 文字转图片工具, 数学艺术可视化, 音频图片转换, 创意编程, 极客小玩具, 数字游乐场">
+    <meta name="keywords" content="个人兴趣项目, 网页小实验, 浏览器黑科技, 在线五子棋, 文字转图片工具, 数学艺术可视化, 音频图片转换, 创意编程, 极客小玩具, 数字游乐场">
     <title>Maple Kaede's Playground</title>
-    
+
     <!-- Google Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -95,7 +94,8 @@
             font-weight: 500;
         }
 
-        .nav-links a:hover, .nav-links a.active {
+        .nav-links a:hover,
+        .nav-links a.active {
             background-color: rgba(124, 77, 255, 0.1);
             color: var(--accent-color);
         }
@@ -182,7 +182,8 @@
         .card-img-wrapper {
             position: relative;
             width: 100%;
-            padding-top: 56.25%; /* 16:9 Aspect Ratio */
+            padding-top: 56.25%;
+            /* 16:9 Aspect Ratio */
             overflow: hidden;
             background-color: #000;
         }
@@ -222,7 +223,8 @@
             color: var(--text-secondary);
             line-height: 1.5;
             margin-bottom: 20px;
-            flex-grow: 1; /* Push button to bottom */
+            flex-grow: 1;
+            /* Push button to bottom */
         }
 
         .card-button {
@@ -284,12 +286,13 @@
                 margin: 0 auto;
             }
         }
-        
+
         @media (max-width: 480px) {
-             .nav-links {
+            .nav-links {
                 display: grid;
                 grid-template-columns: 1fr 1fr;
             }
+
             .nav-links a {
                 justify-content: center;
                 font-size: 0.8rem;
@@ -342,7 +345,8 @@
                         </div>
                     </div>
                     <div class="card">
-                        <div class="card-img-wrapper"><img src="img/speaker.jpg" alt="Sinc波形播放器"></div> <!-- 假设这里应该有个图，用通用名代替 -->
+                        <div class="card-img-wrapper"><img src="img/speaker.jpg" alt="Sinc波形播放器"></div>
+                        <!-- 假设这里应该有个图，用通用名代替 -->
                         <div class="card-content">
                             <h3 class="card-title">Sinc 波形播放器</h3>
                             <p class="card-description">探索 DSP 的基石，生成并控制理想的 Sinc 函数波形。</p>
@@ -357,7 +361,7 @@
                             <a href="fax-recv.html" class="card-button">试试吧</a>
                         </div>
                     </div>
-                     <div class="card">
+                    <div class="card">
                         <div class="card-img-wrapper"><img src="img/sstv.jpg" alt="SSTV生成器"></div>
                         <div class="card-content">
                             <h3 class="card-title">SSTV 编码器</h3>
@@ -365,7 +369,7 @@
                             <a href="sstv-encoder.html" class="card-button">试试吧</a>
                         </div>
                     </div>
-                     <div class="card">
+                    <div class="card">
                         <div class="card-img-wrapper"><img src="img/picopiano.jpg" alt="迷你钢琴"></div>
                         <div class="card-content">
                             <h3 class="card-title">迷你钢琴</h3>
@@ -389,7 +393,7 @@
                             <a href="ultrasonic-transceiver.html" class="card-button">试试吧</a>
                         </div>
                     </div>
-                     <div class="card">
+                    <div class="card">
                         <div class="card-img-wrapper"><img src="img/infinite-player.jpg" alt="无限循环播放器"></div>
                         <div class="card-content">
                             <h3 class="card-title">无缝循环播放器</h3>
@@ -397,7 +401,7 @@
                             <a href="infinite-player.html" class="card-button">试试吧</a>
                         </div>
                     </div>
-                     <div class="card">
+                    <div class="card">
                         <div class="card-img-wrapper"><img src="img/image-tape.jpg" alt="音频图片录音带"></div>
                         <div class="card-content">
                             <h3 class="card-title">音频显像带</h3>
@@ -405,7 +409,7 @@
                             <a href="image-tape.html" class="card-button">试试吧</a>
                         </div>
                     </div>
-                     <div class="card">
+                    <div class="card">
                         <div class="card-img-wrapper"><img src="img/qfp.jpg" alt="QFP音频压缩"></div>
                         <div class="card-content">
                             <h3 class="card-title">JS 音频压缩器</h3>
@@ -413,7 +417,7 @@
                             <a href="qfp.html" class="card-button">试试吧</a>
                         </div>
                     </div>
-                     <div class="card">
+                    <div class="card">
                         <div class="card-img-wrapper"><img src="img/chtest.jpg" alt="声道测试器"></div>
                         <div class="card-content">
                             <h3 class="card-title">声道测试器</h3>
@@ -421,7 +425,7 @@
                             <a href="chtest.html" class="card-button">试试吧</a>
                         </div>
                     </div>
-                     <div class="card">
+                    <div class="card">
                         <div class="card-img-wrapper"><img src="img/vido.jpg" alt="原道耳机测试"></div>
                         <div class="card-content">
                             <h3 class="card-title">原道模拟器</h3>
@@ -454,7 +458,7 @@
                             <a href="mandel-pt.html" class="card-button">试试吧</a>
                         </div>
                     </div>
-                     <div class="card">
+                    <div class="card">
                         <div class="card-img-wrapper"><img src="img/color-analyzer.jpg" alt="颜色分析器"></div>
                         <div class="card-content">
                             <h3 class="card-title">YUV 颜色分析</h3>
@@ -470,7 +474,7 @@
                             <a href="polar-clock.html" class="card-button">试试吧</a>
                         </div>
                     </div>
-                     <div class="card">
+                    <div class="card">
                         <div class="card-img-wrapper"><img src="img/lanczous.jpg" alt="Lanczos插值"></div>
                         <div class="card-content">
                             <h3 class="card-title">Lanczos 插值实验</h3>
@@ -478,7 +482,7 @@
                             <a href="lanczos.html" class="card-button">试试吧</a>
                         </div>
                     </div>
-                     <div class="card">
+                    <div class="card">
                         <div class="card-img-wrapper"><img src="img/progressive-dct.jpg" alt="渐进式DCT"></div>
                         <div class="card-content">
                             <h3 class="card-title">渐进式 JPEG 模拟</h3>
@@ -496,6 +500,14 @@
                 </div>
                 <div class="grid">
                     <div class="card">
+                        <div class="card-img-wrapper"><img src="img/ipv6-mac.jpg" alt="IPv6 MAC地址转换"></div>
+                        <div class="card-content">
+                            <h3 class="card-title">IPv6 MAC地址转换</h3>
+                            <p class="card-description">将IPv6地址转换为MAC地址的工具。</p>
+                            <a href="ipv6-mac.html" class="card-button">试试吧</a>
+                        </div>
+                    </div>
+                    <div class="card">
                         <div class="card-img-wrapper"><img src="img/pinyin.jpg" alt="拼音输入法"></div>
                         <div class="card-content">
                             <h3 class="card-title">Trie 树输入法</h3>
@@ -511,7 +523,7 @@
                             <a href="md2img.html" class="card-button">试试吧</a>
                         </div>
                     </div>
-                     <div class="card">
+                    <div class="card">
                         <div class="card-img-wrapper"><img src="img/fp-eval.jpg" alt="浮点数解析"></div>
                         <div class="card-content">
                             <h3 class="card-title">IEEE 754 解剖器</h3>
@@ -535,7 +547,7 @@
                             <a href="digit-compressor.html" class="card-button">试试吧</a>
                         </div>
                     </div>
-                     <div class="card">
+                    <div class="card">
                         <div class="card-img-wrapper"><img src="img/openai.jpg" alt="OpenAI预设"></div>
                         <div class="card-content">
                             <h3 class="card-title">LLM 参数调优</h3>
@@ -608,7 +620,7 @@
                             <a href="motion-meas.html" class="card-button">试试吧</a>
                         </div>
                     </div>
-                     <div class="card">
+                    <div class="card">
                         <div class="card-img-wrapper"><img src="img/binary-voice.jpg" alt="二进制语音"></div>
                         <div class="card-content">
                             <h3 class="card-title">二进制语音波形</h3>
@@ -624,13 +636,14 @@
     <script>
         // 简单的交互：点击导航时高亮当前项（也可以添加滚动监听）
         const navLinks = document.querySelectorAll('.nav-links a');
-        
+
         navLinks.forEach(link => {
-            link.addEventListener('click', function() {
+            link.addEventListener('click', function () {
                 navLinks.forEach(nav => nav.classList.remove('active'));
                 this.classList.add('active');
             });
         });
     </script>
 </body>
+
 </html>
