@@ -1643,6 +1643,11 @@
             get(iter) {
                 return this.z[iter];
             }
+            
+            getInplace(iter, result) {
+                result.re = this.z[iter].re;
+                result.im = this.z[iter].im;
+            }
 
             get length() {
                 return this.z.length;
@@ -2619,7 +2624,8 @@
                 }
             }
 
-            Z = ref.get(j);
+            // Z = ref.get(j);
+            ref.getInplace(j, Z);
 
 
             while (i < maxIter) {
@@ -2633,7 +2639,8 @@
 
                 i++; j++;
 
-                Z = ref.get(j);
+                // Z = ref.get(j);
+                ref.getInplace(j, Z);
 
                 // z = dz.add(Z);
                 zRe = dzRe + Z.re;
@@ -2714,7 +2721,7 @@
                 }
             }
 
-            ref.getInplace(j, Z)
+            Z = ref[j]
 
 
             while (i < maxIter) {
@@ -2725,7 +2732,7 @@
 
                 i++; j++;
 
-                ref.getInplace(j, Z)
+                Z = ref[j]
 
                 // z = dz.add(Z);
                 dz.addTo(Z, z)
