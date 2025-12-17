@@ -514,8 +514,8 @@
                 <div class="control-group">
                     <label for="target-mode">优化目标:</label>
                     <select id="target-mode">
-                        <option value="MAX">最大 ΔE (最坏情况最优)</option>
                         <option value="AVG">平均 ΔE (整体平均最优)</option>
+                        <option value="MAX">最大 ΔE (最坏情况最优)</option>
                     </select>
                 </div>
 
@@ -1144,6 +1144,19 @@
 
             getColorCodes(codeType, hex) {
                 return this.codeMaps[codeType]?.get(hex) || '';
+            }
+
+            getFixedIndices() {
+                const fixedIndices = new Set();
+                if (!this.hexList) return fixedIndices;
+
+                for (let i = 0; i < this.hexList.length; i++) {
+                    const mard = this.codeMaps.MARD.get(this.hexList[i]);
+                    if (this.config.MANDATORY_MARDS.has(mard)) {
+                        fixedIndices.add(i);
+                    }
+                }
+                return fixedIndices;
             }
 
             stop() {
