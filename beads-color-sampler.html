@@ -445,10 +445,26 @@
             <div class="color-grid-container">
                 <div class="color-grid-header">
                     <h2 id="result-title">🎨 优化结果</h2>
-                    <div style="color: var(--text-muted);">
-                        当前颜色数: <span id="current-colors-count">0</span>
+                    <div style="display: flex; align-items: center; gap: 15px;">
+                        <span style="color: var(--text-muted);">当前颜色数: <span id="current-colors-count">0</span></span>
+                        <button id="export-btn"
+                            style="padding: 5px 15px; font-size: 14px; width: auto; background: var(--bg-card); border-color: var(--accent-primary);">导出结果</button>
                     </div>
                 </div>
+
+                <div id="image-preview-container"
+                    style="display: none; margin-bottom: 20px; padding: 10px; background: rgba(0,0,0,0.2); border-radius: 10px; text-align: center;">
+                    <h3 style="color: var(--text-secondary); margin-bottom: 10px;">参考图片预览</h3>
+                    <div style="display: flex; gap: 20px; justify-content: center; align-items: center;">
+                        <img id="source-image-preview"
+                            style="max-height: 200px; max-width: 100%; border-radius: 8px; border: 2px solid var(--border);" />
+                        <div id="image-stats" style="text-align: left; font-size: 14px; color: var(--text-muted);">
+                            <div>采样点数: <span id="sample-count-display">-</span></div>
+                        </div>
+                    </div>
+                    <canvas id="sampling-canvas" style="display: none;"></canvas>
+                </div>
+
                 <div class="color-grid" id="color-grid">
                     <!-- 颜色卡片将在这里动态生成 -->
                 </div>
@@ -460,6 +476,26 @@
                 <h2>⚙️ 参数设置</h2>
 
                 <div class="control-group">
+                    <label>优化来源:</label>
+                    <div style="display: flex; gap: 10px; margin-bottom: 10px;">
+                        <label
+                            style="font-weight: normal; display: flex; align-items: center; gap: 5px; cursor: pointer;">
+                            <input type="radio" name="source-mode" value="GLOBAL" checked style="width: auto;"> 全量色谱
+                        </label>
+                        <label
+                            style="font-weight: normal; display: flex; align-items: center; gap: 5px; cursor: pointer;">
+                            <input type="radio" name="source-mode" value="IMAGE" style="width: auto;"> 参考图片
+                        </label>
+                    </div>
+                </div>
+
+                <div class="control-group" id="image-upload-group" style="display: none;">
+                    <label for="image-upload">上传图片:</label>
+                    <input type="file" id="image-upload" accept="image/*">
+                    <p style="font-size: 12px; color: var(--text-muted); margin-top: 5px;">* 将从图片中随机采样颜色作为优化目标</p>
+                </div>
+
+                <div class="control-group">
                     <label for="k-input">颜料预算 (K):</label>
                     <input type="number" id="k-input" min="1" max="100" value="30">
                 </div>
@@ -467,6 +503,12 @@
                 <div class="control-group">
                     <label for="steps-input">模拟退火步数:</label>
                     <input type="number" id="steps-input" min="1000" max="200000" value="80000" step="1000">
+                </div>
+
+                <div class="control-group">
+                    <label for="patience-input">提前终止耐心值 (步数):</label>
+                    <input type="number" id="patience-input" min="100" max="50000" value="5000" step="100"
+                        title="如果在此步数内没有找到更好的解，则提前停止优化">
                 </div>
 
                 <div class="control-group">
@@ -558,6 +600,38 @@
             <div class="loading-spinner"></div>
             <p style="color: var(--text-secondary); margin-top: 20px;">正在加载颜色数据...</p>
         </div>
+
+        <!-- Confirm Dialog -->
+        <div id="export-dialog"
+            style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 1000; justify-content: center; align-items: center;">
+            <div
+                style="background: var(--bg-secondary); padding: 25px; border-radius: 15px; width: 500px; max-width: 90%; border: 1px solid var(--border); box-shadow: 0 10px 25px rgba(0,0,0,0.5);">
+                <h2
+                    style="color: var(--accent-primary); margin-bottom: 20px; border-bottom: 2px solid var(--accent-primary); padding-bottom: 10px;">
+                    导出结果</h2>
+
+                <div style="margin-bottom: 15px;">
+                    <label
+                        style="color: var(--text-secondary); font-weight: bold; display: block; margin-bottom: 10px;">格式:</label>
+                    <select id="export-format"
+                        style="width: 100%; padding: 8px; border-radius: 4px; background: var(--bg-input); color: var(--text-primary); border: 1px solid var(--border);">
+                        <option value="JSON" selected>JSON (配置)</option>
+                        <option value="HEX">HEX列表</option>
+                        <option value="CODE">色号列表</option>
+                    </select>
+                </div>
+
+                <textarea id="export-textarea"
+                    style="width: 100%; height: 200px; background: var(--bg-input); border: 1px solid var(--border); border-radius: 8px; color: var(--text-primary); padding: 10px; font-family: 'Courier New', monospace; resize: vertical; margin-bottom: 15px;"
+                    readonly></textarea>
+
+                <div style="display: flex; justify-content: flex-end; gap: 10px;">
+                    <button id="copy-btn" style="width: auto; background: var(--accent-secondary);">复制</button>
+                    <button id="close-dialog-btn"
+                        style="width: auto; background: var(--bg-card); border-color: var(--text-muted);">关闭</button>
+                </div>
+            </div>
+        </div>
     </div>
 
     <script>
@@ -575,13 +649,69 @@
                 this.MANDATORY_MARDS = new Set(['H02', 'H07']);
                 this.UPDATE_INTERVAL = 100; // 100毫秒更新一次UI
                 this.TARGET_MODE = document.getElementById('target-mode').value;
+                this.SOURCE_MODE = document.querySelector('input[name="source-mode"]:checked').value;
             }
 
             updateFromUI() {
                 this.K_REPRESENTATIVES = parseInt(document.getElementById('k-input').value) || 30;
                 this.SA_STEPS = parseInt(document.getElementById('steps-input').value) || 80000;
+                this.PATIENCE = parseInt(document.getElementById('patience-input').value) || 5000;
                 this.RANDOM_SEED = parseInt(document.getElementById('seed-input').value) || 42;
                 this.TARGET_MODE = document.getElementById('target-mode').value;
+                this.SOURCE_MODE = document.querySelector('input[name="source-mode"]:checked').value;
+            }
+        }
+
+        class ImageProcessor {
+            constructor() {
+                this.canvas = document.getElementById('sampling-canvas');
+                this.ctx = this.canvas.getContext('2d');
+            }
+
+            loadImage(file) {
+                return new Promise((resolve, reject) => {
+                    const img = new Image();
+                    img.onload = () => resolve(img);
+                    img.onerror = reject;
+                    img.src = URL.createObjectURL(file);
+                });
+            }
+
+            sampleColors(img, sampleCount = 4000) {
+                // Resize canvas to reasonable size for processing (max 1000px dimension) to save memory
+                const maxDim = 1000;
+                let width = img.width;
+                let height = img.height;
+
+                if (width > maxDim || height > maxDim) {
+                    const ratio = Math.min(maxDim / width, maxDim / height);
+                    width = Math.floor(width * ratio);
+                    height = Math.floor(height * ratio);
+                }
+
+                this.canvas.width = width;
+                this.canvas.height = height;
+                this.ctx.drawImage(img, 0, 0, width, height);
+
+                const imageData = this.ctx.getImageData(0, 0, width, height);
+                const data = imageData.data;
+                const pixelCount = width * height;
+
+                const samples = [];
+                const random = new RandomGenerator(42); // Consistent sampling for same image
+
+                // Random sampling
+                for (let i = 0; i < sampleCount; i++) {
+                    const idx = Math.floor(random.random() * pixelCount) * 4;
+                    // Ignore fully transparent pixels
+                    if (data[idx + 3] < 128) {
+                        i--;
+                        continue;
+                    }
+                    samples.push([data[idx], data[idx + 1], data[idx + 2]]);
+                }
+
+                return samples;
             }
         }
 
@@ -607,7 +737,7 @@
                 this.config = config;
                 this.random = new RandomGenerator(config.RANDOM_SEED);
                 this.colors = [];
-                this.hexList = [];
+                this.hexList = []; // Candidate HEXs
                 this.codeMaps = {
                     MARD: new Map(),
                     COCO: new Map(),
@@ -615,8 +745,11 @@
                     '盼盼': new Map(),
                     '咪小窝': new Map()
                 };
-                this.labColors = [];
-                this.deltaE = null;
+
+                this.candidateLabColors = []; // Candidates (Beads) in Lab
+                this.targetLabColors = [];    // Targets (Beads or Image) in Lab
+
+                this.deltaE = null; // [targetIdx][candidateIdx]
                 this.currentState = null;
                 this.bestState = null;
                 this.currentBestState = null;
@@ -627,6 +760,14 @@
                 this.isRunning = false;
                 this.lastYieldTime = 0;
                 this.maxDist = 0;
+                this.maxDist = 0;
+                this.noImprovementSteps = 0;
+                this.currentBestSignature = "";
+            }
+
+            // Get a unique signature for the current state (sorted list of indices)
+            getStateSignature(state) {
+                return Array.from(state).sort((a, b) => a - b).join(',');
             }
 
             // RGB转Lab转换（简化版）
@@ -683,25 +824,31 @@
                     }
                 }
 
-                this.labColors = this.hexList.map(hex => {
+                this.candidateLabColors = this.hexList.map(hex => {
                     const rgb = this.hexToRgb(hex);
                     return this.rgbToLab(rgb);
                 });
-
-                this.calculateDeltaEMatrix();
             }
 
-            calculateDeltaEMatrix() {
-                const n = this.hexList.length;
-                this.deltaE = new Array(n);
+            setTargetColors(labColors) {
+                this.targetLabColors = labColors;
+                this.calculateDistanceMatrix();
+            }
 
-                for (let i = 0; i < n; i++) {
-                    this.deltaE[i] = new Array(n);
-                    for (let j = 0; j < n; j++) {
+            calculateDistanceMatrix() {
+                const numTargets = this.targetLabColors.length;
+                const numCandidates = this.candidateLabColors.length;
+
+                // deltaE[i][j] = distance between Target[i] and Candidate[j]
+                this.deltaE = new Array(numTargets);
+
+                for (let i = 0; i < numTargets; i++) {
+                    this.deltaE[i] = new Array(numCandidates);
+                    for (let j = 0; j < numCandidates; j++) {
                         const diff = [
-                            this.labColors[i][0] - this.labColors[j][0],
-                            this.labColors[i][1] - this.labColors[j][1],
-                            this.labColors[i][2] - this.labColors[j][2]
+                            this.targetLabColors[i][0] - this.candidateLabColors[j][0],
+                            this.targetLabColors[i][1] - this.candidateLabColors[j][1],
+                            this.targetLabColors[i][2] - this.candidateLabColors[j][2]
                         ];
                         this.deltaE[i][j] = Math.sqrt(
                             diff[0] * diff[0] + diff[1] * diff[1] + diff[2] * diff[2]
@@ -709,7 +856,7 @@
                     }
                 }
 
-                this.maxDist = Math.max(...this.deltaE.flat());
+                this.maxDist = Math.max(...this.deltaE.map(row => Math.max(...row)));
             }
             calculateStats(state) {
                 const stateArray = Array.from(state);
@@ -717,9 +864,12 @@
                 let minDistTotal = Infinity; // 全局最小
                 let sumDist = 0;
 
-                for (let i = 0; i < this.hexList.length; i++) {
+                const numTargets = this.deltaE.length;
+
+                for (let i = 0; i < numTargets; i++) {
                     let minDist = Infinity; // 当前点到最近采样点的距离
                     for (const j of stateArray) {
+                        // j is index of candidate (bead)
                         if (this.deltaE[i][j] < minDist) {
                             minDist = this.deltaE[i][j];
                         }
@@ -732,7 +882,7 @@
                 return {
                     max: maxDist,
                     min: minDistTotal,
-                    avg: sumDist / this.hexList.length
+                    avg: sumDist / numTargets
                 };
             }
 
@@ -740,67 +890,89 @@
                 return this.config.TARGET_MODE === 'MAX' ? stats.max : stats.avg;
             }
 
+
             getFPSInitialization(k, fixedIndices = new Set()) {
-                const n = this.hexList.length;
+                const numCandidates = this.candidateLabColors.length;
+                const numTargets = this.targetLabColors.length;
                 const selected = new Set(fixedIndices);
                 const variableSelected = new Set();
 
-                const minDists = new Array(n).fill(Infinity);
+                // FPS needs to be adapted for Asymmetric Matrix (Targets != Candidates)
+                // Standard FPS selects points from S to cover S.
+                // Here we select points from CANDIDATES to cover TARGETS.
+                // Simplified Grease: Just pick random candidates if Asymmetric?
+                // Or: greedily pick candidate that reduces max error the most (expensive).
+                // Let's stick to random init for Image mode for now to save complexity, 
+                // or use a simplified greedy approach.
+                // If Global Mode (Targets == Candidates), use original FPS logic.
 
-                if (fixedIndices.size === 0) {
-                    const first = Math.floor(this.random.random() * n);
-                    selected.add(first);
-                    variableSelected.add(first);
-                    for (let i = 0; i < n; i++) {
-                        minDists[i] = this.deltaE[first][i];
+                if (this.config.SOURCE_MODE === 'GLOBAL') {
+                    // Initial implementation of FPS for Global Mode
+                    const minDists = new Array(numCandidates).fill(Infinity);
+
+                    if (fixedIndices.size === 0) {
+                        const first = Math.floor(this.random.random() * numCandidates);
+                        selected.add(first);
+                        variableSelected.add(first);
+                        for (let i = 0; i < numCandidates; i++) {
+                            minDists[i] = this.deltaE[i][first]; // deltaE is Symmetric here
+                        }
+                    } else {
+                        // ... logic for fixed indices ...
+                        for (let i = 0; i < numCandidates; i++) {
+                            let minDist = Infinity;
+                            for (const fixedIdx of fixedIndices) {
+                                if (this.deltaE[i][fixedIdx] < minDist) minDist = this.deltaE[i][fixedIdx];
+                            }
+                            minDists[i] = minDist;
+                        }
                     }
-                } else {
-                    for (let i = 0; i < n; i++) {
-                        let minDist = Infinity;
-                        for (const fixedIdx of fixedIndices) {
-                            if (this.deltaE[fixedIdx][i] < minDist) {
-                                minDist = this.deltaE[fixedIdx][i];
+
+                    for (let count = 0; count < k; count++) {
+                        let farthestIdx = 0;
+                        let maxDist = 0;
+
+                        for (let i = 0; i < numCandidates; i++) {
+                            if (!selected.has(i) && minDists[i] > maxDist) {
+                                maxDist = minDists[i];
+                                farthestIdx = i;
                             }
                         }
-                        minDists[i] = minDist;
-                    }
-                }
 
-                for (let count = 0; count < k; count++) {
-                    let farthestIdx = 0;
-                    let maxDist = 0;
+                        if (maxDist === 0) break;
 
-                    for (let i = 0; i < n; i++) {
-                        if (!selected.has(i) && minDists[i] > maxDist) {
-                            maxDist = minDists[i];
-                            farthestIdx = i;
+                        selected.add(farthestIdx);
+                        variableSelected.add(farthestIdx);
+
+                        for (let i = 0; i < numCandidates; i++) {
+                            if (this.deltaE[i][farthestIdx] < minDists[i]) {
+                                minDists[i] = this.deltaE[i][farthestIdx];
+                            }
                         }
                     }
-
-                    if (maxDist === 0) {
-                        break;
-                    }
-
-                    selected.add(farthestIdx);
-                    variableSelected.add(farthestIdx);
-
-                    for (let i = 0; i < n; i++) {
-                        if (this.deltaE[farthestIdx][i] < minDists[i]) {
-                            minDists[i] = this.deltaE[farthestIdx][i];
+                    return variableSelected;
+                } else {
+                    // Random Init for Image Mode (simplest effective strategy)
+                    while (variableSelected.size < k) {
+                        const idx = Math.floor(this.random.random() * numCandidates);
+                        if (!selected.has(idx)) {
+                            variableSelected.add(idx);
+                            selected.add(idx);
                         }
                     }
+                    return variableSelected;
                 }
-
-                return variableSelected;
             }
 
-            async *simulatedAnnealing() {
+            async * simulatedAnnealing() {
                 this.config.updateFromUI();
                 this.random = new RandomGenerator(this.config.RANDOM_SEED);
                 this.isRunning = true;
                 this.currentStep = 0;
                 this.currentTemperature = this.config.T0;
                 this.lastYieldTime = performance.now();
+                this.noImprovementSteps = 0;
+                this.currentBestSignature = "";
 
                 const fixedIndices = new Set();
                 for (let i = 0; i < this.hexList.length; i++) {
@@ -834,6 +1006,18 @@
                 for (let step = 0; step < this.config.SA_STEPS && this.isRunning; step++) {
                     this.currentStep = step;
 
+                    // Early Exit Check
+                    if (this.noImprovementSteps > this.config.PATIENCE) {
+                        yield {
+                            type: 'stopped',
+                            reason: 'early_exit',
+                            step: step,
+                            patience: this.config.PATIENCE,
+                            bestError: this.bestError
+                        };
+                        break;
+                    }
+
                     const newState = new Set(this.currentState);
                     const currentRadius = this.maxDist * Math.pow(radiusDecay, step);
 
@@ -843,11 +1027,39 @@
                     newState.delete(out);
 
                     let candidates = [];
-                    for (let i = 0; i < this.hexList.length; i++) {
-                        if (this.deltaE[out][i] < currentRadius &&
-                            !newState.has(i) &&
-                            !fixedIndices.has(i)) {
-                            candidates.push(i);
+                    // Simple version: Pick random replacement
+                    // Optimized version: Only pick candidates that are "close" to the area uncovered by removing 'out'.
+                    // Given Asymmetric matrix, "closeness" is hard to define without precomputing candidate-candidate distances.
+                    // Let's stick to global random replacement or precompute candidate stats.
+                    // For simplified impl: Random replacement.
+                    // BUT the original logic used deltaE[out][i] to find nearby candidates (local search).
+                    // If deltaE is now Target x Candidate (N x M), we can't look up Candidate x Candidate distance easily 
+                    // unless we keep the symmetric matrix too, or just calc on fly.
+
+                    // Fallback: simple random swap is robust enough for SA. 
+                    // If Global Mode, deltaE is symmetric, so we can use it.
+
+                    if (this.config.SOURCE_MODE === 'GLOBAL') {
+                        // Original Logic using deltaE
+                        for (let i = 0; i < this.candidateLabColors.length; i++) {
+                            if (this.deltaE[out][i] < currentRadius &&
+                                !newState.has(i) &&
+                                !fixedIndices.has(i)) {
+                                candidates.push(i);
+                            }
+                        }
+                    } else {
+                        // Image Mode: Random candidate
+                        // Or we could compute distance between 'out' bead and 'i' bead on fly.
+                        const outRgb = this.hexToRgb(this.hexList[out]);
+                        const outLab = this.rgbToLab(outRgb);
+                        // We can optimize this by caching candidate-candidate distances, but memory...
+                        // Let's just do fully random for now, radius decay concept is less critical if acceptance probability handles it.
+                        // Actually, local search is capable of finetuning.
+                        // Let's pick a random candidate.
+                        const randCand = Math.floor(this.random.random() * this.candidateLabColors.length);
+                        if (!newState.has(randCand) && !fixedIndices.has(randCand)) {
+                            candidates.push(randCand);
                         }
                     }
 
@@ -879,6 +1091,22 @@
 
                         this.currentBestState = new Set(this.currentState);
                         this.currentBestError = newError;
+
+                        // Check signature change for patience
+                        const newSignature = this.getStateSignature(this.currentState);
+                        if (newSignature !== this.currentBestSignature) {
+                            this.noImprovementSteps = 0;
+                            this.currentBestSignature = newSignature;
+                        } else {
+                            this.noImprovementSteps++;
+                        }
+                    } else {
+                        // Even if we didn't accept, we technically didn't improve state.
+                        // But usually patience tracks "time since last global improvement".
+                        // Standard SA patience often counts total steps since best found.
+                        // My previous implementation counted steps in specific branch.
+                        // Let's stick to "steps since best signature changed".
+                        this.noImprovementSteps++;
                     }
 
                     this.currentTemperature *= this.config.ALPHA;
@@ -927,8 +1155,10 @@
         class UIController {
             constructor() {
                 this.optimizer = null;
+                this.imageProcessor = new ImageProcessor();
                 this.currentAnimation = null;
                 this.updateTimeout = null;
+                this.uploadedImage = null; // Store the loaded image object
             }
 
             init() {
@@ -987,6 +1217,111 @@
                 document.getElementById('show-names').addEventListener('change', () => {
                     this.updateDisplay();
                 });
+
+                // Mode Switching
+                const modeRadios = document.querySelectorAll('input[name="source-mode"]');
+                modeRadios.forEach(radio => {
+                    radio.addEventListener('change', (e) => {
+                        const mode = e.target.value;
+                        const uploadGroup = document.getElementById('image-upload-group');
+                        const previewContainer = document.getElementById('image-preview-container');
+
+                        if (mode === 'IMAGE') {
+                            uploadGroup.style.display = 'block';
+                            if (this.uploadedImage) previewContainer.style.display = 'block';
+                        } else {
+                            uploadGroup.style.display = 'none';
+                            previewContainer.style.display = 'none';
+                        }
+                    });
+                });
+
+                // Image Upload
+                document.getElementById('image-upload').addEventListener('change', async (e) => {
+                    const file = e.target.files[0];
+                    if (!file) return;
+
+                    try {
+                        const img = await this.imageProcessor.loadImage(file);
+                        this.uploadedImage = img;
+
+                        // Update preview
+                        const previewImg = document.getElementById('source-image-preview');
+                        previewImg.src = img.src;
+                        document.getElementById('image-preview-container').style.display = 'block';
+
+                        this.log('✅ 图片加载成功', 'success');
+                    } catch (err) {
+                        this.log('❌ 图片加载失败', 'error');
+                        console.error(err);
+                    }
+                });
+
+                // Export Functionality
+                const dialog = document.getElementById('export-dialog');
+                const textarea = document.getElementById('export-textarea');
+
+                document.getElementById('export-btn').addEventListener('click', () => {
+                    if (!this.optimizer || !this.optimizer.bestState) {
+                        alert('请先运行优化！');
+                        return;
+                    }
+                    dialog.style.display = 'flex';
+                    this.updateExportContent();
+                });
+
+                document.getElementById('close-dialog-btn').addEventListener('click', () => {
+                    dialog.style.display = 'none';
+                });
+
+                document.getElementById('copy-btn').addEventListener('click', () => {
+                    textarea.select();
+                    document.execCommand('copy');
+                    const originalText = document.getElementById('copy-btn').textContent;
+                    document.getElementById('copy-btn').textContent = '已复制!';
+                    setTimeout(() => {
+                        document.getElementById('copy-btn').textContent = originalText;
+                    }, 2000);
+                });
+
+                const formatSelect = document.getElementById('export-format');
+                formatSelect.addEventListener('change', () => {
+                    this.updateExportContent();
+                });
+            }
+
+            updateExportContent() {
+                const format = document.getElementById('export-format').value;
+                const textarea = document.getElementById('export-textarea');
+                const finalSet = new Set([...this.optimizer.bestState, ...this.optimizer.getFixedIndices()]);
+                const codeType = document.getElementById('code-type').value;
+
+                let content = '';
+                const sortedIndices = Array.from(finalSet).sort((a, b) => {
+                    const codeA = this.optimizer.getColorCodes(codeType, this.optimizer.hexList[a]) || '';
+                    const codeB = this.optimizer.getColorCodes(codeType, this.optimizer.hexList[b]) || '';
+                    return codeA.localeCompare(codeB);
+                });
+
+                if (format === 'JSON') {
+                    const selectedHexValues = sortedIndices.map(i => this.optimizer.hexList[i]);
+                    const data = {
+                        "version": "3.0",
+                        "selectedHexValues": selectedHexValues,
+                        "exportDate": new Date().toISOString(),
+                        "totalColors": selectedHexValues.length
+                    };
+                    content = JSON.stringify(data, null, 2);
+                } else if (format === 'HEX') {
+                    content = sortedIndices.map(i => this.optimizer.hexList[i]).join('\n');
+                } else if (format === 'CODE') {
+                    content = sortedIndices.map(i => {
+                        const hex = this.optimizer.hexList[i];
+                        return this.optimizer.getColorCodes(codeType, hex) || this.optimizer.codeMaps.MARD.get(hex);
+                    }).join('\n');
+                }
+
+                textarea.value = content;
             }
 
             log(message, type = 'info') {
@@ -1030,6 +1365,24 @@
                 document.getElementById('progress-text').textContent = '0%';
 
                 try {
+                    // Pre-optimization setup
+                    if (document.querySelector('input[name="source-mode"]:checked').value === 'IMAGE') {
+                        if (!this.uploadedImage) {
+                            throw new Error("请先上传参考图片");
+                        }
+                        this.log('正在采样图片颜色...', 'info');
+                        const samples = this.imageProcessor.sampleColors(this.uploadedImage);
+                        this.log(`✅ 已采样 ${samples.length} 个像素点`, 'success');
+                        document.getElementById('sample-count-display').textContent = samples.length;
+
+                        // Convert samples to Lab
+                        const targetLabs = samples.map(rgb => this.optimizer.rgbToLab(rgb));
+                        this.optimizer.setTargetColors(targetLabs);
+                    } else {
+                        // Global mode: Targets = Candidates
+                        this.optimizer.setTargetColors(this.optimizer.candidateLabColors);
+                    }
+
                     const saGenerator = this.optimizer.simulatedAnnealing();
 
                     for await (const update of this.runAnimationFrame(saGenerator)) {
@@ -1087,7 +1440,7 @@
                 document.getElementById('best-error-label').textContent = modeValues[currentMode];
 
                 document.getElementById('temperature').textContent =
-                    update.temperature.toFixed(4);
+                    update.temperature.toExponential(2);
                 document.getElementById('step-count').textContent =
                     update.step.toLocaleString();
 
