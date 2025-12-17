@@ -470,6 +470,14 @@
                 </div>
 
                 <div class="control-group">
+                    <label for="target-mode">优化目标:</label>
+                    <select id="target-mode">
+                        <option value="MAX">最大 ΔE (最坏情况最优)</option>
+                        <option value="AVG">平均 ΔE (整体平均最优)</option>
+                    </select>
+                </div>
+
+                <div class="control-group">
                     <label for="seed-input">随机种子:</label>
                     <input type="number" id="seed-input" min="1" max="999999" value="42">
                 </div>
@@ -514,12 +522,20 @@
 
                 <div class="stats-grid">
                     <div class="stat-box">
-                        <div class="stat-value" id="current-error">-</div>
-                        <div class="stat-label">当前最大ΔE</div>
+                        <div class="stat-value" id="current-min">-</div>
+                        <div class="stat-label">最小 ΔE</div>
+                    </div>
+                    <div class="stat-box">
+                        <div class="stat-value" id="current-max">-</div>
+                        <div class="stat-label">最大 ΔE</div>
+                    </div>
+                    <div class="stat-box">
+                        <div class="stat-value" id="current-avg">-</div>
+                        <div class="stat-label">平均 ΔE</div>
                     </div>
                     <div class="stat-box">
                         <div class="stat-value" id="best-error">-</div>
-                        <div class="stat-label">最佳最大ΔE</div>
+                        <div class="stat-label" id="best-error-label">最佳指标</div>
                     </div>
                     <div class="stat-box">
                         <div class="stat-value" id="temperature">-</div>
@@ -558,12 +574,14 @@
                 this.RANDOM_SEED = parseInt(document.getElementById('seed-input').value) || 42;
                 this.MANDATORY_MARDS = new Set(['H02', 'H07']);
                 this.UPDATE_INTERVAL = 100; // 100毫秒更新一次UI
+                this.TARGET_MODE = document.getElementById('target-mode').value;
             }
 
             updateFromUI() {
                 this.K_REPRESENTATIVES = parseInt(document.getElementById('k-input').value) || 30;
                 this.SA_STEPS = parseInt(document.getElementById('steps-input').value) || 80000;
                 this.RANDOM_SEED = parseInt(document.getElementById('seed-input').value) || 42;
+                this.TARGET_MODE = document.getElementById('target-mode').value;
             }
         }
 
@@ -693,24 +711,33 @@
 
                 this.maxDist = Math.max(...this.deltaE.flat());
             }
-
-            maxError(state) {
+            calculateStats(state) {
                 const stateArray = Array.from(state);
                 let maxDist = 0;
+                let minDistTotal = Infinity; // 全局最小
+                let sumDist = 0;
 
                 for (let i = 0; i < this.hexList.length; i++) {
-                    let minDist = Infinity;
+                    let minDist = Infinity; // 当前点到最近采样点的距离
                     for (const j of stateArray) {
                         if (this.deltaE[i][j] < minDist) {
                             minDist = this.deltaE[i][j];
                         }
                     }
-                    if (minDist > maxDist) {
-                        maxDist = minDist;
-                    }
+                    if (minDist > maxDist) maxDist = minDist;
+                    if (minDist < minDistTotal) minDistTotal = minDist;
+                    sumDist += minDist;
                 }
 
-                return maxDist;
+                return {
+                    max: maxDist,
+                    min: minDistTotal,
+                    avg: sumDist / this.hexList.length
+                };
+            }
+
+            getObjective(stats) {
+                return this.config.TARGET_MODE === 'MAX' ? stats.max : stats.avg;
             }
 
             getFPSInitialization(k, fixedIndices = new Set()) {
@@ -789,7 +816,9 @@
                 );
                 this.bestState = new Set(this.currentState);
                 this.currentBestState = new Set(this.currentState);
-                this.bestError = this.maxError(new Set([...this.currentState, ...fixedIndices]));
+
+                const initialStats = this.calculateStats(new Set([...this.currentState, ...fixedIndices]));
+                this.bestError = this.getObjective(initialStats);
                 this.currentBestError = this.bestError;
 
                 const radiusDecay = Math.pow(1.0 / (this.maxDist + 1e-6), 1.0 / this.config.SA_STEPS);
@@ -797,6 +826,7 @@
                 yield {
                     type: 'initialized',
                     bestError: this.bestError,
+                    stats: initialStats,
                     currentState: this.currentState,
                     fixedIndices: fixedIndices
                 };
@@ -830,8 +860,13 @@
                     const oldStateWithFixed = new Set([...this.currentState, ...fixedIndices]);
                     const newStateWithFixed = new Set([...newState, ...fixedIndices]);
 
-                    const oldError = this.maxError(oldStateWithFixed);
-                    const newError = this.maxError(newStateWithFixed);
+
+
+                    const oldStats = this.calculateStats(oldStateWithFixed);
+                    const newStats = this.calculateStats(newStateWithFixed);
+
+                    const oldError = this.getObjective(oldStats);
+                    const newError = this.getObjective(newStats);
 
                     if (newError < oldError ||
                         this.random.random() < Math.exp((oldError - newError) / this.currentTemperature)) {
@@ -850,12 +885,16 @@
 
                     const currentTime = performance.now();
                     if (currentTime - this.lastYieldTime >= this.config.UPDATE_INTERVAL) {
+                        // Recalculate stats for the best state to show in UI
+                        const bestStats = this.calculateStats(new Set([...this.currentBestState, ...fixedIndices]));
+
                         yield {
                             type: 'progress',
                             step: step + 1,
                             totalSteps: this.config.SA_STEPS,
                             bestError: this.bestError,
                             currentError: this.currentBestError,
+                            stats: bestStats,
                             temperature: this.currentTemperature,
                             progress: ((step + 1) / this.config.SA_STEPS) * 100,
                             currentState: this.currentBestState,
@@ -980,6 +1019,9 @@
                 this.log('='.repeat(50));
                 this.log(`🚀 开始优化 (种子: ${document.getElementById('seed-input').value})`);
                 this.log(`颜料预算: ${document.getElementById('k-input').value}`);
+                this.log(`🚀 开始优化 (种子: ${document.getElementById('seed-input').value})`);
+                this.log(`模式: ${document.getElementById('target-mode').value === 'MAX' ? '最大 ΔE' : '平均 ΔE'}`);
+                this.log(`颜料预算: ${document.getElementById('k-input').value}`);
                 this.log(`退火步数: ${document.getElementById('steps-input').value}`);
                 this.log('='.repeat(50));
 
@@ -1030,17 +1072,27 @@
                 progressFill.style.width = `${progress}%`;
                 progressText.textContent = `${progress.toFixed(1)}%`;
 
-                document.getElementById('current-error').textContent =
-                    update.currentError.toFixed(2);
-                document.getElementById('best-error').textContent =
-                    update.bestError.toFixed(2);
+                // Update stats
+                document.getElementById('current-min').textContent = update.stats.min.toFixed(2);
+                document.getElementById('current-max').textContent = update.stats.max.toFixed(2);
+                document.getElementById('current-avg').textContent = update.stats.avg.toFixed(2);
+
+                document.getElementById('best-error').textContent = update.bestError.toFixed(2);
+
+                const modeValues = {
+                    'MAX': '最佳最大ΔE',
+                    'AVG': '最佳平均ΔE'
+                };
+                const currentMode = document.getElementById('target-mode').value;
+                document.getElementById('best-error-label').textContent = modeValues[currentMode];
+
                 document.getElementById('temperature').textContent =
                     update.temperature.toFixed(4);
                 document.getElementById('step-count').textContent =
                     update.step.toLocaleString();
 
                 if (update.step % 5000 === 0) {
-                    this.log(`step ${update.step.toString().padStart(6)} | T=${update.temperature.toExponential(3)} | best max ΔE=${update.bestError.toFixed(2)}`);
+                    this.log(`step ${update.step.toString().padStart(6)} | T=${update.temperature.toExponential(3)} | best err=${update.bestError.toFixed(2)}`);
                 }
             }
 
