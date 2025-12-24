@@ -435,9 +435,9 @@
 
         // 效果器
         const compressor = audioContext.createDynamicsCompressor();
-        const filter = audioContext.createBiquadFilter(); // 消除低频
-        filter.type = 'highpass';
-        filter.frequency.setValueAtTime(20, audioContext.currentTime);
+        const lfRemover = audioContext.createBiquadFilter(); // 消除低频
+        lfRemover.type = 'highpass';
+        lfRemover.frequency.setValueAtTime(20, audioContext.currentTime);
         const reverb = audioContext.createConvolver();
 
         // 创建一个混响
@@ -452,8 +452,61 @@
         reverb.normalize = true; // 归一化
         reverb.buffer = impulseResponse;
 
-        reverb.connect(compressor).connect(filter).connect(audioContext.destination);
-        // compressor.connect(audioContext.destination);
+        // 低通滤波器组
+        // [velocity, cutoff]
+        const filterFrequencies = [
+            [29, 893],
+            [47, 982],
+            [57, 1080],
+            [63, 1188],
+            [66, 1307],
+            [69, 1437],
+            [73, 1582],
+            [74, 1740],
+            [77, 1914],
+            [79, 2105],
+            [81, 2316],
+            [83, 2549],
+            [85, 2802],
+            [88, 3082],
+            [91, 3390],
+            [95, 3729],
+            [100, 4102],
+            [107, 4513],
+            [113, 4964],
+            [121, 5460],
+            [127, 6006]
+        ];
+        const filters = [];
+        for (let i = 0; i < filterFrequencies.length; i++) {
+            const filter = audioContext.createBiquadFilter();
+            filter.type = 'lowpass';
+            filter.frequency.setValueAtTime(filterFrequencies[i][1], audioContext.currentTime);
+            filters.push(filter);
+        }
+
+        // 连接音频图
+        for (let i = 0; i < filters.length; i++) {
+            filters[i].connect(lfRemover);
+        }
+        lfRemover.connect(reverb).connect(compressor).connect(audioContext.destination);
+
+        function findFilter(velocity) {
+            // Binary
+            let low = 0;
+            let high = filterFrequencies.length - 1;
+            while (low <= high) {
+                const mid = Math.floor((low + high) / 2);
+                if (filterFrequencies[mid][0] === velocity) {
+                    return filters[mid];
+                } else if (filterFrequencies[mid][0] < velocity) {
+                    low = mid + 1;
+                } else {
+                    high = mid - 1;
+                }
+            }
+            return filters[low];
+        }
 
         // 激励源选项卡切换逻辑
         const tabs = {
@@ -763,8 +816,23 @@
                 : Math.pow(normalized, curve);
         }
 
+        function calculateDecayForFrequency(freq) {
+            // freq: Hz
+            const f0 = 440 * 16;
+            const decay = 0.998;
+            const decayRate = 0.01;
+            console.log(freq, decay + decayRate * (freq / f0));
+            return Math.clamp(decay + decayRate * (freq / f0), 0.9, 1);
+        }
+
+        // 辅助函数：数值限制
+        Math.clamp = function (value, min, max) {
+            return Math.min(Math.max(value, min), max);
+        };
+
+
         // Karplus-Strong 合成：生成拨弦效果并播放
-        function playNote(frequency, volume = 1) {
+        function playNote(frequency, volume = 1, velocity = 127) {
             const sampleRate = audioContext.sampleRate;
             const N = Math.floor(sampleRate / frequency);
             // 初始化延迟环缓冲区
@@ -776,7 +844,7 @@
             const length = sampleRate * 4;
             let output = new Float32Array(length);
             let idx = 0;
-            const decay = 0.998;
+            const decay = calculateDecayForFrequency(frequency);
             for (let i = 0; i < length; i++) {
                 const first = ringBuffer[idx];
                 const second = ringBuffer[(idx + 1) % N];
@@ -812,7 +880,7 @@
             envelope.gain.setValueAtTime(volume, audioContext.currentTime);
 
             const sound = new Sound(buffer, envelope);
-            source.connect(envelope).connect(reverb);
+            source.connect(envelope).connect(findFilter(velocity));
             source.start();
 
             // 把声音存储到 Map 中
@@ -834,9 +902,7 @@
         function stopNote(frequency) {
             let id = frequency.toFixed(2);
 
-            console.log("stopNote", id);
             if (sounds.has(id)) {
-                console.log("stopNote", sounds.get(id));
                 sounds.get(id).forEach(sound => {
                     sound.envelope.gain.setTargetAtTime(0, audioContext.currentTime, 0.3);
                 });
@@ -916,7 +982,7 @@
                             const [status, note, velocity] = event.data;
                             if (status === 144 && velocity > 0) { // Note On
                                 const freq = 440 * Math.pow(2, (note - 69) / 12);
-                                playNote(freq, mapMidiVelocityToGain(velocity, 1));
+                                playNote(freq, mapMidiVelocityToGain(velocity, 1), velocity);
                             } else if (status === 128 || (status === 144 && velocity === 0)) { // Note Off
                                 const freq = 440 * Math.pow(2, (note - 69) / 12);
                                 stopNote(freq);
