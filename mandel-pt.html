@@ -1658,6 +1658,201 @@
             }
         }
 
+        class ReferenceCompressorFloatExp {
+            constructor(c) {
+                this.keys = [0];
+                this.values = [FloatExpComplex.ZERO.copy()];
+                this.c = c;
+                this.lastIter = 0;
+                this.lastZ = FloatExpComplex.ZERO.copy();
+
+                this.cSquared = this.c.square();
+
+                this.lookupResult = [null, null];
+                this.keyIndexMap = new Map();
+            }
+
+            addCheckpoint(iter, z) {
+                this.keyIndexMap.set(iter, this.keys.length);
+                this.keys.push(iter);
+                this.values.push(z);
+            }
+
+            getKey(iter) {
+                return this.keyIndexMap.get(iter) ?? -1;
+            }
+
+            lookupLowerKey(iter) {
+                let left = 0;
+                let right = this.keys.length - 1;
+                let lowerKey = null;
+                let lowerValue = null;
+
+                let mid;
+                while (left <= right) {
+                    mid = (left + right) >> 1;
+                    const midKey = this.keys[mid];
+
+                    if (midKey <= iter) {
+                        lowerKey = midKey;
+                        lowerValue = this.values[mid];
+                        left = mid + 1;
+                    } else {
+                        right = mid - 1;
+                    }
+                }
+
+                this.lookupResult[0] = lowerKey;
+                this.lookupResult[1] = lowerValue;
+                return this.lookupResult;
+            }
+
+            get(iter) {
+                const result = new FloatExpComplex(0, 0);
+                this.getInplace(iter, result);
+                return result;
+            }
+
+            getInplace(iter, result) {
+                // 1. 基础情况
+                if (iter === 0) {
+                    FloatExpComplex.ZERO.storeTo(result);
+                    return;
+                }
+
+                if (iter === this.lastIter) {
+                    this.lastZ.storeTo(result);
+                    return;
+                }
+
+                // 2. 特殊情况：连续迭代
+                if (iter === this.lastIter + 1) {
+                    const checkpointIndex = this.getKey(iter);
+                    if (checkpointIndex !== -1) {
+                        this.updateLast(iter, this.values[checkpointIndex]);
+                    } else {
+                        this.calculateNext();
+                    }
+
+                    this.lastZ.storeTo(result);
+                    return;
+                }
+
+                // 3. 从最近的检查点开始计算
+                this.lookupLowerKey(iter);
+                const lowerKey = this.lookupResult[0];
+                const lowerValue = this.lookupResult[1];
+
+                if (lowerKey !== null) {
+                    this.updateLast(lowerKey, lowerValue);
+                } else {
+                    // 没有找到检查点，从头开始
+                    this.lastIter = 0;
+                    FloatExpComplex.ZERO.storeTo(this.lastZ);
+                }
+
+                // 4. 迭代到目标迭代次数
+                let checkpointIndex = this.findNextCheckpointIndex(lowerKey !== null ? lowerKey + 1 : 1);
+
+                for (let i = this.lastIter + 1; i <= iter; i++) {
+                    if (checkpointIndex < this.keys.length && this.keys[checkpointIndex] === i) {
+                        // 遇到了检查点
+                        this.updateLast(i, this.values[checkpointIndex]);
+                        checkpointIndex++;
+                    } else {
+                        this.calculateNext();
+                    }
+
+                }
+
+                this.lastIter = iter;
+                this.lastZ.storeTo(result);
+                return;
+
+            }
+
+            static zSq = FloatExpComplex.ZERO.copy();
+
+            calculateNext() {
+                this.lastZ.squareTo(ReferenceCompressorFloatExp.zSq)
+                // Z = Z^2 + C;
+                ReferenceCompressorFloatExp.zSq.addTo(this.c, this.lastZ);
+                this.lastIter++;
+            }
+
+            updateLast(iter, z) {
+                this.lastIter = iter;
+                z.storeTo(this.lastZ);
+            }
+
+            findNextCheckpointIndex(startIter) {
+                // 二分查找下一个检查点
+                let left = 0;
+                let right = this.keys.length - 1;
+                let result = this.keys.length;  // 默认没有检查点
+
+                while (left <= right) {
+                    const mid = (left + right) >> 1;
+                    if (this.keys[mid] >= startIter) {
+                        result = mid;
+                        right = mid - 1;
+                    } else {
+                        left = mid + 1;
+                    }
+                }
+
+                return result;
+            }
+            decompress() {
+                return new DecompressedReferenceFloatExp(this);
+            }
+
+            get size() {
+                return this.keys.length;
+            }
+
+            toComplexRef() {
+                const c = this.c.toComplex()
+                const cRef = new ReferenceCompressor(c.re, c.im);
+                for (let i = 1; i < this.keys.length; i++) {
+                    const key = this.keys[i];
+                    cRef.addCheckpoint(key, this.values[i]);
+                }
+                cRef.length = this.length;
+                return cRef;
+            }
+        }
+
+        class DecompressedReferenceFloatExp {
+            constructor(comp) {
+                this.comp = comp;
+                this.z = [];
+                for (let i = 0; i < comp.length; i++) {
+                    this.z.push(comp.get(i));
+                }
+            }
+
+            get(iter) {
+                return this.z[iter];
+            }
+
+            getInplace(iter, result) {
+                this.z[iter].storeTo(result);
+            }
+
+            get length() {
+                return this.z.length;
+            }
+
+            get size() {
+                return this.comp.size;
+            }
+
+            toComplexRef() {
+                return this.comp.toComplexRef().decompress();
+            }
+        }
+
         const samples = {
             seahorse: {
                 re: "-0.74543",
@@ -1799,7 +1994,7 @@
 
                 if (dzdc.norm() * radius * 2 > z.norm()) {
                     predCenter = z.div(dzdc);
-                    compressor.addCheckpoint(i, z);
+                    if (!compressor.keyIndexMap.get(i)) compressor.addCheckpoint(i, z);
                     compressor.length = i + 1;
                     break;
                 };
@@ -1845,13 +2040,14 @@
             return new FloatExp(decimalMantissa, decimalExponent);
         }
 
+        const COMPRESS_THRESHOLD_FLOATEXP = new FloatExp(2 ** -40);
+
         async function* getReferenceOrbitFEMPFR(C, radius, iterations, precisionBits) {
 
             let Z = new DeepComplex(0, 0),
                 z = new FloatExpComplex(0, 0),
                 dzdc = new FloatExpComplex(1, 0),
                 one = new FloatExpComplex(1, 0);
-            const orbit = [new FloatExpComplex(0, 0)];
             let predCenter = null;
 
 
@@ -1873,7 +2069,11 @@
                 temp1: ctx.Float(0), temp2: ctx.Float(0), buffer: ctx.Float(0)
             };
 
-            for (let i = 0; i < iterations; i++) {
+            let lpZ = FloatExpComplex.ZERO.copy();
+            let lpC = C.toFloatExp();
+            let compressor = new ReferenceCompressorFloatExp(lpC);
+
+            for (let i = 1; i < iterations; i++) {
                 dzdc = z.add(z).mulMut(dzdc).add(one);
 
                 // 复数平方计算
@@ -1889,10 +2089,25 @@
                 binding.mpfr_mul_2ui(mpzim.mpfr_t, tempVars.reim.mpfr_t, 1);
                 binding.mpfr_add(mpzim.mpfr_t, mpzim.mpfr_t, cim.mpfr_t);
 
+                // 更新低精度参考
+                lpZ = lpZ.square().addMut(lpC);
+
+
+
                 z = new FloatExpComplex(MPFR2FloatExp(ctx, mpzre, binding, tempVars.buffer), MPFR2FloatExp(ctx, mpzim, binding, tempVars.buffer));
-                orbit.push(z);
-                if (dzdc.norm().mul(radius).mul(2).compareTo(z.norm()) > 0) {
+
+
+                // 检查低精度和实际结果的误差
+                let error = lpZ.sub(z).abs2().div(z.abs2());
+                if (error.gt(COMPRESS_THRESHOLD_FLOATEXP)) {
+                    z.storeTo(lpZ);
+                    compressor.addCheckpoint(i, z);
+                }
+
+                if (dzdc.norm().mul(radius).mul(2).gt(z.norm())) {
                     predCenter = z.div(dzdc);
+                    if (!compressor.keyIndexMap.get(i)) compressor.addCheckpoint(i, z);
+                    compressor.length = i + 1;
                     break;
                 };
                 if (z.norm().doubleValue() > 16.0) break;
@@ -1901,14 +2116,15 @@
                     let currentTime = performance.now();
                     if (currentTime - updateTimer > 100) {
                         updateTimer = currentTime;
-                        yield i;
+                        compressor.length = i + 1;
+                        yield compressor;
                         await delay(0);
                     }
                 }
             }
             ctx.destroy();
             return {
-                orbit: orbit,
+                orbit: compressor.length > 1000000 ? compressor : compressor.decompress(),
                 predCenter: predCenter
             };
         }
@@ -2405,10 +2621,10 @@
                 let blaStages = [];
                 let blaSteps = [];
 
-                let bla = BLAStepFloatExp.createBLA(0, new FloatExpComplex(0, 0), ref[1]);
+                let bla = BLAStepFloatExp.createBLA(0, new FloatExpComplex(0, 0), ref.get(1));
                 let i;
                 for (i = 2; i < refLen; i++) {
-                    const [result, detected] = bla.step(ref[i]);
+                    const [result, detected] = bla.step(ref.get(i));
                     if (detected) {
                         period = i;
                         break;
@@ -2420,7 +2636,7 @@
 
                 if (!period) {
                     blaStages.push(new BLAStage(0, 1));
-                    blaSteps.push(BLAStepFloatExp.newBLA(0, ref[refLen]));
+                    blaSteps.push(BLAStepFloatExp.newBLA(0, ref.get(refLen)));
                     return {
                         hasBLA: false,
                         steps: blaSteps,
@@ -2429,23 +2645,23 @@
                 }
 
                 if (i + 1 >= refLen) {
-                    bla = BLAStepFloatExp.newBLA(i, ref[i]);
+                    bla = BLAStepFloatExp.newBLA(i, ref.get(i));
                     i++;
                 } else {
-                    bla = BLAStepFloatExp.createBLA(i, ref[i], ref[i + 1]);
+                    bla = BLAStepFloatExp.createBLA(i, ref.get(i), ref.get(i + 1));
                     i += 2;
                 }
 
                 for (; i < refLen; i++) {
-                    const [result, detected] = bla.step(ref[i]);
+                    const [result, detected] = bla.step(ref.get(i));
 
                     if (detected || bla.length >= period) {
                         blaSteps.push(bla);
 
-                        if (i + 1 >= refLen || result.detectDip(ref[i + 1])) {
-                            bla = BLAStepFloatExp.newBLA(i, ref[i]);
+                        if (i + 1 >= refLen || result.detectDip(ref.get(i + 1))) {
+                            bla = BLAStepFloatExp.newBLA(i, ref.get(i));
                         } else {
-                            bla = BLAStepFloatExp.createBLA(i, ref[i], ref[i + 1]);
+                            bla = BLAStepFloatExp.createBLA(i, ref.get(i), ref.get(i + 1));
                             i++;
                         }
                     } else {
@@ -2455,7 +2671,7 @@
 
                 blaSteps.push(bla);
                 blaStages.push(new BLAStage(0, blaSteps.length));
-                blaSteps.push(BLAStepFloatExp.newBLA(0, ref[refLen]));
+                blaSteps.push(BLAStepFloatExp.newBLA(0, ref.get(refLen)));
 
                 return {
                     hasBLA: true,
@@ -2723,7 +2939,7 @@
                 }
             }
 
-            Z = ref[j]
+            Z = ref.get(j)
 
 
             while (i < maxIter) {
@@ -2734,7 +2950,7 @@
 
                 i++; j++;
 
-                Z = ref[j]
+                Z = ref.get(j)
 
                 // z = dz.add(Z);
                 dz.addTo(Z, z)
@@ -3344,7 +3560,7 @@
 
                     let prevDeep = this.deep;
                     this.deep = this.size.exp < -300;
-                    if (prevDeep && !this.deep) this.ref = this.ref.map(e => e.toComplex());
+                    if (prevDeep && !this.deep) this.ref = this.ref.toComplexRef();
 
                     updateInfoOverlay(this.center.re, this.center.im, FloatExp.FOUR.div(this.size), this.iterations);
                     reInput.value = this.center.re.toString();
