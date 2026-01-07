@@ -1556,6 +1556,13 @@
                     return;
                 }
 
+                // 检测异常
+                if (isNaN(this.lastIter) || isNaN(this.lastZRe) || isNaN(this.lastZIm)) {
+                    this.lastIter = 0;
+                    this.lastZRe = 0;
+                    this.lastZIm = 0;
+                }
+
                 // 3. 特殊情况：连续迭代
                 if (iter === this.lastIter + 1) {
                     const checkpointIndex = this.getKey(iter);
@@ -1648,6 +1655,14 @@
             get size() {
                 return this.keys.length;
             }
+
+            checkpoints() {
+                let result = {}
+                for (let i = 0; i < this.keys.length; i++) {
+                    result[this.keys[i]] = this.values[i];
+                }
+                return result;
+            }
         }
 
         class DecompressedReference {
@@ -1674,6 +1689,10 @@
 
             get size() {
                 return this.comp.size;
+            }
+
+            checkpoints() {
+                return this.comp.checkpoints();
             }
         }
 
@@ -1742,6 +1761,13 @@
                 if (iter === this.lastIter) {
                     this.lastZ.storeTo(result);
                     return;
+                }
+
+
+                // 检测异常
+                if (isNaN(this.lastIter)) {
+                    this.lastIter = 0;
+                    this.lastZ.zero();
                 }
 
                 // 2. 特殊情况：连续迭代
@@ -1840,6 +1866,14 @@
                 cRef.length = this.length;
                 return cRef;
             }
+
+            checkpoints() {
+                let result = {};
+                for (let i = 0; i < this.keys.length; i++) {
+                    result[this.keys[i]] = this.values[i];
+                }
+                return result;
+            }
         }
 
         class DecompressedReferenceFloatExp {
@@ -1869,6 +1903,10 @@
 
             toComplexRef() {
                 return this.comp.toComplexRef().decompress();
+            }
+
+            checkpoints() {
+                return this.comp.checkpoints();
             }
         }
 
@@ -3581,7 +3619,7 @@
 
                     let prevDeep = this.deep;
                     this.deep = this.size.exp < -300;
-                    if (prevDeep && !this.deep) this.ref = this.ref.toComplexRef();
+                    if (prevDeep && !this.deep && this.ref instanceof ReferenceCompressorFloatExp) this.ref = this.ref.toComplexRef();
 
                     updateInfoOverlay(this.center.re, this.center.im, FloatExp.FOUR.div(this.size), this.iterations);
                     reInput.value = this.center.re.toString();
@@ -4109,6 +4147,14 @@
                 }
                 return rgbArray;
             }
+
+            get period() {
+                return parseInt(this.data.Period);
+            }
+
+            get refStore() {
+                return this.data.RefStore;
+            }
         }
 
         class KFRWriter {
@@ -4148,6 +4194,19 @@
                 this.data.Smooth = value ? "1" : "0";
             }
 
+            set period(value) {
+                this.data.Period = value;
+            }
+
+            set refStore(compressor) {
+                let result = []
+                let checkpoints = compressor.checkpoints();
+                for (let key in checkpoints) {
+                    result.push(`${key}|${checkpoints[key].re}|${checkpoints[key].im}`);
+                }
+                this.data.RefStore = result.join(",");
+            }
+
             // Convert the data to a KFR formatted string
             toString() {
                 return Object.entries(this.data)
@@ -4164,6 +4223,8 @@
                 this.iterDiv = (colorStep * palette.length) / 1024
                 this.colors = palette;
                 this.smooth = mandelbrot.smooth;
+                this.period = mandelbrot.ref.length - 1;
+                this.refStore = mandelbrot.ref;
             }
         }
 
@@ -4545,6 +4606,28 @@
             mandelbrot.smooth = reader.smooth;
             palette = reader.colors;
             colorStep = 1024 / reader.colors.length * reader.iterDiv;
+            if (reader.period > 0) {
+                mandelbrot.period = reader.period;
+                let compressor;
+                if (mandelbrot.size.lt(new FloatExp(1, -300))) {
+                    compressor = new ReferenceCompressorFloatExp(mandelbrot.center.toFloatExp());
+                    let checkpoints = reader.refStore.split(',')
+                    for (let i = 1; i < checkpoints.length; i++) {
+                        let [index, real, imag] = checkpoints[i].split('|')
+                        compressor.addCheckpoint(parseInt(index), new FloatExpComplex(parseFloatExp(real), parseFloatExp(imag)))
+                    }
+                } else {
+                    compressor = new ReferenceCompressor(mandelbrot.center.re.toNumber(), mandelbrot.center.im.toNumber());
+                    let checkpoints = reader.refStore.split(',')
+                    for (let i = 1; i < checkpoints.length; i++) {
+                        let [index, real, imag] = checkpoints[i].split('|')
+                        compressor.addCheckpoint(parseInt(index), new Complex(parseFloat(real), parseFloat(imag)))
+                    }
+                }
+                compressor.length = reader.period + 1;
+                mandelbrot.ref = compressor;
+                mandelbrot.refValid = true;
+            }
             mandelbrot.update();
         });
 
