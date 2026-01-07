@@ -4633,6 +4633,8 @@
 
         // Trigger file upload when a button is clicked
         document.getElementById("makeVideo").addEventListener('click', async () => {
+            alert('This feature is not fixed yet');
+            return
             const keyFrames = await mandelbrot.renderFrames();
             console.log(keyFrames);
 
