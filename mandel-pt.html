@@ -2844,10 +2844,12 @@
          * @param {number} bailout - The bailout value used for iteration termination.
          * @returns {number|null} - The escape time for the point or null if it doesn't escape.
          */
+        const PTZ = new Complex(0, 0);
         function getPTBLA(dc, ref, steps, stages, maxIter, bailout, smooth = false) {
             let dcNorm = dc.norm()
 
-            let Z = new Complex(0, 0)
+            // let Z = new Complex(0, 0)
+            PTZ.zero();
 
             let dzRe = 0, dzIm = 0;
             let newDzRe, newDzIm;
@@ -2900,13 +2902,13 @@
             }
 
             // Z = ref.get(j);
-            ref.getInplace(j, Z);
+            ref.getInplace(j, PTZ);
 
 
             while (i < maxIter) {
                 // dz = dz.mul(Z.add(z)).add(dc);
-                let ZaddzRe = Z.re + zRe;
-                let ZaddzIm = Z.im + zIm;
+                let ZaddzRe = PTZ.re + zRe;
+                let ZaddzIm = PTZ.im + zIm;
                 let tempDzRe = dzRe * ZaddzRe - dzIm * ZaddzIm;
                 let tempDzIm = dzRe * ZaddzIm + dzIm * ZaddzRe;
                 dzRe = tempDzRe + dc.re;
@@ -2915,11 +2917,11 @@
                 i++; j++;
 
                 // Z = ref.get(j);
-                ref.getInplace(j, Z);
+                ref.getInplace(j, PTZ);
 
                 // z = dz.add(Z);
-                zRe = dzRe + Z.re;
-                zIm = dzIm + Z.im;
+                zRe = dzRe + PTZ.re;
+                zIm = dzIm + PTZ.im;
                 let zAbs = zRe * zRe + zIm * zIm;
 
                 if (zAbs > bailout) {
@@ -2935,7 +2937,7 @@
                 }
 
                 if (j == ref.length - 1 || chebshev(zRe, zIm) < chebshev(dzRe, dzIm)) {
-                    Z.zero();
+                    PTZ.zero();
                     dzRe = zRe;
                     dzIm = zIm;
                     j = 0;
