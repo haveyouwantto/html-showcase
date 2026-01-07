@@ -766,6 +766,12 @@
                 return this.norm();
             }
 
+            zero() {
+                this.base = 0;
+                this.exp = 0;
+                return this;
+            }
+
 
             compareTo(o) {
                 if (this.base > 0 && o.base < 0) return 1;
@@ -1144,6 +1150,13 @@
                 return store;
             }
 
+            zero() {
+                this.re = 0;
+                this.im = 0;
+                this.absValue = 0;
+                return this;
+            }
+
             // --- Other Methods (updated) ---
             abs() {
                 if (this.absValue === null) {
@@ -1446,6 +1459,12 @@
                 FloatExpComplex.CACHE_4.storeTo(store.im);
 
                 return store;
+            }
+
+            zero() {
+                this.re.zero();
+                this.im.zero();
+                return this;
             }
 
             equals(o) {
@@ -2112,7 +2131,7 @@
                 };
                 if (z.norm().doubleValue() > 16.0) break;
 
-                if ((i & 0xff) === 0) {
+                if ((i & 0xf) === 0) {
                     let currentTime = performance.now();
                     if (currentTime - updateTimer > 100) {
                         updateTimer = currentTime;
@@ -2878,7 +2897,7 @@
                 }
 
                 if (j == ref.length - 1 || chebshev(zRe, zIm) < chebshev(dzRe, dzIm)) {
-                    Z = new Complex(0, 0);
+                    Z.zero();
                     dzRe = zRe;
                     dzIm = zIm;
                     j = 0;
@@ -2939,7 +2958,8 @@
                 }
             }
 
-            Z = ref.get(j)
+            // Z = ref.get(j)
+            ref.getInplace(j, Z)
 
 
             while (i < maxIter) {
@@ -2950,7 +2970,8 @@
 
                 i++; j++;
 
-                Z = ref.get(j)
+                // Z = ref.get(j)
+                ref.getInplace(j, Z)
 
                 // z = dz.add(Z);
                 dz.addTo(Z, z)
@@ -2968,7 +2989,7 @@
                 }
 
                 if (j == ref.length - 1 || z.norm().lt(dz.norm())) {
-                    Z = new FloatExpComplex(0, 0);
+                    Z.zero();
                     z.storeTo(dz);
                     j = 0;
                 }
