@@ -400,6 +400,23 @@
             return `rgb(${v[0]},${v[1]},${v[2]})`;
         }
 
+        const gaussianPool = new Float32Array(1048576);
+
+        // Fill gaussianPool with gaussian values
+        for (let i = 0; i < gaussianPool.length; i++) {
+            let u = 0, v = 0;
+            while (u === 0) u = Math.random(); //Converting [0,1) to (0,1)
+            while (v === 0) v = Math.random();
+            let num = Math.sqrt(-2.0 * Math.log(u)) * Math.cos(2.0 * Math.PI * v);
+            gaussianPool[i] = num;
+        }
+        let gaussianIndex = 0;
+
+        function gaussianRandom() {
+            if (gaussianIndex >= gaussianPool.length) gaussianIndex = 0;
+            return gaussianPool[gaussianIndex++];
+        }
+
         /**
          * Canvas
         */
@@ -811,14 +828,6 @@
                 y[t] = -rot[t - 3 * M];
             }
             return y;
-        }
-
-        function gaussianRandom(avg = 0, std = 1) {
-            let u = 0, v = 0;
-            while (u === 0) u = Math.random(); //Converting [0,1) to (0,1)
-            while (v === 0) v = Math.random();
-            let num = Math.sqrt(-2.0 * Math.log(u)) * Math.cos(2.0 * Math.PI * v);
-            return avg + num * std;
         }
 
         function quantizeCompress(array) {
