@@ -2785,7 +2785,6 @@
                     const bitmapData = frameReader.read(bitmapSize);
 
                     const bitmap = unpackBits(bitmapData, this.numBands);
-                    console.log("bitmap: " + bitmap);
 
                     const bandMeta = [];
                     for (let bIdx = 0; bIdx < this.numBands; bIdx++) {
