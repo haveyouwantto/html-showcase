@@ -1993,6 +1993,8 @@
                 // 显示文件头信息
                 fileInfo.innerHTML = `V${this.version} | SR: ${this.sampleRate}Hz | WS: ${this.winSize} | NW: ${this.numWindows} | ABR: ${(this.buffer.byteLength / this.duration * 8 / 1024).toFixed(2)}kbps`;
 
+                this.L = new Float32Array(this.winSize);
+                this.R = new Float32Array(this.winSize);
             }
 
             // 读取并解码单帧数据
@@ -2021,16 +2023,14 @@
                     lr[ch] = amp; // 存储解码后的声道数据
                 }
 
-                const l = new Float32Array(this.winSize), r = new Float32Array(this.winSize); // 创建左右声道的浮点数组
-
                 // 将左右声道数据转换为实际音频样本
                 for (let i = 0; i < this.winSize; i++) {
-                    l[i] = (lr[0][i] + lr[1][i]) / 2; // 左声道数据
-                    r[i] = (lr[0][i] - lr[1][i]) / 2; // 右声道数据
+                    this.L[i] = (lr[0][i] + lr[1][i]) / 2; // 左声道数据
+                    this.R[i] = (lr[0][i] - lr[1][i]) / 2; // 右声道数据
                 }
 
                 this.read++; // 更新已读取帧数
-                return [l, r, totalLength]; // 返回解码后的左右声道数据和帧总长度
+                return [this.L, this.R, totalLength]; // 返回解码后的左右声道数据和帧总长度
             }
 
             // 预生成帧位置表（加速随机访问）
@@ -2136,6 +2136,8 @@
                     new Float32Array(this.winSize + this.hopSize),
                     new Float32Array(this.winSize + this.hopSize) // 用于存储解码后的音频数据
                 ]
+                this.L = new Float32Array(this.hopSize);
+                this.R = new Float32Array(this.hopSize);
                 this.window = createMDCTWindow(this.winSize)
                 this.noiseGain = Math.sqrt(this.hopSize)
             }
@@ -2209,11 +2211,9 @@
                 this.read++; // 更新已读取帧数
 
                 // 计算 L 和 R 声道
-                const L = new Float32Array(this.hopSize);
-                const R = new Float32Array(this.hopSize);
                 for (let i = 0; i < this.hopSize; i++) {
-                    L[i] = (this.constructBuffer[0][i] + this.constructBuffer[1][i]) / 2; // 左声道
-                    R[i] = (this.constructBuffer[0][i] - this.constructBuffer[1][i]) / 2; // 右声道
+                    this.L[i] = (this.constructBuffer[0][i] + this.constructBuffer[1][i]) / 2; // 左声道
+                    this.R[i] = (this.constructBuffer[0][i] - this.constructBuffer[1][i]) / 2; // 右声道
                 }
 
                 // 前进缓冲区
@@ -2224,7 +2224,7 @@
                     this.constructBuffer[ch].fill(0, this.winSize);
                 }
 
-                return [L, R, this.ptr - start]; // 返回重建的左右声道数据和帧大小
+                return [this.L, this.R, this.ptr - start]; // 返回重建的左右声道数据和帧大小
             }
 
             reset() {
@@ -2361,6 +2361,8 @@
                     new Float32Array(this.winSize + this.hopSize),
                     new Float32Array(this.winSize + this.hopSize) // 用于存储解码后的音频数据
                 ]
+                this.L = new Float32Array(this.hopSize);
+                this.R = new Float32Array(this.hopSize);
                 this.window = createMDCTWindow(this.winSize)
 
                 // 读取Band Plan
@@ -2379,13 +2381,13 @@
                 if (this.read >= this.numWindows) throw new Error("No more frames to read"); // 检查是否还有帧可读
 
 
-                const L = new Float32Array(this.hopSize);
-                const R = new Float32Array(this.hopSize);
+                this.L.fill(0);
+                this.R.fill(0);
 
                 const frame = decapsulateFrame(this.decompressedReader);
                 this.read++;
                 if (frame.length == 0) {
-                    return [L, R, 1]; // 左声道，右声道，帧长
+                    return [this.L, this.R, 1]; // 左声道，右声道，帧长
                 }
 
                 const frameReader = new BufferReader(frame);
@@ -2395,7 +2397,7 @@
                 if (crcStored !== crcComputed) {
                     console.warn("CRC check failed for frame " + this.read);
                     // 对于校验失败的帧，直接返回静音帧防止破音
-                    return [L, R, frame.length]; // 左声道，右声道，帧长
+                    return [this.L, this.R, frame.length]; // 左声道，右声道，帧长
                 }
 
                 for (let ch = 0; ch < 2; ch++) {
@@ -2547,8 +2549,8 @@
                 }
 
                 for (let i = 0; i < this.hopSize; i++) {
-                    L[i] = (this.constructBuffer[0][i] + this.constructBuffer[1][i]) / 2; // 左声道
-                    R[i] = (this.constructBuffer[0][i] - this.constructBuffer[1][i]) / 2; // 右声道
+                    this.L[i] = (this.constructBuffer[0][i] + this.constructBuffer[1][i]) / 2; // 左声道
+                    this.R[i] = (this.constructBuffer[0][i] - this.constructBuffer[1][i]) / 2; // 右声道
                 }
 
                 // 前进缓冲区
@@ -2559,9 +2561,7 @@
                     this.constructBuffer[ch].fill(0, this.winSize);
                 }
 
-                return [L, R, frame.length];
-
-
+                return [this.L, this.R, frame.length];
 
             }
 
