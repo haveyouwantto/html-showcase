@@ -208,6 +208,7 @@
             <div id="version-select">
                 <input type="radio" name="version" id="v1" value="v1"> V1
                 <input type="radio" name="version" id="v2" value="v2" checked> V2
+                <input type="radio" name="version" id="v3" value="v3" checked> V3
             </div>
             <span>
                 QP: <input type="number" id="qp" min="0" max="80" value="32">
@@ -946,6 +947,704 @@
             return out;
         }
 
+        /* QFPv3 Functions */
+
+        // Frame encapsulation
+
+        /**
+         * CRC16-Modbus 算法移植
+         * @param {Uint8Array} bytes 
+         * @returns {number} 16位校验码
+         */
+        function crc16(bytes) {
+            let crc = 0xFFFF;
+            for (let i = 0; i < bytes.length; i++) {
+                crc ^= bytes[i];
+                for (let j = 0; j < 8; j++) {
+                    if (crc & 1) {
+                        crc = (crc >>> 1) ^ 0xA001;
+                    } else {
+                        crc = crc >>> 1;
+                    }
+                }
+            }
+            return crc & 0xFFFF;
+        }
+
+        const START_STOP = 0x7E;
+        const ESCAPE = 0x7D;
+
+        /**
+         * 封装帧：添加起始符并处理转义
+         * @param {Uint8Array} frameBytes 
+         * @returns {Uint8Array}
+         */
+        function encapsulateFrame(frameBytes) {
+            let out = [START_STOP]; // 先用普通数组收集，最后转 TypedArray 性能较好
+
+            for (let b of frameBytes) {
+                if (b === ESCAPE || b === START_STOP) {
+                    out.push(ESCAPE);
+                    out.push(b ^ 0x20);
+                } else {
+                    out.push(b);
+                }
+            }
+            return new Uint8Array(out);
+        }
+
+        /**
+ * 模拟文件流读取器
+ */
+        class BufferReader {
+            constructor(arrayBuffer) {
+                // 如果传入的是 TypedArray，获取其底层的 ArrayBuffer
+                this.buffer = arrayBuffer.buffer || arrayBuffer;
+                this.data = new Uint8Array(this.buffer);
+                this.view = new DataView(this.buffer);
+                this.pos = 0;
+            }
+
+            // 核心读取方法：返回视图而非拷贝
+            read(n) {
+                if (this.pos + n > this.data.length) {
+                    const res = this.data.subarray(this.pos);
+                    this.pos = this.data.length;
+                    return res.length > 0 ? res : null;
+                }
+                const res = this.data.subarray(this.pos, this.pos + n);
+                this.pos += n;
+                return res;
+            }
+
+            readAll() {
+                const res = this.data.subarray(this.pos);
+                this.pos = this.data.length;
+                return res;
+            }
+
+            // --- 单字节读取 ---
+            readUint8() {
+                const val = this.view.getUint8(this.pos);
+                this.pos += 1;
+                return val;
+            }
+
+            readInt8() {
+                const val = this.view.getInt8(this.pos);
+                this.pos += 1;
+                return val;
+            }
+
+            // --- 多字节读取 (默认小端序 LE) ---
+            readUint16(le = true) {
+                const val = this.view.getUint16(this.pos, le);
+                this.pos += 2;
+                return val;
+            }
+
+            readInt16(le = true) {
+                const val = this.view.getInt16(this.pos, le);
+                this.pos += 2;
+                return val;
+            }
+
+            readUint32(le = true) {
+                const val = this.view.getUint32(this.pos, le);
+                this.pos += 4;
+                return val;
+            }
+
+            readInt32(le = true) {
+                const val = this.view.getInt32(this.pos, le);
+                this.pos += 4;
+                return val;
+            }
+
+            readFloat32(le = true) {
+                const val = this.view.getFloat32(this.pos, le);
+                this.pos += 4;
+                return val;
+            }
+
+            // 检查剩余字节
+            remaining() {
+                return this.data.length - this.pos;
+            }
+
+            tell() { return this.pos; }
+
+            seek(offset, whence = 0) {
+                if (whence === 0) {
+                    this.pos = offset;
+                } else if (whence === 1) {
+                    this.pos += offset;
+                } else if (whence === 2) {
+                    this.pos = this.data.length + offset;
+                }
+            }
+
+            get eof() { return this.pos >= this.data.length; }
+        }
+
+        /**
+         * 解封装帧
+         * @param {BufferReader} reader 
+         * @returns {Uint8Array | null}
+         */
+        function decapsulateFrame(reader) {
+            // 步骤 1: 寻找起始符 7E
+            while (true) {
+                const lead = reader.read(1);
+                if (!lead) return null;
+                if (lead[0] === START_STOP) break;
+            }
+
+            let out = [];
+
+            // 步骤 2: 读取内容并处理转义
+            while (true) {
+                const b = reader.read(1);
+                if (!b) return new Uint8Array(out);
+
+                const curr = b[0];
+
+                if (curr === START_STOP) {
+                    // 关键：退回指针，以便下一次调用能发现这一帧的开头
+                    reader.seek(-1, 1);
+                    return new Uint8Array(out);
+                }
+
+                if (curr === ESCAPE) {
+                    const nextB = reader.read(1);
+                    if (nextB) {
+                        out.push(nextB[0] ^ 0x20);
+                    } else {
+                        break; // 格式错误
+                    }
+                } else {
+                    out.push(curr);
+                }
+            }
+        }
+
+        // Number encoder
+
+        /**
+ * 变长整数编码 (0 ~ 536,870,911)
+ * @param {number} n 
+ * @returns {Uint8Array}
+ */
+        function prefixEncode(n) {
+            if (n < 0) throw new Error("仅支持非负整数");
+
+            if (n <= 0x7F) {
+                return new Uint8Array([n]);
+            } else if (n <= 0x3FFF) {
+                return new Uint8Array([0x80 | (n >> 8), n & 0xFF]);
+            } else if (n <= 0x1FFFFF) {
+                return new Uint8Array([0xC0 | (n >> 16), (n >> 8) & 0xFF, n & 0xFF]);
+            } else if (n <= 0x1FFFFFFF) {
+                return new Uint8Array([0xE0 | (n >>> 24), (n >> 16) & 0xFF, (n >> 8) & 0xFF, n & 0xFF]);
+            } else {
+                throw new Error("数值超过4字节编码上限");
+            }
+        }
+
+        /**
+         * 变长整数解码
+         * @param {BufferReader} reader 
+         * @returns {number}
+         */
+        function prefixDecode(reader) {
+            const firstByte = reader.read(1);
+            if (!firstByte) throw new Error("Reach end of stream");
+            const first = firstByte[0];
+
+            if ((first & 0x80) === 0) {
+                return first;
+            } else if ((first & 0xC0) === 0x80) {
+                const rem = reader.read(1);
+                if (!rem) throw new Error("Truncated 2-byte");
+                return ((first & 0x3F) << 8) | rem[0];
+            } else if ((first & 0xE0) === 0xC0) {
+                const rem = reader.read(2);
+                if (!rem || rem.length < 2) throw new Error("Truncated 3-byte");
+                return ((first & 0x1F) << 16) | (rem[0] << 8) | rem[1];
+            } else if ((first & 0xE0) === 0xE0) {
+                const rem = reader.read(3);
+                if (!rem || rem.length < 3) throw new Error("Truncated 4-byte");
+                // 使用 >>> 0 确保结果为无符号 32 位整数
+                return (((first & 0x1F) << 24) | (rem[0] << 16) | (rem[1] << 8) | rem[2]) >>> 0;
+            } else {
+                throw new Error("Invalid prefix: " + first.toString(2));
+            }
+        }
+
+        /**
+         * 提取长 0 序列
+         */
+        function posEncode(ints, minLength = 3) {
+            const n = ints.length;
+            const result = {
+                pos: [],      // [[start_idx, length], ...]
+                stripped: []  // 剔除长0后的数据
+            };
+
+            let i = 0;
+            while (i < n) {
+                if (ints[i] === 0) {
+                    let startIdx = i;
+                    while (i < n && ints[i] === 0) i++;
+
+                    // 优化点：末尾的 0 直接丢弃
+                    if (i === n) break;
+
+                    let runLength = i - startIdx;
+                    if (runLength >= minLength) {
+                        result.pos.push([startIdx, runLength]);
+                    } else {
+                        // 短 0 序列保留在 stripped 中
+                        for (let k = 0; k < runLength; k++) result.stripped.push(0);
+                    }
+                } else {
+                    result.stripped.push(ints[i]);
+                    i++;
+                }
+            }
+            return result;
+        }
+
+        /**
+         * 还原长 0 序列
+         */
+        function posDecode(pos, stripped, originalLength) {
+            let result = [];
+            let strippedIdx = 0;
+
+            for (const [startIdx, length] of pos) {
+                // 填充当前位置到下一个长0起点之间的数据
+                let needed = startIdx - result.length;
+                if (needed > 0) {
+                    const chunk = stripped.slice(strippedIdx, strippedIdx + needed);
+                    result.push(...chunk);
+                    strippedIdx += needed;
+                }
+                // 插入长 0
+                for (let k = 0; k < length; k++) result.push(0);
+            }
+
+            // 补全剩余非零数据
+            if (strippedIdx < stripped.length) {
+                result.push(...stripped.slice(strippedIdx));
+            }
+
+            // 补全末尾隐含的零
+            while (result.length < originalLength) {
+                result.push(0);
+            }
+
+            return result;
+        }
+
+        function encodePosArr(pos) {
+            let chunks = [];
+            for (const [startIdx, length] of pos) {
+                chunks.push(prefixEncode(startIdx));
+                chunks.push(prefixEncode(length));
+            }
+            // 合并所有 Uint8Array
+            let totalLen = chunks.reduce((acc, c) => acc + c.length, 0);
+            let out = new Uint8Array(totalLen);
+            let offset = 0;
+            for (const c of chunks) {
+                out.set(c, offset);
+                offset += c.length;
+            }
+            return out;
+        }
+
+        function decodePosArr(reader) {
+            const pos = [];
+            while (!reader.eof) {
+                try {
+                    const startIdx = prefixDecode(reader);
+                    const length = prefixDecode(reader);
+                    pos.push([startIdx, length]);
+                } catch (e) {
+                    break; // 流结束或格式不全
+                }
+            }
+            return pos;
+        }
+
+        /**
+         * Scale 压缩到 8-bit
+         */
+        function encodeScale(scale) {
+            if (scale <= 1e-14) return 0;
+            let logS = Math.log2(scale);
+            let clippedLog = Math.max(-40, Math.min(0, logS));
+            let quantized = Math.round((clippedLog + 40) * (255 / 40));
+            return quantized;
+        }
+
+        /**
+         * Scale 还原
+         */
+        function decodeScale(qScale) {
+            if (qScale === 0) return 0;
+            let logS = (qScale * (40 / 255)) - 40;
+            return Math.pow(2, logS);
+        }
+
+
+        // Float quantization
+
+        class FloatQuantizePlan {
+            constructor(bits, exponentBits, mantissaBits, bias = null, hasDenormal = true) {
+                this.bits = bits;
+                this.exponentBits = exponentBits;
+                this.mantissaBits = mantissaBits;
+                this.signBits = 1;
+
+                if (bits !== 1 + exponentBits + mantissaBits) {
+                    throw new Error(`Total bits ${bits} != S1 + E${exponentBits} + M${mantissaBits}`);
+                }
+
+                this.bias = bias === null ? Math.pow(2, exponentBits - 1) - 1 : bias;
+                this.hasDenormal = hasDenormal;
+                this.maxExpCodepoint = (1 << exponentBits) - 1;
+
+                // 最大规格化数
+                const maxExpVal = (this.maxExpCodepoint - 1) - this.bias;
+                this.maxNormal = (2 - Math.pow(2, -mantissaBits)) * Math.pow(2, maxExpVal);
+                this.minNormal = Math.pow(2, 1 - this.bias);
+                this.minDenormal = hasDenormal ? Math.pow(2, 1 - this.bias - mantissaBits) : this.minNormal;
+
+                this.maxValue = this.maxNormal;
+            }
+        }
+
+        /**
+         * 高性能版 frexp：直接提取二进制位
+         * 返回 [mantissa, exponent]
+         */
+        const _f64 = new Float64Array(1);
+        const _u32 = new Uint32Array(_f64.buffer);
+
+        function frexp(value) {
+            if (value === 0) return [0, 0];
+            _f64[0] = value;
+
+            let high = _u32[1];
+            // 提取原始指数位 (bits 52-62)
+            let exp = (high >>> 20) & 0x7FF;
+
+            if (exp === 0) {
+                // 处理非规格化数 (Subnormal) 或 0
+                // 对于 QFP 内部 scale 来说，极小值通常已经处理过，这里可简化
+                return [value * Math.pow(2, 64), -64];
+            }
+
+            // 将指数修改为 1022 (即 0.5 的指数偏移)
+            // 0x3FE00000 是指数偏移 1022 的位置
+            _u32[1] = (high & 0x800FFFFF) | 0x3FE00000;
+
+            let mant = _f64[0];
+            return [mant, exp - 1022];
+        }
+
+        class FloatQuantizer {
+            constructor(plan) {
+                this.plan = plan;
+                this.expMaxVal = (1 << plan.exponentBits) - 2;
+                this.expInfNan = (1 << plan.exponentBits) - 1;
+            }
+
+            quantize(xArray, normalizedRange = 1.0) {
+                const scale = normalizedRange > 0 ? this.plan.maxValue / normalizedRange : 1.0;
+                const result = new Uint32Array(xArray.length);
+
+                for (let i = 0; i < xArray.length; i++) {
+                    let x = xArray[i] * scale;
+                    if (x === 0) {
+                        result[i] = 0;
+                        continue;
+                    }
+
+                    const sign = x < 0 ? 1 : 0;
+                    let absX = Math.abs(x);
+                    let [mant, exp] = frexp(absX);
+
+                    // 映射到 [1.0, 2.0)
+                    mant *= 2;
+                    exp -= 1;
+
+                    let eBiased = exp + this.plan.bias;
+
+                    // 处理非规格化
+                    if (this.plan.hasDenormal && eBiased < 1) {
+                        const shift = (1 - this.plan.bias) - exp;
+                        mant /= Math.pow(2, shift);
+                        eBiased = 0;
+                    }
+
+                    let mantInt;
+                    if (eBiased >= 1) {
+                        mantInt = Math.round((mant - 1.0) * Math.pow(2, this.plan.mantissaBits));
+                    } else {
+                        mantInt = Math.round(mant * Math.pow(2, this.plan.mantissaBits));
+                    }
+
+                    // 处理进位
+                    if (mantInt >= Math.pow(2, this.plan.mantissaBits)) {
+                        mantInt = 0;
+                        eBiased += 1;
+                    }
+
+                    // 边界截断
+                    if (eBiased > this.expMaxVal) {
+                        eBiased = this.expMaxVal;
+                        mantInt = (1 << this.plan.mantissaBits) - 1;
+                    }
+
+                    const qSign = sign << (this.plan.exponentBits + this.plan.mantissaBits);
+                    const qExp = eBiased << this.plan.mantissaBits;
+                    result[i] = (qSign | qExp | mantInt) >>> 0;
+                }
+                return result;
+            }
+
+            dequantize(quantized, normalizedRange = 1.0) {
+                const M = this.plan.mantissaBits;
+                const E = this.plan.exponentBits;
+                const val = new Float32Array(quantized.length);
+
+                for (let i = 0; i < quantized.length; i++) {
+                    const q = quantized[i];
+                    const s = (q >> (E + M)) & 1;
+                    const e = (q >> M) & ((1 << E) - 1);
+                    const m = q & ((1 << M) - 1);
+
+                    let v = 0;
+                    if (e === 0) {
+                        if (this.plan.hasDenormal) {
+                            v = (m / Math.pow(2, M)) * Math.pow(2, 1 - this.plan.bias);
+                        }
+                    } else if (e === (1 << E) - 1) {
+                        v = Infinity;
+                    } else {
+                        v = (1.0 + m / Math.pow(2, M)) * Math.pow(2, e - this.plan.bias);
+                    }
+                    val[i] = v * (s === 1 ? -1 : 1);
+                }
+
+                const scale = normalizedRange / this.plan.maxValue;
+                for (let i = 0; i < val.length; i++) val[i] *= scale;
+                return val;
+            }
+        }
+
+        class Int2BitSpecialQuantizer {
+            constructor() {
+                this.bits = 2;
+                // 索引映射表: 0=零, 1=正台阶, 2=负台阶, 3=备用(设为0)
+                this.lookup = new Float32Array([0.0, 0.5, -0.5, 0.0]);
+            }
+
+            /**
+             * 量化逻辑
+             * @param {Float32Array} x 
+             * @returns {Uint8Array}
+             */
+            quantize(x) {
+                const out = new Uint8Array(x.length);
+                for (let i = 0; i < x.length; i++) {
+                    const val = x[i];
+                    const absX = Math.abs(val);
+
+                    // 1. 定义死区逻辑 (abs_x < 0.1 则归零)
+                    if (absX < 0.1) {
+                        out[i] = 0;
+                    } else {
+                        // 2. 对称映射：正数映射为 1，负数映射为 2
+                        // (根据 Python 源码：out[x>0]=1, out[x<0]=2)
+                        out[i] = val > 0 ? 1 : 2;
+                    }
+                }
+                return out;
+            }
+
+            /**
+             * 反量化逻辑
+             * @param {Uint8Array} q 
+             * @returns {Float32Array}
+             */
+            dequantize(q) {
+                const out = new Float32Array(q.length);
+                const lookup = this.lookup;
+                for (let i = 0; i < q.length; i++) {
+                    // 相当于 np.take(lookup, q)
+                    out[i] = lookup[q[i]];
+                }
+                return out;
+            }
+        }
+
+        /**
+         * 将量化整数序列打包为字节流
+         */
+        function floatPack(bits, qArray) {
+            if (bits === 8) return new Uint8Array(qArray);
+
+            if (bits === 6) {
+                const len = qArray.length;
+                const out = new Uint8Array((len / 4) * 3);
+                for (let i = 0, j = 0; i < len; i += 4, j += 3) {
+                    const v0 = qArray[i], v1 = qArray[i + 1], v2 = qArray[i + 2], v3 = qArray[i + 3];
+                    out[j] = (v0 & 0x3F) | ((v1 & 0x03) << 6);
+                    out[j + 1] = ((v1 >> 2) & 0x0F) | ((v2 & 0x0F) << 4);
+                    out[j + 2] = ((v2 >> 4) & 0x03) | ((v3 & 0x3F) << 2);
+                }
+                return out;
+            }
+
+            if (bits === 4) {
+                const out = new Uint8Array(qArray.length / 2);
+                for (let i = 0; i < qArray.length; i += 2) {
+                    out[i / 2] = (qArray[i] & 0x0F) | ((qArray[i + 1] & 0x0F) << 4);
+                }
+                return out;
+            }
+
+            if (bits === 2) {
+                const out = new Uint8Array(qArray.length / 4);
+                for (let i = 0; i < qArray.length; i += 4) {
+                    out[i / 4] = (qArray[i] & 0x03) |
+                        ((qArray[i + 1] & 0x03) << 2) |
+                        ((qArray[i + 2] & 0x03) << 4) |
+                        ((qArray[i + 3] & 0x03) << 6);
+                }
+                return out;
+            }
+        }
+
+        /**
+         * 解包
+         */
+        function floatUnpack(bits, dataBytes, count) {
+            const raw = new Uint8Array(dataBytes);
+            if (bits === 8) return new Uint32Array(raw);
+
+            const out = new Uint32Array(count);
+            if (bits === 6) {
+                for (let i = 0, j = 0; j < count; i += 3, j += 4) {
+                    const b0 = raw[i], b1 = raw[i + 1], b2 = raw[i + 2];
+                    out[j] = b0 & 0x3F;
+                    out[j + 1] = (b0 >> 6) | ((b1 & 0x0F) << 2);
+                    out[j + 2] = (b1 >> 4) | ((b2 & 0x03) << 4);
+                    out[j + 3] = (b2 >> 2) & 0x3F;
+                }
+            } else if (bits === 4) {
+                for (let i = 0; i < raw.length; i++) {
+                    out[i * 2] = raw[i] & 0x0F;
+                    out[i * 2 + 1] = (raw[i] >> 4) & 0x0F;
+                }
+            } else if (bits === 2) {
+                for (let i = 0; i < raw.length; i++) {
+                    out[i * 4] = raw[i] & 0x03;
+                    out[i * 4 + 1] = (raw[i] >> 2) & 0x03;
+                    out[i * 4 + 2] = (raw[i] >> 4) & 0x03;
+                    out[i * 4 + 3] = (raw[i] >> 6) & 0x03;
+                }
+            }
+            return out.slice(0, count);
+        }
+
+        function packBits(bitArray) {
+            const len = bitArray.length;
+            const out = new Uint8Array(Math.ceil(len / 8));
+            for (let i = 0; i < len; i++) {
+                const byteIndex = Math.floor(i / 8);
+                const bitIndex = i % 8;
+                if (bitArray[i]) {
+                    out[byteIndex] |= (1 << bitIndex);
+                }
+            }
+            return out;
+        }
+
+        function unpackBits(bytes, count) {
+            const out = new Uint8Array(count);
+            for (let i = 0; i < count; i++) {
+                const byteIndex = Math.floor(i / 8);
+                const bitIndex = i % 8;
+                out[i] = (bytes[byteIndex] >> bitIndex) & 1;
+            }
+            return out;
+        }
+
+        /**
+        * 非线性陡峭化变换
+        * @param {number} x 输入值 (0 到 1)
+        * @param {number} k 陡峭系数
+        * @returns {number} 映射后的值
+        */
+        function warpSteep(x, k = 2) {
+            // 边界处理，防止 0/0
+            if (x <= 0) return 0;
+            if (x >= 1) return 1;
+
+            // 如果 k 是整数且较小，Math.pow 性能尚可
+            // 但如果 k=2 是常态，直接 x*x 会更快
+            if (k === 2) {
+                const x2 = x * x;
+                const omx = 1 - x;
+                return x2 / (x2 + omx * omx);
+            }
+
+            const xk = Math.pow(x, k);
+            const omxk = Math.pow(1 - x, k);
+            return xk / (xk + omxk);
+        }
+
+
+        /**
+ * 线性插值函数
+ * @param {Array} xPoints 原始 X 坐标 (频段中心)
+ * @param {Array} yPoints 原始 Y 坐标 (各频段的损失能量)
+ * @param {number} targetX 需要计算的 X 位置
+ */
+        function lerp(xPoints, yPoints, targetX) {
+            if (targetX <= xPoints[0]) return yPoints[0];
+            if (targetX >= xPoints[xPoints.length - 1]) return yPoints[yPoints.length - 1];
+
+            // 找到 targetX 所在的区间
+            let i = 0;
+            while (targetX > xPoints[i + 1]) i++;
+
+            const x0 = xPoints[i], x1 = xPoints[i + 1];
+            const y0 = yPoints[i], y1 = yPoints[i + 1];
+
+            // 线性插值公式
+            return y0 + (y1 - y0) * (targetX - x0) / (x1 - x0);
+        }
+
+
+        const QUANT_LEVELS = {
+            0: { 'bits': 8, 'plan': new FloatQuantizer(new FloatQuantizePlan(8, 4, 3)) },  // 最高精度
+            1: { 'bits': 8, 'plan': new FloatQuantizer(new FloatQuantizePlan(8, 5, 2)) },
+            2: { 'bits': 8, 'plan': new FloatQuantizer(new FloatQuantizePlan(8, 3, 4)) },
+            3: { 'bits': 6, 'plan': new FloatQuantizer(new FloatQuantizePlan(6, 4, 1)) },
+            4: { 'bits': 6, 'plan': new FloatQuantizer(new FloatQuantizePlan(6, 3, 2)) },
+            5: { 'bits': 6, 'plan': new FloatQuantizer(new FloatQuantizePlan(6, 2, 3)) },
+            6: { 'bits': 4, 'plan': new FloatQuantizer(new FloatQuantizePlan(4, 3, 0)) },
+            7: { 'bits': 4, 'plan': new FloatQuantizer(new FloatQuantizePlan(4, 2, 1)) },
+            8: { 'bits': 4, 'plan': new FloatQuantizer(new FloatQuantizePlan(4, 1, 2)) },
+            9: { 'bits': 2, 'plan': new Int2BitSpecialQuantizer() },  // 最低精度
+            15: { 'bits': 0, 'plan': null }  // 跳过频段(不编码)
+        }
 
         class QFPEncoder {
             constructor(audioBuffer, qp) {
@@ -1587,6 +2286,356 @@
             }
         }
 
+        class QFP3Decoder {
+            constructor(arrayBuffer) {
+                this.buffer = arrayBuffer; // 使用输入的原始压缩数据
+                this.reader = new BufferReader(arrayBuffer);
+                this.ptr = 0; // 指针位置
+                this.read = 0; // 已读取帧数
+                this.readHeader(); // 读取文件头信息
+
+                // 解压 gzipped 数据
+                const data = this.reader.readAll()
+                this.decompressedData = pako.inflate(data);
+                this.decompressedReader = new BufferReader(this.decompressedData);
+
+                this.compressRatio = this.buffer.byteLength / this.decompressedData.buffer.byteLength; // 计算压缩比
+
+                this.generatePos(); // 可选：预生成帧位置表
+
+                this.settings = {
+                    noiseFilling: true
+                }
+            }
+
+            readHeader() {
+                let magic = new TextDecoder('utf-8').decode(this.buffer.slice(0, 4)); // 读取文件标识符
+                console.log("magic: " + magic);
+                if (magic !== 'QFPA') throw new Error("magic not match"); // 检查文件标识符是否匹配
+
+                this.reader.seek(4);
+
+                // 读取版本、采样率、窗口大小等元信息
+                this.version = this.reader.readUint8(); // 版本号
+                this.sampleRate = this.reader.readUint32(); // 采样率
+                this.winSize = this.reader.readUint32(); // 窗口大小
+                this.numWindows = this.reader.readUint32(); // 总窗口数
+                this.bandSize = this.reader.readUint32(); // 组大小
+                this.hopSize = this.winSize / 2; // 步长大小，默认为窗口大小的一半
+
+                console.log("version: " + this.version);
+                console.log("sample rate: " + this.sampleRate);
+                console.log("win size:" + this.winSize);
+                console.log("num win:" + this.numWindows);
+                console.log("group size:" + this.bandSize);
+
+                // 计算音频总时长
+                this.duration = this.numWindows * (this.hopSize / this.sampleRate);
+
+                // 显示文件头信息
+                fileInfo.innerHTML = `V${this.version} | SR: ${this.sampleRate}Hz | WS: ${this.winSize} | NW: ${this.numWindows} | GS: ${this.bandSize} | ABR: ${(this.buffer.byteLength / this.duration * 8 / 1024).toFixed(2)}kbps`;
+
+                this.metadata = {};
+
+                // 读取meta
+                let dataByte = this.reader.readUint8();
+                if (dataByte === 0x55) {
+                    while (true) {
+                        let mType = this.reader.readUint8();
+                        if (mType === 0xAA) {
+                            break;
+                        }
+                        let mLen = prefixDecode(this.reader);
+                        let mData = this.reader.read(mLen);
+                        this.metadata[mType] = mData;
+                        console.log("Found Metadata Type " + mType + ", Len " + mLen + ", Content: " + mData);
+                    }
+                } else {
+                    this.reader.seek(-1, 1);
+                }
+
+                this.constructBuffer = [
+                    new Float32Array(this.winSize + this.hopSize),
+                    new Float32Array(this.winSize + this.hopSize) // 用于存储解码后的音频数据
+                ]
+                this.window = createMDCTWindow(this.winSize)
+
+                // 读取Band Plan
+                this.numBands = this.hopSize / this.bandSize;
+                let planBytesLen = this.numBands / 2;
+                let lprPlan = floatUnpack(4, this.reader.read(planBytesLen), this.numBands);
+                let lmrPlan = floatUnpack(4, this.reader.read(planBytesLen), this.numBands);
+                this.dualChPlans = [lprPlan, lmrPlan];
+
+                console.log("LPR Plan: ", lprPlan);
+                console.log("LMR Plan: ", lmrPlan);
+
+            }
+
+            readFrame() {
+                if (this.read >= this.numWindows) throw new Error("No more frames to read"); // 检查是否还有帧可读
+
+
+                const L = new Float32Array(this.hopSize);
+                const R = new Float32Array(this.hopSize);
+
+                const frame = decapsulateFrame(this.decompressedReader);
+                this.read++;
+                if (frame.length == 0) {
+                    return [L, R, 1]; // 左声道，右声道，帧长
+                }
+
+                const frameReader = new BufferReader(frame);
+
+                const crcStored = frameReader.readUint16();
+                const crcComputed = crc16(new Uint8Array(frame.subarray(2)));
+                if (crcStored !== crcComputed) {
+                    console.warn("CRC check failed for frame " + this.read);
+                    // 对于校验失败的帧，直接返回静音帧防止破音
+                    return [L, R, frame.length]; // 左声道，右声道，帧长
+                }
+
+                for (let ch = 0; ch < 2; ch++) {
+                    const mdctCoeffs = new Float32Array(this.hopSize);
+
+                    const bitmapSize = Math.ceil(this.numBands / 8);
+                    const bitmapData = frameReader.read(bitmapSize);
+
+                    const bitmap = unpackBits(bitmapData, this.numBands);
+                    console.log("bitmap: " + bitmap);
+
+                    const bandMeta = [];
+                    for (let bIdx = 0; bIdx < this.numBands; bIdx++) {
+                        if (bitmap[bIdx]) {
+                            const scale = decodeScale(frameReader.readUint8());
+                            const lossByte = frameReader.readUint8();
+                            const lossVal = scale == 0 ? 0 : decodeScale(lossByte) / scale;
+                            bandMeta.push({
+                                scale: scale,
+                                loss: lossVal
+                            });
+                        }
+                    }
+
+                    const mdctBucket = {
+                        8: [], 6: [], 4: [], 2: []
+                    }
+
+                    for (let bits of [8, 6, 4, 2]) {
+                        const posLen = prefixDecode(frameReader);
+                        const posData = frameReader.read(posLen);
+                        const posReader = new BufferReader(new Uint8Array(posData).buffer);
+                        const pos = decodePosArr(posReader);
+
+                        const mdctDataLen = prefixDecode(frameReader);
+                        const mdctData = frameReader.read(mdctDataLen);
+
+                        if (mdctDataLen == 0) continue;
+
+                        let activeBands = 0;
+                        for (let bIdx = 0; bIdx < this.numBands; bIdx++) {
+                            if (bitmap[bIdx] && QUANT_LEVELS[this.dualChPlans[ch][bIdx]]['bits'] === bits) {
+                                activeBands++;
+                            }
+                        }
+
+                        const stripped = floatUnpack(bits, mdctData, Math.ceil(mdctData.length * 8 / bits));
+                        const fullBucket = posDecode(pos, stripped, activeBands * this.bandSize);
+                        mdctBucket[bits] = fullBucket;
+
+                    }
+
+                    let metaPtr = 0;
+                    const bucketPtrs = { 8: 0, 6: 0, 4: 0, 2: 0 };
+                    const ampLosses = new Float32Array(this.numBands);
+
+                    for (let bIdx = 0; bIdx < this.numBands; bIdx++) {
+                        if (bitmap[bIdx] == 0) continue;
+
+                        const qBits = QUANT_LEVELS[this.dualChPlans[ch][bIdx]]['bits'];
+                        const scale = bandMeta[metaPtr].scale;
+                        const lossNorm = bandMeta[metaPtr].loss;
+                        metaPtr++;
+
+                        const startP = bucketPtrs[qBits];
+                        const endP = startP + this.bandSize;
+                        let qSlice = mdctBucket[qBits].slice(startP, endP);
+                        bucketPtrs[qBits] = endP;
+
+                        if (qSlice.length == 0) {
+                            qSlice = new Float32Array(this.bandSize).fill(0);
+                        }
+
+                        const quantizer = QUANT_LEVELS[this.dualChPlans[ch][bIdx]]['plan'];
+                        const dequantized = quantizer.dequantize(qSlice);
+                        for (let i = 0; i < this.bandSize; i++) {
+                            mdctCoeffs[bIdx * this.bandSize + i] = dequantized[i] * scale * this.winSize;
+                        }
+
+                        ampLosses[bIdx] = lossNorm * scale;
+                    }
+
+                    if (this.settings.noiseFilling) {
+
+                        // 1. 构建插值点 (对应 Python 的 x_points, y_points)
+                        const xPoints = [];
+                        const yPoints = [];
+
+                        // 添加左边界
+                        xPoints.push(-this.bandSize);
+                        yPoints.push(0);
+
+                        // 添加每个频段的中心点
+                        for (let b = 0; b < this.numBands; b++) {
+                            xPoints.push(b * this.bandSize + this.bandSize / 2);
+                            yPoints.push(ampLosses[b]); // ampLosses 是你在上一步计算的 lossNorm * scale
+                        }
+
+                        // 添加右边界
+                        xPoints.push(this.hopSize + this.bandSize);
+                        yPoints.push(0);
+
+                        // 2. 生成噪声并注入
+                        for (let bIdx = 0; bIdx < this.numBands; bIdx++) {
+                            const start = bIdx * this.bandSize;
+                            const end = start + this.bandSize;
+
+                            // 计算该频段的原始噪声总能量 (用于归一化)
+                            let currNoiseSum = 0;
+                            const rawNoise = new Float32Array(this.bandSize);
+                            for (let i = 0; i < this.bandSize; i++) {
+                                // 使用 Math.random() 生成 [-1, 1] 的噪声 (近似高斯或均匀分布)
+                                rawNoise[i] = gaussianRandom();
+                                currNoiseSum += Math.abs(rawNoise[i]);
+                            }
+
+                            if (currNoiseSum > 0) {
+                                for (let i = 0; i < this.bandSize; i++) {
+                                    const globalIdx = start + i;
+
+                                    // 只在系数为 0 的位置注入
+                                    if (mdctCoeffs[globalIdx] === 0) {
+                                        // 计算该位置的插值包络高度
+                                        const envelopeVal = lerp(xPoints, yPoints, globalIdx);
+
+                                        // 注入归一化后的噪声能量
+                                        // Python: (curr_noise / curr_sum) * target_amp
+                                        mdctCoeffs[globalIdx] = (rawNoise[i] / currNoiseSum) * envelopeVal * this.winSize;
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+
+                    // if (ch == 0) console.log(mdctCoeffs.toString());
+                    let reconCh = imdct(mdctCoeffs); // 逆变换得到重建的音频数据
+
+                    // 加窗
+                    for (let i = 0; i < reconCh.length; i++) {
+                        reconCh[i] *= this.window[i];
+                    }
+
+                    // 将重建的音频数据添加到构造缓冲区
+                    for (let i = 0; i < this.winSize; i++) {
+                        this.constructBuffer[ch][i + this.hopSize] += reconCh[i]; // 将重建数据放入对应的声道缓冲区
+                    }
+
+                }
+
+                for (let i = 0; i < this.hopSize; i++) {
+                    L[i] = (this.constructBuffer[0][i] + this.constructBuffer[1][i]) / 2; // 左声道
+                    R[i] = (this.constructBuffer[0][i] - this.constructBuffer[1][i]) / 2; // 右声道
+                }
+
+                // 前进缓冲区
+                for (let ch = 0; ch < 2; ch++) {
+                    for (let i = 0; i < this.winSize; i++) {
+                        this.constructBuffer[ch][i] = this.constructBuffer[ch][i + this.hopSize]; // 向前移动缓冲区
+                    }
+                    this.constructBuffer[ch].fill(0, this.winSize);
+                }
+
+                return [L, R, frame.length];
+
+
+
+            }
+
+            reset() {
+            }
+
+            generatePos() {
+                this.framePositions = new Uint32Array(this.numWindows);
+                // 保存当前指针位置以便恢复
+                const initialPos = this.decompressedReader.pos;
+                this.decompressedReader.seek(0);
+
+                for (let i = 0; i < this.numWindows; i++) {
+                    // 记录当前帧在解压流中的绝对位置
+                    this.framePositions[i] = this.decompressedReader.pos;
+
+                    // 使用 decapsulateFrame 快速跳过数据，不进行逻辑处理
+                    // 这一步会根据帧头定义的长度移动 decompressedReader.pos
+                    decapsulateFrame(this.decompressedReader);
+                }
+
+                // 扫描完成后恢复指针
+                this.decompressedReader.seek(initialPos);
+                console.log(`Scan complete: indexing ${this.numWindows} frames.`);
+            }
+
+            frameLength() {
+                return this.hopSize;
+            }
+
+            seek(frameIndex) {
+                if (frameIndex < 0) frameIndex = 0;
+                if (frameIndex >= this.numWindows) frameIndex = this.numWindows - 1;
+
+                // 1. 跳转解码器指针
+                const targetPos = this.framePositions[frameIndex];
+                this.decompressedReader.seek(targetPos);
+                this.read = frameIndex;
+
+                // 2. 关键：重置 OLA 缓冲区
+                // 如果不重置，seek 后的第一帧会和 seek 前的内容重叠相加，产生爆音或杂音
+                for (let ch = 0; ch < 2; ch++) {
+                    this.constructBuffer[ch].fill(0);
+                }
+            }
+
+            seekSeconds(seconds) {
+                // 根据时间计算帧索引
+                // 公式: index = seconds * sampleRate / hopSize
+                const frameIndex = Math.floor(seconds * this.sampleRate / this.hopSize);
+                this.seek(frameIndex);
+            }
+
+            seekProgress(progress) {
+                const targetFrame = Math.floor(progress * this.numWindows);
+                this.seek(targetFrame);
+            }
+
+            currentTime() { return this.read * this.hopSize / this.sampleRate }
+
+
+            getVersion() {
+                return 'v3';
+            }
+
+            setOption(key, value) {
+                switch (key) {
+                    case 'noise-filling':
+                        this.settings.noiseFilling = value;
+                        break;
+
+                    default:
+                        break;
+                }
+            }
+        }
+
         function qfpFactory(arrayBuffer) {
             if (!(arrayBuffer instanceof ArrayBuffer)) {
                 throw new Error("Input must be an ArrayBuffer.");
@@ -1603,6 +2652,8 @@
                 return new QFPDecoder(arrayBuffer); // 返回 QFP1 解码器实例
             } else if (version === 2) {
                 return new QFP2Decoder(arrayBuffer); // 返回 QFP2 解码器实例
+            } else if (version === 3) {
+                return new QFP3Decoder(arrayBuffer); // 返回 QFP3 解码器实例
             } else {
                 throw new Error("Unsupported QFP version: " + version);
             }
@@ -1784,12 +2835,13 @@
                         e.style.display = 'none'
                     })
 
-                    document.getElementById(qfp.getVersion()).style.display = 'block'
+                    // document.getElementById(qfp.getVersion()).style.display = 'block'
 
                     // 如果当前是暂停状态，自动开始播放
                     if (paused) pauseBtn.click();
                 } catch (error) {
-                    alert("Error decoding QFP:" + error); // 解码错误提示
+                    alert("Error decoding QFP:" + error.message); // 解码错误提示
+                    console.error(error);
                     throw error;
                 }
             };
