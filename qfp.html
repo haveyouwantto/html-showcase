@@ -2319,6 +2319,7 @@
 
                 // 读取版本、采样率、窗口大小等元信息
                 this.version = this.reader.readUint8(); // 版本号
+                this.subVersion = this.reader.readUint8(); // 子版本号
                 this.sampleRate = this.reader.readUint32(); // 采样率
                 this.winSize = this.reader.readUint32(); // 窗口大小
                 this.numWindows = this.reader.readUint32(); // 总窗口数
@@ -2335,7 +2336,7 @@
                 this.duration = this.numWindows * (this.hopSize / this.sampleRate);
 
                 // 显示文件头信息
-                fileInfo.innerHTML = `V${this.version} | SR: ${this.sampleRate}Hz | WS: ${this.winSize} | NW: ${this.numWindows} | GS: ${this.bandSize} | ABR: ${(this.buffer.byteLength / this.duration * 8 / 1024).toFixed(2)}kbps`;
+                fileInfo.innerHTML = `V${this.version}.${this.subVersion} | SR: ${this.sampleRate}Hz | WS: ${this.winSize} | NW: ${this.numWindows} | GS: ${this.bandSize} | ABR: ${(this.buffer.byteLength / this.duration * 8 / 1024).toFixed(2)}kbps`;
 
                 this.metadata = {};
 
