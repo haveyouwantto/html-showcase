@@ -210,7 +210,8 @@
         <div class="encoder-container">
             <div id="version-select">
                 <input type="radio" name="version" id="v1" value="v1"> V1
-                <input type="radio" name="version" id="v2" value="v2" checked> V2
+                <input type="radio" name="version" id="v2" value="v2"> V2
+                <input type="radio" name="version" id="v3" value="v3" checked> V3
             </div>
             <span>
                 QP: <input type="number" id="qp" min="0" max="80" value="32">
@@ -364,7 +365,9 @@
             }
         }
 
-
+        function clamp(val, min, max) {
+            return Math.max(min, Math.min(max, val));
+        }
 
         function add(v1, v2) {
             return [v1[0] + v2[0], v1[1] + v2[1], v1[2] + v2[2]];
@@ -418,6 +421,26 @@
         function gaussianRandom() {
             if (gaussianIndex >= gaussianPool.length) gaussianIndex = 0;
             return gaussianPool[gaussianIndex++];
+        }
+
+        function percentile(data, p) {
+            if (data.length === 0) return 0;
+            if (p <= 0) return Math.min(...data);
+            if (p >= 1) return Math.max(...data);
+
+            // 1. 必须先进行升序排序
+            // 注意：JS 默认 sort 是按字符串排的，必须传入 (a, b) => a - b
+            const sorted = [...data].sort((a, b) => a - b);
+
+            // 2. 计算索引位置
+            const index = (sorted.length - 1) * p;
+            const lower = Math.floor(index);
+            const upper = lower + 1;
+            const weight = index - lower;
+
+            // 3. 如果索引正好是整数，直接返回；否则进行线性插值
+            if (upper >= sorted.length) return sorted[lower];
+            return sorted[lower] * (1 - weight) + sorted[upper] * weight;
         }
 
         /**
@@ -1087,6 +1110,98 @@
             }
 
             get eof() { return this.pos >= this.data.length; }
+        }
+
+        class BufferWriter {
+            constructor(initialCapacity = 32) {
+                this.data = new Uint8Array(initialCapacity);
+                this.view = new DataView(this.data.buffer);
+                this.pos = 0;
+            }
+
+            _ensureCapacity(n) {
+                const minRequired = this.pos + n;
+                if (minRequired > this.data.length) {
+                    let newLength = Math.max(this.data.length * 2, minRequired);
+
+                    const newData = new Uint8Array(newLength);
+
+                    newData.set(this.data);
+                    this.data = newData;
+
+                    this.view = new DataView(this.data.buffer);
+                }
+            }
+
+            write(data) {
+                if (data instanceof ArrayBuffer) {
+                    if (data.byteLength === 0) return;
+                    this._ensureCapacity(data.byteLength);
+                    this.data.set(new Uint8Array(data), this.pos);
+                    this.pos += data.byteLength;
+                } else if (data instanceof Uint8Array) {
+                    if (data.length === 0) return;
+                    this._ensureCapacity(data.length);
+                    this.data.set(data, this.pos);
+                    this.pos += data.length;
+                } else {
+                    console.error("Invalid data type");
+                }
+            }
+
+            writeUint8(value) {
+                this._ensureCapacity(1);
+                this.data[this.pos] = value;
+                this.pos += 1;
+            }
+
+            writeInt8(value) {
+                this._ensureCapacity(1);
+                this.data[this.pos] = value;
+                this.pos += 1;
+            }
+
+            writeUint16(value, le = true) {
+                this._ensureCapacity(2);
+                this.view.setUint16(this.pos, value, le);
+                this.pos += 2;
+            }
+
+            writeInt16(value, le = true) {
+                this._ensureCapacity(2);
+                this.view.setInt16(this.pos, value, le);
+                this.pos += 2;
+            }
+
+            writeUint32(value, le = true) {
+                this._ensureCapacity(4);
+                this.view.setUint32(this.pos, value, le);
+                this.pos += 4;
+            }
+
+            writeInt32(value, le = true) {
+                this._ensureCapacity(4);
+                this.view.setInt32(this.pos, value, le);
+                this.pos += 4;
+            }
+
+            writeFloat32(value, le = true) {
+                this._ensureCapacity(4);
+                this.view.setFloat32(this.pos, value, le);
+                this.pos += 4;
+            }
+
+            writeFloat64(value, le = true) {
+                this._ensureCapacity(8);
+                this.view.setFloat64(this.pos, value, le);
+                this.pos += 8;
+            }
+
+            getBuffer() {
+                const truncated = new Uint8Array(this.pos);
+                truncated.set(this.data.subarray(0, this.pos));
+                return truncated;
+            }
         }
 
         /**
@@ -1950,6 +2065,269 @@
             }
         }
 
+        class QFP3Encoder {
+            constructor(audioBuffer, qp) {
+                this.audioBuffer = audioBuffer;
+                this.qp = qp;
+                this.winSize = 2048;
+                this.hopSize = this.winSize / 2;
+                this.bandSize = 64;
+                this.nyquist = audioBuffer.sampleRate / 2;
+                this.numBands = Math.floor(this.hopSize / this.bandSize);
+                this.numWins = Math.floor(audioBuffer.length / this.hopSize) - 1;
+                this.i = 0; // 当前窗口索引
+                this.l = audioBuffer.getChannelData(0); // 左声道数据
+                this.r = audioBuffer.numberOfChannels >= 2 ? audioBuffer.getChannelData(1) : this.l; // 右声道数据，如果单声道则与左声道相同
+
+            }
+
+            encodeHeader() {
+                const header = new BufferWriter();
+                header.writeUint8(0x51); // 文件标识符
+                header.writeUint8(0x46); // 文件标识符
+                header.writeUint8(0x50); // 文件标识符
+                header.writeUint8(0x41); // 文件标识符
+                header.writeUint8(3);
+                header.writeUint8(0); // V3.0
+
+
+                // 基础信息
+                header.writeUint32(this.audioBuffer.sampleRate);
+                header.writeUint32(this.winSize);
+                header.writeUint32(this.numWins);
+                header.writeUint32(this.bandSize);
+
+
+                // 元数据
+
+                header.writeUint8(0x55);
+                header.writeUint8(0xAA);
+
+                this.window = createMDCTWindow(this.winSize);
+
+                // 构建band plan
+                this.bandPlan = [];
+
+                for (let i = 0; i < this.hopSize; i += this.bandSize) {
+                    const maxFreq = Math.floor((i + this.bandSize) * this.nyquist / this.hopSize);
+                    let quantizerLevel, krBase;
+                    if (maxFreq < 4000) {
+                        quantizerLevel = 0;
+                        krBase = 1.0;
+                    } else if (maxFreq < 6000) {
+                        quantizerLevel = 3;
+                        krBase = 0.7;
+                    } else if (maxFreq < 8000) {
+                        quantizerLevel = 5;
+                        krBase = 1 / 2;
+                    } else if (maxFreq < 10000) {
+                        quantizerLevel = 6;
+                        krBase = 1 / 4;
+                    } else if (maxFreq < 12000) {
+                        quantizerLevel = 7;
+                        krBase = 1 / 4;
+                    } else if (maxFreq < 14000) {
+                        quantizerLevel = 8;
+                        krBase = 1 / 6;
+                    } else if (maxFreq < 16000) {
+                        quantizerLevel = 9;
+                        krBase = 1 / 6;
+                    } else if (maxFreq < 18000) {
+                        quantizerLevel = 9;
+                        krBase = 1 / 8;
+                    } else {
+                        quantizerLevel = 15;
+                        krBase = 0.0;
+                    }
+                    this.bandPlan.push({ quantizerLevel, krBase });
+                }
+
+                // 构造双通道静态量化方案
+                this.quantLevelsCache = [];
+                const offset = this.qp >= 48 ? 3 : 0;
+                const lprPlanArr = new Uint8Array(this.bandPlan.length);
+                const lmrPlanArr = new Uint8Array(this.bandPlan.length);
+                for (let i = 0; i < this.bandPlan.length; i++) {
+                    const quantizerLevel = this.bandPlan[i].quantizerLevel + offset;
+                    lprPlanArr[i] = Math.min(quantizerLevel, 9);
+                    lmrPlanArr[i] = Math.min(quantizerLevel + 3, 9);
+                }
+                this.quantLevelsCache.push(lprPlanArr);
+                this.quantLevelsCache.push(lmrPlanArr);
+
+                // 写入header
+                console.log(lprPlanArr);
+                console.log(lmrPlanArr);
+
+                header.write(floatPack(4, lprPlanArr));
+                header.write(floatPack(4, lmrPlanArr));
+
+                return header.getBuffer().buffer;
+            }
+
+            frameLength() {
+                return this.hopSize; // 返回每帧的长度
+            }
+
+            encodeFrame() {
+
+                let L = this.l.slice(this.i * this.hopSize, this.i * this.hopSize + this.winSize); // 当前帧的左声道数据
+                let R = this.r.slice(this.i * this.hopSize, this.i * this.hopSize + this.winSize); // 当前帧的右声道数据
+
+                // 如果数据长度不足窗口大小，则填充零
+                if (L.length < this.winSize) {
+                    L = new Float32Array([...L, ...new Array(this.winSize - L.length).fill(0)]);
+                }
+                if (R.length < this.winSize) {
+                    R = new Float32Array([...R, ...new Array(this.winSize - R.length).fill(0)]);
+                }
+
+                const LPR = L.map((val, idx) => (val + R[idx]) * this.window[idx]); // L+R 数据
+                const LMR = L.map((val, idx) => (val - R[idx]) * this.window[idx]); // L-R 数据
+
+                const energyLPR = LPR.reduce((a, b) => Math.abs(a) + Math.abs(b), 0);
+                const energyLMR = LMR.reduce((a, b) => Math.abs(a) + Math.abs(b), 0);
+
+                const msRatio = energyLMR / (energyLPR + 1e-6);
+
+                let silent = true;
+                const quantizeBits = [8, 6, 4, 2];
+                const frameBuffer = new BufferWriter();
+                const outBuffer = new BufferWriter();
+
+                for (let ch = 0; ch < 2; ch++) {
+                    const block = ch ? LMR : LPR;
+                    const mdctCoeffs = mdct(block);
+
+                    for (let i = 0; i < mdctCoeffs.length; i++) {
+                        mdctCoeffs[i] /= this.winSize;
+                    }
+
+                    const absCoeffs = mdctCoeffs.map(Math.abs);
+                    const weights = new Float32Array(this.hopSize);
+
+                    for (let bIdx = 0; bIdx < this.bandPlan.length; bIdx++) {
+                        const start = bIdx * this.bandSize;
+                        const end = start + this.bandSize;
+                        const qLvl = this.quantLevelsCache[ch][bIdx];
+                        const qBits = QUANT_LEVELS[qLvl]['bits'];
+                        const fW = this.bandPlan[bIdx].krBase;
+                        const pW = 1 - (qBits / 8.0) * 0.5;
+                        const qpSlope = 1.0 + (this.qp / 64.0) * (1.0 - (bIdx / this.numBands));
+                        for (let i = start; i < end; i++) {
+                            weights[i] = fW * pW * qpSlope;
+                        }
+                    }
+
+                    const weightedCoeffs = absCoeffs.map((val, idx) => val * weights[idx]);
+                    const channelBouns = ch ? 1 : clamp(msRatio * 1.5, 0.1, 0.5);
+                    const globalKeepRatio = clamp(Math.max(0, warpSteep(1.0 - (this.qp / 63), 2)) * channelBouns, 0, 0.99);
+                    const validWeighted = weightedCoeffs.filter((val) => val > 0);
+                    const threshold = validWeighted.length > 0 ? percentile(validWeighted, (1 - globalKeepRatio)) : 0;
+
+
+                    const bandsData = [];
+                    const bandBitmap = new Uint8Array(this.numBands);
+                    const mdctBuckets = { 8: [], 6: [], 4: [], 2: [] };
+
+                    for (let bIdx = 0; bIdx < this.numBands; bIdx++) {
+                        const start = bIdx * this.bandSize;
+                        const end = start + this.bandSize;
+                        const qLvl = this.quantLevelsCache[ch][bIdx];
+                        const qBits = QUANT_LEVELS[qLvl]['bits'];
+
+                        if (qLvl === 15) {
+                            continue;
+                        }
+
+                        const blockData = mdctCoeffs.slice(start, end);
+
+                        if (blockData.every((val) => val === 0)) {
+                            continue;
+                        }
+
+                        const prunedData = blockData.map((val, idx) => weightedCoeffs[start + idx] >= threshold ? val : 0);
+                        let scale = prunedData.map(e => Math.abs(e)).reduce((a, b) => a > b ? a : b, 0);
+                        if (scale === 0) {
+                            scale = 1;
+                        }
+                        for (let i = 0; i < prunedData.length; i++) {
+                            prunedData[i] /= scale;
+                        }
+
+                        const quantizer = QUANT_LEVELS[qLvl]['plan'];
+                        if (quantizer == null) {
+                            continue;
+                        }
+
+                        const quantizedData = quantizer.quantize(prunedData);
+
+                        const restoredData = quantizer.dequantize(quantizedData);
+
+                        const sumAbsBlock = blockData.reduce((sum, val) => sum + Math.abs(val), 0);
+                        const sumAbsRestored = restoredData.reduce((sum, val) => sum + Math.abs(val), 0);
+                        const ampLoss = Math.max(0, (sumAbsBlock / scale) - sumAbsRestored) * scale;
+
+
+                        const lossByte = encodeScale(ampLoss);
+                        bandBitmap[bIdx] = 1;
+                        silent = false;
+                        bandsData.push({
+                            scale,
+                            lossByte,
+                            ampLoss
+                        });
+                        mdctBuckets[qBits].push(...quantizedData);
+
+                    }
+
+                    frameBuffer.write(packBits(bandBitmap));
+                    for (let i = 0; i < bandsData.length; i++) {
+                        const bandData = bandsData[i];
+                        frameBuffer.writeUint8(encodeScale(bandData.scale));
+                        frameBuffer.writeUint8(bandData.lossByte);
+                    }
+
+                    for (const bits of quantizeBits) {
+                        const bucket = mdctBuckets[bits];
+                        const posInfo = posEncode(bucket, Math.floor(3 * 8 / bits));
+                        const posBytes = encodePosArr(posInfo['pos']);
+                        const stripped = posInfo['stripped'];
+                        const align = ({ 8: 1, 6: 4, 4: 2, 2: 4, 1: 8 })[bits] || 1;
+                        if (stripped.length % align !== 0) {
+                            for (let _ = 0; _ < align - (stripped.length % align); _++) {
+                                stripped.push(0);
+                            }
+                        }
+                        const result = floatPack(bits, stripped);
+                        frameBuffer.write(prefixEncode(posBytes.length));
+                        frameBuffer.write(posBytes);
+                        frameBuffer.write(prefixEncode(result.length));
+                        frameBuffer.write(result);
+                    }
+
+                }
+                if (silent) {
+                    outBuffer.write(encapsulateFrame(new Uint8Array(0)));
+                } else {
+                    const frame = frameBuffer.getBuffer();
+                    const crc = crc16(frame);
+                    const finalFrame = new Uint8Array(frame.length + 2);
+                    finalFrame[0] = crc & 0xff;
+                    finalFrame[1] = (crc >> 8) & 0xff;
+                    finalFrame.set(frame, 2);
+                    // console.log(finalFrame + "");
+                    outBuffer.write(encapsulateFrame(finalFrame).buffer);
+                }
+                this.i++;
+                return [outBuffer.getBuffer().buffer];
+            }
+
+            available() {
+                return this.i < this.numWins; // 判断是否还有未编码的帧
+            }
+        }
+
 
         // QFPDecoder: 用于解码 QFP 文件的类
         class QFPDecoder {
@@ -2679,6 +3057,8 @@
                 return new QFPEncoder(audioBuffer, qp); // 返回 QFP1 编码器实例
             } else if (version === 'v2') {
                 return new QFP2Encoder(audioBuffer, qp); // 返回 QFP2 编码器实例
+            } else if (version === 'v3') {
+                return new QFP3Encoder(audioBuffer, qp); // 返回 QFP3 编码器实例
             } else {
                 throw new Error("Unsupported QFP version: " + version);
             }
@@ -2952,7 +3332,8 @@
                         URL.revokeObjectURL(url); // 清理 URL
                         resolve();
                     }).catch(e => {
-                        reject("Error decoding audio: " + e); // 解码失败
+                        console.error(e);
+                        reject("Error encoding audio: " + e); // 编码失败
                     });
                 };
 
