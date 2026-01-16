@@ -2351,7 +2351,7 @@
 
                     const weightedCoeffs = absCoeffs//.map((val, idx) => val * weights[idx]);
                     const channelBouns = ch ? 1 : clamp(msRatio * 1.5, 0.1, 0.5);
-                    const globalKeepRatio = clamp(Math.max(0, warpSteep(1.0 - (this.qp / 63), 2)) * channelBouns, 0, 0.99);
+                    const globalKeepRatio = clamp(Math.max(0, warpSteep(1.0 - (this.qp / 63), 1.5)) * channelBouns, 0, 0.99);
                     const validWeighted = weightedCoeffs.filter((val) => val > 0);
                     const threshold = validWeighted.length > 0 ? percentile(validWeighted, (1 - globalKeepRatio)) : 0;
 
