@@ -2272,14 +2272,15 @@
                         continue;
                     } else {
                         lprPlanArr[i] = Math.min(quantizerLevel + offset, 9);
-                        lmrPlanArr[i] = Math.min(quantizerLevel + offset + 3, 9);
+                        // 当 QP >= 60 时，强制 LMR (侧声道) 为 15 (单声道模式)
+                        if (this.qp >= 60) {
+                            lmrPlanArr[i] = 15;
+                        } else {
+                            lmrPlanArr[i] = Math.min(quantizerLevel + offset + 3, 9);
+                        }
                     }
                 }
 
-                // 调试：强制单声道
-                // if (this.qp >= 52) {
-                //     lmrPlanArr.fill(15);
-                // }
 
                 this.quantLevelsCache.push(lprPlanArr);
                 this.quantLevelsCache.push(lmrPlanArr);
@@ -2351,7 +2352,12 @@
 
                     const weightedCoeffs = absCoeffs//.map((val, idx) => val * weights[idx]);
                     const channelBouns = ch ? 1 : clamp(msRatio * 1.5, 0.1, 0.5);
-                    const globalKeepRatio = clamp(Math.max(0, warpSteep(1.0 - (this.qp / 63), 1.5)) * channelBouns, 0, 0.99);
+                    let keepRatioBase = warpSteep(1.0 - (this.qp / 63), 1.5);
+                    // 当 QP >= 60 时，增加保留率
+                    if (this.qp >= 60) {
+                        keepRatioBase = Math.max(1 / this.bandSize, keepRatioBase * 3.5);
+                    }
+                    const globalKeepRatio = clamp(Math.max(0, keepRatioBase) * channelBouns, 0, 0.99);
                     const validWeighted = weightedCoeffs.filter((val) => val > 0);
                     const threshold = validWeighted.length > 0 ? percentile(validWeighted, (1 - globalKeepRatio)) : 0;
 
@@ -3480,6 +3486,80 @@
                 player.setOption(e.dataset.key, e.checked)
             })
         })
+
+        // 测试代码：批量编码并下载
+        window.runBatchEncodeTest = async function () {
+            const fileInput = document.getElementById('audioInput');
+            const file = fileInput.files[0];
+
+            if (!file) {
+                console.error('Batch encode test: No file selected in audioInput.');
+                alert('请先在“编码器”部分选择一个音频文件。');
+                return;
+            }
+
+            console.log("Starting batch encode test for file:", file.name);
+            const qpList = [0, 16, 24, 32, 36, 40, 44, 48, 52, 56, 58, 60, 61, 62, 63];
+            const results = [];
+
+            try {
+                const arrayBuffer = await file.arrayBuffer();
+                const audioData = await ctx.decodeAudioData(arrayBuffer);
+
+                for (const qp of qpList) {
+                    console.log(`--- Encoding QP=${qp} ---`);
+                    const encoder = qfpEncoderFactory(audioData, qp);
+                    const chunks = [];
+                    const header = encoder.encodeHeader();
+
+                    while (encoder.available()) {
+                        for (const frame of encoder.encodeFrame()) {
+                            chunks.push(frame);
+                        }
+                    }
+
+                    const combinedChunks = new Uint8Array(chunks.reduce((acc, chunk) => acc + chunk.byteLength, 0));
+                    let offset = 0;
+                    for (const chunk of chunks) {
+                        combinedChunks.set(new Uint8Array(chunk), offset);
+                        offset += chunk.byteLength;
+                    }
+
+                    const compressedData = pako.deflate(combinedChunks);
+                    const blob = new Blob([header, compressedData], { type: "application/octet-stream" });
+
+                    const baseName = file.name.substring(0, file.name.lastIndexOf('.')) || file.name;
+                    results.push({
+                        blob: blob,
+                        filename: `${baseName}_qp${qp}.qfp`
+                    });
+
+                    console.log(`Finished encoding QP=${qp}.`);
+                }
+
+                console.log("All encodings finished. Starting downloads...");
+
+                for (const res of results) {
+                    const url = URL.createObjectURL(res.blob);
+                    const a = document.createElement("a");
+                    a.href = url;
+                    a.download = res.filename;
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    URL.revokeObjectURL(url);
+
+                    console.log(`Triggered download: ${res.filename}`);
+                    // 稍微延时以避免浏览器拦截
+                    await new Promise(r => setTimeout(r, 300));
+                }
+
+                console.log("Batch encode test completed successfully.");
+            } catch (err) {
+                console.error("Batch encode test failed:", err);
+                alert("批量编码测试失败，请查看控制台。");
+            }
+        };
     </script>
 </body>
 
