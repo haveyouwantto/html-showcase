@@ -2109,6 +2109,7 @@
                 this.bandPlan = [];
 
                 for (let i = 0; i < this.hopSize; i += this.bandSize) {
+                    const minFreq = Math.floor(i * this.nyquist / this.hopSize);
                     const maxFreq = Math.floor((i + this.bandSize) * this.nyquist / this.hopSize);
                     let quantizerLevel, krBase;
                     if (maxFreq < 4000) {
@@ -2118,7 +2119,7 @@
                         quantizerLevel = 3;
                         krBase = 0.7;
                     } else if (maxFreq < 8000) {
-                        quantizerLevel = 5;
+                        quantizerLevel = 6;
                         krBase = 1 / 2;
                     } else if (maxFreq < 10000) {
                         quantizerLevel = 6;
@@ -2139,7 +2140,15 @@
                         quantizerLevel = 15;
                         krBase = 0.0;
                     }
-                    this.bandPlan.push({ quantizerLevel, krBase });
+                    this.bandPlan.push({ minFreq, maxFreq, quantizerLevel, krBase });
+                }
+                if (qp >= 52) {
+                    // Disable > 12000Hz bands
+                    for (let b = 0; b < this.bandPlan.length; b++) {
+                        if (this.bandPlan[b].minFreq > 12000) {
+                            this.bandPlan[b].quantizerLevel = 15;
+                        }
+                    }
                 }
 
                 // 构造双通道静态量化方案
@@ -2148,9 +2157,15 @@
                 const lprPlanArr = new Uint8Array(this.bandPlan.length);
                 const lmrPlanArr = new Uint8Array(this.bandPlan.length);
                 for (let i = 0; i < this.bandPlan.length; i++) {
-                    const quantizerLevel = this.bandPlan[i].quantizerLevel + offset;
-                    lprPlanArr[i] = Math.min(quantizerLevel, 9);
-                    lmrPlanArr[i] = Math.min(quantizerLevel + 3, 9);
+                    const quantizerLevel = this.bandPlan[i].quantizerLevel;
+                    if (quantizerLevel === 15) {
+                        lprPlanArr[i] = 15;
+                        lmrPlanArr[i] = 15;
+                        continue;
+                    } else {
+                        lprPlanArr[i] = Math.min(quantizerLevel + offset, 9);
+                        lmrPlanArr[i] = Math.min(quantizerLevel + offset + 3, 9);
+                    }
                 }
                 this.quantLevelsCache.push(lprPlanArr);
                 this.quantLevelsCache.push(lmrPlanArr);
@@ -2219,7 +2234,7 @@
                         }
                     }
 
-                    const weightedCoeffs = absCoeffs.map((val, idx) => val * weights[idx]);
+                    const weightedCoeffs = absCoeffs//.map((val, idx) => val * weights[idx]);
                     const channelBouns = ch ? 1 : clamp(msRatio * 1.5, 0.1, 0.5);
                     const globalKeepRatio = clamp(Math.max(0, warpSteep(1.0 - (this.qp / 63), 2)) * channelBouns, 0, 0.99);
                     const validWeighted = weightedCoeffs.filter((val) => val > 0);
@@ -2242,7 +2257,9 @@
 
                         const blockData = mdctCoeffs.slice(start, end);
 
-                        if (blockData.every((val) => val === 0)) {
+                        const energy = blockData.reduce((sum, val) => sum + Math.abs(val), 0);
+                        console.log(`Band ${bIdx}: energy=${energy.toFixed(10)}`);
+                        if (energy < 0.000001) {
                             continue;
                         }
 
