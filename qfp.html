@@ -2112,28 +2112,28 @@
                     const minFreq = Math.floor(i * this.nyquist / this.hopSize);
                     const maxFreq = Math.floor((i + this.bandSize) * this.nyquist / this.hopSize);
                     let quantizerLevel, krBase;
-                    if (maxFreq < 4000) {
+                    if (minFreq < 4000) {
                         quantizerLevel = 0;
                         krBase = 1.0;
-                    } else if (maxFreq < 6000) {
+                    } else if (minFreq < 6000) {
                         quantizerLevel = 3;
                         krBase = 0.7;
-                    } else if (maxFreq < 8000) {
+                    } else if (minFreq < 8000) {
                         quantizerLevel = 6;
                         krBase = 1 / 2;
-                    } else if (maxFreq < 10000) {
+                    } else if (minFreq < 10000) {
                         quantizerLevel = 6;
                         krBase = 1 / 4;
-                    } else if (maxFreq < 12000) {
-                        quantizerLevel = 7;
+                    } else if (minFreq < 12000) {
+                        quantizerLevel = 6;
                         krBase = 1 / 4;
-                    } else if (maxFreq < 14000) {
-                        quantizerLevel = 8;
-                        krBase = 1 / 6;
-                    } else if (maxFreq < 16000) {
+                    } else if (minFreq < 14000) {
                         quantizerLevel = 9;
                         krBase = 1 / 6;
-                    } else if (maxFreq < 18000) {
+                    } else if (minFreq < 16000) {
+                        quantizerLevel = 9;
+                        krBase = 1 / 6;
+                    } else if (minFreq < 18000) {
                         quantizerLevel = 9;
                         krBase = 1 / 8;
                     } else {
@@ -2142,14 +2142,15 @@
                     }
                     this.bandPlan.push({ minFreq, maxFreq, quantizerLevel, krBase });
                 }
-                if (qp >= 52) {
-                    // Disable > 12000Hz bands
+                if (this.qp >= 52) {
+                    const cutoff = this.qp >= 56 ? 8000 : 12000;
                     for (let b = 0; b < this.bandPlan.length; b++) {
-                        if (this.bandPlan[b].minFreq > 12000) {
+                        if (this.bandPlan[b].maxFreq > cutoff) {
                             this.bandPlan[b].quantizerLevel = 15;
                         }
                     }
                 }
+                this.bandPlan[0].krBase = 1.5; // 提升最低频段的保留率
 
                 // 构造双通道静态量化方案
                 this.quantLevelsCache = [];
@@ -2167,10 +2168,17 @@
                         lmrPlanArr[i] = Math.min(quantizerLevel + offset + 3, 9);
                     }
                 }
+
+                // 调试：强制单声道
+                // if (this.qp >= 52) {
+                //     lmrPlanArr.fill(15);
+                // }
+
                 this.quantLevelsCache.push(lprPlanArr);
                 this.quantLevelsCache.push(lmrPlanArr);
 
                 // 写入header
+                console.log(this.bandPlan);
                 console.log(lprPlanArr);
                 console.log(lmrPlanArr);
 
@@ -2258,7 +2266,6 @@
                         const blockData = mdctCoeffs.slice(start, end);
 
                         const energy = blockData.reduce((sum, val) => sum + Math.abs(val), 0);
-                        console.log(`Band ${bIdx}: energy=${energy.toFixed(10)}`);
                         if (energy < 0.000001) {
                             continue;
                         }
