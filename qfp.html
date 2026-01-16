@@ -65,13 +65,22 @@
             margin-bottom: 20px;
         }
 
-        canvas {
+        #visualizer,
+        #spectrum {
             width: 100%;
             height: 150px;
             background-color: #000;
-            /* Dark canvas */
             border: 1px solid #333;
+            display: block;
+        }
+
+        #spectrum {
             margin-top: 16px;
+            border-bottom: none;
+        }
+
+        #visualizer {
+            margin-top: 0;
         }
 
         button,
@@ -203,6 +212,7 @@
             </div>
             <div id="time" class="time">00:00 / 00:00</div>
         </div>
+        <canvas id="spectrum"></canvas>
         <canvas id="visualizer"></canvas>
 
         <h2>编码器</h2>
@@ -280,15 +290,20 @@
     <script src="lib/pako.1.0.11.js"></script>
     <script>
 
-        const dpr = window.devicePixelRatio;
+        const dpr = window.devicePixelRatio || 1;
         const visualizerCanvas = document.getElementById('visualizer');
         const visualizerCtx = visualizerCanvas.getContext('2d');
+        const spectrumCanvas = document.getElementById('spectrum');
+        const spectrumCtx = spectrumCanvas.getContext('2d');
 
         function initCanvas() {
-            visualizerCanvas.width = visualizerCanvas.clientWidth * dpr;
-            visualizerCanvas.height = visualizerCanvas.clientHeight * dpr;
+            [visualizerCanvas, spectrumCanvas].forEach(canvas => {
+                canvas.width = canvas.clientWidth * dpr;
+                canvas.height = canvas.clientHeight * dpr;
+            });
         }
         initCanvas();
+        window.addEventListener('resize', initCanvas);
 
         const ctx = new AudioContext({ latencyHint: "balanced" });
 
@@ -297,7 +312,12 @@
         analyser.fftSize = 2048; // Size of the FFT
 
         const bufferLength = analyser.frequencyBinCount;
-        const dataArray = new Uint8Array(bufferLength);
+        const dataArray = new Float32Array(bufferLength);
+        const byteDataArray = new Uint8Array(bufferLength);
+
+        // 用于平滑显示的 dB 范围
+        let smoothedMinDb = -100;
+        let smoothedMaxDb = -30;
 
         const fileInfo = document.getElementById("fileinfo");
         const timeDisplay = document.getElementById("time")
@@ -453,44 +473,128 @@
             [0xff, 0xd3, 0x80]
         ];
 
-        function drawFFT() {
-            // 将当前画布内容向上移动一行（垂直滚动视觉效果）
+        let lastTimestamp = 0;
+        function drawFFT(timestamp) {
+            if (!lastTimestamp) lastTimestamp = timestamp;
+            const dt = (timestamp - lastTimestamp) / 1000;
+            lastTimestamp = timestamp;
+
+            // 频谱图清除
+            spectrumCtx.clearRect(0, 0, spectrumCanvas.width, spectrumCanvas.height);
+
+            // 将当前瀑布图画布内容向上移动一行
             visualizerCtx.drawImage(visualizerCanvas, 0, 1, visualizerCanvas.width, visualizerCanvas.height);
 
-            // 检查音频分析器和数据数组是否已定义
             if (analyser && dataArray) {
-                // 从音频分析器获取频率数据
-                analyser.getByteFrequencyData(dataArray);
+                // 使用 Float32Array 获取精确的 dB 数据
+                analyser.getFloatFrequencyData(dataArray);
+                // 使用 Uint8Array 获取用于瀑布图的字节数据（性能更好且足够）
+                analyser.getByteFrequencyData(byteDataArray);
 
-                const bufferLength = analyser.frequencyBinCount; // 获取频率数据长度
-                const barWidth = (visualizerCanvas.width / bufferLength); // 每个频率条的宽度
+                const bufferLength = dataArray.length;
+                const sw = spectrumCanvas.width;
+                const sh = spectrumCanvas.height;
 
-                // 遍历画布的宽度，为每个像素列绘制相应的频率条
+                // --- 0. 计算自适应 dB 范围 (平滑处理) ---
+                let currentMax = -Infinity;
+                let currentMin = Infinity;
+
+                // 采样主要信号范围来决定缩放 (忽略极低频和极高频可能更稳定，或者全采样)
+                // 这里我们全采样以获取真实动态范围
+                for (let i = 0; i < bufferLength; i++) {
+                    const val = dataArray[i];
+                    if (val === -Infinity) continue;
+                    if (val > currentMax) currentMax = val;
+                    if (val < currentMin) currentMin = val;
+                }
+
+                // 如果没有有效数据，回退到默认
+                if (currentMax === -Infinity) {
+                    currentMax = -30;
+                    currentMin = -100;
+                }
+
+                // 添加一些边距
+                const targetMax = currentMax + 10;
+                const targetMin = Math.max(-120, Math.min(targetMax - 40, currentMin - 10)); // 至少保持 40dB 动态范围，且不低于 -120dB
+
+                // 帧率无关平滑：alpha = 1 - e^(-dt * speed)
+                const lerpAlpha = 1 - Math.exp(-dt * 1);
+                smoothedMaxDb += (targetMax - smoothedMaxDb) * lerpAlpha;
+                smoothedMinDb += (targetMin - smoothedMinDb) * lerpAlpha;
+
+                const minDb = smoothedMinDb;
+                const maxDb = smoothedMaxDb;
+
+                // --- 1. 绘制频谱曲线 (Spectrum Canvas) ---
+                spectrumCtx.beginPath();
+                spectrumCtx.strokeStyle = '#8e4bec';
+                spectrumCtx.lineWidth = 1.5 * dpr;
+                spectrumCtx.lineJoin = 'round';
+
+                for (let i = 0; i < sw; i++) {
+                    const dataIdx = Math.floor(i / sw * bufferLength);
+                    const dbVal = dataArray[dataIdx];
+                    // 裁剪 dB 值到当前显示范围内
+                    const clippedDb = Math.max(minDb, Math.min(maxDb, dbVal));
+                    const y = sh - ((clippedDb - minDb) / (maxDb - minDb)) * sh;
+                    if (i === 0) spectrumCtx.moveTo(i, y);
+                    else spectrumCtx.lineTo(i, y);
+                }
+                spectrumCtx.stroke();
+
+                // --- 2. 绘制网格/Legend (Spectrum Canvas, 在曲线上方) ---
+                spectrumCtx.strokeStyle = '#ffffff22';
+                spectrumCtx.fillStyle = '#cccccc';
+                spectrumCtx.font = (11 * dpr) + 'px sans-serif';
+                spectrumCtx.lineWidth = 1;
+
+                // 频率刻度 (X轴) - 4k
+                const sampleRate = ctx.sampleRate;
+                const maxFreq = sampleRate / 2;
+                const freqInterval = 4000;
+                for (let f = freqInterval; f < maxFreq; f += freqInterval) {
+                    const x = (f / maxFreq) * sw;
+                    spectrumCtx.beginPath();
+                    spectrumCtx.moveTo(x, 0);
+                    spectrumCtx.lineTo(x, sh);
+                    spectrumCtx.stroke();
+                    spectrumCtx.fillText((f / 1000) + 'k', x + 2, sh - 5);
+                }
+
+                // 动态 dB 刻度 (Y轴)
+                // 每 20dB 画一条线
+                const step = 20;
+                const startDb = Math.ceil(minDb / step) * step;
+                for (let db = startDb; db <= maxDb; db += step) {
+                    const y = sh - ((db - minDb) / (maxDb - minDb)) * sh;
+                    if (y < 0 || y > sh) continue;
+                    spectrumCtx.beginPath();
+                    spectrumCtx.moveTo(0, y);
+                    spectrumCtx.lineTo(sw, y);
+                    spectrumCtx.stroke();
+                    spectrumCtx.fillText(db + ' dB', 5, y - 5);
+                }
+
+
+                // --- 3. 绘制瀑布图新行 (Visualizer Canvas) ---
                 for (let i = 0; i < visualizerCanvas.width; i++) {
-                    // 将画布的像素索引映射到频率数据数组的索引
-                    let index = Math.floor(i / visualizerCanvas.width * dataArray.length);
-
-                    // 设置颜色，颜色基于数据值的比例计算
-                    visualizerCtx.fillStyle = colorTrans(palette, dataArray[index] / 255);
-
-                    // 绘制一个单像素宽的条形，垂直堆叠
+                    let index = Math.floor(i / visualizerCanvas.width * bufferLength);
+                    visualizerCtx.fillStyle = colorTrans(palette, byteDataArray[index] / 255);
                     visualizerCtx.fillRect(i, 0, 1, 1);
                 }
 
-                // 绘制分频带指示线（用于标记特定频率）
-                visualizerCtx.fillStyle = '#ffffff80'; // 设置透明白色
+                // 绘制分频带指示线 (Visualizer)
+                visualizerCtx.fillStyle = '#ffffff40';
                 SUB_BANDS.slice(1).forEach(e => {
-                    // 将分频带频率转换为画布上的 X 坐标
-                    const x = e[0] / ctx.sampleRate * visualizerCanvas.width * 2;
-
-                    // 在对应频率位置画一条细线
+                    const x = e[0] / maxFreq * visualizerCanvas.width;
                     visualizerCtx.fillRect(x, 0, 1, 1);
                 });
             }
 
-            // 请求下一帧动画以实现循环绘制
             requestAnimationFrame(drawFFT);
         }
+
 
         // 启动绘制循环
         requestAnimationFrame(drawFFT);
@@ -2136,9 +2240,12 @@
                     } else if (minFreq < 18000) {
                         quantizerLevel = 9;
                         krBase = 1 / 8;
-                    } else {
+                    } else if (minFreq >= 20000) {
                         quantizerLevel = 15;
                         krBase = 0.0;
+                    } else {
+                        quantizerLevel = 9;
+                        krBase = 1 / 8;
                     }
                     this.bandPlan.push({ minFreq, maxFreq, quantizerLevel, krBase });
                 }
