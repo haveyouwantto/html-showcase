@@ -2261,7 +2261,16 @@
 
                 // 构造双通道静态量化方案
                 this.quantLevelsCache = [];
-                const offset = this.qp >= 48 ? 3 : 0;
+                let offset;
+                if (this.qp >= 48) {
+                    offset = 3;
+                } else if (this.qp > 16 && this.qp <= 24) {
+                    offset = -3;
+                } else if (this.qp <= 16) {
+                    offset = -6;
+                } else {
+                    offset = 0;
+                }
                 const lprPlanArr = new Uint8Array(this.bandPlan.length);
                 const lmrPlanArr = new Uint8Array(this.bandPlan.length);
                 for (let i = 0; i < this.bandPlan.length; i++) {
@@ -2271,12 +2280,12 @@
                         lmrPlanArr[i] = 15;
                         continue;
                     } else {
-                        lprPlanArr[i] = Math.min(quantizerLevel + offset, 9);
+                        lprPlanArr[i] = clamp(quantizerLevel + offset, 0, 9);
                         // 当 QP >= 60 时，强制 LMR (侧声道) 为 15 (单声道模式)
                         if (this.qp >= 60) {
                             lmrPlanArr[i] = 15;
                         } else {
-                            lmrPlanArr[i] = Math.min(quantizerLevel + offset + 3, 9);
+                            lmrPlanArr[i] = clamp(quantizerLevel + offset + 3, 0, 9);
                         }
                     }
                 }
