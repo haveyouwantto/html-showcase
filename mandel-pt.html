@@ -139,6 +139,7 @@
             width: 100%;
             position: fixed;
             height: 4px;
+            background-color: #00000080;
         }
 
         .progress {
@@ -240,9 +241,58 @@
             gap: 8px;
         }
 
-        .running {
+        .running,
+        .rendering-video {
             outline: var(--theme-color) 4px solid;
+            pointer-events: none !important;
+            filter: grayscale(0.5);
             cursor: wait !important;
+        }
+
+        .video-progress-container {
+            width: 100%;
+            height: 6px;
+            background-color: #333;
+            overflow: hidden;
+            margin: 10px 0;
+        }
+
+        .video-progress-fill {
+            height: 100%;
+            background: white;
+            width: 0%;
+            transition: width 0.3s ease;
+        }
+
+        #video-progress-dialog {
+            background-color: #222;
+            color: white;
+            border: 1px solid #666;
+            padding: 20px;
+            box-shadow: 0 0 20px rgba(0, 0, 0, 0.8);
+            width: 350px;
+            text-align: center;
+        }
+
+        #video-progress-dialog h3 {
+            margin-top: 0;
+            color: white;
+        }
+
+        .video-btn-cancel {
+            background-color: #333;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            cursor: pointer;
+            font-weight: bold;
+            margin-top: 20px;
+            width: 100%;
+            transition: background-color 0.3s;
+        }
+
+        .video-btn-cancel:hover {
+            background-color: var(--theme-color);
         }
 
         #color-list {
@@ -448,6 +498,25 @@
         <input type="checkbox" id="smooth" checked><br>
         <button id="apply-iter">Apply</button>
         <button id="close-iter-dialog">Close</button>
+    </dialog>
+
+    <dialog id="video-progress-dialog">
+        <h3>Video Generation</h3>
+        <p id="video-stage">Initializing...</p>
+
+        <div style="text-align: left; font-size: 0.8rem; margin-bottom: 2px;">Overall Progress</div>
+        <div class="progress-container" style="height: 6px; margin: 5px 0 15px 0; position: relative; width: 100%;">
+            <div id="video-total-progress" class="progress"></div>
+        </div>
+
+        <div style="text-align: left; font-size: 0.8rem; margin-bottom: 2px;">Current Frame</div>
+        <div class="progress-container" style="height: 6px; margin: 5px 0 10px 0; position: relative; width: 100%;">
+            <div id="video-frame-progress" class="progress"></div>
+        </div>
+
+        <p id="video-status" style="font-size: 0.8rem; color: #aaa;">Please wait...</p>
+
+        <button id="video-cancel" class="video-btn-cancel">Cancel Video</button>
     </dialog>
 
     <script src="lib/decimal.9.0.0.js"></script>
@@ -3434,6 +3503,7 @@
                 const h4 = Math.floor(this.canvas.height / 4);
                 const w4 = Math.floor(this.canvas.width / 4);
 
+                let inheritedPixels = 0;
                 for (let y = 0; y < this.canvas.height; y += 2) {
                     const row = this.iterMap[y];
                     if (!row) continue;
@@ -3441,10 +3511,12 @@
                     if (!targetRow) continue;
                     for (let x = 0; x < this.canvas.width; x += 2) {
                         targetRow[w4 + (x >> 1)] = row[x];
+                        inheritedPixels++;
                     }
                 }
                 this.iterMap = newMap;
                 this.size = this.size.mul(2);
+                this.stats.guess += inheritedPixels; // Correctly attribute inherited pixels to progress
 
                 // Scale down existing canvas content to match the new zoom level
                 const tempCanvas = document.createElement('canvas');
@@ -3560,7 +3632,7 @@
              * @returns {number} - The iteration of the given point.
              */
             getIter(x, y) {
-                if (x >= this.canvas.width || x < 0 || y >= this.canvas.height || y <= 0) return -1
+                if (x >= this.canvas.width || x < 0 || y >= this.canvas.height || y < 0) return -1
                 return this.iterMap[y][x];
             }
 
@@ -3573,6 +3645,7 @@
              * @param {number} h - The height of the pixel.
              */
             setIter(x, y, it, w = 1, h = 1) {
+                if (x < 0 || x >= this.canvas.width || y < 0 || y >= this.canvas.height) return;
                 this.iterMap[y][x] = it;
 
                 const color = getColor(it, this.iterations);
@@ -3585,12 +3658,14 @@
                     this.image.data[i + 3] = 255
                 } else {
                     for (let dy = 0; dy < h; dy++) {
+                        if (y + dy >= this.canvas.height) break;
                         for (let dx = 0; dx < w; dx++) {
-                            let j = (dy * this.canvas.width + dx) << 2;
-                            this.image.data[i + j] = color[0]
-                            this.image.data[i + j + 1] = color[1]
-                            this.image.data[i + j + 2] = color[2]
-                            this.image.data[i + j + 3] = 255
+                            if (x + dx >= this.canvas.width) break;
+                            let j = ((y + dy) * this.canvas.width + (x + dx)) << 2;
+                            this.image.data[j] = color[0]
+                            this.image.data[j + 1] = color[1]
+                            this.image.data[j + 2] = color[2]
+                            this.image.data[j + 3] = 255
                         }
                     }
                 }
@@ -3640,11 +3715,19 @@
 
                 const lock = await acquireWakelock();
                 try {
+                    let preCalculated = 0;
+                    for (let y = 0; y < this.canvas.height; y++) {
+                        const row = this.iterMap[y];
+                        for (let x = 0; x < this.canvas.width; x++) {
+                            if (row[x] > -1) preCalculated++;
+                        }
+                    }
+
                     this.stats = {
                         ref: 0,
                         refC: 0,
                         calc: 0,
-                        guess: 0,
+                        guess: preCalculated,
                         approx: 0,
                         time: performance.now()
                     };
@@ -4094,18 +4177,33 @@
 
             }
 
-            async renderFrames() {
+            async renderFrames(onProgress) {
                 let frames = [];
                 let refreshRef = false;
                 this.videoRendering = true;
-                const initialSize = this.size;
-                const initialIterations = this.iterations;
 
                 try {
+                    // Store initial state to teleport back later
+                    const initialIterations = this.iterations;
+
                     while (this.size.doubleValue() < 32) {
                         if (this.requestForCancel) break;
-                        this.stats.statusText = `Rendering Video Frames: ${frames.length + 1}`;
+
+                        const currentFrameIdx = frames.length + 1;
+                        if (onProgress) onProgress(currentFrameIdx, 0, "Rendering Frame " + currentFrameIdx);
+
+                        // Capture local progress from update
+                        const originalUpdateProgress = this.updateProgress;
+                        this.updateProgress = () => {
+                            const totalPixels = this.canvas.width * this.canvas.height;
+                            const prog = (this.stats.calc + this.stats.guess) / totalPixels;
+                            if (onProgress) onProgress(currentFrameIdx, prog, `Rendering Frame ${currentFrameIdx}`);
+                            originalUpdateProgress.call(this);
+                        };
+
                         await this.update();
+                        this.updateProgress = originalUpdateProgress;
+
                         if (this.requestForCancel) break;
 
                         let url = canvas.toDataURL('image/png');
@@ -4686,6 +4784,14 @@
             const canvas = mandelbrot.canvas;
             const ctx = mandelbrot.context;
 
+            const dialog = document.getElementById("video-progress-dialog");
+            const totalProgBar = document.getElementById("video-total-progress");
+            const frameProgBar = document.getElementById("video-frame-progress");
+            const stageText = document.getElementById("video-stage");
+            const statusText = document.getElementById("video-status");
+            const cancelBtn = document.getElementById("video-cancel");
+            const sidebar = document.getElementById("sidebar");
+
             // Store initial state to teleport back later
             const initialState = {
                 center: mandelbrot.center.copy(),
@@ -4697,22 +4803,50 @@
                 iterMap: mandelbrot.iterMap.map(row => new Float64Array(row))
             };
 
+            const cleanup = () => {
+                sidebar.classList.remove("rendering-video");
+                dialog.close();
+                cancelBtn.onclick = null; // Remove event listener to prevent memory leaks
+            };
+
+            const updateUI = (total, frame, stage, status) => {
+                totalProgBar.style.width = (total * 100) + "%";
+                frameProgBar.style.width = (frame * 100) + "%";
+                if (stage) stageText.innerText = stage;
+                if (status) statusText.innerText = status;
+            };
+
+            cancelBtn.onclick = () => {
+                mandelbrot.requestForCancel = true;
+                statusText.innerText = "Cancelling...";
+            };
+
+            sidebar.classList.add("rendering-video");
+            dialog.showModal();
+            updateUI(0, 0, "Initializing", "Preparing frames...");
+
             try {
-                const keyFrames = await mandelbrot.renderFrames();
-                if (!keyFrames || keyFrames.length < 2) {
+                // Approximate total octaves for progress calculation
+                const maxFrames = Math.ceil(Math.log2(32 / mandelbrot.size.doubleValue()));
+
+                const keyFrames = await mandelbrot.renderFrames((frameIdx, frameProg, status) => {
+                    const totalProg = Math.min(0.99, (frameIdx - 1 + frameProg) / maxFrames);
+                    updateUI(totalProg, frameProg, "Collection Phase", status);
+                });
+
+                if (mandelbrot.requestForCancel || !keyFrames || keyFrames.length < 2) {
                     console.log("Video rendering cancelled or insufficient frames.");
                     return;
                 }
 
-                console.log("Collected frames:", keyFrames.length);
+                updateUI(1, 0, "Recording Phase", "Preparing MediaRecorder...");
 
                 const stream = canvas.captureStream(30); // Use 30 FPS for better compatibility
                 let recorder;
                 const types = ['video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm'];
                 for (const type of types) {
                     if (MediaRecorder.isTypeSupported(type)) {
-                        recorder = new MediaRecorder(stream, { mimeType: type, videoBitsPerSecond: 8000000 });
-                        console.log("Using MIME type:", type);
+                        recorder = new MediaRecorder(stream, { mimeType: type, videoBitsPerSecond: 12000000 });
                         break;
                     }
                 }
@@ -4735,6 +4869,10 @@
                 const secondsPerOctave = 1.0;
 
                 const renderer = (timestamp) => {
+                    if (mandelbrot.requestForCancel) {
+                        recorder.stop();
+                        return;
+                    }
                     if (!startTime) startTime = timestamp;
                     const elapsedSeconds = (timestamp - startTime) / 1000;
                     const indexFl = elapsedSeconds / secondsPerOctave;
@@ -4745,11 +4883,14 @@
                         return;
                     }
 
+                    const progress = indexFl / (keyFrames.length - 1);
+                    const currFrameProg = indexFl - i;
+                    updateUI(progress, currFrameProg, "Recording Phase", `Frame ${i + 1} of ${keyFrames.length}`);
+
                     const currFrame = keyFrames[i];
                     const nextFrame = keyFrames[i + 1];
 
-                    const decimalPart = indexFl - i;
-                    const scale1 = Math.pow(2, decimalPart);
+                    const scale1 = Math.pow(2, currFrameProg);
                     const scale2 = scale1 * 0.5;
 
                     const w = canvas.width;
@@ -4770,7 +4911,7 @@
                     );
 
                     // Cross-fade image2 (inner)
-                    ctx.globalAlpha = Math.max(0, Math.min(1, (decimalPart - 0.1) / 0.8));
+                    ctx.globalAlpha = Math.max(0, Math.min(1, (currFrameProg - 0.1) / 0.8));
                     ctx.drawImage(nextFrame.frame,
                         cx - (w * scale2) / 2, cy - (h * scale2) / 2,
                         w * scale2, h * scale2
@@ -4787,7 +4928,7 @@
                     ctx.lineWidth = 1;
 
                     const scaleBase = FloatExp.FOUR.div(currFrame.scale);
-                    const currScale = FloatExp.fromLog2(scaleBase.log2Value() + decimalPart);
+                    const currScale = FloatExp.fromLog2(scaleBase.log2Value() + currFrameProg);
 
                     const zoomText = `Zoom: ${currScale.exp < 7 ? currScale.doubleValue().toFixed(2) : currScale.base.toFixed(2) + 'E' + currScale.exp}x`;
 
@@ -4795,9 +4936,6 @@
                     ctx.fillText(zoomText, 20, 20);
 
                     ctx.restore();
-
-                    mandelbrot.stats.statusText = `Recording: ${((indexFl / (keyFrames.length - 1)) * 100).toFixed(1)}%`;
-                    mandelbrot.showInfo();
 
                     if (recorder.state === "recording") {
                         requestAnimationFrame(renderer);
@@ -4808,19 +4946,23 @@
                 requestAnimationFrame(renderer);
                 await recordingFinished;
 
-                const blob = new Blob(data, { type: 'video/webm' });
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.download = `mandelbrot-zoom-${Date.now()}.webm`;
-                a.href = url;
-                a.click();
-                URL.revokeObjectURL(url);
+                if (!mandelbrot.requestForCancel) {
+                    updateUI(1, 1, "Finished", "Downloading video...");
+                    const blob = new Blob(data, { type: 'video/webm' });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.download = `mandelbrot-zoom-${Date.now()}.webm`;
+                    a.href = url;
+                    a.click();
+                    URL.revokeObjectURL(url);
+                }
 
             } catch (err) {
                 console.error("Video error:", err);
                 alert("Video error: " + err.message);
             } finally {
-                console.log("Restoring state...");
+                cleanup();
+                console.log("Restoring initial state...");
                 mandelbrot.center = initialState.center;
                 mandelbrot.size = initialState.size;
                 mandelbrot.iterations = initialState.iterations;
@@ -4828,7 +4970,7 @@
                 mandelbrot.refValid = initialState.refValid;
                 mandelbrot.smooth = initialState.smooth;
                 mandelbrot.iterMap = initialState.iterMap;
-
+                mandelbrot.requestForCancel = false; // Reset cancellation flag
                 mandelbrot.recolorize();
                 mandelbrot.update();
             }
