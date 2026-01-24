@@ -1254,6 +1254,10 @@
                 const imagPart = this.re.plus(this.re).times(this.im);     // 2ab
                 return new DeepComplex(realPart, imagPart);
             }
+
+            copy() {
+                return new DeepComplex(this.re.add(0), this.im.add(0));
+            }
         }
 
         class FloatExpComplex {
@@ -3426,18 +3430,34 @@
             }
 
             zoomOut() {
-                let newMap = [...new Array(this.canvas.height)].map(e => [...new Array(this.canvas.width)].map(e => 0))
+                const newMap = [...new Array(this.canvas.height)].map(e => new Float64Array(this.canvas.width).fill(-1));
+                const h4 = Math.floor(this.canvas.height / 4);
+                const w4 = Math.floor(this.canvas.width / 4);
+
                 for (let y = 0; y < this.canvas.height; y += 2) {
+                    const row = this.iterMap[y];
+                    if (!row) continue;
+                    const targetRow = newMap[h4 + (y >> 1)];
+                    if (!targetRow) continue;
                     for (let x = 0; x < this.canvas.width; x += 2) {
-                        newMap
-                        [this.canvas.height / 4 + y / 2]
-                        [this.canvas.width / 4 + x / 2]
-                            =
-                            this.iterMap[y][x];
+                        targetRow[w4 + (x >> 1)] = row[x];
                     }
                 }
                 this.iterMap = newMap;
                 this.size = this.size.mul(2);
+
+                // Scale down existing canvas content to match the new zoom level
+                const tempCanvas = document.createElement('canvas');
+                tempCanvas.width = this.canvas.width;
+                tempCanvas.height = this.canvas.height;
+                const tempCtx = tempCanvas.getContext('2d');
+                tempCtx.drawImage(this.canvas, 0, 0);
+
+                this.context.clearRect(0, 0, this.canvas.width, this.canvas.height);
+                this.context.drawImage(tempCanvas,
+                    0, 0, this.canvas.width, this.canvas.height,
+                    w4, h4, this.canvas.width / 2, this.canvas.height / 2
+                );
             }
 
             /**
@@ -4078,24 +4098,41 @@
                 let frames = [];
                 let refreshRef = false;
                 this.videoRendering = true;
-                while (this.size.doubleValue() < 32) {
-                    await this.update();
-                    let url = canvas.toDataURL('image/png');
-                    let img = document.createElement('img');
-                    img.src = url;
-                    frames.push({ frame: img, scale: this.size });
-                    this.zoomOut();
-                    if (this.size.exp > -20 && !refreshRef) {
-                        this.center = new DeepComplex(
-                            new Decimal(this.center.re.toPrecision(30)),
-                            new Decimal(this.center.im.toPrecision(30))
-                        )
-                        this.refValid = false;
-                        this.iterations = 256;
-                        refreshRef = true;
+                const initialSize = this.size;
+                const initialIterations = this.iterations;
+
+                try {
+                    while (this.size.doubleValue() < 32) {
+                        if (this.requestForCancel) break;
+                        this.stats.statusText = `Rendering Video Frames: ${frames.length + 1}`;
+                        await this.update();
+                        if (this.requestForCancel) break;
+
+                        let url = canvas.toDataURL('image/png');
+                        let img = new Image();
+                        await new Promise((resolve) => {
+                            img.onload = resolve;
+                            img.src = url;
+                        });
+
+                        frames.push({ frame: img, scale: this.size.copy() });
+                        this.zoomOut();
+
+                        // Reference point management during zoom out
+                        if (this.size.exp > -20 && !refreshRef) {
+                            this.center = new DeepComplex(
+                                new Decimal(this.center.re.toPrecision(30)),
+                                new Decimal(this.center.im.toPrecision(30))
+                            )
+                            this.refValid = false;
+                            this.iterations = Math.min(this.iterations, 1024);
+                            refreshRef = true;
+                        }
                     }
+                } finally {
+                    this.videoRendering = false;
                 }
-                this.videoRendering = false;
+
                 return frames.reverse();
             }
         }
@@ -4646,108 +4683,155 @@
 
         // Trigger file upload when a button is clicked
         document.getElementById("makeVideo").addEventListener('click', async () => {
-            alert('This feature is not fixed yet');
-            return
-            const keyFrames = await mandelbrot.renderFrames();
-            console.log(keyFrames);
+            const canvas = mandelbrot.canvas;
+            const ctx = mandelbrot.context;
 
-            const stream = canvas.captureStream();
-            const recorder = new MediaRecorder(stream, { mimeType: 'video/webm;codecs=h264', videoBitsPerSecond: 10000000 });
-            const data = [];
-            recorder.ondataavailable = function (event) {
-                if (event.data && event.data.size) {
-                    data.push(event.data);
-                }
+            // Store initial state to teleport back later
+            const initialState = {
+                center: mandelbrot.center.copy(),
+                size: mandelbrot.size.copy(),
+                iterations: mandelbrot.iterations,
+                ref: mandelbrot.ref,
+                refValid: mandelbrot.refValid,
+                smooth: mandelbrot.smooth,
+                iterMap: mandelbrot.iterMap.map(row => new Float64Array(row))
             };
-            recorder.onstop = () => {
-                const url = URL.createObjectURL(new Blob(data, { type: 'video/webm' }));
-                console.log('video url', url)
-                var a = document.createElement('a');
-                a.download = 'file.webm';
+
+            try {
+                const keyFrames = await mandelbrot.renderFrames();
+                if (!keyFrames || keyFrames.length < 2) {
+                    console.log("Video rendering cancelled or insufficient frames.");
+                    return;
+                }
+
+                console.log("Collected frames:", keyFrames.length);
+
+                const stream = canvas.captureStream(30); // Use 30 FPS for better compatibility
+                let recorder;
+                const types = ['video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm'];
+                for (const type of types) {
+                    if (MediaRecorder.isTypeSupported(type)) {
+                        recorder = new MediaRecorder(stream, { mimeType: type, videoBitsPerSecond: 8000000 });
+                        console.log("Using MIME type:", type);
+                        break;
+                    }
+                }
+
+                if (!recorder) {
+                    throw new Error("No supported MediaRecorder MIME type found.");
+                }
+
+                const data = [];
+                recorder.ondataavailable = (event) => {
+                    if (event.data && event.data.size > 0) data.push(event.data);
+                };
+
+                const recordingFinished = new Promise((resolve, reject) => {
+                    recorder.onstop = () => resolve();
+                    recorder.onerror = (err) => reject(err);
+                });
+
+                let startTime = null;
+                const secondsPerOctave = 1.0;
+
+                const renderer = (timestamp) => {
+                    if (!startTime) startTime = timestamp;
+                    const elapsedSeconds = (timestamp - startTime) / 1000;
+                    const indexFl = elapsedSeconds / secondsPerOctave;
+
+                    let i = Math.floor(indexFl);
+                    if (i >= keyFrames.length - 1) {
+                        recorder.stop();
+                        return;
+                    }
+
+                    const currFrame = keyFrames[i];
+                    const nextFrame = keyFrames[i + 1];
+
+                    const decimalPart = indexFl - i;
+                    const scale1 = Math.pow(2, decimalPart);
+                    const scale2 = scale1 * 0.5;
+
+                    const w = canvas.width;
+                    const h = canvas.height;
+                    const cx = w / 2;
+                    const cy = h / 2;
+
+                    ctx.save();
+                    ctx.globalCompositeOperation = 'source-over';
+                    ctx.imageSmoothingEnabled = true;
+                    ctx.clearRect(0, 0, w, h);
+
+                    // Draw image1 (outer)
+                    ctx.globalAlpha = 1.0;
+                    ctx.drawImage(currFrame.frame,
+                        cx - (w * scale1) / 2, cy - (h * scale1) / 2,
+                        w * scale1, h * scale1
+                    );
+
+                    // Cross-fade image2 (inner)
+                    ctx.globalAlpha = Math.max(0, Math.min(1, (decimalPart - 0.1) / 0.8));
+                    ctx.drawImage(nextFrame.frame,
+                        cx - (w * scale2) / 2, cy - (h * scale2) / 2,
+                        w * scale2, h * scale2
+                    );
+
+                    ctx.globalAlpha = 1.0;
+
+                    // UI Overlay
+                    ctx.font = 'bold 26px Arial';
+                    ctx.textAlign = 'left';
+                    ctx.textBaseline = 'top';
+                    ctx.fillStyle = 'white';
+                    ctx.strokeStyle = 'black';
+                    ctx.lineWidth = 1;
+
+                    const scaleBase = FloatExp.FOUR.div(currFrame.scale);
+                    const currScale = FloatExp.fromLog2(scaleBase.log2Value() + decimalPart);
+
+                    const zoomText = `Zoom: ${currScale.exp < 7 ? currScale.doubleValue().toFixed(2) : currScale.base.toFixed(2) + 'E' + currScale.exp}x`;
+
+                    ctx.strokeText(zoomText, 20, 20);
+                    ctx.fillText(zoomText, 20, 20);
+
+                    ctx.restore();
+
+                    mandelbrot.stats.statusText = `Recording: ${((indexFl / (keyFrames.length - 1)) * 100).toFixed(1)}%`;
+                    mandelbrot.showInfo();
+
+                    if (recorder.state === "recording") {
+                        requestAnimationFrame(renderer);
+                    }
+                };
+
+                recorder.start();
+                requestAnimationFrame(renderer);
+                await recordingFinished;
+
+                const blob = new Blob(data, { type: 'video/webm' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.download = `mandelbrot-zoom-${Date.now()}.webm`;
                 a.href = url;
                 a.click();
+                URL.revokeObjectURL(url);
 
-            };
+            } catch (err) {
+                console.error("Video error:", err);
+                alert("Video error: " + err.message);
+            } finally {
+                console.log("Restoring state...");
+                mandelbrot.center = initialState.center;
+                mandelbrot.size = initialState.size;
+                mandelbrot.iterations = initialState.iterations;
+                mandelbrot.ref = initialState.ref;
+                mandelbrot.refValid = initialState.refValid;
+                mandelbrot.smooth = initialState.smooth;
+                mandelbrot.iterMap = initialState.iterMap;
 
-            let indexFl = 0;
-            let ctx = canvas.getContext('2d')
-
-            ctx.font = 'bold 26px Arial';
-            ctx.textAlign = 'left';
-            ctx.textBaseline = 'top';
-            ctx.fillStyle = 'white';
-            ctx.strokeStyle = 'black';
-            ctx.lineWidth = 1;
-
-            const renderer = () => {
-                // Ensure `keyFrames` array is defined and has elements
-                if (!keyFrames || keyFrames.length < 2) {
-                    console.error("keyFrames array is either undefined or contains fewer than 2 frames.");
-                    recorder.stop();
-                    return;
-                }
-
-                // Calculate indices and verify bounds
-                let i = Math.floor(indexFl);
-                if (i < 0 || i + 1 >= keyFrames.length) {
-                    recorder.stop();
-                    return;
-                }
-
-                // Get the two images for the transition
-                const image1 = keyFrames[i].frame;
-                const image2 = keyFrames[i + 1].frame;
-
-                // Calculate scaling factors
-                const decimalPart = indexFl - i; // Fractional part of the index
-                const scale1 = Math.pow(2, decimalPart); // Scale for image1
-                const scale2 = scale1 * .5; // Scale for image2 (fixed at half size)
-
-                // Clear canvas (assuming canvas context is `ctx`)
-                ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-                // Draw image1 at center with scaling factor `scale1`
-                const centerX = canvas.width / 2;
-                const centerY = canvas.height / 2;
-
-                ctx.drawImage(image1,
-                    centerX - canvas.width * scale1 / 2,
-                    centerY - canvas.height * scale1 / 2,
-                    canvas.width * scale1,
-                    canvas.width * scale1
-                );
-
-
-                ctx.drawImage(image2,
-                    centerX - canvas.width * scale2 / 2,
-                    centerY - canvas.height * scale2 / 2,
-                    canvas.width * scale2,
-                    canvas.width * scale2
-                );
-
-                more.innerText = indexFl.toFixed(2);
-
-                const scale = FloatExp.FOUR.div(keyFrames[i].scale);
-                const currScale = FloatExp.fromLog2(scale.log2Value() + decimalPart);
-
-                let zoomText;
-                if (currScale.exp < 7) {
-                    zoomText = currScale.doubleValue().toFixed(2);
-                } else zoomText = `${currScale.base.toFixed(2)}E${currScale.exp}`
-
-                ctx.fillText(zoomText, 8, 8)
-                ctx.strokeText(zoomText, 8, 8)
-
-                // Increment index for the next frame
-                indexFl += 1 / 60;
-
-                // Loop `renderer` to maintain animation (assuming 60fps rendering)
-                requestAnimationFrame(renderer);
-            };
-
-            // Start the renderer
-            recorder.start();
-            requestAnimationFrame(renderer);
+                mandelbrot.recolorize();
+                mandelbrot.update();
+            }
         });
 
         function generateRandomPalette(size) {
