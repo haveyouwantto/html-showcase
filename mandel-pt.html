@@ -5623,17 +5623,22 @@
                 ctx.imageSmoothingEnabled = true;
 
                 // 1. Zoom Text Overlay (Always drawn)
-                ctx.font = `bold ${Math.round(w / 40)}px Arial`;
-                ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
-                ctx.strokeStyle = 'rgba(0, 0, 0, 0.9)';
-                ctx.lineWidth = Math.max(1, w / 1000);
-
                 const scaleBase = FloatExp.FOUR.div(kfLower.scale);
                 const currScale = FloatExp.fromLog2(scaleBase.log2Value() + blend);
                 const zoomText = `Zoom: ${currScale.exp < 7 ? currScale.doubleValue().toFixed(2) : currScale.base.toFixed(2) + 'E' + currScale.exp}`;
 
-                ctx.strokeText(zoomText, w * 0.05, h * 0.05);
-                ctx.fillText(zoomText, w * 0.05, h * 0.05);
+                ctx.font = `${Math.round(w / 60)}px monospace`;
+                const zoomMetrics = ctx.measureText(zoomText);
+                const zoomPadding = 8;
+                const zoomRectW = zoomMetrics.width + zoomPadding * 2;
+                const zoomRectH = Math.round(w / 40);
+
+                ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+                ctx.fillRect(20, 20, zoomRectW, zoomRectH);
+
+                ctx.fillStyle = 'white';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(zoomText, 20 + zoomPadding, 20 + zoomRectH / 2);
 
                 // 2. Frame Label (Only for editor preview, not export)
                 if (!useCanvas) {
