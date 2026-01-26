@@ -343,6 +343,300 @@
             border-radius: 0 !important;
         }
 
+        /* Video Editor Styles */
+        .video-editor-fullscreen {
+            width: 95vw;
+            max-width: 1600px;
+            height: 90vh;
+            max-height: none;
+            padding: 0;
+            background-color: #1a1a1a;
+            color: #fff;
+            border: 2px solid var(--theme-color);
+        }
+
+        .video-editor-container {
+            display: flex;
+            flex-direction: column;
+            height: 100%;
+        }
+
+        .editor-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 15px 20px;
+            background-color: #222;
+            border-bottom: 2px solid var(--theme-color);
+        }
+
+        .editor-header h2 {
+            margin: 0;
+            font-size: 1.5rem;
+        }
+
+        .editor-close-btn {
+            background: none;
+            border: none;
+            color: #fff;
+            font-size: 2rem;
+            cursor: pointer;
+            padding: 0;
+            width: 40px;
+            height: 40px;
+            line-height: 1;
+        }
+
+        .editor-close-btn:hover {
+            color: var(--theme-color);
+        }
+
+        .editor-main {
+            display: flex;
+            flex: 1;
+            overflow: hidden;
+        }
+
+        .editor-left {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            padding: 20px;
+            overflow-y: auto;
+        }
+
+        .editor-right {
+            width: 320px;
+            padding: 20px;
+            background-color: #1f1f1f;
+            border-left: 1px solid #333;
+            overflow-y: auto;
+        }
+
+        .preview-section {
+            margin-bottom: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            background-color: #000;
+            padding: 10px;
+            border: 1px solid #333;
+            position: relative;
+        }
+
+        #editor-preview-wrapper:fullscreen {
+            width: 100vw;
+            height: 100vh;
+            justify-content: center;
+            padding: 0;
+            margin: 0;
+            border: none;
+        }
+
+        #editor-preview-wrapper:fullscreen canvas {
+            max-height: 85vh;
+        }
+
+        #editor-preview-wrapper:fullscreen .playback-controls {
+            padding: 10px 20px;
+            background-color: rgba(0, 0, 0, 0.5);
+            width: 90%;
+        }
+
+        #editor-preview-canvas {
+            max-width: 100%;
+            height: auto;
+            max-height: 50vh;
+            display: block;
+            object-fit: contain;
+        }
+
+        .playback-controls {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-top: 10px;
+            width: 100%;
+        }
+
+        .playback-btn {
+            background-color: #333;
+            color: #fff;
+            border: 1px solid #555;
+            padding: 8px 16px;
+            cursor: pointer;
+            font-size: 1rem;
+        }
+
+        .playback-btn:hover {
+            background-color: #444;
+        }
+
+        #timeline-scrubber {
+            flex: 1;
+            height: 6px;
+            background: #333;
+            outline: none;
+            -webkit-appearance: none;
+            appearance: none;
+        }
+
+        #timeline-scrubber::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 14px;
+            height: 14px;
+            background: var(--theme-color);
+            cursor: pointer;
+        }
+
+        .time-display {
+            font-size: 0.9rem;
+            color: #aaa;
+            white-space: nowrap;
+        }
+
+        .timeline-section {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .timeline-section h3 {
+            margin: 0 0 10px 0;
+        }
+
+        .timeline-controls {
+            margin-bottom: 10px;
+        }
+
+        .small-btn {
+            background-color: #333;
+            color: #fff;
+            border: 1px solid #555;
+            padding: 6px 12px;
+            cursor: pointer;
+            font-size: 0.85rem;
+        }
+
+        .small-btn:hover {
+            background-color: #444;
+        }
+
+        .timeline-list {
+            flex: 1;
+            overflow-y: auto;
+            border: 1px solid #333;
+            padding: 10px;
+            background-color: #1a1a1a;
+        }
+
+        .control-point-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 8px;
+            background-color: #252525;
+            border: 1px solid #333;
+            margin-bottom: 8px;
+        }
+
+        .control-point-item input {
+            flex: 1;
+            background-color: #1a1a1a;
+            color: #fff;
+            border: 1px solid #444;
+            padding: 4px 8px;
+        }
+
+        .control-point-item button {
+            background-color: #d33;
+            color: #fff;
+            border: none;
+            padding: 4px 8px;
+            cursor: pointer;
+        }
+
+        .setting-group {
+            margin-bottom: 15px;
+        }
+
+        .setting-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-size: 0.9rem;
+            color: #aaa;
+        }
+
+        .setting-group input[type="number"] {
+            width: 100%;
+            background-color: #2a2a2a;
+            color: #fff;
+            border: 1px solid #444;
+            padding: 8px;
+        }
+
+        .resolution-inputs {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .resolution-inputs input {
+            flex: 1;
+        }
+
+        .keyframe-info {
+            background-color: #252525;
+            border: 1px solid #444;
+            padding: 12px;
+            margin-bottom: 15px;
+            font-size: 0.85rem;
+        }
+
+        .keyframe-info .info-status {
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+
+        .keyframe-info .info-detail {
+            color: #aaa;
+            margin: 3px 0;
+        }
+
+        .editor-btn {
+            width: 100%;
+            padding: 10px;
+            border: none;
+            cursor: pointer;
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+
+        .editor-btn.primary {
+            background-color: var(--theme-color);
+            color: #000;
+        }
+
+        .editor-btn.secondary {
+            background-color: #555;
+            color: #fff;
+        }
+
+        .editor-btn.export {
+            background-color: #28a745;
+            color: #fff;
+        }
+
+        .editor-btn:disabled {
+            background-color: #333;
+            color: #666;
+            cursor: not-allowed;
+        }
+
+        .editor-btn:not(:disabled):hover {
+            filter: brightness(1.1);
+        }
+
         #color-list {
             list-style: none;
             outline: 1px solid var(--theme-color);
@@ -595,6 +889,79 @@
         <p id="video-status" style="font-size: 0.8rem; color: #aaa;">Please wait...</p>
 
         <button id="video-cancel" class="video-btn-cancel">Cancel Video</button>
+    </dialog>
+
+    <!-- Video Editor Dialog (New) -->
+    <dialog id="video-editor-dialog" class="video-editor-fullscreen">
+        <div class="video-editor-container">
+            <!-- Header -->
+            <div class="editor-header">
+                <h2>🎬 Video Editor</h2>
+                <button id="editor-close" class="editor-close-btn">×</button>
+            </div>
+
+            <!-- Main Content Area -->
+            <div class="editor-main">
+                <!-- Preview & Timeline Section -->
+                <div class="editor-left">
+                    <!-- Preview Canvas -->
+                    <div class="preview-section" id="editor-preview-wrapper">
+                        <canvas id="editor-preview-canvas"></canvas>
+                        <div class="playback-controls">
+                            <button id="play-pause-btn" class="playback-btn">▶</button>
+                            <button id="stop-btn" class="playback-btn">⏹</button>
+                            <input type="range" id="timeline-scrubber" min="0" max="1000" value="0">
+                            <span class="time-display">
+                                <span id="current-time">0.0</span>s / <span id="total-duration">0.0</span>s
+                            </span>
+                            <button id="fullscreen-btn" class="playback-btn">⛶</button>
+                        </div>
+                    </div>
+
+                    <!-- Timeline Editor -->
+                    <div class="timeline-section">
+                        <h3>Timeline Control Points</h3>
+                        <div class="timeline-controls">
+                            <button id="add-control-point" class="small-btn">+ Add Point</button>
+                        </div>
+                        <div class="timeline-list" id="timeline-list">
+                            <!-- Control points will be added here dynamically -->
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Settings Panel -->
+                <div class="editor-right">
+                    <h3>Video Settings</h3>
+
+                    <div class="setting-group">
+                        <label>Resolution</label>
+                        <div class="resolution-inputs">
+                            <input type="number" id="editor-width" value="1920" min="100" max="7680">
+                            <span>×</span>
+                            <input type="number" id="editor-height" value="1080" min="100" max="4320">
+                        </div>
+                    </div>
+
+                    <div class="setting-group">
+                        <label for="editor-fps">FPS</label>
+                        <input type="number" id="editor-fps" value="30" min="1" max="120">
+                    </div>
+
+                    <div class="keyframe-info" id="keyframe-info">
+                        <div class="info-status">Keyframes: Not Collected</div>
+                    </div>
+
+                    <button id="collect-keyframes-btn" class="editor-btn primary">Collect Keyframes</button>
+                    <button id="clear-keyframes-btn" class="editor-btn secondary" style="display: none;">Clear
+                        Keyframes</button>
+
+                    <hr>
+
+                    <button id="export-video-btn" class="editor-btn export" disabled>Export Video</button>
+                </div>
+            </div>
+        </div>
     </dialog>
 
     <script src="lib/decimal.9.0.0.js"></script>
@@ -3340,6 +3707,8 @@
                 this.iterMap = null;
                 this.videoRendering = false;
                 this.isSecondary = isSecondary;
+                this.redrawOnResize = true;
+                this.canUpdateUrl = true;
 
                 // Interaction state (only for primary instance)
                 if (!isSecondary) {
@@ -3389,13 +3758,21 @@
                     this.canvas.height = window.innerHeight * dpr;
                 }
                 this.iterMap = [...new Array(this.canvas.height)].map(e => new Float64Array(this.canvas.width).fill(-1));
-                if (triggerUpdate) {
+                if (triggerUpdate && this.redrawOnResize) {
                     this.clear();
                     this.update();
                 }
                 this.minStep = Math.min(this.canvas.width, this.canvas.height);
                 this.halfWidth = this.canvas.width / 2;
                 this.halfHeight = this.canvas.height / 2;
+            }
+
+            setRedrawOnResize(bool) {
+                this.redrawOnResize = bool;
+            }
+
+            setCanUpdateUrl(bool) {
+                this.canUpdateUrl = bool;
             }
 
             handleStart(e) {
@@ -3913,20 +4290,22 @@
                     this.stats.statusText = 'Finished'
                     this.rendering = false;
                     this.showInfo();
-                    const params = new URLSearchParams(window.location.hash.substring(1));
+                    if (this.canUpdateUrl) {
+                        const params = new URLSearchParams(window.location.hash.substring(1));
 
-                    // 更新或添加新的参数
-                    params.set("rec", compressDecimal(this.center.re.toString()));
-                    params.set("imc", compressDecimal(this.center.im.toString()));
-                    params.set("zmc", compressDecimal(FloatExp.FOUR.div(this.size).toString()));
-                    params.set("itc", compressDecimal(this.iterations.toString()));
-                    params.set("bailout", Math.sqrt(this.bailout).toString());
-                    params.set("colorc", byteArrayToBase64(palette.flat(1)));
-                    params.set("colorstep", colorStep);
-                    params.set("smooth", this.smooth ? 1 : 0);
+                        // 更新或添加新的参数
+                        params.set("rec", compressDecimal(this.center.re.toString()));
+                        params.set("imc", compressDecimal(this.center.im.toString()));
+                        params.set("zmc", compressDecimal(FloatExp.FOUR.div(this.size).toString()));
+                        params.set("itc", compressDecimal(this.iterations.toString()));
+                        params.set("bailout", Math.sqrt(this.bailout).toString());
+                        params.set("colorc", byteArrayToBase64(palette.flat(1)));
+                        params.set("colorstep", colorStep);
+                        params.set("smooth", this.smooth ? 1 : 0);
 
-                    // 重建哈希字符串
-                    window.location.hash = params.toString();
+                        // 重建哈希字符串
+                        window.location.hash = params.toString();
+                    }
                 } catch (e) {
                     console.error(e);
                     alert("Error: " + e);
@@ -4858,26 +5237,568 @@
             mandelbrot.update();
         });
 
-        // Trigger file upload when a button is clicked
+        // Video Editor Class
+        class VideoEditor {
+            constructor() {
+                this.keyframes = [];
+                this.keyframeMetadata = null;
+                this.timeline = [];
+                this.resolution = { width: 1920, height: 1080 };
+                this.fps = 30;
+                this.currentTime = 0;
+                this.isPlaying = false;
+                this.animationId = null;
+                this.lastAnimateTime = 0;
+                this.isScrubbing = false;
+
+                // UI Elements
+                this.dialog = document.getElementById('video-editor-dialog');
+                this.previewCanvas = document.getElementById('editor-preview-canvas');
+                this.timelineList = document.getElementById('timeline-list');
+                this.keyframeInfo = document.getElementById('keyframe-info');
+
+                this.initUI();
+            }
+
+            initUI() {
+                // Close button
+                document.getElementById('editor-close').onclick = () => this.close();
+
+                // Settings
+                document.getElementById('editor-width').oninput = (e) => {
+                    this.resolution.width = 1920;
+                };
+                document.getElementById('editor-height').oninput = (e) => {
+                    this.resolution.height = 1080;
+                };
+                document.getElementById('editor-fps').oninput = (e) => {
+                    this.fps = 30;
+                };
+
+                // Buttons
+                document.getElementById('collect-keyframes-btn').onclick = () => this.collectKeyframes();
+                document.getElementById('clear-keyframes-btn').onclick = () => this.clearKeyframes();
+                document.getElementById('add-control-point').onclick = () => this.addControlPoint();
+                document.getElementById('export-video-btn').onclick = () => this.exportVideo();
+
+                // Playback controls
+                document.getElementById('play-pause-btn').onclick = () => this.togglePlayPause();
+                document.getElementById('stop-btn').onclick = () => this.stop();
+                document.getElementById('timeline-scrubber').oninput = (e) => {
+                    this.isScrubbing = true;
+                    const value = parseInt(e.target.value) / 1000;
+                    this.seekTo(value * this.getTotalDuration());
+                };
+                document.getElementById('timeline-scrubber').onchange = () => {
+                    this.isScrubbing = false;
+                };
+                document.getElementById('fullscreen-btn').onclick = () => this.toggleFullscreen();
+            }
+
+            open() {
+                // Set initial resolution from current canvas
+                this.resolution.width = mandelbrot.canvas.width;
+                this.resolution.height = mandelbrot.canvas.height;
+                document.getElementById('editor-width').value = 1920;
+                document.getElementById('editor-height').value = 1080;
+
+                // Inhibit redraw on resize while editor is open
+                mandelbrot.setRedrawOnResize(false);
+                this.dialog.showModal();
+            }
+
+            close() {
+                this.stop();
+                mandelbrot.setRedrawOnResize(true);
+                this.dialog.close();
+            }
+
+            async collectKeyframes() {
+                const progressDialog = document.getElementById("video-progress-dialog");
+                const previewCanvas = document.getElementById("video-preview-canvas");
+                const previewCtx = previewCanvas.getContext('2d');
+                const totalProgBar = document.getElementById("video-total-progress");
+                const frameProgBar = document.getElementById("video-frame-progress");
+                const stageText = document.getElementById("video-stage");
+                const statusText = document.getElementById("video-status");
+                const cancelBtn = document.getElementById("video-cancel");
+
+                this.dialog.close();
+                progressDialog.showModal();
+
+                let requestCancel = false;
+                cancelBtn.onclick = () => {
+                    requestCancel = true;
+                    statusText.innerText = "Cancelling...";
+                };
+
+                try {
+                    // Store metadata
+                    this.keyframeMetadata = {
+                        center: mandelbrot.center.copy(),
+                        size: mandelbrot.size.copy(),
+                        frameCount: 0
+                    };
+
+                    // Create offscreen mandelbrot
+                    const offCanvas = document.createElement('canvas');
+                    const offMandel = new Mandelbrot(
+                        offCanvas,
+                        mandelbrot.center.copy(),
+                        mandelbrot.iterations,
+                        Math.sqrt(mandelbrot.bailout),
+                        true
+                    );
+
+                    offMandel.setCanUpdateUrl(false);
+
+                    offMandel.resizeCanvas(false, this.resolution.width, this.resolution.height);
+                    offMandel.size = mandelbrot.size.copy();
+                    offMandel.smooth = mandelbrot.smooth;
+                    offMandel.refValid = false;
+
+                    // Support cancellation
+                    offMandel.requestForCancel = false;
+
+                    previewCanvas.width = this.resolution.width;
+                    previewCanvas.height = this.resolution.height;
+
+                    const maxOctaves = Math.ceil(Math.log2(32 / offMandel.size.doubleValue()));
+
+                    // Collect keyframes using existing renderFrames
+                    this.keyframes = await offMandel.renderFrames((frameIdx, frameProg, status) => {
+                        if (requestCancel) {
+                            offMandel.requestForCancel = true;
+                            return;
+                        }
+                        const totalProg = Math.min(0.99, (frameIdx - 1 + frameProg) / maxOctaves);
+                        totalProgBar.style.width = (totalProg * 100) + "%";
+                        frameProgBar.style.width = (frameProg * 100) + "%";
+                        stageText.innerText = "Collection Phase";
+                        statusText.innerText = status;
+
+                        // Live preview
+                        previewCtx.drawImage(offCanvas, 0, 0, previewCanvas.width, previewCanvas.height);
+                    });
+
+                    if (requestCancel || !this.keyframes || this.keyframes.length < 2) {
+                        this.keyframes = [];
+                        this.keyframeMetadata = null;
+                        progressDialog.close();
+                        this.dialog.showModal();
+                        return;
+                    }
+
+                    this.keyframeMetadata.frameCount = this.keyframes.length;
+
+                    // Auto-populate initial timeline
+                    const duration = this.keyframes.length;
+                    this.timeline = [
+                        { time: 0, frame: 0 },
+                        { time: duration, frame: this.keyframes.length - 1 }
+                    ];
+
+                    this.updateKeyframeDisplay();
+                    this.updateTimelineDisplay();
+                    this.updateExportButton();
+
+                    // Setup preview canvas
+                    this.previewCanvas.width = this.resolution.width;
+                    this.previewCanvas.height = this.resolution.height;
+
+                } catch (err) {
+                    alert('Error collecting keyframes: ' + err.message);
+                } finally {
+                    progressDialog.close();
+                    this.dialog.showModal();
+                }
+            }
+
+            clearKeyframes() {
+                if (!confirm('Clear all keyframes and timeline data?')) return;
+
+                this.keyframes = [];
+                this.keyframeMetadata = null;
+                this.timeline = [];
+                this.stop();
+
+                this.updateKeyframeDisplay();
+                this.updateTimelineDisplay();
+                this.updateExportButton();
+            }
+
+            updateKeyframeDisplay() {
+                const info = this.keyframeInfo;
+
+                if (this.keyframeMetadata && this.keyframes.length > 0) {
+                    const { center, size, frameCount } = this.keyframeMetadata;
+                    info.innerHTML = `
+                        <div class="info-status">✓ Collected (${frameCount} frames)</div>
+                        <div class="info-detail">Center: ${center.re.toFixed(4)} + ${center.im.toFixed(4)}i</div>
+                        <div class="info-detail">Size: ${size.exp < 0 ? size.base.toFixed(2) + 'E' + size.exp : size.doubleValue().toFixed(4)}</div>
+                    `;
+                    document.getElementById('collect-keyframes-btn').disabled = true;
+                    document.getElementById('clear-keyframes-btn').style.display = 'block';
+                } else {
+                    info.innerHTML = '<div class="info-status">Keyframes: Not Collected</div>';
+                    document.getElementById('collect-keyframes-btn').disabled = false;
+                    document.getElementById('clear-keyframes-btn').style.display = 'none';
+                }
+            }
+
+            updateTimelineDisplay() {
+                this.timelineList.innerHTML = '';
+
+                this.timeline.forEach((point, index) => {
+                    const item = document.createElement('div');
+                    item.className = 'control-point-item';
+                    item.innerHTML = `
+                        <label>Time (s):</label>
+                        <input type="number" step="0.1" value="${point.time}" data-index="${index}" data-field="time">
+                        <label>Frame:</label>
+                        <input type="number" step="0.1" value="${point.frame}" data-index="${index}" data-field="frame">
+                        <button onclick="videoEditor.removeControlPoint(${index})">×</button>
+                    `;
+
+                    // Add change listeners
+                    const inputs = item.querySelectorAll('input');
+                    inputs.forEach(input => {
+                        input.onchange = (e) => {
+                            const idx = parseInt(e.target.dataset.index);
+                            const field = e.target.dataset.field;
+                            this.timeline[idx][field] = parseFloat(e.target.value);
+                            this.sortTimeline();
+                            this.updateTimelineDisplay();
+                        };
+                    });
+
+                    this.timelineList.appendChild(item);
+                });
+
+                // Update time display
+                const totalDuration = this.getTotalDuration();
+                document.getElementById('total-duration').textContent = totalDuration.toFixed(1);
+            }
+
+            addControlPoint() {
+                if (this.keyframes.length === 0) {
+                    alert('Please collect keyframes first');
+                    return;
+                }
+
+                const maxFrame = this.keyframes.length - 1;
+                const lastPoint = this.timeline[this.timeline.length - 1];
+                const newTime = lastPoint ? lastPoint.time + 1 : 1;
+
+                this.timeline.push({ time: newTime, frame: Math.min(maxFrame, 0) });
+                this.sortTimeline();
+                this.updateTimelineDisplay();
+                this.updateExportButton();
+            }
+
+            removeControlPoint(index) {
+                if (this.timeline.length <= 2) {
+                    alert('Must have at least 2 control points');
+                    return;
+                }
+                this.timeline.splice(index, 1);
+                this.updateTimelineDisplay();
+            }
+
+            sortTimeline() {
+                this.timeline.sort((a, b) => a.time - b.time);
+            }
+
+            getTotalDuration() {
+                return this.timeline.length > 0 ? this.timeline[this.timeline.length - 1].time : 0;
+            }
+
+            getFrameAtTime(time) {
+                if (this.timeline.length === 0) return 0;
+
+                // Clamp time
+                const minTime = this.timeline[0].time;
+                const maxTime = this.timeline[this.timeline.length - 1].time;
+                time = Math.max(minTime, Math.min(maxTime, time));
+
+                // Find surrounding control points
+                let before = this.timeline[0];
+                let after = this.timeline[this.timeline.length - 1];
+
+                for (let i = 0; i < this.timeline.length - 1; i++) {
+                    if (this.timeline[i].time <= time && this.timeline[i + 1].time >= time) {
+                        before = this.timeline[i];
+                        after = this.timeline[i + 1];
+                        break;
+                    }
+                }
+
+                // Linear interpolation
+                if (after.time === before.time) return before.frame;
+                const t = (time - before.time) / (after.time - before.time);
+                return before.frame + (after.frame - before.frame) * t;
+            }
+
+            renderFrameAt(frameIndex, useCanvas = null) {
+                if (this.keyframes.length === 0) return;
+
+                const lower = Math.floor(frameIndex);
+                const upper = Math.ceil(frameIndex);
+                const canvas = useCanvas || this.previewCanvas;
+                const ctx = canvas.getContext('2d');
+                const w = canvas.width, h = canvas.height, cx = w / 2, cy = h / 2;
+
+                if (lower === upper || upper >= this.keyframes.length) {
+                    // Exact frame
+                    const kf = this.keyframes[Math.min(lower, this.keyframes.length - 1)];
+                    ctx.drawImage(kf.frame, 0, 0, w, h);
+                } else {
+                    // Fractional - perform zoom interpolation
+                    const blend = frameIndex - lower;
+                    const kfLower = this.keyframes[lower];
+                    const kfUpper = this.keyframes[upper];
+
+                    // zoom-based blending (matching your requirements)
+                    const scale1 = Math.pow(2, blend);
+                    const scale2 = scale1 * 0.5;
+
+                    ctx.save();
+                    ctx.clearRect(0, 0, w, h);
+                    ctx.imageSmoothingEnabled = true;
+
+                    // First frame zoom out
+                    ctx.drawImage(kfLower.frame, cx - (w * scale1) / 2, cy - (h * scale1) / 2, w * scale1, h * scale1);
+
+                    // Second frame zoom in (overlayed with alpha fade)
+                    ctx.globalAlpha = Math.max(0, Math.min(1, (blend - 0.1) / 0.8));
+                    ctx.drawImage(kfUpper.frame, cx - (w * scale2) / 2, cy - (h * scale2) / 2, w * scale2, h * scale2);
+
+                    ctx.globalAlpha = 1.0;
+                    // Zoom Text Overlay
+                    ctx.font = `bold ${Math.round(w / 40)}px Arial`;
+                    ctx.fillStyle = 'white'; ctx.strokeStyle = 'black'; ctx.lineWidth = 1;
+                    const scaleBase = FloatExp.FOUR.div(kfLower.scale);
+                    const currScale = FloatExp.fromLog2(scaleBase.log2Value() + blend);
+                    const zoomText = `Zoom: ${currScale.exp < 7 ? currScale.doubleValue().toFixed(2) : currScale.base.toFixed(2) + 'E' + currScale.exp}`;
+                    ctx.strokeText(zoomText, w * 0.05, h * 0.05);
+                    ctx.fillText(zoomText, w * 0.05, h * 0.05);
+
+                    ctx.restore();
+                }
+            }
+
+            togglePlayPause() {
+                if (this.isPlaying) {
+                    this.pause();
+                } else {
+                    this.play();
+                }
+            }
+
+            play() {
+                if (this.keyframes.length === 0) return;
+
+                this.isPlaying = true;
+                document.getElementById('play-pause-btn').textContent = '⏸';
+
+                this.lastAnimateTime = performance.now();
+                const totalDuration = this.getTotalDuration();
+
+                const animate = (now) => {
+                    if (!this.isPlaying) return;
+
+                    const elapsed = (now - this.lastAnimateTime) / 1000;
+                    this.lastAnimateTime = now;
+
+                    // If scrubbing, we don't advance the time or update the UI based on playback
+                    // The seekTo handler handles the updates
+                    if (!this.isScrubbing) {
+                        this.currentTime = (this.currentTime + elapsed) % totalDuration;
+
+                        const frameIndex = this.getFrameAtTime(this.currentTime);
+                        this.renderFrameAt(frameIndex);
+
+                        document.getElementById('current-time').textContent = this.currentTime.toFixed(1);
+                        document.getElementById('timeline-scrubber').value = (this.currentTime / totalDuration) * 1000;
+                    }
+
+                    this.animationId = requestAnimationFrame(animate);
+                };
+
+                this.animationId = requestAnimationFrame(animate);
+            }
+
+            pause() {
+                this.isPlaying = false;
+                document.getElementById('play-pause-btn').textContent = '▶';
+                if (this.animationId) {
+                    cancelAnimationFrame(this.animationId);
+                    this.animationId = null;
+                }
+            }
+
+            stop() {
+                this.pause();
+                this.currentTime = 0;
+                document.getElementById('current-time').textContent = '0.0';
+                document.getElementById('timeline-scrubber').value = 0;
+                if (this.keyframes.length > 0) {
+                    this.renderFrameAt(0);
+                }
+            }
+
+            seekTo(time) {
+                this.currentTime = time;
+                const frameIndex = this.getFrameAtTime(time);
+                this.renderFrameAt(frameIndex);
+                document.getElementById('current-time').textContent = time.toFixed(1);
+            }
+
+            toggleFullscreen() {
+                const wrapper = document.getElementById('editor-preview-wrapper');
+                if (!document.fullscreenElement) {
+                    wrapper.requestFullscreen().catch(err => {
+                        alert(`Error attempting to enable full-screen mode: ${err.message} (${err.name})`);
+                    });
+                } else {
+                    document.exitFullscreen();
+                }
+            }
+
+            updateExportButton() {
+                const canExport = this.keyframes.length > 0 && this.timeline.length >= 2;
+                document.getElementById('export-video-btn').disabled = !canExport;
+            }
+
+            async exportVideo() {
+                // File picker
+                let fileHandle;
+                try {
+                    fileHandle = await window.showSaveFilePicker({
+                        suggestedName: `mandelbrot-${Date.now()}.webm`,
+                        types: [{ description: 'WebM Video', accept: { 'video/webm': ['.webm'] } }]
+                    });
+                } catch (e) {
+                    if (e.name === 'AbortError') return;
+                    alert('Error selecting file: ' + e.message);
+                    return;
+                }
+
+                const fileStream = await fileHandle.createWritable();
+
+                const webmWriter = new WebMWriter({
+                    fileWriter: fileStream,
+                    codec: 'VP9',
+                    width: this.resolution.width,
+                    height: this.resolution.height,
+                    frameRate: this.fps
+                });
+
+                const encoder = new VideoEncoder({
+                    output: chunk => webmWriter.addFrame(chunk),
+                    error: e => console.error(e)
+                });
+
+                encoder.configure({
+                    codec: 'vp09.00.10.08',
+                    width: this.resolution.width,
+                    height: this.resolution.height,
+                    bitrate: 12_000_000,
+                    framerate: this.fps,
+                    latencyMode: 'quality'
+                });
+
+                const totalDuration = this.getTotalDuration();
+                const totalFrames = Math.ceil(totalDuration * this.fps);
+                const exportCanvas = document.createElement('canvas');
+                exportCanvas.width = this.resolution.width;
+                exportCanvas.height = this.resolution.height;
+
+                // Show progress dialog with preview during export
+                const progressDialog = document.getElementById("video-progress-dialog");
+                const previewCanvas = document.getElementById("video-preview-canvas");
+                const previewCtx = previewCanvas.getContext('2d');
+                const totalProgBar = document.getElementById("video-total-progress");
+                const frameProgBar = document.getElementById("video-frame-progress");
+                const stageText = document.getElementById("video-stage");
+                const statusText = document.getElementById("video-status");
+                const cancelBtn = document.getElementById("video-cancel");
+
+                this.dialog.close();
+                progressDialog.showModal();
+
+                previewCanvas.width = this.resolution.width;
+                previewCanvas.height = this.resolution.height;
+
+                let requestCancel = false;
+                cancelBtn.onclick = () => {
+                    requestCancel = true;
+                    statusText.innerText = "Cancelling...";
+                };
+
+                const exportBtn = document.getElementById('export-video-btn');
+                const originalText = exportBtn.textContent;
+
+                try {
+                    for (let i = 0; i < totalFrames; i++) {
+                        if (requestCancel) break;
+                        const time = i / this.fps;
+                        const frameIndex = this.getFrameAtTime(time);
+
+                        this.renderFrameAt(frameIndex, exportCanvas);
+
+                        const videoFrame = new VideoFrame(exportCanvas, {
+                            timestamp: (i * 1_000_000) / this.fps
+                        });
+                        encoder.encode(videoFrame, { keyFrame: i % 30 === 0 });
+                        videoFrame.close();
+
+                        // Update progress dialog
+                        if (i % 5 === 0) {
+                            const prog = i / totalFrames;
+                            totalProgBar.style.width = (prog * 100) + "%";
+                            frameProgBar.style.width = "0%";
+                            stageText.innerText = "Exporting Phase";
+                            statusText.innerText = `Frame ${i + 1}/${totalFrames}`;
+                            previewCtx.drawImage(exportCanvas, 0, 0, previewCanvas.width, previewCanvas.height);
+                            // Also update editor button text just in case
+                            exportBtn.textContent = `Exporting... ${Math.round(prog * 100)}%`;
+                            await encoder.flush();
+                            await new Promise(resolve => setTimeout(resolve, 0));
+                        }
+                    }
+
+                    if (!requestCancel) {
+                        await encoder.flush();
+                        encoder.close();
+                        await webmWriter.complete();
+                        await fileStream.close();
+                        alert('Video export complete!');
+                    } else {
+                        encoder.close();
+                        await fileStream.close();
+                    }
+                } catch (err) {
+                    alert('Export error: ' + err.message);
+                    encoder.close();
+                    await fileStream.close();
+                } finally {
+                    exportBtn.textContent = originalText;
+                    progressDialog.close();
+                    this.dialog.showModal();
+                }
+            }
+        }
+
+        // Create global video editor instance
+        let videoEditor = null;
+
+        // Replace makeVideo button handler
         document.getElementById("makeVideo").addEventListener('click', () => {
-            const configDialog = document.getElementById("video-config-dialog");
-            const widthInput = document.getElementById("video-width");
-            const heightInput = document.getElementById("video-height");
-            const presetSelect = document.getElementById("video-preset");
-
-            widthInput.value = mandelbrot.canvas.width;
-            heightInput.value = mandelbrot.canvas.height;
-            presetSelect.value = "custom";
-
-            presetSelect.onchange = () => {
-                const val = presetSelect.value;
-                if (val === "720p") { widthInput.value = 1280; heightInput.value = 720; }
-                else if (val === "1080p") { widthInput.value = 1920; heightInput.value = 1080; }
-                else if (val === "2k") { widthInput.value = 2560; heightInput.value = 1440; }
-                else if (val === "4k") { widthInput.value = 3840; heightInput.value = 2160; }
-            };
-
-            configDialog.showModal();
+            if (!videoEditor) {
+                videoEditor = new VideoEditor();
+            }
+            videoEditor.open();
         });
 
         document.getElementById("video-config-cancel").onclick = () => {
