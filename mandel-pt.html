@@ -935,11 +935,23 @@
                     <h3>Video Settings</h3>
 
                     <div class="setting-group">
-                        <label>Resolution</label>
+                        <label for="editor-preset">Resolution Preset</label>
+                        <select id="editor-preset">
+                            <option value="custom">Custom</option>
+                            <option value="720p">720p (1280×720)</option>
+                            <option value="1080p" selected>1080p (1920×1080)</option>
+                            <option value="2k">2K (2560×1440)</option>
+                            <option value="4k">4K (3840×2160)</option>
+                            <option value="8k">8K (7680×4320)</option>
+                        </select>
+                    </div>
+
+                    <div class="setting-group">
+                        <label>Custom Resolution</label>
                         <div class="resolution-inputs">
-                            <input type="number" id="editor-width" value="1920" min="100" max="7680">
+                            <input type="number" id="editor-width" value="1920" min="100" max="8192">
                             <span>×</span>
-                            <input type="number" id="editor-height" value="1080" min="100" max="4320">
+                            <input type="number" id="editor-height" value="1080" min="100" max="8192">
                         </div>
                     </div>
 
@@ -5265,14 +5277,35 @@
                 document.getElementById('editor-close').onclick = () => this.close();
 
                 // Settings
-                document.getElementById('editor-width').oninput = (e) => {
-                    this.resolution.width = 1920;
+                const widthInput = document.getElementById('editor-width');
+                const heightInput = document.getElementById('editor-height');
+                const fpsInput = document.getElementById('editor-fps');
+                const presetSelect = document.getElementById('editor-preset');
+
+                presetSelect.onchange = (e) => {
+                    const val = e.target.value;
+                    if (val === '720p') { widthInput.value = 1280; heightInput.value = 720; }
+                    else if (val === '1080p') { widthInput.value = 1920; heightInput.value = 1080; }
+                    else if (val === '2k') { widthInput.value = 2560; heightInput.value = 1440; }
+                    else if (val === '4k') { widthInput.value = 3840; heightInput.value = 2160; }
+                    else if (val === '8k') { widthInput.value = 7680; heightInput.value = 4320; }
+
+                    if (val !== 'custom') {
+                        this.resolution.width = parseInt(widthInput.value);
+                        this.resolution.height = parseInt(heightInput.value);
+                    }
                 };
-                document.getElementById('editor-height').oninput = (e) => {
-                    this.resolution.height = 1080;
+
+                widthInput.oninput = (e) => {
+                    this.resolution.width = parseInt(e.target.value) || 1920;
+                    presetSelect.value = 'custom';
                 };
-                document.getElementById('editor-fps').oninput = (e) => {
-                    this.fps = 30;
+                heightInput.oninput = (e) => {
+                    this.resolution.height = parseInt(e.target.value) || 1080;
+                    presetSelect.value = 'custom';
+                };
+                fpsInput.oninput = (e) => {
+                    this.fps = parseInt(e.target.value) || 30;
                 };
 
                 // Buttons
@@ -5299,8 +5332,18 @@
                 // Set initial resolution from current canvas
                 this.resolution.width = mandelbrot.canvas.width;
                 this.resolution.height = mandelbrot.canvas.height;
-                document.getElementById('editor-width').value = 1920;
-                document.getElementById('editor-height').value = 1080;
+                document.getElementById('editor-width').value = this.resolution.width;
+                document.getElementById('editor-height').value = this.resolution.height;
+                document.getElementById('editor-fps').value = this.fps;
+
+                // Sync preset dropdown
+                const presetSelect = document.getElementById('editor-preset');
+                if (this.resolution.width === 1280 && this.resolution.height === 720) presetSelect.value = '720p';
+                else if (this.resolution.width === 1920 && this.resolution.height === 1080) presetSelect.value = '1080p';
+                else if (this.resolution.width === 2560 && this.resolution.height === 1440) presetSelect.value = '2k';
+                else if (this.resolution.width === 3840 && this.resolution.height === 2160) presetSelect.value = '4k';
+                else if (this.resolution.width === 7680 && this.resolution.height === 4320) presetSelect.value = '8k';
+                else presetSelect.value = 'custom';
 
                 // Inhibit redraw on resize while editor is open
                 mandelbrot.setRedrawOnResize(false);
