@@ -542,6 +542,8 @@
 
         .control-point-item input {
             flex: 1;
+            width: 0;
+            min-width: 0;
             background-color: #1a1a1a;
             color: #fff;
             border: 1px solid #444;
@@ -583,6 +585,8 @@
 
         .resolution-inputs input {
             flex: 1;
+            width: 0;
+            min-width: 0;
         }
 
         .keyframe-info {
@@ -635,6 +639,110 @@
 
         .editor-btn:not(:disabled):hover {
             filter: brightness(1.1);
+        }
+
+        /* Mobile Optimization for Video Editor */
+        @media (max-width: 850px) {
+            .video-editor-fullscreen {
+                width: 100vw;
+                height: 100vh;
+                max-width: none;
+                max-height: none;
+                border: none;
+            }
+
+            .editor-main {
+                flex-direction: column;
+                overflow-y: auto;
+            }
+
+            .editor-left {
+                flex: none;
+                padding: 10px;
+                overflow-y: visible;
+            }
+
+            .editor-right {
+                width: 100%;
+                border-left: none;
+                border-top: 1px solid #333;
+                padding: 15px;
+                flex: none;
+                overflow-y: visible;
+                background-color: #1a1a1a;
+            }
+
+            .preview-section {
+                padding: 5px;
+                margin-bottom: 10px;
+            }
+
+            #editor-preview-canvas {
+                max-height: 40vh;
+            }
+
+            .playback-controls {
+                gap: 5px;
+                justify-content: center;
+            }
+
+            .playback-btn {
+                padding: 6px 12px;
+                font-size: 0.9rem;
+            }
+
+            .time-display {
+                font-size: 0.8rem;
+                width: 100%;
+                text-align: center;
+                margin-top: 5px;
+            }
+
+            #timeline-scrubber {
+                order: 10;
+                margin-top: 10px;
+            }
+
+            .control-point-item {
+                gap: 5px;
+                padding: 5px;
+                flex-wrap: wrap;
+                justify-content: space-between;
+            }
+
+            .control-point-item label {
+                font-size: 0.75rem;
+                flex: none;
+                width: auto;
+            }
+
+            .control-point-item input {
+                padding: 4px;
+                font-size: 0.85rem;
+                min-width: 60px;
+            }
+
+            .timeline-list {
+                padding: 5px;
+            }
+
+            .editor-header h2 {
+                font-size: 1.1rem;
+            }
+
+            .editor-close-btn {
+                font-size: 1.5rem;
+            }
+
+            dialog {
+                width: 95vw !important;
+                padding: 15px !important;
+            }
+
+            #video-preview-canvas {
+                max-width: 100% !important;
+                height: auto !important;
+            }
         }
 
         #color-list {
