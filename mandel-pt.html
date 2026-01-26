@@ -5753,9 +5753,7 @@
 
                 const totalDuration = this.getTotalDuration();
                 const totalFrames = Math.ceil(totalDuration * this.fps);
-                const exportCanvas = document.createElement('canvas');
-                exportCanvas.width = this.resolution.width;
-                exportCanvas.height = this.resolution.height;
+                const exportCanvas = new OffscreenCanvas(this.resolution.width, this.resolution.height);
 
                 // Show progress dialog with preview during export
                 const progressDialog = document.getElementById("video-progress-dialog");
