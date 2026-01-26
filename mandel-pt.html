@@ -4676,11 +4676,11 @@
 
                         if (this.requestForCancel) break;
 
-                        let url = this.canvas.toDataURL('image/png');
+                        let url = await this.canvas.convertToBlob();
                         let img = new Image();
                         await new Promise((resolve) => {
                             img.onload = resolve;
-                            img.src = url;
+                            img.src = URL.createObjectURL(url);
                         });
 
                         frames.push({ frame: img, scale: this.size.copy() });
@@ -5384,7 +5384,7 @@
                     };
 
                     // Create offscreen mandelbrot
-                    const offCanvas = document.createElement('canvas');
+                    const offCanvas = new OffscreenCanvas(this.resolution.width, this.resolution.height);
                     const offMandel = new Mandelbrot(
                         offCanvas,
                         mandelbrot.center.copy(),
