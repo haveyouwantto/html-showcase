@@ -599,6 +599,7 @@
 
     <script src="lib/decimal.9.0.0.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/gmp-wasm"></script>
+    <script src="https://w3c.github.io/webcodecs/samples/capture-to-file/webm-writer2.js"></script>
     <script>
         const canvas = document.getElementById('mandelbrot');
         const reInput = document.getElementById('re')
@@ -4929,6 +4930,27 @@
                 previewCtx.drawImage(offCanvas, 0, 0, previewCanvas.width, previewCanvas.height);
             };
 
+            // File System Access API - ask user where to save (MUST be in user gesture context)
+            let fileHandle;
+            try {
+                fileHandle = await window.showSaveFilePicker({
+                    suggestedName: `mandelbrot-zoom-${Date.now()}.webm`,
+                    types: [{
+                        description: 'WebM Video',
+                        accept: { 'video/webm': ['.webm'] }
+                    }]
+                });
+            } catch (e) {
+                if (e.name === 'AbortError') {
+                    console.log('User cancelled file save');
+                    progressDialog.close();
+                    return;
+                }
+                alert('Error selecting file: ' + e.message);
+                progressDialog.close();
+                return;
+            }
+
             try {
                 const maxOctaves = Math.ceil(Math.log2(32 / offMandel.size.doubleValue()));
                 const keyFrames = await offMandel.renderFrames((frameIdx, frameProg, status) => {
@@ -4936,48 +4958,68 @@
                     updateUI(totalProg, frameProg, "Collection Phase", status);
                 });
 
-                if (requestCancel || !keyFrames || keyFrames.length < 2) return;
-
-                updateUI(1, 0, "Recording Phase", "Preparing MediaRecorder...");
-
-                const stream = offCanvas.captureStream(vidFps);
-                let recorder;
-                const types = ['video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm'];
-                for (const type of types) {
-                    if (MediaRecorder.isTypeSupported(type)) {
-                        recorder = new MediaRecorder(stream, { mimeType: type, videoBitsPerSecond: 12000000 });
-                        break;
-                    }
+                if (requestCancel || !keyFrames || keyFrames.length < 2) {
+                    progressDialog.close();
+                    return;
                 }
-                if (!recorder) throw new Error("No supported MediaRecorder MIME type found.");
 
-                const data = [];
-                recorder.ondataavailable = (event) => {
-                    if (event.data && event.data.size > 0) data.push(event.data);
-                };
+                const fileWritableStream = await fileHandle.createWritable();
 
-                const recordingFinished = new Promise((resolve, reject) => {
-                    recorder.onstop = () => resolve();
-                    recorder.onerror = (err) => reject(err);
-                });
+                // WebMWriter setup
+                let webmWriter;
+                let encoder;
 
-                let frameIndex = 0;
+                try {
+                    webmWriter = new WebMWriter({
+                        fileWriter: fileWritableStream,
+                        codec: 'VP9',
+                        width: vidWidth,
+                        height: vidHeight,
+                        frameRate: vidFps
+                    });
+
+                    encoder = new VideoEncoder({
+                        output: chunk => webmWriter.addFrame(chunk),
+                        error: (e) => {
+                            console.error('VideoEncoder error:', e);
+                            throw e;
+                        }
+                    });
+
+                    encoder.configure({
+                        codec: 'vp09.00.10.08', // VP9, Profile 0, Level 1.0, 8-bit
+                        width: vidWidth,
+                        height: vidHeight,
+                        bitrate: 12_000_000,
+                        framerate: vidFps,
+                        latencyMode: 'quality'
+                    });
+                } catch (e) {
+                    await fileWritableStream.close();
+                    throw new Error('WebCodecs/Writer error: ' + e.message);
+                }
+
+                updateUI(1, 0, "Encoding Phase", "Rendering frames...");
+
                 const secondsPerOctave = 1.0;
+                const totalDuration = (keyFrames.length - 1) * secondsPerOctave;
+                const totalFrames = Math.ceil(totalDuration * vidFps);
                 const offCtx = offCanvas.getContext('2d');
 
-                const renderer = () => {
-                    if (requestCancel) { recorder.stop(); return; }
+                // Render and encode each frame synchronously
+                for (let frameIndex = 0; frameIndex < totalFrames; frameIndex++) {
+                    if (requestCancel) break;
 
-                    const totalTime = (keyFrames.length - 1) * secondsPerOctave;
+                    const timestamp = (frameIndex * 1_000_000) / vidFps; // microseconds
                     const elapsedSeconds = frameIndex / vidFps;
                     const indexFl = elapsedSeconds / secondsPerOctave;
 
                     let i = Math.floor(indexFl);
-                    if (i >= keyFrames.length - 1) { recorder.stop(); return; }
+                    if (i >= keyFrames.length - 1) break;
 
-                    const progress = indexFl / (keyFrames.length - 1);
+                    const progress = frameIndex / totalFrames;
                     const currFrameProg = indexFl - i;
-                    updateUI(progress, currFrameProg, "Recording Phase", `Frame ${frameIndex + 1} (Offset: ${elapsedSeconds.toFixed(3)}s)`);
+                    updateUI(progress, currFrameProg, "Encoding Phase", `Frame ${frameIndex + 1}/${totalFrames}`);
 
                     const currFrame = keyFrames[i];
                     const nextFrame = keyFrames[i + 1];
@@ -4991,40 +5033,42 @@
                     offCtx.drawImage(currFrame.frame, cx - (w * scale1) / 2, cy - (h * scale1) / 2, w * scale1, h * scale1);
                     offCtx.globalAlpha = Math.max(0, Math.min(1, (currFrameProg - 0.1) / 0.8));
                     offCtx.drawImage(nextFrame.frame, cx - (w * scale2) / 2, cy - (h * scale2) / 2, w * scale2, h * scale2);
-                    offCtx.restore();
+                    offCtx.globalAlpha = 1.0;
 
-                    // UI Overlay on off-screen canvas
-                    offCtx.save();
+                    // UI Overlay
                     offCtx.font = `bold ${Math.round(w / 40)}px Arial`;
                     offCtx.fillStyle = 'white'; offCtx.strokeStyle = 'black'; offCtx.lineWidth = 1;
                     const scaleBase = FloatExp.FOUR.div(currFrame.scale);
                     const currScale = FloatExp.fromLog2(scaleBase.log2Value() + currFrameProg);
-                    const zoomText = `Zoom: ${currScale.exp < 7 ? currScale.doubleValue().toFixed(2) : currScale.base.toFixed(2) + 'E' + currScale.exp}x`;
+                    const zoomText = `Zoom: ${currScale.exp < 7 ? currScale.doubleValue().toFixed(2) : currScale.base.toFixed(2) + 'E' + currScale.exp}`;
                     offCtx.strokeText(zoomText, w * 0.05, h * 0.05);
                     offCtx.fillText(zoomText, w * 0.05, h * 0.05);
                     offCtx.restore();
 
-                    frameIndex++;
+                    // Create VideoFrame and encode
+                    const videoFrame = new VideoFrame(offCanvas, { timestamp });
+                    const keyFrame = frameIndex % 30 === 0;
+                    encoder.encode(videoFrame, { keyFrame });
+                    videoFrame.close();
 
-                    if (recorder.state === "recording") {
-                        // We use setTimeout 0 or requestAnimationFrame to keep UI responsive,
-                        // but the actual rendering is now PURELY based on frameIndex.
-                        requestAnimationFrame(renderer);
+                    // Small delay to keep UI responsive
+                    if (frameIndex % 10 === 0) {
+                        await encoder.flush();
+                        await new Promise(resolve => setTimeout(resolve, 0));
                     }
-                };
-
-                recorder.start();
-                requestAnimationFrame(renderer);
-                await recordingFinished;
+                }
 
                 if (!requestCancel) {
-                    const blob = new Blob(data, { type: 'video/webm' });
-                    const url = URL.createObjectURL(blob);
-                    const a = document.createElement('a');
-                    a.download = `mandelbrot-zoom-${Date.now()}.webm`;
-                    a.href = url;
-                    a.click();
-                    URL.revokeObjectURL(url);
+                    updateUI(1, 1, "Finalizing", "Flushing encoder...");
+                    await encoder.flush();
+                    encoder.close();
+
+                    updateUI(1, 1, "Finalizing", "Finalizing WebM...");
+                    await webmWriter.complete();
+                    await fileWritableStream.close();
+                } else {
+                    encoder.close();
+                    await fileWritableStream.close();
                 }
             } catch (err) {
                 console.error("Video error:", err);
