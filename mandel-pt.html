@@ -5591,14 +5591,14 @@
                 const ctx = canvas.getContext('2d');
                 const w = canvas.width, h = canvas.height, cx = w / 2, cy = h / 2;
 
+                const blend = frameIndex - lower;
+                const kfLower = this.keyframes[Math.min(lower, this.keyframes.length - 1)];
+
                 if (lower === upper || upper >= this.keyframes.length) {
                     // Exact frame
-                    const kf = this.keyframes[Math.min(lower, this.keyframes.length - 1)];
-                    ctx.drawImage(kf.frame, 0, 0, w, h);
+                    ctx.drawImage(kfLower.frame, 0, 0, w, h);
                 } else {
                     // Fractional - perform zoom interpolation
-                    const blend = frameIndex - lower;
-                    const kfLower = this.keyframes[lower];
                     const kfUpper = this.keyframes[upper];
 
                     // zoom-based blending (matching your requirements)
@@ -5615,19 +5615,44 @@
                     // Second frame zoom in (overlayed with alpha fade)
                     ctx.globalAlpha = Math.max(0, Math.min(1, (blend - 0.1) / 0.8));
                     ctx.drawImage(kfUpper.frame, cx - (w * scale2) / 2, cy - (h * scale2) / 2, w * scale2, h * scale2);
-
-                    ctx.globalAlpha = 1.0;
-                    // Zoom Text Overlay
-                    ctx.font = `bold ${Math.round(w / 40)}px Arial`;
-                    ctx.fillStyle = 'white'; ctx.strokeStyle = 'black'; ctx.lineWidth = 1;
-                    const scaleBase = FloatExp.FOUR.div(kfLower.scale);
-                    const currScale = FloatExp.fromLog2(scaleBase.log2Value() + blend);
-                    const zoomText = `Zoom: ${currScale.exp < 7 ? currScale.doubleValue().toFixed(2) : currScale.base.toFixed(2) + 'E' + currScale.exp}`;
-                    ctx.strokeText(zoomText, w * 0.05, h * 0.05);
-                    ctx.fillText(zoomText, w * 0.05, h * 0.05);
-
                     ctx.restore();
                 }
+
+                // --- Overlays ---
+                ctx.save();
+                ctx.imageSmoothingEnabled = true;
+
+                // 1. Zoom Text Overlay (Always drawn)
+                ctx.font = `bold ${Math.round(w / 40)}px Arial`;
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+                ctx.strokeStyle = 'rgba(0, 0, 0, 0.9)';
+                ctx.lineWidth = Math.max(1, w / 1000);
+
+                const scaleBase = FloatExp.FOUR.div(kfLower.scale);
+                const currScale = FloatExp.fromLog2(scaleBase.log2Value() + blend);
+                const zoomText = `Zoom: ${currScale.exp < 7 ? currScale.doubleValue().toFixed(2) : currScale.base.toFixed(2) + 'E' + currScale.exp}`;
+
+                ctx.strokeText(zoomText, w * 0.05, h * 0.05);
+                ctx.fillText(zoomText, w * 0.05, h * 0.05);
+
+                // 2. Frame Label (Only for editor preview, not export)
+                if (!useCanvas) {
+                    const frameLabel = `Frame: ${frameIndex.toFixed(2)}`;
+                    ctx.font = `${Math.round(w / 60)}px monospace`;
+                    const textMetrics = ctx.measureText(frameLabel);
+                    const padding = 8;
+                    const rectW = textMetrics.width + padding * 2;
+                    const rectH = Math.round(w / 40);
+
+                    ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+                    ctx.fillRect(w - rectW - 20, 20, rectW, rectH);
+
+                    ctx.fillStyle = 'white';
+                    ctx.textBaseline = 'middle';
+                    ctx.fillText(frameLabel, w - rectW - 20 + padding, 20 + rectH / 2);
+                }
+
+                ctx.restore();
             }
 
             togglePlayPause() {
