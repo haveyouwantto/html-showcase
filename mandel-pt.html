@@ -927,10 +927,15 @@
         <label for="color-step">Color Step:</label>
         <input type="number" id="color-step" value="1" min="1" max="100" step="1"><br>
         <div id="random-group">
-            <input type="radio" name="algorithm" id="random-1" value="random" checked>
-            <label for="random-1">Algorithm 1</label>
-            <input type="radio" name="algorithm" id="random-2" value="random-bw">
-            <label for="random-2">Algorithm 2</label>
+            <label for="algorithm-select">Generation Scheme:</label>
+            <select id="algorithm-select">
+                <option value="random">Fully Random</option>
+                <option value="random-bw">B&W Phases</option>
+                <option value="wandering" selected>Wandering Hue</option>
+                <option value="golden">Golden Ratio</option>
+                <option value="teal-orange">Cinematic Teal-Orange</option>
+                <option value="organic-sine">Organic Waves</option>
+            </select>
             <button id="random-colors">Random</button>
         </div>
         <ol id="color-list">
@@ -5506,7 +5511,14 @@
                     offMandel.resizeCanvas(false, this.resolution.width, this.resolution.height);
                     offMandel.size = mandelbrot.size.copy();
                     offMandel.smooth = mandelbrot.smooth;
-                    offMandel.refValid = false;
+
+                    // Optimization: Reuse existing reference orbit if valid
+                    if (mandelbrot.refValid) {
+                        offMandel.ref = mandelbrot.ref;
+                        offMandel.refValid = true;
+                    } else {
+                        offMandel.refValid = false;
+                    }
 
                     // Support cancellation
                     offMandel.requestForCancel = false;
@@ -5833,6 +5845,41 @@
                 const frameIndex = this.getFrameAtTime(time);
                 this.renderFrameAt(frameIndex);
                 document.getElementById('current-time').textContent = time.toFixed(1);
+            }
+
+            recolorize() {
+                if (this.keyframes.length === 0) return;
+
+                const tempCanvas = document.createElement('canvas');
+                tempCanvas.width = this.resolution.width;
+                tempCanvas.height = this.resolution.height;
+                const tempCtx = tempCanvas.getContext('2d');
+                const imgData = tempCtx.createImageData(tempCanvas.width, tempCanvas.height);
+
+                this.keyframes.forEach(kf => {
+                    if (!kf.data) return;
+
+                    const data = kf.data;
+                    const len = data.length;
+                    for (let i = 0; i < len; i++) {
+                        const it = data[i];
+                        const color = getColor(it, mandelbrot.iterations);
+                        const j = i << 2;
+                        imgData.data[j] = color[0];
+                        imgData.data[j + 1] = color[1];
+                        imgData.data[j + 2] = color[2];
+                        imgData.data[j + 3] = 255;
+                    }
+                    tempCtx.putImageData(imgData, 0, 0);
+
+                    // Update keyframe image
+                    const newImg = new Image();
+                    newImg.src = tempCanvas.toDataURL();
+                    kf.frame = newImg;
+                });
+
+                // Refresh current frame
+                this.seekTo(this.currentTime);
             }
 
             toggleFullscreen() {
@@ -6243,6 +6290,75 @@
             return palette;
         }
 
+        function generateWanderingHueBWPalette(size) {
+            const palette = [];
+            let currentHue = Math.random();
+            let targetHue = Math.random();
+            const period = 32;
+
+            for (let i = 0; i < size; i++) {
+                if (i % period === 0) targetHue = Math.random();
+                let diff = targetHue - currentHue;
+                if (diff > 0.5) diff -= 1;
+                if (diff < -0.5) diff += 1;
+                currentHue = (currentHue + diff / period + 1) % 1;
+
+                const phase = i % 4;
+                let s, v;
+                switch (phase) {
+                    case 0: s = Math.random() * 0.4 + 0.6; v = Math.random() * 0.2 + 0.8; break;
+                    case 1: s = Math.random() * 0.4 + 0.6; v = Math.random() * 0.2 + 0.1; break;
+                    case 2: s = Math.random() * 0.4 + 0.6; v = Math.random() * 0.2 + 0.8; break;
+                    case 3: s = Math.random() * 0.2; v = Math.random() * 0.2 + 0.8; break;
+                }
+                palette.push(hsvToRgb(currentHue, s, v));
+            }
+            return palette;
+        }
+
+        function generateGoldenRatioPalette(size) {
+            const palette = [];
+            let h = Math.random();
+            const goldenRatioConjugate = 0.618033988749895;
+            for (let i = 0; i < size; i++) {
+                h = (h + goldenRatioConjugate) % 1;
+                const phase = i % 4;
+                let s, v;
+                switch (phase) {
+                    case 0: s = 0.8; v = 0.95; break;
+                    case 1: s = 0.9; v = 0.2; break;
+                    case 2: s = 0.8; v = 0.95; break;
+                    case 3: s = 0.2; v = 0.95; break;
+                }
+                palette.push(hsvToRgb(h, s, v));
+            }
+            return palette;
+        }
+
+        function generateTealOrangePalette(size) {
+            const palette = [];
+            for (let i = 0; i < size; i++) {
+                const isTeal = Math.random() > 0.5;
+                let h = isTeal ? 0.48 + Math.random() * 0.1 : 0.05 + Math.random() * 0.08;
+                const s = 0.5 + Math.random() * 0.5;
+                const v = i % 2 === 0 ? 0.8 + Math.random() * 0.2 : 0.1 + Math.random() * 0.2;
+                palette.push(hsvToRgb(h, s, v));
+            }
+            return palette;
+        }
+
+        function generateOrganicSinePalette(size) {
+            const palette = [];
+            const offsetH = Math.random();
+            for (let i = 0; i < size; i++) {
+                const h = (offsetH + Math.sin(i * 0.1) * 0.2 + Math.sin(i * 0.031) * 0.5 + 1) % 1;
+                const s = 0.6 + Math.sin(i * 0.07) * 0.3;
+                const v = 0.5 + Math.sin(i * 0.05) * 0.4;
+                palette.push(hsvToRgb(h, Math.abs(s), Math.abs(v)));
+            }
+            return palette;
+        }
+
         class PaletteEditor {
             constructor() {
                 this.dialog = document.getElementById('palette-dialog');
@@ -6268,6 +6384,18 @@
                             break;
                         case 'random-bw':
                             palette = generateRandomBWPalette(palette.length); // Generate a random black and white palette
+                            break;
+                        case 'wandering':
+                            palette = generateWanderingHueBWPalette(palette.length);
+                            break;
+                        case 'golden':
+                            palette = generateGoldenRatioPalette(palette.length);
+                            break;
+                        case 'teal-orange':
+                            palette = generateTealOrangePalette(palette.length);
+                            break;
+                        case 'organic-sine':
+                            palette = generateOrganicSinePalette(palette.length);
                             break;
 
                     }
@@ -6331,8 +6459,7 @@
             }
 
             getAlgorithm() {
-                const selectedAlgorithm = document.querySelector('input[name="algorithm"]:checked');
-                return selectedAlgorithm ? selectedAlgorithm.value : 'random';
+                return document.getElementById('algorithm-select').value;
             }
 
             applyColors() {
@@ -6347,6 +6474,7 @@
                 });
                 this.dialog.close();
                 mandelbrot.recolorize(); // Recolorize the Mandelbrot set with new colors
+                if (window.videoEditor) videoEditor.recolorize();
             }
 
             show() {
