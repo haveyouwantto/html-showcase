@@ -6019,8 +6019,23 @@
         // Create global video editor instance
         let videoEditor = null;
 
+        function checkVideoAPIs() {
+            const missing = [];
+            if (typeof VideoEncoder === 'undefined') missing.push('VideoEncoder');
+            if (typeof VideoFrame === 'undefined') missing.push('VideoFrame');
+            if (typeof window.showSaveFilePicker === 'undefined') missing.push('window.showSaveFilePicker');
+
+            if (missing.length > 0) {
+                alert(`Your browser does not support the following APIs required for the video editor:\n${missing.join('\n')}\n\nPlease use a modern browser (e.g., Chrome, Edge, Opera) with these features enabled.`);
+                return false;
+            }
+            return true;
+        }
+
         // Replace makeVideo button handler
         document.getElementById("makeVideo").addEventListener('click', () => {
+            if (!checkVideoAPIs()) return;
+
             if (!videoEditor) {
                 videoEditor = new VideoEditor();
             }
