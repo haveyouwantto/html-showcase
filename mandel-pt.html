@@ -5729,7 +5729,9 @@
                     await this.storage.saveSession(currentSession);
 
                     // Merge existing and new frames. Both are in Deep-to-Shallow order.
-                    this.keyframes = [...existingFrames, ...renderedFrames];
+                    const merged = [...existingFrames, ...renderedFrames];
+                    // Reverse to Shallow-to-Deep for logical timeline (Index 0 = Zoomed out)
+                    this.keyframes = merged.reverse();
 
                     if (this.keyframes.length < 2) {
                         this.keyframes = [];
@@ -5901,12 +5903,8 @@
 
                 const blend = frameIndex - lower;
 
-                // Fetch from storage (shallow-to-deep correction needed if renderFrames reverses)
-                // renderFrames returns reversed array, so keyframes[0] is the last frame rendered (index length-1)
-                // BUT we saved them with indices 0 to frames.length-1.
-                // So index 'i' in the reversed metadata array corresponds to disk index (length - 1 - i)
-                const diskIdxLower = Math.min(lower, this.keyframes.length - 1);
-                const diskIdxUpper = Math.min(upper, this.keyframes.length - 1);
+                const diskIdxLower = this.keyframes.length - 1 - Math.min(lower, this.keyframes.length - 1);
+                const diskIdxUpper = this.keyframes.length - 1 - Math.min(upper, this.keyframes.length - 1);
 
                 const kfLower = await this.storage.getFrame(diskIdxLower);
                 if (!kfLower) return;
