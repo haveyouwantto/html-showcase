@@ -839,7 +839,7 @@
                             let currQ = clamp(q[j], -2, 2);
 
                             this.out[0] = new Complex(currI, currQ);
-                            this.outRail[0] = new Complex(Number(this.out[0].real > 0), Number(this.out[0].imag > 0));
+                            this.outRail[0] = new Complex(this.out[0].real > 0 ? 1 : -1, 0);
 
                             let x = this.outRail[0].sub(this.outRail[2]).mul(this.out[1].conj()).real;
                             let y = this.out[0].sub(this.out[2]).mul(this.outRail[1].conj()).real;
@@ -933,12 +933,12 @@
                     if (!i || !q) return true;
 
                     for (let j = 0; j < i.length; ++j) {
-                        if (this.count >= 0) {
+                        if (this.count + this.mu >= 0) {
                             let currI = clamp(i[j], -2, 2);
                             let currQ = clamp(q[j], -2, 2);
 
                             this.out[0] = new Complex(currI, currQ);
-                            this.outRail[0] = new Complex(Number(this.out[0].real > 0), Number(this.out[0].imag > 0));
+                            this.outRail[0] = new Complex(this.out[0].real > 0 ? 1 : -1, this.out[0].imag > 0 ? 1 : -1);
 
                             let x = this.outRail[0].sub(this.outRail[2]).mul(this.out[1].conj()).real;
                             let y = this.out[0].sub(this.out[2]).mul(this.outRail[1].conj()).real;
@@ -1016,7 +1016,7 @@
 
                     this.phaseRef = Array.from({ length: 8 }, (_, k) => {
                         const angle = 2 * Math.PI * k / 8 + (Math.PI / 8);
-                        return [Math.cos(angle), Math.sin(angle)];
+                        return new Complex(Math.cos(angle), Math.sin(angle));
                     });
 
                     this.port.onmessage = (event) => {
@@ -1058,7 +1058,7 @@
                     if (!i || !q) return true;
 
                     for (let j = 0; j < i.length; ++j) {
-                        if (this.count >= 0) {
+                        if (this.count + this.mu >= 0) {
                             let currI = clamp(i[j], -2, 2);
                             let currQ = clamp(q[j], -2, 2);
 
