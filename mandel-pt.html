@@ -4312,7 +4312,8 @@
 
                     let prevDeep = this.deep;
                     this.deep = this.size.exp < -300;
-                    if (prevDeep && !this.deep && this.ref instanceof ReferenceCompressorFloatExp) this.ref = this.ref.toComplexRef();
+                    console.log(prevDeep, this.deep)
+                    if (prevDeep !== this.deep) this.refValid = false;
 
                     updateInfoOverlay(this.center.re, this.center.im, FloatExp.FOUR.div(this.size), this.iterations);
                     reInput.value = this.center.re.toString();
