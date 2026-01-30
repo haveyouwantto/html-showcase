@@ -1074,6 +1074,7 @@
                     </div>
 
                     <button id="collect-keyframes-btn" class="editor-btn primary">Collect Keyframes</button>
+                    <button id="resume-keyframes-btn" class="editor-btn secondary">Resume Rendering</button>
                     <button id="clear-keyframes-btn" class="editor-btn secondary" style="display: none;">Clear
                         Keyframes</button>
 
@@ -4758,7 +4759,7 @@
 
             }
 
-            async renderFrames(onProgress, onFrame, startIndex = 0) {
+            async renderFrames(onProgress, onFrame, startIndex = 0, shouldSkip = null) {
                 let frames = [];
                 let refreshRef = false;
                 this.videoRendering = true;
@@ -4781,36 +4782,48 @@
                     while (this.size.doubleValue() < 32) {
                         if (this.requestForCancel) break;
 
-                        const currentFrameIdx = frames.length + startIndex + 1;
-                        if (onProgress) onProgress(currentFrameIdx, 0, "Rendering Frame " + currentFrameIdx);
+                        const currentFrameIdx = frames.length + startIndex;
+                        let skipped = false;
+                        if (shouldSkip && await shouldSkip(currentFrameIdx)) {
+                            skipped = true;
+                        }
 
-                        // Capture local progress from update
-                        const originalUpdateProgress = this.updateProgress;
-                        this.updateProgress = () => {
-                            const totalPixels = this.canvas.width * this.canvas.height;
-                            const prog = (this.stats.calc + this.stats.guess) / totalPixels;
-                            if (onProgress) onProgress(currentFrameIdx, prog, `Rendering Frame ${currentFrameIdx}`);
-                            originalUpdateProgress.call(this);
-                        };
+                        if (!skipped) {
+                            if (onProgress) onProgress(currentFrameIdx + 1, 0, "Rendering Frame " + (currentFrameIdx + 1));
 
-                        await this.update();
-                        this.updateProgress = originalUpdateProgress;
+                            // Capture local progress from update
+                            const originalUpdateProgress = this.updateProgress;
+                            this.updateProgress = () => {
+                                const totalPixels = this.canvas.width * this.canvas.height;
+                                const prog = (this.stats.calc + this.stats.guess) / totalPixels;
+                                if (onProgress) onProgress(currentFrameIdx + 1, prog, `Rendering Frame ${currentFrameIdx + 1}`);
+                                originalUpdateProgress.call(this);
+                            };
 
-                        if (this.requestForCancel) break;
+                            await this.update();
+                            this.updateProgress = originalUpdateProgress;
 
-                        const blob = await this.canvas.convertToBlob();
-                        const scale = this.size.copy();
+                            if (this.requestForCancel) break;
 
-                        if (onFrame) {
-                            await onFrame(frames.length + startIndex, blob, scale);
-                            frames.push({ scale: scale });
+                            const blob = await this.canvas.convertToBlob();
+                            const scale = this.size.copy();
+
+                            if (onFrame) {
+                                await onFrame(currentFrameIdx, blob, scale);
+                            } else {
+                                const img = new Image();
+                                await new Promise((resolve) => {
+                                    img.onload = resolve;
+                                    img.src = URL.createObjectURL(blob);
+                                });
+                                frames[frames.length] = { frame: img, scale: scale }; // Store in array
+                            }
                         } else {
-                            const img = new Image();
-                            await new Promise((resolve) => {
-                                img.onload = resolve;
-                                img.src = URL.createObjectURL(blob);
-                            });
-                            frames.push({ frame: img, scale: scale });
+                            if (onProgress) onProgress(currentFrameIdx + 1, 1, `Skipping frame ${currentFrameIdx + 1}`);
+                        }
+
+                        if (!frames[currentFrameIdx - startIndex]) {
+                            frames[currentFrameIdx - startIndex] = { scale: this.size.copy() };
                         }
 
                         this.zoomOut();
@@ -5412,8 +5425,43 @@
                 if (!this.dirHandle) return;
                 const fileHandle = await this.dirHandle.getFileHandle('session.json', { create: true });
                 const writable = await fileHandle.createWritable();
+                // Ensure kfrPath is set
+                metadata.kfrPath = 'session.kfr';
                 await writable.write(JSON.stringify(metadata, null, 2));
                 await writable.close();
+            }
+
+            async saveKFR(mandelbrot) {
+                if (!this.dirHandle) return;
+                const writer = new KFRWriter();
+                writer.load(mandelbrot);
+                const kfrContent = writer.toString();
+                const fileHandle = await this.dirHandle.getFileHandle('session.kfr', { create: true });
+                const writable = await fileHandle.createWritable();
+                await writable.write(kfrContent);
+                await writable.close();
+            }
+
+            async loadKFR() {
+                if (!this.dirHandle) return null;
+                try {
+                    const fileHandle = await this.dirHandle.getFileHandle('session.kfr');
+                    const file = await fileHandle.getFile();
+                    const arrayBuffer = await file.arrayBuffer();
+                    return new KFRReader(arrayBuffer);
+                } catch (e) {
+                    return null;
+                }
+            }
+
+            async scanMissingFrames(count) {
+                if (!this.dirHandle) return [];
+                const missing = [];
+                for (let i = 0; i < count; i++) {
+                    const exists = await this.checkExistingFrame(i);
+                    if (!exists) missing.push(i);
+                }
+                return missing;
             }
 
             async loadSession() {
@@ -5538,6 +5586,7 @@
 
                 // Buttons
                 document.getElementById('collect-keyframes-btn').onclick = () => this.collectKeyframes();
+                document.getElementById('resume-keyframes-btn').onclick = () => this.resumeRendering();
                 document.getElementById('clear-keyframes-btn').onclick = () => this.clearKeyframes();
                 document.getElementById('add-control-point').onclick = () => this.addControlPoint();
                 document.getElementById('export-video-btn').onclick = () => this.exportVideo();
@@ -5585,7 +5634,67 @@
                 this.dialog.close();
             }
 
-            async collectKeyframes() {
+            async resumeRendering() {
+                const progressDialog = document.getElementById("video-progress-dialog");
+                const statusText = document.getElementById("video-status");
+
+                // Initialize storage (requests folder)
+                if (!await this.storage.init()) return;
+
+                this.dialog.close();
+                progressDialog.showModal();
+                statusText.innerText = "Loading session...";
+
+                try {
+                    const session = await this.storage.loadSession();
+                    if (!session) {
+                        alert("No session.json found in this folder.");
+                        progressDialog.close();
+                        this.dialog.showModal();
+                        return;
+                    }
+
+                    const kfrReader = await this.storage.loadKFR();
+                    if (!kfrReader) {
+                        alert("No session.kfr found in this folder.");
+                        progressDialog.close();
+                        this.dialog.showModal();
+                        return;
+                    }
+
+                    // Restore simulation parameters from KFR
+                    mandelbrot.goto(new DeepComplex(kfrReader.re, kfrReader.im))
+                    mandelbrot.zoom(FloatExp.FOUR.div(parseFloatExp(kfrReader.zoom)));
+                    mandelbrot.setIterations(kfrReader.iter);
+                    mandelbrot.smooth = kfrReader.smooth;
+                    palette = kfrReader.colors;
+                    colorStep = 1024 / kfrReader.colors.length * kfrReader.iterDiv;
+                    mandelbrot.update();
+
+                    // Restore video settings from session.json
+                    this.resolution.width = session.resolution.width;
+                    this.resolution.height = session.resolution.height;
+                    this.fps = session.fps || 30;
+
+                    // Restore keyframe metadata for playback
+                    this.keyframeMetadata = {
+                        center: mandelbrot.center.copy(),
+                        size: mandelbrot.size.copy(),
+                        startScale: new FloatExp(session.startScale.base, session.startScale.exp),
+                        frameCount: session.frames.length
+                    };
+
+                    // Trigger collection with resume info
+                    await this.collectKeyframes(true, session);
+
+                } catch (e) {
+                    alert("Error resuming session: " + e.message);
+                    progressDialog.close();
+                    this.dialog.showModal();
+                }
+            }
+
+            async collectKeyframes(isResume = false, sessionData = null) {
                 const progressDialog = document.getElementById("video-progress-dialog");
                 const previewCanvas = document.getElementById("video-preview-canvas");
                 const previewCtx = previewCanvas.getContext('2d');
@@ -5599,10 +5708,6 @@
                 progressDialog.showModal();
 
                 let requestCancel = false;
-                cancelBtn.onclick = () => {
-                    requestCancel = true;
-                    statusText.innerText = "Cancelling...";
-                };
 
                 // Initialize storage (requests folder)
                 if (!await this.storage.init()) {
@@ -5611,8 +5716,11 @@
                     return;
                 }
 
+                // Initial save of simulation state
+                await this.storage.saveKFR(mandelbrot);
+
                 try {
-                    const currentSession = {
+                    const currentSession = sessionData || {
                         center: {
                             re: mandelbrot.center.re.toString(),
                             im: mandelbrot.center.im.toString()
@@ -5622,44 +5730,26 @@
                             width: this.resolution.width,
                             height: this.resolution.height
                         },
-                        frames: [] // Will store { scale }
+                        fps: this.fps,
+                        startScale: { base: mandelbrot.size.base, exp: mandelbrot.size.exp },
+                        frames: [] // Will store indices
                     };
 
-                    const prevSession = await this.storage.loadSession();
-                    let startIndex = 0;
-                    let existingFrames = [];
+                    const startIndex = currentSession.frames.length > 0 ? currentSession.frames.length : 0;
 
-                    if (prevSession &&
-                        prevSession.center.re === currentSession.center.re &&
-                        prevSession.center.im === currentSession.center.im &&
-                        prevSession.iterations === currentSession.iterations &&
-                        prevSession.resolution.width === currentSession.resolution.width &&
-                        prevSession.resolution.height === currentSession.resolution.height) {
-
-                        // Session matches, find how many frames we have
-                        let i = 0;
-                        while (await this.storage.checkExistingFrame(i) && i < prevSession.frames.length) {
-                            existingFrames.push({
-                                scale: new FloatExp(prevSession.frames[i].scale.base, prevSession.frames[i].scale.exp)
-                            });
-                            i++;
-                        }
-
-                        if (i > 0) {
-                            if (confirm(`Found existing session with ${i} frames. Resume?`)) {
-                                startIndex = i;
-                                currentSession.frames = prevSession.frames.slice(0, i);
-                                statusText.innerText = `Resuming from frame ${i}...`;
-                            } else {
-                                existingFrames = [];
-                            }
-                        }
-                    }
+                    cancelBtn.onclick = async () => {
+                        requestCancel = true;
+                        statusText.innerText = "Saving and Cancelling...";
+                        // Final attempt to save metadata before stopping
+                        await this.storage.saveSession(currentSession);
+                        // Signal Mandelbrot to stop
+                    };
 
                     // Store metadata for the editor state
                     this.keyframeMetadata = {
                         center: mandelbrot.center.copy(),
                         size: mandelbrot.size.copy(),
+                        startScale: mandelbrot.size.copy(),
                         frameCount: 0
                     };
 
@@ -5686,13 +5776,11 @@
                     previewCanvas.width = this.resolution.width;
                     previewCanvas.height = this.resolution.height;
 
-                    const maxOctaves = Math.ceil(Math.log2(32 / offMandel.size.doubleValue()));
-
-                    // Save initial session metadata
-                    await this.storage.saveSession(currentSession);
+                    // Fix: Use log2 for progress to avoid Infinity issues in deep mode
+                    const maxOctaves = Math.ceil(5 - offMandel.size.log2Value());
 
                     // Collect keyframes using existing renderFrames
-                    const renderedFrames = await offMandel.renderFrames(
+                    const renderedResults = await offMandel.renderFrames(
                         (frameIdx, frameProg, status) => {
                             if (requestCancel) {
                                 offMandel.requestForCancel = true;
@@ -5709,13 +5797,18 @@
                         },
                         async (idx, blob, scale) => {
                             await this.storage.saveFrame(idx, blob);
-                            currentSession.frames[idx] = {
-                                scale: { base: scale.base, exp: scale.exp }
-                            };
+                            if (!currentSession.frames.includes(idx)) {
+                                currentSession.frames.push(idx);
+                                currentSession.frames.sort((a, b) => a - b);
+                            }
                             // Periodically save session to avoid loss on crash
                             if (idx % 5 === 0) await this.storage.saveSession(currentSession);
                         },
-                        startIndex
+                        startIndex,
+                        async (idx) => {
+                            // shouldSkip logic
+                            return await this.storage.checkExistingFrame(idx);
+                        }
                     );
 
                     if (requestCancel) {
@@ -5729,12 +5822,13 @@
                     // Final session save
                     await this.storage.saveSession(currentSession);
 
-                    // Merge existing and new frames. Both are in Deep-to-Shallow order.
-                    const merged = [...existingFrames, ...renderedFrames];
-                    // Reverse to Shallow-to-Deep for logical timeline (Index 0 = Zoomed out)
-                    this.keyframes = merged.reverse();
+                    // Reconstruct keyframes metadata (Index based)
+                    this.keyframes = currentSession.frames.map(idx => {
+                        return { index: idx };
+                    });
 
                     if (this.keyframes.length < 2) {
+                        alert("Not enough frames collected (at least 2 required)");
                         this.keyframes = [];
                         this.keyframeMetadata = null;
                         progressDialog.close();
@@ -5744,11 +5838,11 @@
 
                     this.keyframeMetadata.frameCount = this.keyframes.length;
 
-                    // Auto-populate initial timeline
-                    const duration = this.keyframes.length;
+                    // Auto-populate initial timeline (Time in seconds)
+                    const durationInFrames = this.keyframes.length;
                     this.timeline = [
                         { time: 0, frame: 0 },
-                        { time: duration, frame: this.keyframes.length - 1 }
+                        { time: durationInFrames / 3, frame: this.keyframes.length - 1 } // Default speed
                     ];
 
                     this.updateKeyframeDisplay();
@@ -5760,6 +5854,7 @@
                     this.previewCanvas.height = this.resolution.height;
 
                 } catch (err) {
+                    console.error(err);
                     alert('Error collecting keyframes: ' + err.message);
                 } finally {
                     progressDialog.close();
@@ -5894,7 +5989,7 @@
             }
 
             async renderFrameAt(frameIndex, useCanvas = null) {
-                if (this.keyframes.length === 0) return;
+                if (this.keyframes.length === 0 || !this.keyframeMetadata) return;
 
                 const lower = Math.floor(frameIndex);
                 const upper = Math.ceil(frameIndex);
@@ -5904,35 +5999,36 @@
 
                 const blend = frameIndex - lower;
 
-                const diskIdxLower = this.keyframes.length - 1 - Math.min(lower, this.keyframes.length - 1);
-                const diskIdxUpper = this.keyframes.length - 1 - Math.min(upper, this.keyframes.length - 1);
+                const kfLowerMetadata = this.keyframes[Math.min(lower, this.keyframes.length - 1)];
+                const diskIdxLower = kfLowerMetadata.index;
 
                 const kfLower = await this.storage.getFrame(diskIdxLower);
                 if (!kfLower) return;
-
-                const kfLowerMetadata = this.keyframes[Math.min(lower, this.keyframes.length - 1)];
 
                 if (lower === upper || upper >= this.keyframes.length) {
                     // Exact frame
                     ctx.drawImage(kfLower, 0, 0, w, h);
                 } else {
                     // Fractional - perform zoom interpolation
+                    const kfUpperMetadata = this.keyframes[Math.min(upper, this.keyframes.length - 1)];
+                    const diskIdxUpper = kfUpperMetadata.index;
                     const kfUpper = await this.storage.getFrame(diskIdxUpper);
+
                     if (!kfUpper) {
                         ctx.drawImage(kfLower, 0, 0, w, h);
                     } else {
-                        // zoom-based blending
-                        const scale1 = Math.pow(2, blend);
-                        const scale2 = scale1 * 0.5;
+                        // zoom-based blending (Zoom Out scales)
+                        const scale1 = Math.pow(2, -blend);
+                        const scale2 = Math.pow(2, 1 - blend);
 
                         ctx.save();
                         ctx.clearRect(0, 0, w, h);
                         ctx.imageSmoothingEnabled = true;
 
-                        // First frame zoom out
+                        // Deep frame (shrinking)
                         ctx.drawImage(kfLower, cx - (w * scale1) / 2, cy - (h * scale1) / 2, w * scale1, h * scale1);
 
-                        // Second frame zoom in (overlayed with alpha fade)
+                        // Shallow frame (fading in and shrinking)
                         ctx.globalAlpha = Math.max(0, Math.min(1, (blend - 0.1) / 0.8));
                         ctx.drawImage(kfUpper, cx - (w * scale2) / 2, cy - (h * scale2) / 2, w * scale2, h * scale2);
                         ctx.restore();
@@ -5943,9 +6039,10 @@
                 ctx.save();
                 ctx.imageSmoothingEnabled = true;
 
-                // 1. Zoom Text Overlay (Always drawn)
-                const scaleBase = FloatExp.FOUR.div(kfLowerMetadata.scale);
-                const currScale = FloatExp.fromLog2(scaleBase.log2Value() + blend);
+                // 1. Zoom Text Overlay
+                const zoomStart = FloatExp.FOUR.div(this.keyframeMetadata.startScale);
+                const currZoomLog2 = zoomStart.log2Value() - frameIndex;
+                const currScale = FloatExp.fromLog2(currZoomLog2);
                 const zoomText = `Zoom: ${currScale.exp < 7 ? currScale.doubleValue().toFixed(2) : currScale.base.toFixed(2) + 'E' + currScale.exp}`;
 
                 ctx.font = `${Math.round(w / 60)}px monospace`;
