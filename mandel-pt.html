@@ -6303,6 +6303,8 @@
 
         // Replace makeVideo button handler
         document.getElementById("makeVideo").addEventListener('click', () => {
+            alert("Broken");
+            return;
             if (!checkVideoAPIs()) return;
 
             if (!videoEditor) {
