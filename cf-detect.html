@@ -1,0 +1,581 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cloudflare Location Detect</title>
+    <style>
+        :root {
+            --bg-color: #0d1117;
+            --card-bg: rgba(22, 27, 34, 0.8);
+            --text-primary: #f0f6fc;
+            --text-secondary: #8b949e;
+            --accent: #58a6ff;
+            --cf-orange: #f78166;
+            --border-color: #30363d;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            background-image:
+                radial-gradient(circle at 20% 20%, rgba(88, 166, 255, 0.05) 0%, transparent 40%),
+                radial-gradient(circle at 80% 80%, rgba(247, 129, 102, 0.05) 0%, transparent 40%);
+            color: var(--text-primary);
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            overflow: hidden;
+        }
+
+        .container {
+            background: var(--card-bg);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid var(--border-color);
+            padding: 2.5rem;
+            border-radius: 1.25rem;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.4);
+            text-align: center;
+            max-width: 440px;
+            width: 90%;
+            animation: slideUp 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        @keyframes slideUp {
+            from {
+                opacity: 0;
+                transform: translateY(30px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        header h1 {
+            font-size: 1.25rem;
+            font-weight: 600;
+            margin: 0 0 2rem 0;
+            color: var(--text-primary);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+        }
+
+        header h1 svg {
+            color: var(--cf-orange);
+        }
+
+        .data-point {
+            margin-bottom: 1.5rem;
+        }
+
+        .label {
+            color: var(--text-secondary);
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            margin-bottom: 0.5rem;
+        }
+
+        .value {
+            font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: var(--accent);
+            letter-spacing: 0.05em;
+        }
+
+        .location-info {
+            padding-top: 1.5rem;
+            border-top: 1px solid var(--border-color);
+            min-height: 3rem;
+        }
+
+        .city-name {
+            font-size: 1.1rem;
+            font-weight: 500;
+        }
+
+        .status {
+            margin-top: 2rem;
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+        }
+
+        .dot {
+            width: 8px;
+            height: 8px;
+            background-color: #238636;
+            border-radius: 50%;
+            box-shadow: 0 0 10px #238636;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0% {
+                transform: scale(0.95);
+                box-shadow: 0 0 0 0 rgba(35, 134, 54, 0.7);
+            }
+
+            70% {
+                transform: scale(1);
+                box-shadow: 0 0 0 10px rgba(35, 134, 54, 0);
+            }
+
+            100% {
+                transform: scale(0.95);
+                box-shadow: 0 0 0 0 rgba(35, 134, 54, 0);
+            }
+        }
+
+        .loading .value,
+        .loading .city-name {
+            color: var(--border-color);
+            background: linear-gradient(90deg, var(--border-color) 25%, #444 50%, var(--border-color) 75%);
+            background-size: 200% 100%;
+            animation: loading 1.5s infinite;
+            background-clip: text;
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        @keyframes loading {
+            from {
+                background-position: 200% 0;
+            }
+
+            to {
+                background-position: -200% 0;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container" id="app">
+        <header>
+            <h1>
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path
+                        d="M17.5 19C15.0147 19 13 16.9853 13 14.5C13 12.0147 15.0147 10 17.5 10C19.9853 10 22 12.0147 22 14.5C22 16.9853 19.9853 19 17.5 19Z"
+                        stroke="currentColor" stroke-width="2" />
+                    <path d="M7 15C4.79086 15 3 13.2091 3 11C3 8.79086 4.79086 7 7 7C9.20914 7 11 8.79086 11 11"
+                        stroke="currentColor" stroke-width="2" />
+                    <path d="M18 10C18 6.68629 15.3137 4 12 4C9.53035 4 7.41031 5.48971 6.47152 7.625"
+                        stroke="currentColor" stroke-width="2" />
+                    <path d="M13 14.5C13 17.5376 10.5376 20 7.5 20C4.46243 20 2 17.5376 2 14.5" stroke="currentColor"
+                        stroke-width="2" />
+                </svg>
+                Cloudflare Detector
+            </h1>
+        </header>
+
+        <div class="data-point loading" id="detection-content">
+            <div class="label">Colocation Code</div>
+            <div class="value" id="code-display">---</div>
+        </div>
+
+        <div class="location-info loading" id="location-content">
+            <div class="label">Physical Location</div>
+            <div class="city-name" id="city-display">Determining...</div>
+        </div>
+
+        <div class="status">
+            <div class="dot"></div>
+            <span>Network Status: Optimal</span>
+        </div>
+    </div>
+
+    <script>
+        const CFlocationMap = {
+            "AAE": "Annaba, Algeria",
+            "ABJ": "Abidjan, Ivory Coast",
+            "ABQ": "Albuquerque, United States",
+            "ACC": "Accra, Ghana",
+            "ADB": "Izmir, Turkey",
+            "ADD": "Addis Ababa, Ethiopia",
+            "ADL": "Adelaide, Australia",
+            "AGR": "Agra, India",
+            "AKL": "Auckland, New Zealand",
+            "AKX": "Aktobe, Kazakhstan",
+            "ALA": "Almaty, Kazakhstan",
+            "ALG": "Algiers, Algeria",
+            "AMD": "Ahmedabad, India",
+            "AMM": "Amman, Jordan",
+            "AMS": "Amsterdam, Netherlands",
+            "ANC": "Anchorage, United States",
+            "ARI": "Arica, Chile",
+            "ARN": "Stockholm, Sweden",
+            "ARU": "Aracatuba, Brazil",
+            "ASK": "Yamoussoukro, Ivory Coast",
+            "ASU": "Asunción, Paraguay",
+            "ATH": "Athens, Greece",
+            "ATL": "Atlanta, United States",
+            "AUS": "Austin, United States",
+            "BAH": "Manama, Bahrain",
+            "BAQ": "Barranquilla, Colombia",
+            "BBI": "Bhubaneswar, India",
+            "BCN": "Barcelona, Spain",
+            "BEG": "Belgrade, Serbia",
+            "BEL": "Belém, Brazil",
+            "BEY": "Beirut, Lebanon",
+            "BGI": "Bridgetown, Barbados",
+            "BGR": "Bangor, United States",
+            "BGW": "Baghdad, Iraq",
+            "BHY": "Beihai, China",
+            "BKK": "Bangkok, Thailand",
+            "BLR": "Bangalore, India",
+            "BNA": "Nashville, United States",
+            "BNE": "Brisbane, Australia",
+            "BNU": "Blumenau, Brazil",
+            "BOD": "Bordeaux, France",
+            "BOG": "Bogota, Colombia",
+            "BOM": "Mumbai, India",
+            "BOS": "Boston, United States",
+            "BRU": "Brussels, Belgium",
+            "BSB": "Brasilia, Brazil",
+            "BSR": "Basra, Iraq",
+            "BTS": "Bratislava, Slovakia",
+            "BUD": "Budapest, Hungary",
+            "BUF": "Buffalo, United States",
+            "BWN": "Bandar Seri Begawan, Brunei",
+            "CAI": "Cairo, Egypt",
+            "CAN": "Guangzhou, China",
+            "CAW": "Campos dos Goytacazes, Brazil",
+            "CBR": "Canberra, Australia",
+            "CCP": "Concepción, Chile",
+            "CCU": "Kolkata, India",
+            "CDG": "Paris, France",
+            "CEB": "Cebu, Philippines",
+            "CFC": "Cacador, Brazil",
+            "CGB": "Cuiaba, Brazil",
+            "CGD": "Changde, China",
+            "CGK": "Jakarta, Indonesia",
+            "CGO": "Zhengzhou, China",
+            "CGP": "Chittagong, Bangladesh",
+            "CGY": "Cagayan de Oro, Philippines",
+            "CHC": "Christchurch, New Zealand",
+            "CJB": "Coimbatore, India",
+            "CKG": "Chongqing, China",
+            "CLE": "Cleveland, United States",
+            "CLO": "Cali, Colombia",
+            "CLT": "Charlotte, United States",
+            "CMB": "Colombo, Sri Lanka",
+            "CMH": "Columbus, United States",
+            "CNF": "Belo Horizonte, Brazil",
+            "CNN": "Kannur, India",
+            "CNX": "Chiang Mai, Thailand",
+            "COK": "Kochi, India",
+            "COR": "Córdoba, Argentina",
+            "CPH": "Copenhagen, Denmark",
+            "CPT": "Cape Town, South Africa",
+            "CRK": "Tarlac City, Philippines",
+            "CSX": "Changsha, China",
+            "CTU": "Chengdu, China",
+            "CWB": "Curitiba, Brazil",
+            "CZL": "Constantine, Algeria",
+            "CZX": "Changzhou, China",
+            "DAC": "Dhaka, Bangladesh",
+            "DAD": "Da Nang, Vietnam",
+            "DAR": "Dar es Salaam, Tanzania",
+            "DEL": "New Delhi, India",
+            "DEN": "Denver, United States",
+            "DFW": "Dallas, United States",
+            "DKR": "Dakar, Senegal",
+            "DLC": "Dalian, China",
+            "DME": "Moscow, Russia",
+            "DMM": "Dammam, Saudi Arabia",
+            "DOH": "Doha, Qatar",
+            "DPS": "Denpasar, Indonesia",
+            "DTW": "Detroit, United States",
+            "DUB": "Dublin, Ireland",
+            "DUR": "Durban, South Africa",
+            "DUS": "Düsseldorf, Germany",
+            "DXB": "Dubai, United Arab Emirates",
+            "EBB": "Kampala, Uganda",
+            "EBL": "Erbil, Iraq",
+            "EDI": "Edinburgh, United Kingdom",
+            "EVN": "Yerevan, Armenia",
+            "EWR": "Newark, United States",
+            "EZE": "Buenos Aires, Argentina",
+            "FCO": "Rome, Italy",
+            "FIH": "Kinshasa, DR Congo",
+            "FLN": "Florianopolis, Brazil",
+            "FOC": "Fuzhou, China",
+            "FOR": "Fortaleza, Brazil",
+            "FRA": "Frankfurt, Germany",
+            "FRU": "Bishkek, Kyrgyzstan",
+            "FSD": "Sioux Falls, United States",
+            "FUK": "Fukuoka, Japan",
+            "FUO": "Foshan, China",
+            "GBE": "Gaborone, Botswana",
+            "GDL": "Guadalajara, Mexico",
+            "GEO": "Georgetown, Guyana",
+            "GIG": "Rio de Janeiro, Brazil",
+            "GND": "St. George's, Grenada",
+            "GOT": "Gothenburg, Sweden",
+            "GRU": "São Paulo, Brazil",
+            "GUA": "Guatemala City, Guatemala",
+            "GUM": "Hagatna, Guam",
+            "GVA": "Geneva, Switzerland",
+            "GYD": "Baku, Azerbaijan",
+            "GYE": "Guayaquil, Ecuador",
+            "GYN": "Goiania, Brazil",
+            "HAK": "Chengmai, China",
+            "HAM": "Hamburg, Germany",
+            "HAN": "Hanoi, Vietnam",
+            "HBA": "Hobart, Australia",
+            "HEL": "Helsinki, Finland",
+            "HFA": "Haifa, Israel",
+            "HFE": "Huainan, China",
+            "HGH": "Shaoxing, China",
+            "HKG": "Hong Kong",
+            "HNL": "Honolulu, United States",
+            "HRE": "Harare, Zimbabwe",
+            "HYD": "Hyderabad, India",
+            "HYN": "Taizhou, China",
+            "IAD": "Ashburn, United States",
+            "IAH": "Houston, United States",
+            "ICN": "Seoul, South Korea",
+            "IND": "Indianapolis, United States",
+            "ISB": "Islamabad, Pakistan",
+            "IST": "Istanbul, Turkey",
+            "ISU": "Sulaymaniyah, Iraq",
+            "ITJ": "Itajai, Brazil",
+            "IXC": "Chandigarh, India",
+            "JAX": "Jacksonville, United States",
+            "JDO": "Juazeiro do Norte, Brazil",
+            "JED": "Jeddah, Saudi Arabia",
+            "JHB": "Johor Bahru, Malaysia",
+            "JIB": "Djibouti City",
+            "JNB": "Johannesburg, South Africa",
+            "JOG": "Yogyakarta, Indonesia",
+            "JOI": "Joinville, Brazil",
+            "JSR": "Jashore, Bangladesh",
+            "JXG": "Jiaxing, China",
+            "KBP": "Kyiv, Ukraine",
+            "KCH": "Kuching, Malaysia",
+            "KEF": "Reykjavík, Iceland",
+            "KGL": "Kigali, Rwanda",
+            "KHH": "Kaohsiung City, Taiwan",
+            "KHI": "Karachi, Pakistan",
+            "KHN": "Nanchang, China",
+            "KIN": "Kingston, Jamaica",
+            "KIV": "Chișinău, Moldova",
+            "KIX": "Osaka, Japan",
+            "KJA": "Krasnoyarsk, Russia",
+            "KMG": "Kunming, China",
+            "KNU": "Kanpur, India",
+            "KTM": "Kathmandu, Nepal",
+            "KUL": "Kuala Lumpur, Malaysia",
+            "KWE": "Guiyang, China",
+            "KWI": "Kuwait City, Kuwait",
+            "LAD": "Luanda, Angola",
+            "LAS": "Las Vegas, United States",
+            "LAX": "Los Angeles, United States",
+            "LCA": "Nicosia, Cyprus",
+            "LED": "Saint Petersburg, Russia",
+            "LHE": "Lahore, Pakistan",
+            "LHR": "London, United Kingdom",
+            "LHW": "Lanzhou, China",
+            "LIM": "Lima, Peru",
+            "LIS": "Lisbon, Portugal",
+            "LLK": "Astara, Azerbaijan",
+            "LLW": "Lilongwe, Malawi",
+            "LOCAL": "LOCAL",
+            "LOS": "Lagos, Nigeria",
+            "LPB": "La Paz, Bolivia",
+            "LUN": "Lusaka, Zambia",
+            "LUX": "Luxembourg City, Luxembourg",
+            "LYS": "Lyon, France",
+            "MAA": "Chennai, India",
+            "MAD": "Madrid, Spain",
+            "MAN": "Manchester, United Kingdom",
+            "MAO": "Manaus, Brazil",
+            "MBA": "Mombasa, Kenya",
+            "MCI": "Kansas City, United States",
+            "MCT": "Muscat, Oman",
+            "MDE": "Medellín, Colombia",
+            "MEL": "Melbourne, Australia",
+            "MEM": "Memphis, United States",
+            "MEX": "Mexico City, Mexico",
+            "MFE": "McAllen, United States",
+            "MFM": "Macau",
+            "MIA": "Miami, United States",
+            "MLA": "Santa Venera, Malta",
+            "MLE": "Male, Maldives",
+            "MLG": "Malang, Indonesia",
+            "MNL": "Manila, Philippines",
+            "MPM": "Maputo, Mozambique",
+            "MRS": "Marseille, France",
+            "MRU": "Port Louis, Mauritius",
+            "MSP": "Minneapolis, United States",
+            "MSQ": "Minsk, Belarus",
+            "MUC": "Munich, Germany",
+            "MXP": "Milan, Italy",
+            "NAG": "Nagpur, India",
+            "NBO": "Nairobi, Kenya",
+            "NJF": "Najaf, Iraq",
+            "NNG": "Nanning, China",
+            "NOU": "Noumea, New Caledonia",
+            "NQN": "Neuquen, Argentina",
+            "NQZ": "Astana, Kazakhstan",
+            "NRT": "Tokyo, Japan",
+            "NVT": "Timbo, Brazil",
+            "OKA": "Naha, Japan",
+            "OKC": "Oklahoma City, United States",
+            "OMA": "Omaha, United States",
+            "ORD": "Chicago, United States",
+            "ORF": "Norfolk, United States",
+            "ORK": "Cork, Ireland",
+            "ORN": "Oran, Algeria",
+            "OSL": "Oslo, Norway",
+            "OTP": "Bucharest, Romania",
+            "OUA": "Ouagadougou, Burkina Faso",
+            "PAT": "Patna, India",
+            "PBH": "Thimphu, Bhutan",
+            "PBM": "Paramaribo, Suriname",
+            "PDX": "Portland, United States",
+            "PER": "Perth, Australia",
+            "PHL": "Philadelphia, United States",
+            "PHX": "Phoenix, United States",
+            "PIT": "Pittsburgh, United States",
+            "PKX": "Langfang, China",
+            "PMO": "Palermo, Italy",
+            "PMW": "Palmas, Brazil",
+            "PNH": "Phnom Penh, Cambodia",
+            "POA": "Porto Alegre, Brazil",
+            "POS": "Port of Spain, Trinidad and Tobago",
+            "PPT": "Tahiti, French Polynesia",
+            "PRG": "Prague, Czech Republic",
+            "PTY": "Panama City, Panama",
+            "QRO": "Queretaro, Mexico",
+            "QWJ": "Americana, Brazil",
+            "RAO": "Ribeirao Preto, Brazil",
+            "RDU": "Durham, United States",
+            "REC": "Recife, Brazil",
+            "RIC": "Richmond, United States",
+            "RIX": "Riga, Latvia",
+            "RUH": "Riyadh, Saudi Arabia",
+            "RUN": "Réunion, France",
+            "SAN": "San Diego, United States",
+            "SAP": "San Pedro Sula, Honduras",
+            "SAT": "San Antonio, United States",
+            "SCL": "Santiago, Chile",
+            "SDQ": "Santo Domingo, Dominican Republic",
+            "SEA": "Seattle, United States",
+            "SFO": "San Francisco, United States",
+            "SGN": "Ho Chi Minh City, Vietnam",
+            "SHA": "Shanghai, China",
+            "SIN": "Singapore",
+            "SJC": "San Jose, United States",
+            "SJK": "São José dos Campos, Brazil",
+            "SJO": "San José, Costa Rica",
+            "SJP": "São José do Rio Preto, Brazil",
+            "SJU": "San Juan, Puerto Rico",
+            "SJW": "Shijiazhuang, China",
+            "SKG": "Thessaloniki, Greece",
+            "SKP": "Skopje, North Macedonia",
+            "SLC": "Salt Lake City, United States",
+            "SMF": "Sacramento, United States",
+            "SOD": "Sorocaba, Brazil",
+            "SOF": "Sofia, Bulgaria",
+            "SSA": "Salvador, Brazil",
+            "STI": "Santiago de los Caballeros, Dominican Republic",
+            "STL": "St. Louis, United States",
+            "STR": "Stuttgard, Germany",
+            "SUV": "Suva, Fiji",
+            "SVX": "Yekaterinburg, Russia",
+            "SYD": "Sydney, Australia",
+            "SZX": "Shenzhen, China",
+            "TAO": "Qingdao, China",
+            "TAS": "Tashkent, Uzbekistan",
+            "TBS": "Tbilisi, Georgia",
+            "TEN": "Tongren, China",
+            "TGU": "Tegucigalpa, Honduras",
+            "TIA": "Tirana, Albania",
+            "TLH": "Tallahassee, United States",
+            "TLL": "Tallinn, Estonia",
+            "TLV": "Tel Aviv, Israel",
+            "TNA": "Zibo, China",
+            "TNR": "Antananarivo, Madagascar",
+            "TPA": "Tampa, United States",
+            "TPE": "Taipei",
+            "TSN": "Tianjin, China",
+            "TUN": "Tunis, Tunisia",
+            "TXL": "Berlin, Germany",
+            "TYN": "Yangquan, China",
+            "UDI": "Uberlandia, Brazil",
+            "UIO": "Quito, Ecuador",
+            "ULN": "Ulaanbaatar, Mongolia",
+            "URT": "Surat Thani, Thailand",
+            "VCP": "Campinas, Brazil",
+            "VIE": "Vienna, Austria",
+            "VIX": "Vitoria, Brazil",
+            "VNO": "Vilnius, Lithuania",
+            "VTE": "Vientiane, Laos",
+            "WAW": "Warsaw, Poland",
+            "WDH": "Windhoek, Namibia",
+            "WHU": "Wuhu, China",
+            "WRO": "Wroclaw, Poland",
+            "XAP": "Chapeco, Brazil",
+            "XFN": "Xiangyang, China",
+            "XIY": "Baoji, China",
+            "XNH": "Nasiriyah, Iraq",
+            "XNN": "Xining, China",
+            "YHZ": "Halifax, Canada",
+            "YOW": "Ottawa, Canada",
+            "YUL": "Montréal, Canada",
+            "YVR": "Vancouver, Canada",
+            "YWG": "Winnipeg, Canada",
+            "YXE": "Saskatoon, Canada",
+            "YYC": "Calgary, Canada",
+            "YYZ": "Toronto, Canada",
+            "ZAG": "Zagreb, Croatia",
+            "ZDM": "Ramallah",
+            "ZGN": "Zhongshan, China",
+            "ZRH": "Zurich, Switzerland"
+        };
+
+        const codeDisplay = document.getElementById('code-display');
+        const cityDisplay = document.getElementById('city-display');
+        const detectionContent = document.getElementById('detection-content');
+        const locationContent = document.getElementById('location-content');
+
+        // Fetch using the proxy as in original code
+        fetch('https://api.maple-kaede.eu.org/?https://httpbin.org/get')
+            .then(response => response.json())
+            .then(data => {
+                const cfRay = data['headers']['Cf-Ray'];
+                if (cfRay) {
+                    const loc = cfRay.split('-')[1];
+
+                    // Remove loading states
+                    detectionContent.classList.remove('loading');
+                    locationContent.classList.remove('loading');
+
+                    codeDisplay.innerText = loc;
+                    cityDisplay.innerText = CFlocationMap[loc] || 'Unknown Location (' + loc + ')';
+                }
+            })
+            .catch(err => {
+                console.error('Detection failed:', err);
+                cityDisplay.innerText = 'Failed to detect location';
+                detectionContent.classList.remove('loading');
+                locationContent.classList.remove('loading');
+            });
+    </script>
+</body>
+
+</html>
