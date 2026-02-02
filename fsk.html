@@ -3805,12 +3805,12 @@
 
             document.getElementById('freq').textContent = carrierFreq + ' Hz'
 
-            // disable > 2baud if channel < 0
+            // disable > 4baud if channel < 0
             if (channel < 0) {
                 document.getElementById('baudrateInput').querySelectorAll('option').forEach(e => {
-                    if (parseInt(e.value) > 2) e.disabled = true
-                    document.getElementById('baudrateInput').value = 2
-                    setBaudRate(2)
+                    if (parseInt(e.value) > 4) e.disabled = true
+                    document.getElementById('baudrateInput').value = 4
+                    setBaudRate(4)
                 })
             } else {
                 document.getElementById('baudrateInput').querySelectorAll('option').forEach(e => {
