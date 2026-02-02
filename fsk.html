@@ -628,7 +628,7 @@
             function calculateGamma(bd) {
                 // Gamma controls symbol timing recovery gain
                 // Scale inversely with baud rate for consistent loop bandwidth
-                return clamp(100 / bd, 0.05, 2);
+                return clamp(1000 / bd, 0.05, 20);
             }
 
             function clamp(v, min, max) {
@@ -957,7 +957,7 @@
                     // Update all loop gains based on the new baud rate
                     this.alpha = calculateAlpha(this.baudRate);
                     this.beta = calculateBeta(this.baudRate);
-                    this.gamma = calculateGamma(this.baudRate); // Add this line
+                    this.gamma = calculateGamma(this.baudRate) / 2; // Add this line
 
                     this.gainAlpha = 0.25;
                 }
@@ -1069,7 +1069,7 @@
                     // Update all loop gains based on the new baud rate
                     this.alpha = calculateAlpha(this.baudRate);
                     this.beta = calculateBeta(this.baudRate);
-                    this.gamma = calculateGamma(this.baudRate); // Add this line
+                    this.gamma = calculateGamma(this.baudRate) / 4; // Add this line
                     this.gainAlpha = 0.25;
                 }
 
@@ -2592,15 +2592,15 @@
                     offsetWaves.addData(event.data.offset)
                     freqWaves.addData(-event.data.freq / Math.PI * baudRate / 2)
 
-                    let decidecI = event.data.i > 0 ? 1 : 0;
+                    let decidecI = event.data.i > 0 ? 1 : -1;
                     let decidecQ = 0;
 
-                    let error = Math.abs(decidecI - event.data.i) + Math.abs(decidecQ - event.data.q);
+                    let error = Math.sqrt(Math.pow(decidecI - event.data.i, 2) + Math.pow(decidecQ - event.data.q, 2));
 
                     // Calculate SNR
                     let signalPower = 1;
                     let noisePower = error;
-                    let snr = signalPower / noisePower;
+                    let snr = signalPower / Math.max(noisePower, 1e-6);
 
                     // Add to snr array
                     this.snrArray[this.arrayIndex] = snr;
@@ -2644,6 +2644,9 @@
                 super()
                 this.lastPhase = 0;
                 this.debug = []
+                this.snrArray = new Float32Array(4096);
+                this.snrArray.fill(1);
+                this.arrayIndex = 0;
             }
             setBaudRate(baudRate) {
                 this.baudRate = baudRate;
@@ -2693,6 +2696,32 @@
                     gainWaves.addData(Math.log10(event.data.gain) * 20)
                     offsetWaves.addData(event.data.offset)
                     freqWaves.addData(-event.data.freq / Math.PI * baudRate / 2)
+
+                    let decidecI = event.data.i > 0 ? 0.7071 : -0.7071;
+                    let decidecQ = event.data.q > 0 ? 0.7071 : -0.7071;
+
+                    let error = Math.sqrt(Math.pow(decidecI - event.data.i, 2) + Math.pow(decidecQ - event.data.q, 2));
+
+                    // Calculate SNR
+                    let signalPower = 1;
+                    let snr = signalPower / Math.max(error, 1e-6);
+
+                    // Add to snr array
+                    this.snrArray[this.arrayIndex] = snr;
+                    this.arrayIndex++;
+                    if (this.arrayIndex >= this.baudRate) this.arrayIndex = 0;
+
+                    // Calculate average snr
+                    let snrSum = 0;
+                    for (let i = 0; i < this.baudRate; i++) {
+                        snrSum += this.snrArray[i];
+                    }
+                    let snrAverage = snrSum / this.baudRate;
+
+                    // Convert to dB
+                    snrAverage = Math.log10(snrAverage) * 20;
+
+                    snrWaves.addData(Math.min(snrAverage, 120))
                 }
             }
 
@@ -2725,6 +2754,9 @@
                 super()
                 this.lastPhase = 0;
                 this.debug = []
+                this.snrArray = new Float32Array(4096);
+                this.snrArray.fill(1);
+                this.arrayIndex = 0;
             }
             setBaudRate(baudRate) {
                 this.baudRate = baudRate;
@@ -2771,6 +2803,33 @@
                     gainWaves.addData(Math.log10(event.data.gain) * 20)
                     offsetWaves.addData(event.data.offset)
                     freqWaves.addData(-event.data.freq / Math.PI * baudRate / 2)
+
+                    let target = this.decidePoints[phase];
+                    let decidecI = target.i;
+                    let decidecQ = target.q;
+
+                    let error = Math.sqrt(Math.pow(decidecI - i, 2) + Math.pow(decidecQ - q, 2));
+
+                    // Calculate SNR
+                    let signalPower = 1;
+                    let snr = signalPower / Math.max(error, 1e-6);
+
+                    // Add to snr array
+                    this.snrArray[this.arrayIndex] = snr;
+                    this.arrayIndex++;
+                    if (this.arrayIndex >= this.baudRate) this.arrayIndex = 0;
+
+                    // Calculate average snr
+                    let snrSum = 0;
+                    for (let i = 0; i < this.baudRate; i++) {
+                        snrSum += this.snrArray[i];
+                    }
+                    let snrAverage = snrSum / this.baudRate;
+
+                    // Convert to dB
+                    snrAverage = Math.log10(snrAverage) * 20;
+
+                    snrWaves.addData(Math.min(snrAverage, 120))
                 }
             }
 
