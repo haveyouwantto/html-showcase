@@ -504,9 +504,42 @@
 
     <script>
 
-        let baudRate = 32; // 波特率
+        let baudRate = 1200; // 波特率
         const sampleRate = 48000; // 采样率
-        let carrierFreq = 16000; // 载波频率
+        let carrierFreq = 1800; // 载波频率
+
+        function saveSettings() {
+            const settings = {
+                mode: document.getElementById('mode').value,
+                baudRate: document.getElementById('baudrateInput').value,
+                channel: document.getElementById('channel').value
+            };
+            localStorage.setItem('fsk_settings', JSON.stringify(settings));
+        }
+
+        function loadSettings() {
+            const saved = localStorage.getItem('fsk_settings');
+            if (saved) {
+                try {
+                    const settings = JSON.parse(saved);
+                    if (settings.mode) {
+                        document.getElementById('mode').value = settings.mode;
+                        selectedMode = MODES[settings.mode];
+                    }
+                    if (settings.baudRate) {
+                        document.getElementById('baudrateInput').value = settings.baudRate;
+                        setBaudRate(parseInt(settings.baudRate));
+                    }
+                    if (settings.channel) {
+                        document.getElementById('channel').value = settings.channel;
+                        const channelEvent = new Event('change');
+                        document.getElementById('channel').dispatchEvent(channelEvent);
+                    }
+                } catch (e) {
+                    console.error("Error loading settings", e);
+                }
+            }
+        }
         const freqMulti = 1; // 频率倍数
         let samplePerSymbol = sampleRate / baudRate; // 每个符号的采样点数
         let symbolTime = samplePerSymbol / sampleRate;
@@ -576,22 +609,26 @@
             }
 
             function calculateAlpha(bd) {
-                // This was previously a fixed value.
-                // Making it dependent on baud rate ensures the phase correction loop
-                // has a consistent bandwidth relative to the symbol rate, improving stability.
-                // The formula is tuned for a critically damped loop.
-                return clamp(12.8 / bd, 0.001, 0.1);
+                // Standard 2nd-order PLL design with damping factor ζ = 0.707 (critically damped)
+                // Loop bandwidth Bn = baudRate / 50 (2% of symbol rate)
+                const zeta = 0.707;
+                const Bn = bd / 50;
+                const denominator = 1 + 2 * zeta * Bn + Bn * Bn;
+                return clamp(4 * zeta * Bn / denominator, 0.001, 0.2);
             }
 
             function calculateBeta(bd) {
-                // Beta is for frequency correction and should be much smaller than alpha.
-                // This relationship to alpha helps maintain loop stability.
-                const alpha = calculateAlpha(bd);
-                return clamp((alpha * alpha) / 4.0, 0.00001, 0.005);
+                // Beta controls frequency correction, derived from the same PLL model
+                const zeta = 0.707;
+                const Bn = bd / 50;
+                const denominator = 1 + 2 * zeta * Bn + Bn * Bn;
+                return clamp(4 * Bn * Bn / (denominator * denominator), 0.00001, 0.01);
             }
 
             function calculateGamma(bd) {
-                return clamp(200 / bd, 0.1, 5);
+                // Gamma controls symbol timing recovery gain
+                // Scale inversely with baud rate for consistent loop bandwidth
+                return clamp(100 / bd, 0.05, 2);
             }
 
             function clamp(v, min, max) {
@@ -3573,7 +3610,11 @@
                 modulator = new selectedMode.modulate();
                 modulator.setBaudRate(baudRate);
                 modulator.setCarrierFreq(carrierFreq);
+
+                let stopped = false; // Guard against duplicate stop callbacks
                 modulator.setOnStop(() => {
+                    if (stopped) return; // Already handled
+                    stopped = true;
                     console.log(modulator, "stopped")
                     txImageBtn.disabled = false;
                     clearInterval(interval);
@@ -3657,6 +3698,7 @@
 
             document.getElementById('mode').addEventListener('change', () => {
                 selectedMode = MODES[document.getElementById('mode').value];
+                saveSettings();
 
                 if (rxStart) {
                     stopRx();
@@ -3674,6 +3716,7 @@
                 if (demodulator) {
                     demodulator.setBaudRate(bd)
                 }
+                saveSettings();
             });
 
             // image transmit
@@ -3781,6 +3824,7 @@
             if (demodulator) {
                 demodulator.setCarrierFreq(carrierFreq)
             }
+            saveSettings();
         })
 
         function isPlainText(text) {
@@ -3794,6 +3838,10 @@
             }
             return true;
         }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            loadSettings();
+        });
 
         const uploadTextFile = document.getElementById('uploadTextFile')
 
