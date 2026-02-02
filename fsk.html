@@ -1015,7 +1015,7 @@
                     this.gain = 1;
 
                     this.phaseRef = Array.from({ length: 8 }, (_, k) => {
-                        const angle = 2 * Math.PI * k / 8 + (Math.PI / 8);
+                        const angle = 2 * Math.PI * k / 8;
                         return new Complex(Math.cos(angle), Math.sin(angle));
                     });
 
@@ -1260,12 +1260,26 @@
             return result;
         }
 
+        // Gray code lookup tables
+        // QPSK: Gray bits -> phase index
+        // 00->0, 01->1, 11->2, 10->3
+        const QPSK_GRAY_TO_PHASE = [0, 1, 3, 2];
+        // 8PSK: Gray bits -> phase index
+        // 000->0, 001->1, 011->2, 010->3, 110->4, 111->5, 101->6, 100->7
+        const PSK8_GRAY_TO_PHASE = [0, 1, 3, 2, 7, 6, 4, 5];
+
+        // Reverse lookup: phase index -> Gray bits
+        const QPSK_PHASE_TO_GRAY = [0, 1, 3, 2];
+        const PSK8_PHASE_TO_GRAY = [0, 1, 3, 2, 6, 7, 5, 4];
+
         function qpskEncode(bitArray) {
             let phase = 0;
             let symbols = [0];
             let packed = packBitArray(bitArray, 2)
             for (let e of packed) {
-                phase = (phase + e) % 4
+                // Convert Gray bits to phase offset
+                let phaseOffset = QPSK_GRAY_TO_PHASE[e];
+                phase = (phase + phaseOffset) % 4
                 symbols.push(phase)
             }
             return symbols
@@ -1276,7 +1290,9 @@
             let symbols = [0];
             let packed = packBitArray(bitArray, 3)
             for (let e of packed) {
-                phase = (phase + e) % 8
+                // Convert Gray bits to phase offset
+                let phaseOffset = PSK8_GRAY_TO_PHASE[e];
+                phase = (phase + phaseOffset) % 8
                 symbols.push(phase)
             }
             return symbols
@@ -2597,9 +2613,10 @@
                     let phaseDiff = phase - this.lastPhase;
                     if (phaseDiff < 0) phaseDiff += 4;
 
-
-                    let bit2 = phaseDiff & 1
-                    let bit1 = (phaseDiff >> 1) & 1
+                    // Convert phase difference to Gray bits
+                    let grayBits = QPSK_PHASE_TO_GRAY[phaseDiff];
+                    let bit1 = (grayBits >> 1) & 1
+                    let bit2 = grayBits & 1
                     if (this.onSample) this.onSample({
                         sample: [event.data.i, event.data.q],
                         bits: [bit1, bit2]
@@ -2628,10 +2645,10 @@
                         i: -0.7071, q: 0.7071, label: "01"
                     },
                     {
-                        i: -0.7071, q: -0.7071, label: "10"
+                        i: -0.7071, q: -0.7071, label: "11"
                     },
                     {
-                        i: 0.7071, q: -0.7071, label: "11"
+                        i: 0.7071, q: -0.7071, label: "10"
                     }]
             }
         }
@@ -2658,7 +2675,7 @@
                 super.receive(source)
                 this.mixer = new AudioWorkletNode(audioCtx, 'mixer', { outputChannelCount: [2] });
                 this.convolver = audioCtx.createConvolver()
-                this.demod = new AudioWorkletNode(audioCtx, 'qpsk-demod')
+                this.demod = new AudioWorkletNode(audioCtx, '8psk-demod')
                 this.setBaudRate(this.baudRate)
                 this.setCarrierFreq(this.carrierFreq)
 
@@ -2673,10 +2690,11 @@
                     let phaseDiff = phase - this.lastPhase;
                     if (phaseDiff < 0) phaseDiff += 8;
 
-
-                    let bit1 = (phaseDiff >> 2) & 1
-                    let bit2 = (phaseDiff >> 1) & 1
-                    let bit3 = phaseDiff & 1
+                    // Convert phase difference to Gray bits
+                    let grayBits = PSK8_PHASE_TO_GRAY[phaseDiff];
+                    let bit1 = (grayBits >> 2) & 1
+                    let bit2 = (grayBits >> 1) & 1
+                    let bit3 = grayBits & 1
                     if (this.onSample) this.onSample({
                         sample: [event.data.i, event.data.q],
                         bits: [bit1, bit2, bit3]
@@ -2709,14 +2727,14 @@
 
             get decidePoints() {
                 return [
-                    { "i": 0.9239, "q": 0.3827, "label": "001" },
-                    { "i": 0.3827, "q": 0.9239, "label": "010" },
+                    { "i": 0.9239, "q": 0.3827, "label": "000" },
+                    { "i": 0.3827, "q": 0.9239, "label": "001" },
                     { "i": -0.3827, "q": 0.9239, "label": "011" },
-                    { "i": -0.9239, "q": 0.3827, "label": "100" },
-                    { "i": -0.9239, "q": -0.3827, "label": "101" },
-                    { "i": -0.3827, "q": -0.9239, "label": "110" },
-                    { "i": 0.3827, "q": -0.9239, "label": "111" },
-                    { "i": 0.9239, "q": -0.3827, "label": "000" }
+                    { "i": -0.9239, "q": 0.3827, "label": "010" },
+                    { "i": -0.9239, "q": -0.3827, "label": "110" },
+                    { "i": -0.3827, "q": -0.9239, "label": "111" },
+                    { "i": 0.3827, "q": -0.9239, "label": "101" },
+                    { "i": 0.9239, "q": -0.3827, "label": "100" }
                 ]
             }
         }
