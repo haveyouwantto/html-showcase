@@ -6066,12 +6066,15 @@
                         ctx.clearRect(0, 0, w, h);
                         ctx.imageSmoothingEnabled = true;
 
-                        // Lower index frame (Deep/Inside)
+                        // Upper index frame (Shallow/Outside) - Background, Opaque
+                        ctx.drawImage(kfUpper, cx - (w * scale2) / 2, cy - (h * scale2) / 2, w * scale2, h * scale2);
+
+                        // Lower index frame (Deep/Inside) - Foreground, Fades In blending to 0 (Deep)
+                        // blend goes 1.0 (Shallow) -> 0.0 (Deep)
+                        // So alpha should go 0.0 -> 1.0
+                        ctx.globalAlpha = Math.max(0, Math.min(1, (1 - blend - 0.1) / 0.8));
                         ctx.drawImage(kfLower, cx - (w * scale1) / 2, cy - (h * scale1) / 2, w * scale1, h * scale1);
 
-                        // Upper index frame (Shallow/Outside)
-                        ctx.globalAlpha = Math.max(0, Math.min(1, (blend - 0.1) / 0.8));
-                        ctx.drawImage(kfUpper, cx - (w * scale2) / 2, cy - (h * scale2) / 2, w * scale2, h * scale2);
                         ctx.restore();
                     }
                 }
