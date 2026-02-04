@@ -4273,6 +4273,86 @@
                 guessedProgressBar.style.width = `${((this.stats.guess) / totalPixels * 100).toFixed(2)}%`;
             }
 
+            rebuildBLA() {
+                console.log(performance.now() + " bla calculation");
+                this.stats.statusText = 'BLA table construction';
+
+                if (this.deep) {
+                    this.blaTable = createBLATableFE(this.ref);
+                } else {
+                    this.blaTable = createBLATable(this.ref);
+                }
+
+                console.log(this.blaTable);
+            }
+
+            async ensureReference() {
+                if (!this.refValid) {
+                    console.log(performance.now() + " computing reference");
+                    this.stats.statusText = 'Computing reference';
+                    let nextTerm;
+
+                    let precisionInBits = Math.ceil((-this.size.exp) * 3.321928094887362) + 52; // Add extra double precision bits
+
+                    const generator = this.deep ?
+                        getReferenceOrbitFEMPFR(this.center, this.size, this.iterations, precisionInBits) :
+                        getReferenceOrbitMPFR(this.center, this.size.doubleValue(), this.iterations, precisionInBits);
+
+                    while (!(nextTerm = await generator.next()).done) {
+                        this.stats.ref = nextTerm.value.length;
+                        this.stats.refC = nextTerm.value.size;
+                        this.showInfo(); // Update progress
+                        if (this.requestForCancel) {
+                            this.cancelling = true;
+                            return;
+                        }
+                    }
+                    this.ref = nextTerm.value.orbit;
+                    let predCenter = nextTerm.value.predCenter;
+                    if (predCenter) {
+                        console.log("Predicted center: ", predCenter);
+                        this.stats.predCenter = predCenter;
+                    }
+
+                    this.stats.ref = this.ref.length;
+                    this.stats.refC = this.ref.size;
+                    this.refValid = true;
+                    this.rebuildBLA();
+                } else if (!this.blaTable) {
+                    this.rebuildBLA();
+                }
+            }
+
+            setReference(ref) {
+                this.ref = ref;
+                this.refValid = true;
+                this.stats.ref = ref.length;
+                this.stats.refC = ref.size;
+                this.rebuildBLA();
+            }
+
+            async load(params) {
+                if (params.re !== undefined && params.im !== undefined) {
+                    this.goto(new DeepComplex(new Decimal(params.re), new Decimal(params.im)), false);
+                }
+                if (params.zoom !== undefined) {
+                    let s = params.zoom;
+                    if (typeof s === 'string') s = getFloatExp(s);
+                    this.zoom(FloatExp.FOUR.div(s));
+                } else if (params.size !== undefined) {
+                    this.zoom(params.size);
+                }
+
+                if (params.iter !== undefined) this.setIterations(params.iter);
+                if (params.smooth !== undefined) this.smooth = params.smooth;
+
+                if (params.ref !== undefined) {
+                    this.setReference(params.ref);
+                }
+
+                await this.update();
+            }
+
             /**
              * Updates the Mandelbrot set visualization.
              *
@@ -4324,63 +4404,9 @@
 
                     this.image = this.context.getImageData(0, 0, this.canvas.width, this.canvas.height);
 
-                    let base, ref;
-                    let refLen = 0;
+                    await this.ensureReference();
 
-                    base = this.center;
-                    if (!this.refValid) {
-                        console.log(performance.now() + " computing reference")
-                        this.stats.statusText = 'Computing reference'
-                        let nextTerm;
-
-                        let precisionInBits = Math.ceil((-this.size.exp) * 3.321928094887362) + 52; // Add extra double precision bits
-
-                        const generator = this.deep ?
-                            getReferenceOrbitFEMPFR(base, this.size, this.iterations, precisionInBits) :
-                            getReferenceOrbitMPFR(base, this.size.doubleValue(), this.iterations, precisionInBits);
-                        while (!(nextTerm = await generator.next()).done) {
-                            this.stats.ref = nextTerm.value.length;
-                            this.stats.refC = nextTerm.value.size;
-                            this.showInfo(); // Update progress
-                            if (this.requestForCancel) {
-                                this.cancelling = true;
-                                return;
-                            }
-                        }
-                        ref = nextTerm.value.orbit;
-                        let predCenter = nextTerm.value.predCenter;
-                        if (predCenter) {
-                            console.log("Predicted center: ", predCenter)
-                            // predCenter.x = -predCenter.x;
-                            this.stats.predCenter = predCenter;
-                        }
-
-                        this.stats.ref = ref.length;
-                        this.stats.refC = ref.size;
-
-                        this.ref = ref;
-                        this.refValid = true;
-                    } else {
-                        ref = this.ref;
-                        this.stats.ref = ref.length;
-                        this.stats.refC = ref.size;
-                    }
-                    refLen = ref.length;
-                    console.log("ref: ", ref)
-
-                    console.log(performance.now() + " bla calculation")
-                    this.stats.statusText = 'BLA table construction'
-
-                    if (this.deep) {
-                        this.blaTable = createBLATableFE(ref, this.size.div(10));
-                    }
-                    else
-                        this.blaTable = createBLATable(ref, this.size.doubleValue())
-
-                    console.log(this.blaTable)
-
-
-                    let autoIter = Math.max((refLen - 1) * 32, this.iterations);
+                    let autoIter = Math.max((this.ref.length - 1) * 32, this.iterations);
                     this.setIterations(autoIter);
 
                     console.log(performance.now() + " perturbation")
@@ -5360,24 +5386,32 @@
             // Parse the .kfr file using KFRReader
             const reader = new KFRReader(arrayBuffer);
 
-            mandelbrot.goto(new DeepComplex(reader.re, reader.im))
-            mandelbrot.zoom(FloatExp.FOUR.div(parseFloatExp(reader.zoom)));
-            mandelbrot.setIterations(reader.iter);
-            mandelbrot.smooth = reader.smooth;
+            const params = {
+                re: reader.re,
+                im: reader.im,
+                zoom: reader.zoom,
+                iter: reader.iter,
+                smooth: reader.smooth
+            };
+
             palette = reader.colors;
             colorStep = 1024 / reader.colors.length * reader.iterDiv;
+
             if (reader.period > 0) {
                 mandelbrot.period = reader.period;
                 let compressor;
-                if (mandelbrot.size.lt(new FloatExp(1, -300))) {
-                    compressor = new ReferenceCompressorFloatExp(mandelbrot.center.toFloatExp());
+                let size = FloatExp.FOUR.div(parseFloatExp(reader.zoom));
+
+                if (size.lt(new FloatExp(1, -300))) {
+                    let center = new DeepComplex(new Decimal(reader.re), new Decimal(reader.im));
+                    compressor = new ReferenceCompressorFloatExp(center.toFloatExp());
                     let checkpoints = reader.refStore.split(',')
                     for (let i = 1; i < checkpoints.length; i++) {
                         let [index, real, imag] = checkpoints[i].split('|')
                         compressor.addCheckpoint(parseInt(index), new FloatExpComplex(parseFloatExp(real), parseFloatExp(imag)))
                     }
                 } else {
-                    compressor = new ReferenceCompressor(mandelbrot.center.re.toNumber(), mandelbrot.center.im.toNumber());
+                    compressor = new ReferenceCompressor(parseFloat(reader.re), parseFloat(reader.im));
                     let checkpoints = reader.refStore.split(',')
                     for (let i = 1; i < checkpoints.length; i++) {
                         let [index, real, imag] = checkpoints[i].split('|')
@@ -5385,10 +5419,10 @@
                     }
                 }
                 compressor.length = reader.period + 1;
-                mandelbrot.ref = compressor;
-                mandelbrot.refValid = true;
+                params.ref = compressor;
             }
-            mandelbrot.update();
+
+            await mandelbrot.load(params);
         });
 
         // Frame Storage for Video Editor (File System Access API)
