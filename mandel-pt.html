@@ -5733,6 +5733,7 @@
                         width: this.resolution.width,
                         height: this.resolution.height
                     },
+                    fps: this.fps,
                     size: { base: mandelbrot.size.base, exp: mandelbrot.size.exp },
                     frames: [] // Will store indices
                 };
@@ -5744,17 +5745,23 @@
                         this.dialog.showModal();
                         return;
                     }
-                } else {
                     if (!await this.storage.equalsSession(mandelbrot.center, mandelbrot.size)) {
                         if (confirm("Another session exist, overwrite?")) {
                             this.storage.clear()
                             await this.storage.saveSession(currentSession);
                         } else return;
                     }
+
+                    // Initial save of simulation state
+                    await this.storage.saveKFR(mandelbrot);
+                } else {
+                    currentSession = sessionData;
+                    this.resolution.width = sessionData.resolution.width;
+                    this.resolution.height = sessionData.resolution.height;
+                    document.getElementById('editor-width').value = this.resolution.width;
+                    document.getElementById('editor-height').value = this.resolution.height;
                 }
 
-                // Initial save of simulation state
-                await this.storage.saveKFR(mandelbrot);
 
                 try {
                     const startIndex = 0;
@@ -5795,6 +5802,7 @@
                         offMandel.ref = mandelbrot.ref;
                         offMandel.refValid = true;
                     }
+                    await mandelbrot.cancel();
 
                     previewCanvas.width = this.resolution.width;
                     previewCanvas.height = this.resolution.height;
