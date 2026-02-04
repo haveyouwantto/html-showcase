@@ -5871,14 +5871,22 @@
 
                     // Auto-populate initial timeline (Time in seconds)
                     const durationInFrames = this.keyframes.length;
-                    this.timeline = [
-                        { time: 0, frame: 0 },
-                        { time: durationInFrames, frame: this.keyframes.length - 1 }
-                    ];
+
+                    if (sessionData && sessionData.timeline) {
+                        this.timeline = sessionData.timeline;
+                    } else {
+                        this.timeline = [
+                            { time: 0, frame: 0 },
+                            { time: durationInFrames, frame: this.keyframes.length - 1 }
+                        ];
+                    }
 
                     this.updateKeyframeDisplay();
                     this.updateTimelineDisplay();
                     this.updateExportButton();
+
+                    // Save the initial/restored state
+                    await this.saveCurrentSession();
 
                     // Setup preview canvas
                     this.previewCanvas.width = this.resolution.width;
@@ -5901,6 +5909,9 @@
                 this.timeline = [];
                 this.stop();
                 this.storage.clear();
+                // We don't save session here because clear() wipes the file
+                // But if we wanted to enforce empty state:
+                // this.saveCurrentSession(); (but session requires frames, so we can't really save a "valid" session without frames)
 
                 this.updateKeyframeDisplay();
                 this.updateTimelineDisplay();
@@ -5949,6 +5960,7 @@
                             this.timeline[idx][field] = parseFloat(e.target.value);
                             this.sortTimeline();
                             this.updateTimelineDisplay();
+                            this.saveCurrentSession();
                         };
                     });
 
@@ -5974,6 +5986,7 @@
                 this.sortTimeline();
                 this.updateTimelineDisplay();
                 this.updateExportButton();
+                this.saveCurrentSession();
             }
 
             removeControlPoint(index) {
@@ -5983,6 +5996,7 @@
                 }
                 this.timeline.splice(index, 1);
                 this.updateTimelineDisplay();
+                this.saveCurrentSession();
             }
 
             sortTimeline() {
@@ -6327,6 +6341,27 @@
                     progressDialog.close();
                     this.dialog.showModal();
                 }
+            }
+
+            async saveCurrentSession() {
+                if (!this.keyframeMetadata || this.keyframes.length === 0) return;
+
+                const currentSession = {
+                    center: {
+                        re: this.keyframeMetadata.center.re.toString(),
+                        im: this.keyframeMetadata.center.im.toString()
+                    },
+                    resolution: {
+                        width: this.resolution.width,
+                        height: this.resolution.height
+                    },
+                    fps: this.fps,
+                    size: { base: this.keyframeMetadata.size.base, exp: this.keyframeMetadata.size.exp },
+                    frames: this.keyframes.map(kf => kf.index),
+                    timeline: this.timeline
+                };
+
+                await this.storage.saveSession(currentSession);
             }
         }
 
