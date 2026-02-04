@@ -5399,7 +5399,7 @@
                 this.maxCacheSize = 20; // Reduced RAM cache
             }
 
-            async init() {
+            async initDir() {
                 try {
                     this.dirHandle = await window.showDirectoryPicker({
                         mode: 'readwrite',
@@ -5409,6 +5409,21 @@
                 } catch (e) {
                     console.error("DirectoryPicker error:", e);
                     return false;
+                }
+            }
+
+            async equalsSession(center, size) {
+                if (!this.dirHandle) return false;
+                const fileHandle = await this.dirHandle.getFileHandle('session.json');
+                const file = await fileHandle.getFile();
+                const reader = new FileReader();
+                reader.readAsText(file);
+                reader.onload = () => {
+                    const session = JSON.parse(reader.result);
+                    return session.center.re.equals(center.re.toString()) &&
+                        session.center.im.equals(center.im.toString()) &&
+                        session.size.base.equals(size.base.toString()) &&
+                        session.size.exp.equals(size.exp.toString());
                 }
             }
 
@@ -5639,7 +5654,7 @@
                 const statusText = document.getElementById("video-status");
 
                 // Initialize storage (requests folder)
-                if (!await this.storage.init()) return;
+                if (!await this.storage.initDir()) return;
 
                 this.dialog.close();
                 progressDialog.showModal();
@@ -5680,7 +5695,7 @@
                     this.keyframeMetadata = {
                         center: mandelbrot.center.copy(),
                         size: mandelbrot.size.copy(),
-                        startScale: new FloatExp(session.startScale.base, session.startScale.exp),
+                        startScale: new FloatExp(session.size.base, session.size.exp),
                         frameCount: session.frames.length
                     };
 
@@ -5688,6 +5703,7 @@
                     await this.collectKeyframes(true, session);
 
                 } catch (e) {
+                    console.error(e)
                     alert("Error resuming session: " + e.message);
                     progressDialog.close();
                     this.dialog.showModal();
@@ -5708,34 +5724,40 @@
                 progressDialog.showModal();
 
                 let requestCancel = false;
+                let currentSession = {
+                    center: {
+                        re: mandelbrot.center.re.toString(),
+                        im: mandelbrot.center.im.toString()
+                    },
+                    resolution: {
+                        width: this.resolution.width,
+                        height: this.resolution.height
+                    },
+                    size: { base: mandelbrot.size.base, exp: mandelbrot.size.exp },
+                    frames: [] // Will store indices
+                };
 
                 // Initialize storage (requests folder)
-                if (!await this.storage.init()) {
-                    progressDialog.close();
-                    this.dialog.showModal();
-                    return;
+                if (!isResume) {
+                    if (!await this.storage.initDir()) {
+                        progressDialog.close();
+                        this.dialog.showModal();
+                        return;
+                    }
+                } else {
+                    if (!await this.storage.equalsSession(mandelbrot.center, mandelbrot.size)) {
+                        if (confirm("Another session exist, overwrite?")) {
+                            this.storage.clear()
+                            await this.storage.saveSession(currentSession);
+                        } else return;
+                    }
                 }
 
                 // Initial save of simulation state
                 await this.storage.saveKFR(mandelbrot);
 
                 try {
-                    const currentSession = sessionData || {
-                        center: {
-                            re: mandelbrot.center.re.toString(),
-                            im: mandelbrot.center.im.toString()
-                        },
-                        iterations: mandelbrot.iterations,
-                        resolution: {
-                            width: this.resolution.width,
-                            height: this.resolution.height
-                        },
-                        fps: this.fps,
-                        startScale: { base: mandelbrot.size.base, exp: mandelbrot.size.exp },
-                        frames: [] // Will store indices
-                    };
-
-                    const startIndex = currentSession.frames.length > 0 ? currentSession.frames.length : 0;
+                    const startIndex = 0;
 
                     cancelBtn.onclick = async () => {
                         requestCancel = true;
@@ -5743,6 +5765,7 @@
                         // Final attempt to save metadata before stopping
                         await this.storage.saveSession(currentSession);
                         // Signal Mandelbrot to stop
+                        await offMandel.cancel();
                     };
 
                     // Store metadata for the editor state
@@ -5807,7 +5830,7 @@
                         startIndex,
                         async (idx) => {
                             // shouldSkip logic
-                            return await this.storage.checkExistingFrame(idx);
+                            return currentSession.frames.includes(idx);
                         }
                     );
 
@@ -5842,7 +5865,7 @@
                     const durationInFrames = this.keyframes.length;
                     this.timeline = [
                         { time: 0, frame: 0 },
-                        { time: durationInFrames / 3, frame: this.keyframes.length - 1 } // Default speed
+                        { time: durationInFrames, frame: this.keyframes.length - 1 }
                     ];
 
                     this.updateKeyframeDisplay();
@@ -5884,7 +5907,7 @@
                     info.innerHTML = `
                         <div class="info-status">✓ Collected (${frameCount} frames)</div>
                         <div class="info-detail">Center: ${center.re.toFixed(4)} + ${center.im.toFixed(4)}i</div>
-                        <div class="info-detail">Size: ${size.exp < 0 ? size.base.toFixed(2) + 'E' + size.exp : size.doubleValue().toFixed(4)}</div>
+                        <div class="info-detail">Size: ${size.toString()}</div>
                     `;
                     document.getElementById('collect-keyframes-btn').disabled = true;
                     document.getElementById('clear-keyframes-btn').style.display = 'block';
@@ -5988,36 +6011,46 @@
                 return before.frame + (after.frame - before.frame) * t;
             }
 
-            async renderFrameAt(frameIndex, useCanvas = null) {
+            async renderFrameAt(uiFrameIndex, useCanvas = null) {
                 if (this.keyframes.length === 0 || !this.keyframeMetadata) return;
 
-                const lower = Math.floor(frameIndex);
-                const upper = Math.ceil(frameIndex);
+                // UX Mapping: UI 0 = Outermost (Shallow, Index N-1), UI N-1 = Innermost (Deep, Index 0)
+                // This makes the timeline naturally progress from defined start to defined end as Zoom In.
+                const totalFrames = this.keyframes.length;
+                const internalFrameIndex = (totalFrames - 1) - uiFrameIndex;
+
+                const lower = Math.floor(internalFrameIndex);
+                const upper = Math.ceil(internalFrameIndex);
                 const canvas = useCanvas || this.previewCanvas;
                 const ctx = canvas.getContext('2d');
                 const w = canvas.width, h = canvas.height, cx = w / 2, cy = h / 2;
 
-                const blend = frameIndex - lower;
+                const blend = internalFrameIndex - lower;
 
-                const kfLowerMetadata = this.keyframes[Math.min(lower, this.keyframes.length - 1)];
+                // Clamp indices to be safe
+                const idxLower = Math.max(0, Math.min(totalFrames - 1, lower));
+                const idxUpper = Math.max(0, Math.min(totalFrames - 1, upper));
+
+                const kfLowerMetadata = this.keyframes[idxLower];
                 const diskIdxLower = kfLowerMetadata.index;
 
                 const kfLower = await this.storage.getFrame(diskIdxLower);
                 if (!kfLower) return;
 
-                if (lower === upper || upper >= this.keyframes.length) {
+                if (idxLower === idxUpper) {
                     // Exact frame
                     ctx.drawImage(kfLower, 0, 0, w, h);
                 } else {
                     // Fractional - perform zoom interpolation
-                    const kfUpperMetadata = this.keyframes[Math.min(upper, this.keyframes.length - 1)];
+                    const kfUpperMetadata = this.keyframes[idxUpper];
                     const diskIdxUpper = kfUpperMetadata.index;
                     const kfUpper = await this.storage.getFrame(diskIdxUpper);
 
                     if (!kfUpper) {
                         ctx.drawImage(kfLower, 0, 0, w, h);
                     } else {
-                        // zoom-based blending (Zoom Out scales)
+                        // zoom-based blending (Interpolation)
+                        // scale1: 1.0 -> 0.5 (Lower/Deep frame shrinks relative to viewport moving out - or expands moving in)
                         const scale1 = Math.pow(2, -blend);
                         const scale2 = Math.pow(2, 1 - blend);
 
@@ -6025,10 +6058,10 @@
                         ctx.clearRect(0, 0, w, h);
                         ctx.imageSmoothingEnabled = true;
 
-                        // Deep frame (shrinking)
+                        // Lower index frame (Deep/Inside)
                         ctx.drawImage(kfLower, cx - (w * scale1) / 2, cy - (h * scale1) / 2, w * scale1, h * scale1);
 
-                        // Shallow frame (fading in and shrinking)
+                        // Upper index frame (Shallow/Outside)
                         ctx.globalAlpha = Math.max(0, Math.min(1, (blend - 0.1) / 0.8));
                         ctx.drawImage(kfUpper, cx - (w * scale2) / 2, cy - (h * scale2) / 2, w * scale2, h * scale2);
                         ctx.restore();
@@ -6039,9 +6072,9 @@
                 ctx.save();
                 ctx.imageSmoothingEnabled = true;
 
-                // 1. Zoom Text Overlay
-                const zoomStart = FloatExp.FOUR.div(this.keyframeMetadata.startScale);
-                const currZoomLog2 = zoomStart.log2Value() - frameIndex;
+                // 1. Zoom Text Overlay (Based on internal Actual Zoom)
+                const zoomStart = FloatExp.FOUR.div(this.keyframeMetadata.size);
+                const currZoomLog2 = zoomStart.log2Value() - internalFrameIndex;
                 const currScale = FloatExp.fromLog2(currZoomLog2);
                 const zoomText = `Zoom: ${currScale.exp < 7 ? currScale.doubleValue().toFixed(2) : currScale.base.toFixed(2) + 'E' + currScale.exp}`;
 
@@ -6060,7 +6093,8 @@
 
                 // 2. Frame Label (Only for editor preview, not export)
                 if (!useCanvas) {
-                    const frameLabel = `Frame: ${frameIndex.toFixed(2)}`;
+                    // Show the UI Frame Index (0 = Start)
+                    const frameLabel = `Frame: ${uiFrameIndex.toFixed(2)}`;
                     ctx.font = `${Math.round(w / 60)}px monospace`;
                     const textMetrics = ctx.measureText(frameLabel);
                     const padding = 8;
@@ -6303,8 +6337,8 @@
 
         // Replace makeVideo button handler
         document.getElementById("makeVideo").addEventListener('click', () => {
-            alert("Broken");
-            return;
+            // alert("Broken");
+            // return;
             if (!checkVideoAPIs()) return;
 
             if (!videoEditor) {
