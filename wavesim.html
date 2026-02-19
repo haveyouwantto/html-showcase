@@ -217,9 +217,9 @@
                     <option value="noise">噪声</option>
                 </select>
                 波包：<select id="wavePackets">
-                <option value="gauss">高斯</option>
-                <option value="rect">矩形</option>
-                <option value="sinc">Sinc</option>
+                    <option value="gauss">高斯</option>
+                    <option value="rect">矩形</option>
+                    <option value="sinc">Sinc</option>
                 </select>
                 渲染模式：<select id="renderMode">
                     <option value="normal">正常</option>
@@ -497,6 +497,22 @@
                 this.lastSampleTime = 0
                 this.paused = false
                 this.maxBufferSize = 64 * 1024 * 1024 / Float32Array.BYTES_PER_ELEMENT;
+
+                // Adaptive scaling and view mode
+                this.displayMode = 'waveform'; // 'waveform' or 'fft'
+                this.viewRange = 1.0;
+                this.targetViewRange = 1.0;
+                this.fftSize = 64;
+                this.sr = 60;
+                this.fftWindow = this.createFftWindow(this.fftSize);
+            }
+
+            createFftWindow(N) {
+                const win = new Float64Array(N);
+                for (let i = 0; i < N; i++) {
+                    win[i] = Math.sin(Math.PI * i / (N - 1));
+                }
+                return win;
             }
 
             recordSample(waveValue) {
@@ -596,6 +612,10 @@
                 this.receiverCtx = receiverCtx;
                 this.receiverCanvas = receiverCanvas;
 
+                receiverCanvas.addEventListener('click', () => {
+                    this.displayMode = this.displayMode === 'waveform' ? 'fft' : 'waveform';
+                });
+
                 const rmsDisplay = document.createElement('div');
                 this.panel.appendChild(rmsDisplay);
                 this.rmsDisplay = rmsDisplay;
@@ -645,25 +665,193 @@
                 const durationSec = this.writePointer / this.sampleRate
                 this.durationDisplay.textContent = `已录制: ${durationSec.toFixed(3)}s`
 
-                let samples = this.buffer.slice(this.writePointer - 100, this.writePointer);
+                const canvas = this.receiverCanvas;
+                const ctx = this.receiverCtx;
+                const w = canvas.width;
+                const h = canvas.height;
 
-                let half = this.receiverCanvas.height / 2;
-                let step = this.receiverCanvas.width / samples.length;
+                ctx.clearRect(0, 0, w, h);
 
-                this.receiverCtx.clearRect(0, 0, this.receiverCanvas.width, this.receiverCanvas.height)
-                this.receiverCtx.beginPath()
-                this.receiverCtx.moveTo(0, samples[0] * half + half)
+                // Get samples for display or FFT
+                // Use a larger window if needed for FFT
+                const displaySamplesCount = Math.max(100, this.fftSize);
+                let samples = this.buffer.slice(Math.max(0, this.writePointer - displaySamplesCount), this.writePointer);
+                if (samples.length === 0) samples = new Float32Array([0]);
 
-                let rms = 0;
-                for (let x = 0; x < samples.length; x++) {
-                    let sample = samples[x]
-                    this.receiverCtx.lineTo(x * step, sample * half + half)
-                    rms += sample * sample;
+                // Calculate current peak for adaptive scaling
+                let peak = 0;
+                for (let i = 0; i < samples.length; i++) {
+                    const absVal = Math.abs(samples[i]);
+                    if (absVal > peak) peak = absVal;
                 }
-                rms /= samples.length;
-                rms = Math.sqrt(rms);
-                this.rmsDisplay.innerText = `RMS: ${(Math.log(rms) * 10).toFixed(1)} dB`
-                this.receiverCtx.stroke();
+
+                // Update target view range with some headroom
+                this.targetViewRange = Math.max(0.01, peak * 1.2);
+                // Smooth range transition (lerp)
+                this.viewRange += (this.targetViewRange - this.viewRange) * 0.1;
+
+                if (this.displayMode === 'waveform') {
+                    this.drawWaveform(samples, w, h);
+                } else {
+                    this.drawFFTView(samples, w, h);
+                }
+
+                // RMS calculation for display
+                let rms = 0;
+                for (let i = 0; i < samples.length; i++) rms += samples[i] * samples[i];
+                rms = Math.sqrt(rms / samples.length);
+                const db = rms > 0 ? 20 * Math.log10(rms) : -100;
+                this.rmsDisplay.innerText = `RMS: ${db.toFixed(1)} dB (${this.displayMode.toUpperCase()})`;
+            }
+
+            drawWaveform(samples, w, h) {
+                const ctx = this.receiverCtx;
+                const halfH = h / 2;
+                const step = w / samples.length;
+                const scale = halfH / this.viewRange;
+
+                // Draw 10dB ticks
+                this.drawTicks(ctx, w, h, this.viewRange, true);
+
+                const grad = ctx.createLinearGradient(0, 0, 0, h);
+                grad.addColorStop(0, '#ff4444');
+                grad.addColorStop(0.5, '#44ff44');
+                grad.addColorStop(1, '#4444ff');
+
+                ctx.beginPath();
+                ctx.strokeStyle = grad;
+                ctx.lineWidth = 2;
+                for (let i = 0; i < samples.length; i++) {
+                    const x = i * step;
+                    const y = halfH - samples[i] * scale;
+                    if (i === 0) ctx.moveTo(x, y);
+                    else ctx.lineTo(x, y);
+                }
+                ctx.stroke();
+            }
+
+            drawFFTView(samples, w, h) {
+                const ctx = this.receiverCtx;
+                const N = this.fftSize;
+
+                // Take last N samples
+                const fftInput = this.buffer.slice(Math.max(0, this.writePointer - N), this.writePointer);
+                if (fftInput.length < N) {
+                    ctx.fillStyle = '#666';
+                    ctx.fillText('收集数据中...', 10, 20);
+                    return;
+                }
+
+                const re = new Float64Array(fftInput);
+                const im = new Float64Array(N);
+
+                // Apply cached window
+                if (!this.fftWindow || this.fftWindow.length !== N) {
+                    this.fftWindow = this.createFftWindow(N);
+                }
+                for (let i = 0; i < N; i++) {
+                    re[i] *= this.fftWindow[i];
+                }
+
+                miniFFT(re, im);
+
+                // Magnitudes
+                const mags = new Float64Array(N / 2);
+                let maxMag = 0;
+                for (let i = 0; i < N / 2; i++) {
+                    mags[i] = Math.sqrt(re[i] * re[i] + im[i] * im[i]) / N;
+                    if (mags[i] > maxMag) maxMag = mags[i];
+                }
+
+                // Update range for FFT too
+                this.targetViewRange = Math.max(1e-5, maxMag * 2.0);
+
+                const barW = w / (N / 2);
+
+                // Draw 10dB ticks for FFT (log display)
+                this.drawTicks(ctx, w, h, this.viewRange, false);
+
+                const maxDb = 20 * Math.log10(Math.max(1e-10, this.viewRange));
+                const minDb = maxDb - 80; // 80dB dynamic range
+
+                const grad = ctx.createLinearGradient(0, h, 0, 0);
+                grad.addColorStop(0, '#44ff44');
+                grad.addColorStop(1, '#00ffff');
+
+                for (let i = 0; i < N / 2; i++) {
+                    const db = mags[i] > 1e-10 ? 20 * Math.log10(mags[i]) : -200;
+                    // Map [minDb, maxDb] to [h, 0]
+                    const barY = ((db - maxDb) / (minDb - maxDb)) * h;
+                    const barH = Math.max(0, h - barY);
+
+                    if (barH > 0) {
+                        ctx.fillStyle = grad;
+                        ctx.fillRect(i * barW + 1, barY, barW - 2, barH);
+                    }
+                }
+
+                // Draw frequency labels (5Hz intervals)
+                ctx.fillStyle = '#aaa';
+                ctx.font = '10px Arial';
+                const interval = 5; // 5Hz
+                const maxFreq = this.sr / 2;
+                for (let f = 0; f <= maxFreq; f += interval) {
+                    const i = (f * N) / this.sr;
+                    const x = i * barW;
+                    if (x >= 0 && x < w) {
+                        ctx.fillText(f + 'Hz', x + 2, h - 5);
+                    }
+                }
+            }
+
+            drawTicks(ctx, w, h, range, bidirectional) {
+                ctx.strokeStyle = 'rgba(255,255,255,0.1)';
+                ctx.fillStyle = 'rgba(255,255,255,0.5)';
+                ctx.font = '10px Arial';
+                ctx.lineWidth = 1;
+
+                const maxDb = 20 * Math.log10(Math.max(1e-10, range));
+                const startDb = Math.floor(maxDb / 10) * 10;
+
+                if (bidirectional) {
+                    // Waveform (Linear scale)
+                    const halfH = h / 2;
+                    const scale = halfH / range;
+                    // Center line
+                    ctx.beginPath();
+                    ctx.moveTo(0, halfH);
+                    ctx.lineTo(w, halfH);
+                    ctx.stroke();
+
+                    for (let db = startDb; db >= -140; db -= 10) {
+                        const val = Math.pow(10, db / 20);
+                        const yDelta = val * scale;
+                        if (yDelta < 2) continue;
+
+                        [halfH - yDelta, halfH + yDelta].forEach(y => {
+                            if (y < 0 || y > h) return;
+                            ctx.beginPath();
+                            ctx.moveTo(0, y);
+                            ctx.lineTo(w, y);
+                            ctx.stroke();
+                            ctx.fillText(`${db}dB`, 5, y - 2);
+                        });
+                        if (yDelta > h) break;
+                    }
+                } else {
+                    // FFT (Log scale)
+                    const minDb = maxDb - 80;
+                    for (let db = startDb; db >= minDb; db -= 10) {
+                        // Map [minDb, maxDb] to [h, 0]
+                        const y = ((db - maxDb) / (minDb - maxDb)) * h;
+                        if (y < 0 || y > h) continue;
+                        ctx.beginPath();
+                        ctx.moveTo(0, y);
+                        ctx.lineTo(w, y);
+                        ctx.stroke();
+                        ctx.fillText(`${db}dB`, 5, y - 2);
+                    }
+                }
             }
 
             erase() {
@@ -671,103 +859,127 @@
                 this.writePointer = 0
             }
         }
-        
-        class WavePacket {
-    constructor(x,y,frequency, amplitude, phase, lifetime) {
-    	this.x=Math.floor(x);
-    	this.y=Math.floor(y);
-        this.frequency = frequency;  // 波包频率（Hz）
-        this.amplitude = amplitude;  // 最大振幅
-        this.phase = phase;          // 初始相位（弧度）
-        this.lifetime = lifetime;    // 波包持续时间（单位：采样点数）
-        this.tick = -1;              // 当前采样点计数器（从0开始）
-        this.sampleRate = 60;        // 采样率（每秒采样数）
-    }
-    
-    applyEffect(buffer) {
-                    const idx = this.y * N + this.x;
-                    buffer[idx] += this.getSample();
+
+        // Function to perform a mini Fast Fourier Transform (FFT)
+        // From qfp.html
+        function miniFFT(re, im) {
+            var N = re.length;
+            for (var i = 0; i < N; i++) {
+                for (var j = 0, h = i, k = N; k >>= 1; h >>= 1)
+                    j = (j << 1) | (h & 1);
+                if (j > i) {
+                    re[j] = [re[i], re[i] = re[j]][0]
+                    im[j] = [im[i], im[i] = im[j]][0]
+                }
             }
-    
-    getSample() {
-        this.tick++; // 每次获取样本时推进计数器
-        return 0;    // 基类默认返回0，由子类覆盖实现
-    }
-}
-
-class GaussianWavePacket extends WavePacket {
-    getSample() {
-        super.getSample(); // 调用父类方法推进tick计数器
-
-        // 超出生命周期后返回0（防止无限生成）
-        if (this.tick >= this.lifetime) return 0;
-
-        // 高斯包络计算（以波包中心为对称点）
-        const center = this.lifetime * 0.5; // 波包中心位置（采样点数）
-        const delta = this.tick - center;    // 当前点与中心的偏移量
-        
-        // 高斯宽度控制（σ设为生命周期长度的20%）
-        const sigma = this.lifetime * 0.2; 
-        const exponent = -(delta ** 2) / (2 * sigma ** 2);
-        const envelope = this.amplitude * Math.exp(exponent);
-
-        // 载波信号计算（考虑采样率转换为实际时间）
-        const time = this.tick / this.sampleRate; // 当前时间（秒）
-        const phase = 2 * Math.PI * this.frequency * time + this.phase;
-        
-        return envelope * Math.cos(phase);
-    }
-}
-
-// 矩形波包（矩形窗+余弦载波）
-class RectangularWavePacket extends WavePacket {
-    getSample() {
-        super.getSample();
-        
-        // 超出生命周期返回0
-        if (this.tick >= this.lifetime) return 0;
-
-        // 矩形包络：在生命周期内保持恒定振幅
-        const envelope = (this.tick >= 0 && this.tick < this.lifetime) 
-            ? this.amplitude 
-            : 0;
-
-        // 载波信号计算
-        const time = this.tick / this.sampleRate;
-        const phase = 2 * Math.PI * this.frequency * time + this.phase;
-        
-        return envelope * Math.cos(phase);
-    }
-}
-
-// Sinc波包（sinc函数包络+余弦载波）
-class SincWavePacket extends WavePacket {
-    getSample() {
-        super.getSample();
-        
-        // 超出生命周期返回0
-        if (this.tick >= this.lifetime) return 0;
-
-        // 计算中心对称时间轴
-        const center = this.lifetime / 2;
-        const delta = (this.tick - center) / this.sampleRate; // 转换为秒
-        
-        // 避免除以零的sinc计算
-        let sinc;
-        if (delta === 0) {
-            sinc = 1; // sinc(0) = 1
-        } else {
-            const omega = Math.PI * 2 * this.frequency; // 控制主瓣宽度
-            sinc = Math.sin(omega * delta) / (omega * delta);
+            for (var hN = 1; hN * 2 <= N; hN *= 2)
+                for (var i = 0; i < N; i += hN * 2)
+                    for (var j = i; j < i + hN; j++) {
+                        var cos = Math.cos(Math.PI * (j - i) / hN),
+                            sin = Math.sin(Math.PI * (j - i) / hN)
+                        var tre = re[j + hN] * cos + im[j + hN] * sin,
+                            tim = -re[j + hN] * sin + im[j + hN] * cos;
+                        re[j + hN] = re[j] - tre; im[j + hN] = im[j] - tim;
+                        re[j] += tre; im[j] += tim;
+                    }
         }
 
-        // 包络振幅与载波合成
-        const envelope = this.amplitude * sinc;
-        const phase = 2 * Math.PI * this.frequency * (this.tick / this.sampleRate) + this.phase;
-        
-        return envelope * Math.cos(phase);
-    }
-}
+        class WavePacket {
+            constructor(x, y, frequency, amplitude, phase, lifetime) {
+                this.x = Math.floor(x);
+                this.y = Math.floor(y);
+                this.frequency = frequency;  // 波包频率（Hz）
+                this.amplitude = amplitude;  // 最大振幅
+                this.phase = phase;          // 初始相位（弧度）
+                this.lifetime = lifetime;    // 波包持续时间（单位：采样点数）
+                this.tick = -1;              // 当前采样点计数器（从0开始）
+                this.sampleRate = 60;        // 采样率（每秒采样数）
+            }
+
+            applyEffect(buffer) {
+                const idx = this.y * N + this.x;
+                buffer[idx] += this.getSample();
+            }
+
+            getSample() {
+                this.tick++; // 每次获取样本时推进计数器
+                return 0;    // 基类默认返回0，由子类覆盖实现
+            }
+        }
+
+        class GaussianWavePacket extends WavePacket {
+            getSample() {
+                super.getSample(); // 调用父类方法推进tick计数器
+
+                // 超出生命周期后返回0（防止无限生成）
+                if (this.tick >= this.lifetime) return 0;
+
+                // 高斯包络计算（以波包中心为对称点）
+                const center = this.lifetime * 0.5; // 波包中心位置（采样点数）
+                const delta = this.tick - center;    // 当前点与中心的偏移量
+
+                // 高斯宽度控制（σ设为生命周期长度的20%）
+                const sigma = this.lifetime * 0.2;
+                const exponent = -(delta ** 2) / (2 * sigma ** 2);
+                const envelope = this.amplitude * Math.exp(exponent);
+
+                // 载波信号计算（考虑采样率转换为实际时间）
+                const time = this.tick / this.sampleRate; // 当前时间（秒）
+                const phase = 2 * Math.PI * this.frequency * time + this.phase;
+
+                return envelope * Math.cos(phase);
+            }
+        }
+
+        // 矩形波包（矩形窗+余弦载波）
+        class RectangularWavePacket extends WavePacket {
+            getSample() {
+                super.getSample();
+
+                // 超出生命周期返回0
+                if (this.tick >= this.lifetime) return 0;
+
+                // 矩形包络：在生命周期内保持恒定振幅
+                const envelope = (this.tick >= 0 && this.tick < this.lifetime)
+                    ? this.amplitude
+                    : 0;
+
+                // 载波信号计算
+                const time = this.tick / this.sampleRate;
+                const phase = 2 * Math.PI * this.frequency * time + this.phase;
+
+                return envelope * Math.cos(phase);
+            }
+        }
+
+        // Sinc波包（sinc函数包络+余弦载波）
+        class SincWavePacket extends WavePacket {
+            getSample() {
+                super.getSample();
+
+                // 超出生命周期返回0
+                if (this.tick >= this.lifetime) return 0;
+
+                // 计算中心对称时间轴
+                const center = this.lifetime / 2;
+                const delta = (this.tick - center) / this.sampleRate; // 转换为秒
+
+                // 避免除以零的sinc计算
+                let sinc;
+                if (delta === 0) {
+                    sinc = 1; // sinc(0) = 1
+                } else {
+                    const omega = Math.PI * 2 * this.frequency; // 控制主瓣宽度
+                    sinc = Math.sin(omega * delta) / (omega * delta);
+                }
+
+                // 包络振幅与载波合成
+                const envelope = this.amplitude * sinc;
+                const phase = 2 * Math.PI * this.frequency * (this.tick / this.sampleRate) + this.phase;
+
+                return envelope * Math.cos(phase);
+            }
+        }
 
 
 
@@ -936,10 +1148,10 @@ class SincWavePacket extends WavePacket {
                     dev.recordSample(buffers[current][idx])
                 }
             })
-            
-            wavePackets.forEach(packet=>{
-            	packet.applyEffect(buffers[current])
-            	//if (this.tick >= this.lifetime) 
+
+            wavePackets.forEach(packet => {
+                packet.applyEffect(buffers[current])
+                //if (this.tick >= this.lifetime) 
             })
 
             tick++;
@@ -1066,42 +1278,42 @@ class SincWavePacket extends WavePacket {
         }
 
         canvas.addEventListener('click', (e) => {
-        	    const rect = canvas.getBoundingClientRect()
+            const rect = canvas.getBoundingClientRect()
             const x = (e.clientX - rect.left) * (N / rect.width)
             const y = (e.clientY - rect.top) * (N / rect.height)
-            
-            switch (currentMode){
-            	case "trans":
-            	case "recv":
-        
-            const dev = currentMode === 'trans'
-                ? new Transmitter(x, y)
-                : new Receiver(x, y)
 
-            transceivers.add(dev)
-            deviceList.appendChild(dev.panel)
-            updateDeviceList()
-            currentMode = '';
-            document.querySelectorAll('button').forEach(b => b.classList.remove('active'));
-        
-            break;
-            case "packet":
-            const type=document.getElementById("wavePackets").value
-            
-            switch (type){
-            	case "gauss":
-            	wavePackets.add(new GaussianWavePacket(x,y,frequency.value, amplitude.value, 0, 60));
-            	break;
-            		case "rect":
-            	wavePackets.add(new RectangularWavePacket(x,y,frequency.value, amplitude.value, 0, 60));
-            	break
-            		case "sinc":
-            	wavePackets.add(new SincWavePacket(x,y,frequency.value, amplitude.value, 0, 60));
-            	break
-            }
+            switch (currentMode) {
+                case "trans":
+                case "recv":
+
+                    const dev = currentMode === 'trans'
+                        ? new Transmitter(x, y)
+                        : new Receiver(x, y)
+
+                    transceivers.add(dev)
+                    deviceList.appendChild(dev.panel)
+                    updateDeviceList()
+                    currentMode = '';
+                    document.querySelectorAll('button').forEach(b => b.classList.remove('active'));
+
+                    break;
+                case "packet":
+                    const type = document.getElementById("wavePackets").value
+
+                    switch (type) {
+                        case "gauss":
+                            wavePackets.add(new GaussianWavePacket(x, y, frequency.value, amplitude.value, 0, 60));
+                            break;
+                        case "rect":
+                            wavePackets.add(new RectangularWavePacket(x, y, frequency.value, amplitude.value, 0, 60));
+                            break
+                        case "sinc":
+                            wavePackets.add(new SincWavePacket(x, y, frequency.value, amplitude.value, 0, 60));
+                            break
+                    }
             }
 
-            })
+        })
 
         function updateDeviceList() {
             transceivers.forEach(dev => dev.updatePanel())
