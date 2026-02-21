@@ -502,7 +502,7 @@
                 this.displayMode = 'waveform'; // 'waveform' or 'fft'
                 this.viewRange = 1.0;
                 this.targetViewRange = 1.0;
-                this.fftSize = 64;
+                this.fftSize = 128;
                 this.sr = 60;
                 this.fftWindow = this.createFftWindow(this.fftSize);
             }
@@ -510,7 +510,7 @@
             createFftWindow(N) {
                 const win = new Float64Array(N);
                 for (let i = 0; i < N; i++) {
-                    win[i] = Math.sin(Math.PI * i / (N - 1));
+                    win[i] = 0.54 - 0.46 * Math.cos(2 * Math.PI * i / (N - 1));
                 }
                 return win;
             }
