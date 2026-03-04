@@ -661,6 +661,41 @@
                 this.srInput.value = this.sampleRate
             }
 
+            smoothViewRange() {
+                const currentDb = 20 * Math.log10(Math.max(1e-300, this.viewRange));
+                const targetDb = 20 * Math.log10(Math.max(1e-300, this.targetViewRange));
+                let diffDb = targetDb - currentDb;
+
+                let stepDb;
+                if (diffDb > 0) {
+                    // Attack: move fast (limit to 10dB per frame for rapid response)
+                    stepDb = Math.min(10, diffDb * 0.5);
+                } else {
+                    // Release: move slow (limit to 1dB per frame for stability)
+                    stepDb = Math.max(-1, diffDb * 0.05);
+                }
+
+                this.viewRange = Math.pow(10, (currentDb + stepDb) / 20);
+            }
+
+            performFFT() {
+                const N = this.fftSize;
+                const fftInput = this.buffer.slice(Math.max(0, this.writePointer - N), this.writePointer);
+                if (fftInput.length < N) return null;
+
+                const re = new Float64Array(fftInput);
+                const im = new Float64Array(N);
+                if (!this.fftWindow || this.fftWindow.length !== N) this.fftWindow = this.createFftWindow(N);
+                for (let i = 0; i < N; i++) re[i] *= this.fftWindow[i];
+                miniFFT(re, im);
+
+                const mags = new Float64Array(N / 2);
+                for (let i = 0; i < N / 2; i++) {
+                    mags[i] = Math.sqrt(re[i] * re[i] + im[i] * im[i]) / N;
+                }
+                return mags;
+            }
+
             repaint() {
                 const durationSec = this.writePointer / this.sampleRate
                 this.durationDisplay.textContent = `已录制: ${durationSec.toFixed(3)}s`
@@ -672,36 +707,39 @@
 
                 ctx.clearRect(0, 0, w, h);
 
-                // Get samples for display or FFT
-                // Use a larger window if needed for FFT
                 const displaySamplesCount = Math.max(100, this.fftSize);
                 let samples = this.buffer.slice(Math.max(0, this.writePointer - displaySamplesCount), this.writePointer);
                 if (samples.length === 0) samples = new Float32Array([0]);
 
-                // Calculate current peak for adaptive scaling
-                let peak = 0;
-                for (let i = 0; i < samples.length; i++) {
-                    const absVal = Math.abs(samples[i]);
-                    if (absVal > peak) peak = absVal;
-                }
-
-                // Update target view range with some headroom
-                this.targetViewRange = Math.max(0.01, peak * 1.2);
-                // Smooth range transition (lerp)
-                this.viewRange += (this.targetViewRange - this.viewRange) * 0.1;
-
                 if (this.displayMode === 'waveform') {
+                    let peak = 0;
+                    for (let i = 0; i < samples.length; i++) {
+                        const absVal = Math.abs(samples[i]);
+                        if (absVal > peak) peak = absVal;
+                    }
+                    this.targetViewRange = Math.max(1e-300, peak * 1.2);
+                    this.smoothViewRange();
                     this.drawWaveform(samples, w, h);
                 } else {
-                    this.drawFFTView(samples, w, h);
+                    const mags = this.performFFT();
+                    if (mags) {
+                        let maxMag = 0;
+                        for (let i = 0; i < mags.length; i++) if (mags[i] > maxMag) maxMag = mags[i];
+                        this.targetViewRange = Math.max(1e-300, maxMag * 2.0);
+                        this.smoothViewRange();
+                        this.drawFFTView(mags, w, h);
+                    } else {
+                        ctx.fillStyle = '#666';
+                        ctx.fillText('收集数据中...', 10, 20);
+                    }
                 }
 
                 // RMS calculation for display
                 let rms = 0;
                 for (let i = 0; i < samples.length; i++) rms += samples[i] * samples[i];
                 rms = Math.sqrt(rms / samples.length);
-                const db = rms > 0 ? 20 * Math.log10(rms) : -100;
-                this.rmsDisplay.innerText = `RMS: ${db.toFixed(1)} dB (${this.displayMode.toUpperCase()})`;
+                const db = rms > 0 ? 20 * Math.log10(rms) : -Infinity;
+                this.rmsDisplay.innerText = `RMS: ${isFinite(db) ? db.toFixed(1) : '-∞'} dB (${this.displayMode.toUpperCase()})`;
             }
 
             drawWaveform(samples, w, h) {
@@ -730,56 +768,35 @@
                 ctx.stroke();
             }
 
-            drawFFTView(samples, w, h) {
+            drawFFTView(mags, w, h) {
                 const ctx = this.receiverCtx;
                 const N = this.fftSize;
 
-                // Take last N samples
-                const fftInput = this.buffer.slice(Math.max(0, this.writePointer - N), this.writePointer);
-                if (fftInput.length < N) {
-                    ctx.fillStyle = '#666';
-                    ctx.fillText('收集数据中...', 10, 20);
-                    return;
-                }
-
-                const re = new Float64Array(fftInput);
-                const im = new Float64Array(N);
-
-                // Apply cached window
-                if (!this.fftWindow || this.fftWindow.length !== N) {
-                    this.fftWindow = this.createFftWindow(N);
-                }
-                for (let i = 0; i < N; i++) {
-                    re[i] *= this.fftWindow[i];
-                }
-
-                miniFFT(re, im);
-
-                // Magnitudes
-                const mags = new Float64Array(N / 2);
-                let maxMag = 0;
-                for (let i = 0; i < N / 2; i++) {
-                    mags[i] = Math.sqrt(re[i] * re[i] + im[i] * im[i]) / N;
-                    if (mags[i] > maxMag) maxMag = mags[i];
-                }
-
-                // Update range for FFT too
-                this.targetViewRange = Math.max(1e-5, maxMag * 2.0);
-
                 const barW = w / (N / 2);
 
-                // Draw 10dB ticks for FFT (log display)
-                this.drawTicks(ctx, w, h, this.viewRange, false);
+                // Find a sensible floor based on data to show "full range"
+                let maxMag = 0;
+                let minMag = Infinity;
+                for (let i = 0; i < mags.length; i++) {
+                    if (mags[i] > maxMag) maxMag = mags[i];
+                    if (mags[i] > 0 && mags[i] < minMag) minMag = mags[i];
+                }
+                if (minMag === Infinity) minMag = 0;
 
-                const maxDb = 20 * Math.log10(Math.max(1e-10, this.viewRange));
-                const minDb = maxDb - 80; // 80dB dynamic range
+                const maxDb = 20 * Math.log10(Math.max(1e-300, this.viewRange));
+                const dataMinDb = minMag > 0 ? 20 * Math.log10(minMag) : maxDb - 100;
+                // dynamic minDb: at least 100dB range, but follows data deeper if needed
+                const minDb = Math.min(maxDb - 100, dataMinDb - 20);
+
+                // Draw ticks for FFT (log display)
+                this.drawTicks(ctx, w, h, this.viewRange, false, minDb);
 
                 const grad = ctx.createLinearGradient(0, h, 0, 0);
                 grad.addColorStop(0, '#44ff44');
                 grad.addColorStop(1, '#00ffff');
 
-                for (let i = 0; i < N / 2; i++) {
-                    const db = mags[i] > 1e-10 ? 20 * Math.log10(mags[i]) : -200;
+                for (let i = 0; i < mags.length; i++) {
+                    const db = mags[i] > 0 ? 20 * Math.log10(mags[i]) : -760;
                     // Map [minDb, maxDb] to [h, 0]
                     const barY = ((db - maxDb) / (minDb - maxDb)) * h;
                     const barH = Math.max(0, h - barY);
@@ -804,13 +821,13 @@
                 }
             }
 
-            drawTicks(ctx, w, h, range, bidirectional) {
+            drawTicks(ctx, w, h, range, bidirectional, explicitMinDb) {
                 ctx.strokeStyle = 'rgba(255,255,255,0.1)';
                 ctx.fillStyle = 'rgba(255,255,255,0.5)';
                 ctx.font = '10px Arial';
                 ctx.lineWidth = 1;
 
-                const maxDb = 20 * Math.log10(Math.max(1e-10, range));
+                const maxDb = 20 * Math.log10(Math.max(1e-300, range));
                 const startDb = Math.floor(maxDb / 10) * 10;
 
                 if (bidirectional) {
@@ -823,10 +840,10 @@
                     ctx.lineTo(w, halfH);
                     ctx.stroke();
 
-                    for (let db = startDb; db >= -140; db -= 10) {
+                    for (let db = startDb; db >= -760; db -= 10) {
                         const val = Math.pow(10, db / 20);
                         const yDelta = val * scale;
-                        if (yDelta < 2) continue;
+                        if (yDelta < 1) continue;
 
                         [halfH - yDelta, halfH + yDelta].forEach(y => {
                             if (y < 0 || y > h) return;
@@ -840,7 +857,7 @@
                     }
                 } else {
                     // FFT (Log scale)
-                    const minDb = maxDb - 80;
+                    const minDb = explicitMinDb !== undefined ? explicitMinDb : maxDb - 100;
                     for (let db = startDb; db >= minDb; db -= 10) {
                         // Map [minDb, maxDb] to [h, 0]
                         const y = ((db - maxDb) / (minDb - maxDb)) * h;
