@@ -517,9 +517,10 @@
                 }
             }
 
-            line(x1, y1, x2, y2, color, width = 0.01) {
+            line(x1, y1, x2, y2, color, width = 0.01, checkSize = false) {
                 const p1 = this.toScreen(x1, y1);
                 const p2 = this.toScreen(x2, y2);
+                if (checkSize && Math.abs(p1.x - p2.x) <= 2 && Math.abs(p1.y - p2.y) <= 2) return;
                 const s = this.scale * this.zoom;
                 this.ctx.strokeStyle = color || this.colors.primary;
                 this.ctx.lineWidth = Math.max(0.5, width * s);
@@ -530,9 +531,10 @@
                 this.ctx.stroke();
             }
 
-            circle(x, y, r, color, width = 0.01, fill = false) {
-                const p = this.toScreen(x, y);
+            circle(x, y, r, color, width = 0.01, fill = false, checkSize = false) {
                 const s = this.scale * this.zoom;
+                if (checkSize && r * s * 2 <= 2) return;
+                const p = this.toScreen(x, y);
                 this.ctx.beginPath();
                 this.ctx.arc(p.x, p.y, r * s, 0, Math.PI * 2);
                 if (fill) {
@@ -545,8 +547,9 @@
                 }
             }
 
-            point(x, y, color, size = 0.02) {
+            point(x, y, color, size = 0.02, checkSize = false) {
                 const s = this.scale * this.zoom;
+                if (checkSize && Math.max(1, size * s) * 2 <= 2) return;
                 const p = this.toScreen(x, y);
                 this.ctx.beginPath();
                 this.ctx.arc(p.x, p.y, Math.max(1, size * s), 0, Math.PI * 2);
@@ -555,9 +558,10 @@
             }
 
             // Fixed-width line for paths
-            fixedLine(x1, y1, x2, y2, color, pixelWidth = 1, alpha = 1.0) {
+            fixedLine(x1, y1, x2, y2, color, pixelWidth = 1, alpha = 1.0, checkSize = false) {
                 const p1 = this.toScreen(x1, y1);
                 const p2 = this.toScreen(x2, y2);
+                if (checkSize && Math.abs(p1.x - p2.x) <= 2 && Math.abs(p1.y - p2.y) <= 2) return;
                 this.ctx.save();
                 this.ctx.globalAlpha = alpha;
                 this.ctx.strokeStyle = color;
@@ -569,7 +573,8 @@
                 this.ctx.restore();
             }
 
-            fixedPoint(x, y, color, pixelSize = 3) {
+            fixedPoint(x, y, color, pixelSize = 3, checkSize = false) {
+                if (checkSize && pixelSize * 2 <= 2) return;
                 const p = this.toScreen(x, y);
                 this.ctx.beginPath();
                 this.ctx.arc(p.x, p.y, pixelSize, 0, Math.PI * 2);
@@ -577,14 +582,71 @@
                 this.ctx.fill();
             }
 
-            fixedCircle(x, y, r, color, pixelWidth = 1) {
-                const p = this.toScreen(x, y);
+            fixedCircle(x, y, r, color, pixelWidth = 1, checkSize = false) {
                 const s = this.scale * this.zoom;
+                if (checkSize && r * s * 2 <= 2) return;
+                const p = this.toScreen(x, y);
                 this.ctx.beginPath();
                 this.ctx.arc(p.x, p.y, r * s, 0, Math.PI * 2);
                 this.ctx.strokeStyle = color || this.colors.primary;
                 this.ctx.lineWidth = pixelWidth;
                 this.ctx.stroke();
+            }
+
+            fixedPath(points, color, pixelWidth = 1, alpha = 1.0, isClosed = false) {
+                if (!points || points.length < 2) return;
+                this.ctx.save();
+                this.ctx.globalAlpha = alpha;
+                this.ctx.strokeStyle = color;
+                this.ctx.lineWidth = pixelWidth;
+                this.ctx.lineCap = 'round';
+                this.ctx.lineJoin = 'round';
+                this.ctx.beginPath();
+
+                const getX = (p) => p.x !== undefined ? p.x : p.re;
+                const getY = (p) => p.y !== undefined ? p.y : p.im;
+
+                let p = this.toScreen(getX(points[0]), getY(points[0]));
+                this.ctx.moveTo(p.x, p.y);
+                for (let i = 1; i < points.length; i++) {
+                    p = this.toScreen(getX(points[i]), getY(points[i]));
+                    this.ctx.lineTo(p.x, p.y);
+                }
+                if (isClosed) this.ctx.closePath();
+                this.ctx.stroke();
+                this.ctx.restore();
+            }
+
+            fadingPath(points, color, pixelWidth = 1, maxLen = 1000) {
+                if (!points || points.length < 2) return;
+                this.ctx.save();
+                this.ctx.strokeStyle = color;
+                this.ctx.lineWidth = pixelWidth;
+                this.ctx.lineCap = 'round';
+                this.ctx.lineJoin = 'round';
+
+                const chunks = 25; // 25 stroke calls is very fast and looks perfectly smooth
+                const chunkSize = Math.max(1, Math.ceil(points.length / chunks));
+
+                const getX = (p) => p.x !== undefined ? p.x : p.re;
+                const getY = (p) => p.y !== undefined ? p.y : p.im;
+
+                for (let c = 0; c < chunks; c++) {
+                    const startIdx = c * chunkSize;
+                    if (startIdx >= points.length - 1) break;
+                    const endIdx = Math.min(points.length, startIdx + chunkSize + 1);
+
+                    this.ctx.globalAlpha = 0.8 * Math.max(0, 1.0 - (startIdx / maxLen));
+                    this.ctx.beginPath();
+                    let p = this.toScreen(getX(points[startIdx]), getY(points[startIdx]));
+                    this.ctx.moveTo(p.x, p.y);
+                    for (let i = startIdx + 1; i < endIdx; i++) {
+                        p = this.toScreen(getX(points[i]), getY(points[i]));
+                        this.ctx.lineTo(p.x, p.y);
+                    }
+                    this.ctx.stroke();
+                }
+                this.ctx.restore();
             }
         }
 
@@ -986,21 +1048,15 @@
             if (state.mode === 'draw') {
                 // Drawing Preview
                 if (state.penPoints.length > 1) {
-                    for (let i = 0; i < state.penPoints.length - 1; i++) {
-                        const p1 = state.penPoints[i];
-                        const p2 = state.penPoints[i + 1];
-                        rc.fixedLine(p1.x, p1.y, p2.x, p2.y, rc.colors.primary, 3, 1.0);
-                    }
+                    rc.fixedPath(state.penPoints, rc.colors.primary, 3, 1.0, false);
                 }
                 requestAnimationFrame(draw);
                 return;
             }
 
             // 1. Draw Original Path (Static, subtle)
-            for (let i = 0; i < pathData.length; i++) {
-                const p1 = pathData[i];
-                const p2 = pathData[(i + 1) % pathData.length];
-                rc.fixedLine(p1.re, p1.im, p2.re, p2.im, rc.colors.path, 1, 1);
+            if (pathData.length > 1) {
+                rc.fixedPath(pathData, rc.colors.path, 1, 1.0, true);
             }
 
             // 2. Draw Epicycles
@@ -1015,22 +1071,19 @@
 
                 if (state.showCircles) {
                     // Draw Circle (fixed pixel width stroke)
-                    rc.circle(prevX, prevY, amp, rc.colors.circles, amp * 0.01);
+                    rc.circle(prevX, prevY, amp, rc.colors.circles, amp * 0.01, false, true);
                 }
 
                 if (state.showVectors) {
                     // Draw Vector (line width proportional to amp - world units)
-                    rc.line(prevX, prevY, x, y, rc.colors.vector, amp * 0.01);
+                    rc.line(prevX, prevY, x, y, rc.colors.vector, amp * 0.01, true);
                 }
             }
 
             // 3. Draw Fitted Path (Fade-out over one period)
             const maxLen = Math.ceil((Math.PI * 2) / state.speed);
-            for (let i = 0; i < state.tracedPath.length - 1; i++) {
-                const p1 = state.tracedPath[i];
-                const p2 = state.tracedPath[i + 1];
-                const alpha = 1.0 - (i / maxLen);
-                rc.fixedLine(p1.x, p1.y, p2.x, p2.y, rc.colors.secondary, 2, alpha * 0.8);
+            if (state.tracedPath.length > 1) {
+                rc.fadingPath(state.tracedPath, rc.colors.secondary, 2, maxLen);
             }
 
             // 4. Current Point
