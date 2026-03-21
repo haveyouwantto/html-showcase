@@ -219,9 +219,9 @@
                 <!-- Pen -->
                 <button class="icon-btn" id="penBtn" title="Draw Path">✏️</button>
 
-                <!-- SVG -->
-                <button class="icon-btn" id="svgBtn" title="Import SVG">📥</button>
-                <input type="file" id="svgInput" accept=".svg" style="display:none">
+                <!-- SVG / Image -->
+                <button class="icon-btn" id="svgBtn" title="Import SVG or Image">📥</button>
+                <input type="file" id="svgInput" accept=".svg, image/*" style="display:none">
 
                 <!-- Text -->
                 <button class="icon-btn" id="textBtnIcon" title="Text to Path">🔤</button>
@@ -864,6 +864,143 @@
             updateHarmonicsFromSlider();
         }
 
+        function processImageToPath(img) {
+            const MAX_DIM = 250;
+            let w = img.width;
+            let h = img.height;
+            if (w > MAX_DIM || h > MAX_DIM) {
+                const ratio = Math.min(MAX_DIM / w, MAX_DIM / h);
+                w = Math.floor(w * ratio);
+                h = Math.floor(h * ratio);
+            }
+
+            const canvas = document.createElement('canvas');
+            canvas.width = w;
+            canvas.height = h;
+            const ctx = canvas.getContext('2d', { willReadFrequently: true });
+            
+            ctx.fillStyle = '#000';
+            ctx.fillRect(0, 0, w, h);
+            ctx.drawImage(img, 0, 0, w, h);
+            
+            const imgData = ctx.getImageData(0, 0, w, h);
+            const data = imgData.data;
+
+            const gray = new Float32Array(w * h);
+            for (let i = 0; i < data.length; i += 4) {
+                gray[i >> 2] = data[i] * 0.299 + data[i+1] * 0.587 + data[i+2] * 0.114;
+            }
+
+            const mag = new Float32Array(w * h);
+            const dir = new Float32Array(w * h);
+            let maxMag = 0;
+
+            const getP = (x, y) => {
+                if (x < 0) x = 0; if (x >= w) x = w - 1;
+                if (y < 0) y = 0; if (y >= h) y = h - 1;
+                return gray[y * w + x];
+            };
+
+            for (let y = 1; y < h - 1; y++) {
+                for (let x = 1; x < w - 1; x++) {
+                    const gx = -getP(x-1,y-1) + getP(x+1,y-1)
+                               -2*getP(x-1,y) + 2*getP(x+1,y)
+                               -getP(x-1,y+1) + getP(x+1,y+1);
+                    const gy = -getP(x-1,y-1) - 2*getP(x,y-1) - getP(x+1,y-1)
+                               +getP(x-1,y+1) + 2*getP(x,y+1) + getP(x+1,y+1);
+                    const val = Math.sqrt(gx*gx + gy*gy);
+                    mag[y * w + x] = val;
+                    dir[y * w + x] = Math.atan2(gy, gx);
+                    if (val > maxMag) maxMag = val;
+                }
+            }
+
+            const nms = new Float32Array(w * h);
+            let maxNms = 0;
+            for (let y = 1; y < h - 1; y++) {
+                for (let x = 1; x < w - 1; x++) {
+                    const m = mag[y * w + x];
+                    if (m === 0) continue;
+                    let angle = dir[y * w + x] * (180 / Math.PI);
+                    if (angle < 0) angle += 180;
+                    
+                    let q = 255, r = 255;
+                    if ((0 <= angle && angle < 22.5) || (157.5 <= angle && angle <= 180)) {
+                        q = mag[y * w + (x + 1)]; r = mag[y * w + (x - 1)];
+                    } else if (22.5 <= angle && angle < 67.5) {
+                        q = mag[(y + 1) * w + (x + 1)]; r = mag[(y - 1) * w + (x - 1)];
+                    } else if (67.5 <= angle && angle < 112.5) {
+                        q = mag[(y + 1) * w + x]; r = mag[(y - 1) * w + x];
+                    } else if (112.5 <= angle && angle < 157.5) {
+                        q = mag[(y - 1) * w + (x + 1)]; r = mag[(y + 1) * w + (x - 1)];
+                    }
+
+                    if (m >= q && m >= r) {
+                        nms[y * w + x] = m;
+                        if (m > maxNms) maxNms = m;
+                    }
+                }
+            }
+
+            let points = [];
+            const threshold = maxNms * 0.15; 
+            for (let y = 1; y < h - 1; y++) {
+                for (let x = 1; x < w - 1; x++) {
+                    if (nms[y * w + x] > threshold) {
+                        points.push({ x: x - w/2, y: -(y - h/2) });
+                    }
+                }
+            }
+
+            if (points.length === 0) return [];
+
+            const MAX_POINTS = 2048;
+            if (points.length > MAX_POINTS) {
+                const sampled = [];
+                const step = points.length / MAX_POINTS;
+                for (let i = 0; i < MAX_POINTS; i++) {
+                    sampled.push(points[Math.floor(i * step)]);
+                }
+                points = sampled;
+            }
+
+            const path = [];
+            const visited = new Uint8Array(points.length);
+            
+            let currIdx = 0;
+            path.push(points[currIdx]);
+            visited[currIdx] = 1;
+
+            for (let step = 1; step < points.length; step++) {
+                let bestDist = Infinity;
+                let bestIdx = -1;
+                const p1 = points[currIdx];
+
+                for (let i = 0; i < points.length; i++) {
+                    if (visited[i] === 0) {
+                        const p2 = points[i];
+                        const dx = p1.x - p2.x;
+                        const dy = p1.y - p2.y;
+                        const distSq = dx*dx + dy*dy;
+                        if (distSq < bestDist) {
+                            bestDist = distSq;
+                            bestIdx = i;
+                        }
+                    }
+                }
+
+                if (bestIdx !== -1) {
+                    currIdx = bestIdx;
+                    path.push(points[currIdx]);
+                    visited[currIdx] = 1;
+                } else {
+                    break;
+                }
+            }
+            
+            return resamplePath(path);
+        }
+
         function sampleSVGPath(d) {
             const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
             path.setAttribute('d', d);
@@ -1000,13 +1137,30 @@
                 }
             });
 
-            // SVG Upload
+            // SVG or Image Upload
             document.getElementById('svgBtn').addEventListener('click', () => {
                 document.getElementById('svgInput').click();
             });
             document.getElementById('svgInput').addEventListener('change', (e) => {
                 const file = e.target.files[0];
                 if (!file) return;
+
+                if (file.type.startsWith('image/') && file.type !== 'image/svg+xml') {
+                    const reader = new FileReader();
+                    reader.onload = (event) => {
+                        const img = new Image();
+                        img.onload = () => {
+                            const path = processImageToPath(img);
+                            if (path && path.length >= 2) {
+                                updateFFT(path);
+                            }
+                        };
+                        img.src = event.target.result;
+                    };
+                    reader.readAsDataURL(file);
+                    return;
+                }
+
                 const reader = new FileReader();
                 reader.onload = (event) => {
                     const parser = new DOMParser();
