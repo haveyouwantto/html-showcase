@@ -152,11 +152,28 @@
                 height: 44px;
             }
         }
+
+        #minimap {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            width: 150px;
+            height: 150px;
+            background: rgba(20, 20, 25, 0.7);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 8px;
+            z-index: 1000;
+            pointer-events: none;
+            display: block;
+            backdrop-filter: blur(5px);
+            -webkit-backdrop-filter: blur(5px);
+        }
     </style>
 </head>
 
 <body>
     <canvas id="canvas"></canvas>
+    <canvas id="minimap"></canvas>
 
     <div class="toolbar" id="mainToolbar">
         <div class="toolbar-main">
@@ -228,6 +245,10 @@
         const canvas = document.getElementById('canvas');
         const ctx = canvas.getContext('2d');
 
+        /** @type {HTMLCanvasElement} */
+        const minimap = document.getElementById('minimap');
+        const minictx = minimap.getContext('2d');
+
         class RenderingContext {
             constructor(canvas, ctx) {
                 this.canvas = canvas;
@@ -281,6 +302,11 @@
                 this.canvas.width = this.width * window.devicePixelRatio;
                 this.canvas.height = this.height * window.devicePixelRatio;
                 this.ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
+
+                minimap.width = 150 * window.devicePixelRatio;
+                minimap.height = 150 * window.devicePixelRatio;
+                minictx.setTransform(1, 0, 0, 1, 0, 0); // reset before scale
+                minictx.scale(window.devicePixelRatio, window.devicePixelRatio);
             }
 
             toScreen(x, y) {
@@ -948,6 +974,7 @@
             mapToggleBtn.addEventListener('click', () => {
                 state.showMap = !state.showMap;
                 mapToggleBtn.classList.toggle('active', state.showMap);
+                minimap.style.display = state.showMap ? 'block' : 'none';
             });
 
             document.getElementById('presetSelect').addEventListener('change', (e) => {
@@ -1090,19 +1117,9 @@
 
             // 5. Minimap Overlay
             if (state.showMap && pathData.length > 0) {
-                const padding = 20;
                 const mapSize = 150;
-                const mapX = padding;
-                const mapY = padding;
-
-                // Draw Map Background
-                ctx.save();
-                ctx.setTransform(1, 0, 0, 1, 0, 0); // Absolute screen coordinates
-                ctx.fillStyle = 'rgba(20, 20, 25, 0.7)';
-                ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
-                ctx.lineWidth = 1;
-                ctx.fillRect(mapX, mapY, mapSize, mapSize);
-                ctx.strokeRect(mapX, mapY, mapSize, mapSize);
+                
+                minictx.clearRect(0, 0, mapSize, mapSize);
 
                 // Find bounds for minimap
                 let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
@@ -1117,41 +1134,39 @@
 
                 const toMapCoords = (wx, wy) => {
                     return {
-                        x: mapX + mapSize / 2 + (wx - cx) * scale,
-                        y: mapY + mapSize / 2 - (wy - cy) * scale // y is flipped in world
+                        x: mapSize / 2 + (wx - cx) * scale,
+                        y: mapSize / 2 - (wy - cy) * scale // y is flipped in world
                     };
                 };
 
                 // Draw original path in minimap
-                ctx.beginPath();
+                minictx.beginPath();
                 for (let i = 0; i < pathData.length; i++) {
                     const p = pathData[i];
                     const pts = toMapCoords(p.re, p.im);
-                    if (i === 0) ctx.moveTo(pts.x, pts.y);
-                    else ctx.lineTo(pts.x, pts.y);
+                    if (i === 0) minictx.moveTo(pts.x, pts.y);
+                    else minictx.lineTo(pts.x, pts.y);
                 }
-                ctx.closePath();
-                ctx.strokeStyle = rc.colors.path;
-                ctx.lineWidth = 1;
-                ctx.stroke();
+                minictx.closePath();
+                minictx.strokeStyle = rc.colors.path;
+                minictx.lineWidth = 1;
+                minictx.stroke();
 
                 // Draw current position
                 const current = toMapCoords(x, y);
-                ctx.beginPath();
-                ctx.arc(current.x, current.y, 3, 0, Math.PI * 2);
-                ctx.fillStyle = '#4cc9f0';
-                ctx.fill();
+                minictx.beginPath();
+                minictx.arc(current.x, current.y, 3, 0, Math.PI * 2);
+                minictx.fillStyle = '#4cc9f0';
+                minictx.fill();
 
                 // Draw viewport rect
                 const tl = rc.toWorld(0, 0);
                 const br = rc.toWorld(rc.width, rc.height);
                 const tlm = toMapCoords(tl.x, tl.y);
                 const brm = toMapCoords(br.x, br.y);
-                ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
-                ctx.lineWidth = 1;
-                ctx.strokeRect(tlm.x, tlm.y, brm.x - tlm.x, brm.y - tlm.y);
-
-                ctx.restore();
+                minictx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
+                minictx.lineWidth = 1;
+                minictx.strokeRect(tlm.x, tlm.y, brm.x - tlm.x, brm.y - tlm.y);
             }
 
             requestAnimationFrame(() => {
