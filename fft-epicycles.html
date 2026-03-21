@@ -317,6 +317,91 @@
                     this.targetCamY = mouseW.y + (e.clientY - this.height / 2) / s_new;
 
                 }, { passive: false });
+
+                // Touch Events
+                this.canvas.addEventListener('touchstart', (e) => {
+                    if (e.touches.length === 1) {
+                        const touch = e.touches[0];
+                        if (state.mode === 'draw') {
+                            e.preventDefault();
+                            state.penPoints = [];
+                            const worldPos = this.toWorld(touch.clientX, touch.clientY);
+                            state.penPoints.push(worldPos);
+                            state.isDrawingMode = true;
+                        } else {
+                            this.isDragging = true;
+                            this.lastMouseX = touch.clientX;
+                            this.lastMouseY = touch.clientY;
+                        }
+                    } else if (e.touches.length === 2 && state.mode !== 'draw') {
+                        e.preventDefault();
+                        this.isDragging = false;
+                        const dx = e.touches[0].clientX - e.touches[1].clientX;
+                        const dy = e.touches[0].clientY - e.touches[1].clientY;
+                        this.initialPinchDistance = Math.hypot(dx, dy);
+                        this.initialPinchZoom = this.targetZoom;
+
+                        const centerX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+                        const centerY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+                        this.initialPinchCenterWorld = this.toWorld(centerX, centerY);
+                    }
+                }, { passive: false });
+
+                window.addEventListener('touchmove', (e) => {
+                    if (e.touches.length === 1) {
+                        const touch = e.touches[0];
+                        if (state.mode === 'draw' && state.isDrawingMode) {
+                            const worldPos = this.toWorld(touch.clientX, touch.clientY);
+                            state.penPoints.push(worldPos);
+                        } else if (this.isDragging) {
+                            const dx = touch.clientX - this.lastMouseX;
+                            const dy = touch.clientY - this.lastMouseY;
+
+                            const s = this.scale * this.zoom;
+                            this.targetCamX -= dx / s;
+                            this.targetCamY += dy / s;
+
+                            this.lastMouseX = touch.clientX;
+                            this.lastMouseY = touch.clientY;
+                        }
+                    } else if (e.touches.length === 2 && state.mode !== 'draw') {
+                        e.preventDefault();
+                        if (this.initialPinchDistance) {
+                            const dx = e.touches[0].clientX - e.touches[1].clientX;
+                            const dy = e.touches[0].clientY - e.touches[1].clientY;
+                            const currentDistance = Math.hypot(dx, dy);
+                            const factor = currentDistance / this.initialPinchDistance;
+
+                            this.targetZoom = this.initialPinchZoom * factor;
+                            this.targetZoom = Math.min(Math.max(this.targetZoom, 1e-4), 1e5);
+
+                            const centerX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+                            const centerY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+
+                            const s_new = this.scale * this.targetZoom;
+                            this.targetCamX = this.initialPinchCenterWorld.x - (centerX - this.width / 2) / s_new;
+                            this.targetCamY = this.initialPinchCenterWorld.y + (centerY - this.height / 2) / s_new;
+                        }
+                    }
+                }, { passive: false });
+
+                window.addEventListener('touchend', (e) => {
+                    if (state.mode === 'draw' && state.isDrawingMode && e.touches.length === 0) {
+                        state.isDrawingMode = false;
+                    }
+
+                    if (e.touches.length < 2) {
+                        this.initialPinchDistance = null;
+                    }
+
+                    if (e.touches.length === 1 && state.mode !== 'draw') {
+                        this.isDragging = true;
+                        this.lastMouseX = e.touches[0].clientX;
+                        this.lastMouseY = e.touches[0].clientY;
+                    } else if (e.touches.length === 0) {
+                        this.isDragging = false;
+                    }
+                });
             }
 
             smooth() {
