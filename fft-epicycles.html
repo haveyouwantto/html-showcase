@@ -785,7 +785,7 @@
             const count = 512; // High resolution for complex SVGs
             for (let i = 0; i < count; i++) {
                 const p = path.getPointAtLength((i / count) * len);
-                points.push({ x: p.x, y: p.y });
+                points.push({ x: p.x, y: -p.y }); // Reverse Y axis to match Cartesian world
             }
             return resamplePath(points);
         }
