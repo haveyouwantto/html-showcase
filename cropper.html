@@ -1,0 +1,486 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pro 批量裁剪工具 - 深色版</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+    <style>
+        :root {
+            --bg-color: #1a1a1a;
+            --panel-bg: #2d2d2d;
+            --border-color: #444;
+            --text-color: #e0e0e0;
+            --accent-color: #ff4757;
+            --success-color: #2ed573;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', system-ui, sans-serif;
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            margin: 0;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            overflow: hidden;
+        }
+
+        /* 顶部导航 */
+        .toolbar {
+            padding: 12px 20px;
+            background: var(--panel-bg);
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            gap: 15px;
+            align-items: center;
+            z-index: 100;
+        }
+
+        .btn {
+            padding: 8px 18px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 500;
+            transition: all 0.2s;
+        }
+
+        .btn-primary {
+            background: #3742fa;
+            color: white;
+        }
+
+        .btn-success {
+            background: var(--success-color);
+            color: white;
+        }
+
+        .btn:hover {
+            opacity: 0.9;
+            transform: translateY(-1px);
+        }
+
+        .main-container {
+            display: flex;
+            flex: 1;
+            overflow: hidden;
+        }
+
+        /* 左侧面板 */
+        .left-panel {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            background: #222;
+            position: relative;
+        }
+
+        /* 缩放工作区 */
+        .workspace {
+            flex: 1;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            overflow: hidden;
+            position: relative;
+            cursor: grab;
+        }
+
+        .workspace:active {
+            cursor: grabbing;
+        }
+
+        .image-wrapper {
+            position: relative;
+            transform-origin: center;
+            transition: transform 0.1s ease-out;
+        }
+
+        #target-image {
+            display: block;
+            max-width: 90vw;
+            max-height: 80vh;
+            user-select: none;
+            pointer-events: none;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+        }
+
+        /* 红色裁剪框优化 */
+        #crop-box {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 200px;
+            height: 200px;
+            border: 2px solid var(--accent-color);
+            background: rgba(255, 71, 87, 0.1);
+            cursor: move;
+            box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.6);
+            display: none;
+        }
+
+        /* 四角控制点 */
+        .handle {
+            position: absolute;
+            width: 10px;
+            height: 10px;
+            background: white;
+            border: 2px solid var(--accent-color);
+            border-radius: 50%;
+        }
+
+        .handle-tl {
+            top: -6px;
+            left: -6px;
+            cursor: nw-resize;
+        }
+
+        .handle-tr {
+            top: -6px;
+            right: -6px;
+            cursor: ne-resize;
+        }
+
+        .handle-bl {
+            bottom: -6px;
+            left: -6px;
+            cursor: sw-resize;
+        }
+
+        .handle-br {
+            bottom: -6px;
+            right: -6px;
+            cursor: se-resize;
+        }
+
+        /* 裁剪按钮 - 放在预览框右下角 */
+        #crop-trigger {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            background: var(--accent-color);
+            color: white;
+            padding: 12px 24px;
+            border-radius: 30px;
+            border: none;
+            font-weight: bold;
+            cursor: pointer;
+            display: none;
+            box-shadow: 0 4px 15px rgba(255, 71, 87, 0.4);
+            z-index: 50;
+        }
+
+        /* 缩略图栏 */
+        .thumbnail-bar {
+            height: 90px;
+            background: #111;
+            padding: 10px;
+            display: flex;
+            gap: 10px;
+            overflow-x: auto;
+            border-top: 1px solid var(--border-color);
+        }
+
+        .thumbnail-bar img {
+            height: 100%;
+            width: 70px;
+            object-fit: cover;
+            border-radius: 4px;
+            border: 2px solid transparent;
+            opacity: 0.5;
+            cursor: pointer;
+        }
+
+        .thumbnail-bar img.active {
+            border-color: var(--accent-color);
+            opacity: 1;
+        }
+
+        /* 右侧面板 */
+        .right-panel {
+            width: 320px;
+            background: var(--panel-bg);
+            border-left: 1px solid var(--border-color);
+            display: flex;
+            flex-direction: column;
+        }
+
+        .right-panel h3 {
+            padding: 15px;
+            margin: 0;
+            font-size: 16px;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .gallery {
+            flex: 1;
+            overflow-y: auto;
+            padding: 15px;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            align-content: start;
+        }
+
+        .gallery-item {
+            position: relative;
+            border-radius: 6px;
+            overflow: hidden;
+            background: #111;
+            aspect-ratio: 1;
+            border: 1px solid #444;
+        }
+
+        .gallery-item img {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+        }
+
+        .gallery-item .badge {
+            position: absolute;
+            top: 4px;
+            left: 4px;
+            background: rgba(0, 0, 0, 0.7);
+            font-size: 10px;
+            padding: 2px 5px;
+            border-radius: 3px;
+        }
+
+        .delete-btn {
+            position: absolute;
+            top: 4px;
+            right: 4px;
+            background: var(--accent-color);
+            border: none;
+            color: white;
+            border-radius: 50%;
+            width: 20px;
+            height: 20px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="toolbar">
+        <input type="file" id="file-input" multiple accept="image/*" style="display: none;">
+        <button class="btn btn-primary" onclick="document.getElementById('file-input').click()">📤 导入图片</button>
+        <button class="btn btn-success" onclick="downloadAll()">📦 打包导出</button>
+        <div style="font-size: 12px; color: #888; margin-left: auto;">滚轮缩放预览 | 拖拽控制点裁剪</div>
+    </div>
+
+    <div class="main-container">
+        <div class="left-panel">
+            <div class="workspace" id="workspace">
+                <div class="image-wrapper" id="image-wrapper">
+                    <img id="target-image" src="">
+                    <div id="crop-box">
+                        <div class="handle handle-tl" data-handle="tl"></div>
+                        <div class="handle handle-tr" data-handle="tr"></div>
+                        <div class="handle handle-bl" data-handle="bl"></div>
+                        <div class="handle handle-br" data-handle="br"></div>
+                    </div>
+                </div>
+                <button id="crop-trigger" onclick="performCrop()">✂️ 确认裁剪</button>
+            </div>
+            <div class="thumbnail-bar" id="thumbnail-bar"></div>
+        </div>
+
+        <div class="right-panel">
+            <h3>已裁剪清单 (<span id="crop-count">0</span>)</h3>
+            <div class="gallery" id="gallery"></div>
+        </div>
+    </div>
+
+    <script>
+        const imageWrapper = document.getElementById('image-wrapper');
+        const targetImage = document.getElementById('target-image');
+        const cropBox = document.getElementById('crop-box');
+        const thumbnailBar = document.getElementById('thumbnail-bar');
+        const gallery = document.getElementById('gallery');
+        const cropTrigger = document.getElementById('crop-trigger');
+
+        let uploadedImages = [];
+        let croppedImages = [];
+        let scale = 1;
+
+        // --- 1. 图片上传与切换 ---
+        document.getElementById('file-input').addEventListener('change', (e) => {
+            const files = Array.from(e.target.files);
+            files.forEach(file => {
+                const reader = new FileReader();
+                reader.onload = (ev) => {
+                    uploadedImages.push({ url: ev.target.result, name: file.name });
+                    renderThumbnails();
+                    if (uploadedImages.length === 1) selectImage(0);
+                };
+                reader.readAsDataURL(file);
+            });
+        });
+
+        function renderThumbnails() {
+            thumbnailBar.innerHTML = '';
+            uploadedImages.forEach((img, i) => {
+                const el = document.createElement('img');
+                el.src = img.url;
+                el.onclick = () => selectImage(i);
+                thumbnailBar.appendChild(el);
+            });
+        }
+
+        function selectImage(i) {
+            Array.from(thumbnailBar.children).forEach((img, idx) => img.className = idx === i ? 'active' : '');
+            targetImage.src = uploadedImages[i].url;
+            scale = 1;
+            updateTransform();
+            targetImage.onload = () => {
+                cropBox.style.display = 'block';
+                cropTrigger.style.display = 'block';
+                // 初始大小和位置
+                cropBox.style.width = '100px';
+                cropBox.style.height = '100px';
+                cropBox.style.left = '10px';
+                cropBox.style.top = '10px';
+            };
+        }
+
+        // --- 2. 滚轮缩放 ---
+        document.getElementById('workspace').addEventListener('wheel', (e) => {
+            e.preventDefault();
+            const delta = e.deltaY > 0 ? -0.1 : 0.1;
+            scale = Math.min(Math.max(0.2, scale + delta), 5);
+            updateTransform();
+        });
+
+        function updateTransform() {
+            imageWrapper.style.transform = `scale(${scale})`;
+        }
+
+        // --- 3. 裁剪框拖动与四角缩放 (限制不超出图片) ---
+        let isDragging = false, isResizing = false;
+        let currentHandle = null;
+        let startX, startY, startLeft, startTop, startWidth, startHeight;
+
+        cropBox.addEventListener('mousedown', (e) => {
+            if (e.target.classList.contains('handle')) {
+                isResizing = true;
+                currentHandle = e.target.dataset.handle;
+            } else {
+                isDragging = true;
+            }
+            startX = e.clientX;
+            startY = e.clientY;
+            startLeft = cropBox.offsetLeft;
+            startTop = cropBox.offsetTop;
+            startWidth = cropBox.offsetWidth;
+            startHeight = cropBox.offsetHeight;
+            e.stopPropagation();
+        });
+
+        document.addEventListener('mousemove', (e) => {
+            if (!isDragging && !isResizing) return;
+
+            const dx = (e.clientX - startX) / scale;
+            const dy = (e.clientY - startY) / scale;
+            const imgW = targetImage.clientWidth;
+            const imgH = targetImage.clientHeight;
+
+            if (isDragging) {
+                let L = startLeft + dx;
+                let T = startTop + dy;
+                // 限制位移
+                L = Math.max(0, Math.min(L, imgW - cropBox.offsetWidth));
+                T = Math.max(0, Math.min(T, imgH - cropBox.offsetHeight));
+                cropBox.style.left = L + 'px';
+                cropBox.style.top = T + 'px';
+            }
+            else if (isResizing) {
+                let L = startLeft, T = startTop, W = startWidth, H = startHeight;
+
+                if (currentHandle.includes('r')) W = Math.min(startWidth + dx, imgW - startLeft);
+                if (currentHandle.includes('b')) H = Math.min(startHeight + dy, imgH - startTop);
+                if (currentHandle.includes('l')) {
+                    const newL = Math.max(0, Math.min(startLeft + dx, startLeft + startWidth - 20));
+                    W = startWidth + (startLeft - newL);
+                    L = newL;
+                }
+                if (currentHandle.includes('t')) {
+                    const newT = Math.max(0, Math.min(startTop + dy, startTop + startHeight - 20));
+                    H = startHeight + (startTop - newT);
+                    T = newT;
+                }
+
+                cropBox.style.width = W + 'px';
+                cropBox.style.height = H + 'px';
+                cropBox.style.left = L + 'px';
+                cropBox.style.top = T + 'px';
+            }
+        });
+
+        document.addEventListener('mouseup', () => {
+            isDragging = isResizing = false;
+        });
+
+        // --- 4. 裁剪逻辑 ---
+        function performCrop() {
+            const sX = targetImage.naturalWidth / targetImage.clientWidth;
+            const sY = targetImage.naturalHeight / targetImage.clientHeight;
+
+            const canvas = document.createElement('canvas');
+            canvas.width = cropBox.offsetWidth * sX;
+            canvas.height = cropBox.offsetHeight * sY;
+            const ctx = canvas.getContext('2d');
+
+            ctx.drawImage(
+                targetImage,
+                cropBox.offsetLeft * sX, cropBox.offsetTop * sY, canvas.width, canvas.height,
+                0, 0, canvas.width, canvas.height
+            );
+
+            croppedImages.push(canvas.toDataURL('image/png'));
+            renderGallery();
+        }
+
+        function renderGallery() {
+            gallery.innerHTML = '';
+            croppedImages.forEach((img, i) => {
+                const div = document.createElement('div');
+                div.className = 'gallery-item';
+                div.innerHTML = `
+                <span class="badge">#${i + 1}</span>
+                <button class="delete-btn" onclick="removeCropped(${i})">✕</button>
+                <img src="${img}">
+            `;
+                gallery.appendChild(div);
+            });
+            document.getElementById('crop-count').innerText = croppedImages.length;
+        }
+
+        function removeCropped(i) {
+            croppedImages.splice(i, 1);
+            renderGallery();
+        }
+
+        function downloadAll() {
+            if (!croppedImages.length) return alert('库中没有图片');
+            const zip = new JSZip();
+            croppedImages.forEach((data, i) => zip.file(`${i + 1}.png`, data.split(',')[1], { base64: true }));
+            zip.generateAsync({ type: 'blob' }).then(c => saveAs(c, 'crops.zip'));
+        }
+    </script>
+</body>
+
+</html>
