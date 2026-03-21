@@ -1,0 +1,743 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>FFT Epicycles</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background-color: #000;
+        }
+
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
+
+        /* Floating Toolbar */
+        .toolbar {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            padding: 15px;
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 12px;
+            color: #e0e0e6;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            font-size: 14px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+            z-index: 100;
+            min-width: 200px;
+        }
+
+        .toolbar-item {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .toolbar div.row {
+            display: flex;
+            flex-direction: row;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+        }
+
+        input[type="range"] {
+            width: 100%;
+            accent-color: #4cc9f0;
+            cursor: pointer;
+        }
+
+        select,
+        button {
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: #fff;
+            padding: 6px 10px;
+            border-radius: 6px;
+            font-size: 13px;
+            cursor: pointer;
+            transition: all 0.2s;
+            outline: none;
+        }
+
+        select:hover,
+        button:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        button.active {
+            background: #4cc9f0;
+            color: #000;
+            border-color: #4cc9f0;
+            font-weight: bold;
+        }
+
+        select option {
+            background: #1a1a1e;
+        }
+
+        input[type="checkbox"] {
+            width: 18px;
+            height: 18px;
+            accent-color: #4cc9f0;
+            cursor: pointer;
+        }
+
+        .label {
+            font-weight: 500;
+            opacity: 0.8;
+        }
+    </style>
+</head>
+
+<body>
+    <canvas id="canvas"></canvas>
+
+    <div class="toolbar">
+        <div class="toolbar-item">
+            <span class="label">Animation Speed: <span id="speedVal">0.0002</span></span>
+            <input type="range" id="speedRange" min="0" max="1" step="0.001" value="0.2">
+        </div>
+        <div class="toolbar-item">
+            <span class="label">Harmonics: <span id="harmonicsVal">128</span></span>
+            <input type="range" id="harmonicsRange" min="0" max="1" step="0.001" value="0.7">
+        </div>
+        <div class="toolbar-item">
+            <div class="row">
+                <span class="label">Presets</span>
+                <select id="presetSelect">
+                    <option value="square">Square</option>
+                    <option value="triangle">Triangle</option>
+                    <option value="pentagon">Pentagon</option>
+                    <option value="pentagram">Pentagram</option>
+                    <option value="circle">Circle</option>
+                    <option value="infinity">Infinity</option>
+                    <option value="butterfly">Butterfly</option>
+                </select>
+            </div>
+        </div>
+        <div class="toolbar-item">
+            <button id="penBtn">Start Drawing (Pen)</button>
+        </div>
+        <div class="toolbar-item">
+            <div class="row">
+                <span class="label">Camera Follow</span>
+                <input type="checkbox" id="followCheck">
+            </div>
+        </div>
+    </div>
+    <script>
+        /** @type {HTMLCanvasElement} */
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        class RenderingContext {
+            constructor(canvas, ctx) {
+                this.canvas = canvas;
+                this.ctx = ctx;
+                this.width = window.innerWidth;
+                this.height = window.innerHeight;
+                this.updateScale();
+                this.objects = [];
+
+                // Camera State
+                this.camX = 0;
+                this.camY = 0;
+                this.zoom = 1.0;
+
+                this.targetCamX = 0;
+                this.targetCamY = 0;
+                this.targetZoom = 1.0;
+
+                this.lerpFactor = 0.15; // Smoothness factor
+
+                // Interaction state
+                this.isDragging = false;
+                this.lastMouseX = 0;
+                this.lastMouseY = 0;
+
+                // Colors - Premium Dark Mode Palette
+                this.colors = {
+                    background: '#0a0a0c',
+                    grid: '#1e1e24',
+                    axis: '#3a3a45',
+                    primary: '#4cc9f0',   // Cyan
+                    secondary: '#f72585', // Pink
+                    accent: '#7209b7',    // Purple
+                    text: '#e0e0e6',
+                    circles: "#ffffff40",
+                    path: "#ffff0080"
+                };
+            }
+
+            updateScale() {
+                // Unit circle (radius 1) occupies about half the smaller screen dimension
+                // Diameter 2 = 0.5 * minDim => scale = minDim / 4
+                this.scale = Math.min(this.width, this.height) / 4;
+            }
+
+            resize() {
+                this.width = window.innerWidth;
+                this.height = window.innerHeight;
+                this.updateScale();
+                this.canvas.width = this.width * window.devicePixelRatio;
+                this.canvas.height = this.height * window.devicePixelRatio;
+                this.ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
+            }
+
+            toScreen(x, y) {
+                const s = this.scale * this.zoom;
+                return {
+                    x: this.width / 2 + (x - this.camX) * s,
+                    y: this.height / 2 - (y - this.camY) * s
+                };
+            }
+
+            toWorld(sx, sy) {
+                const s = this.scale * this.zoom;
+                return {
+                    x: (sx - this.width / 2) / s + this.camX,
+                    y: -(sy - this.height / 2) / s + this.camY
+                };
+            }
+
+            handleInput() {
+                this.canvas.addEventListener('mousedown', (e) => {
+                    if (state.mode === 'draw') {
+                        state.penPoints = [];
+                        const worldPos = this.toWorld(e.clientX, e.clientY);
+                        state.penPoints.push(worldPos);
+                        state.isDrawingMode = true;
+                    } else {
+                        this.isDragging = true;
+                        this.lastMouseX = e.clientX;
+                        this.lastMouseY = e.clientY;
+                    }
+                });
+
+                window.addEventListener('mousemove', (e) => {
+                    if (state.mode === 'draw' && state.isDrawingMode) {
+                        const worldPos = this.toWorld(e.clientX, e.clientY);
+                        state.penPoints.push(worldPos);
+                    } else if (this.isDragging) {
+                        const dx = e.clientX - this.lastMouseX;
+                        const dy = e.clientY - this.lastMouseY;
+
+                        const s = this.scale * this.zoom;
+                        this.targetCamX -= dx / s;
+                        this.targetCamY += dy / s;
+
+                        this.lastMouseX = e.clientX;
+                        this.lastMouseY = e.clientY;
+                    }
+                });
+
+                window.addEventListener('mouseup', () => {
+                    this.isDragging = false;
+                    if (state.mode === 'draw' && state.isDrawingMode) {
+                        state.isDrawingMode = false;
+                    }
+                });
+
+                this.canvas.addEventListener('wheel', (e) => {
+                    e.preventDefault();
+
+                    const zoomSensitivity = 0.001;
+                    const factor = Math.exp(-e.deltaY * zoomSensitivity);
+
+                    const mouseW = this.toWorld(e.clientX, e.clientY);
+
+                    this.targetZoom *= factor;
+                    this.targetZoom = Math.min(Math.max(this.targetZoom, 1e-4), 1e5);
+
+                    // After zooming, we adjust target position to keep point under mouse stationary
+                    const s_new = this.scale * this.targetZoom;
+                    this.targetCamX = mouseW.x - (e.clientX - this.width / 2) / s_new;
+                    this.targetCamY = mouseW.y + (e.clientY - this.height / 2) / s_new;
+
+                }, { passive: false });
+            }
+
+            smooth() {
+                const lerp = (a, b, f) => a + (b - a) * f;
+                this.camX = lerp(this.camX, this.targetCamX, this.lerpFactor);
+                this.camY = lerp(this.camY, this.targetCamY, this.lerpFactor);
+                this.zoom = lerp(this.zoom, this.targetZoom, this.lerpFactor);
+            }
+
+            clear() {
+                this.ctx.fillStyle = this.colors.background;
+                this.ctx.fillRect(0, 0, this.width, this.height);
+            }
+
+            drawGrid() {
+                const s = this.scale * this.zoom;
+                const targetPixelStep = 100;
+                let unitStep = targetPixelStep / s;
+
+                const magnitude = Math.pow(10, Math.floor(Math.log10(unitStep)));
+                const relStep = unitStep / magnitude;
+                if (relStep < 1.5) unitStep = 1 * magnitude;
+                else if (relStep < 3.5) unitStep = 2 * magnitude;
+                else if (relStep < 7.5) unitStep = 5 * magnitude;
+                else unitStep = 10 * magnitude;
+
+                const pixelStep = unitStep * s;
+                this.ctx.lineWidth = 1;
+
+                // Viewport boundaries in world units
+                const topLeft = this.toWorld(0, 0);
+                const bottomRight = this.toWorld(this.width, this.height);
+
+                // Align start world grid line
+                const startX = Math.floor(topLeft.x / unitStep) * unitStep;
+                const endX = Math.ceil(bottomRight.x / unitStep) * unitStep;
+                const startY = Math.floor(bottomRight.y / unitStep) * unitStep;
+                const endY = Math.ceil(topLeft.y / unitStep) * unitStep;
+
+                for (let ux = startX; ux <= endX; ux += unitStep) {
+                    const sx = this.toScreen(ux, 0).x;
+                    this.ctx.strokeStyle = this.colors.grid;
+                    this.ctx.beginPath();
+                    this.ctx.moveTo(sx, 0);
+                    this.ctx.lineTo(sx, this.height);
+                    this.ctx.stroke();
+                }
+
+                for (let uy = startY; uy <= endY; uy += unitStep) {
+                    const sy = this.toScreen(0, uy).y;
+                    this.ctx.strokeStyle = this.colors.grid;
+                    this.ctx.beginPath();
+                    this.ctx.moveTo(0, sy);
+                    this.ctx.lineTo(this.width, sy);
+                    this.ctx.stroke();
+                }
+
+                // Axes
+                const origin = this.toScreen(0, 0);
+                this.ctx.strokeStyle = this.colors.axis;
+                this.ctx.lineWidth = 2;
+
+                if (origin.y >= 0 && origin.y <= this.height) {
+                    this.ctx.beginPath();
+                    this.ctx.moveTo(0, origin.y);
+                    this.ctx.lineTo(this.width, origin.y);
+                    this.ctx.stroke();
+                }
+
+                if (origin.x >= 0 && origin.x <= this.width) {
+                    this.ctx.beginPath();
+                    this.ctx.moveTo(origin.x, 0);
+                    this.ctx.lineTo(origin.x, this.height);
+                    this.ctx.stroke();
+                }
+            }
+
+            line(x1, y1, x2, y2, color, width = 0.01) {
+                const p1 = this.toScreen(x1, y1);
+                const p2 = this.toScreen(x2, y2);
+                const s = this.scale * this.zoom;
+                this.ctx.strokeStyle = color || this.colors.primary;
+                this.ctx.lineWidth = Math.max(0.5, width * s);
+                this.ctx.lineCap = 'round';
+                this.ctx.beginPath();
+                this.ctx.moveTo(p1.x, p1.y);
+                this.ctx.lineTo(p2.x, p2.y);
+                this.ctx.stroke();
+            }
+
+            circle(x, y, r, color, width = 0.01, fill = false) {
+                const p = this.toScreen(x, y);
+                const s = this.scale * this.zoom;
+                this.ctx.beginPath();
+                this.ctx.arc(p.x, p.y, r * s, 0, Math.PI * 2);
+                if (fill) {
+                    this.ctx.fillStyle = color || this.colors.primary;
+                    this.ctx.fill();
+                } else {
+                    this.ctx.strokeStyle = color || this.colors.primary;
+                    this.ctx.lineWidth = Math.max(0.5, width * s);
+                    this.ctx.stroke();
+                }
+            }
+
+            point(x, y, color, size = 0.02) {
+                const s = this.scale * this.zoom;
+                const p = this.toScreen(x, y);
+                this.ctx.beginPath();
+                this.ctx.arc(p.x, p.y, Math.max(1, size * s), 0, Math.PI * 2);
+                this.ctx.fillStyle = color || this.colors.primary;
+                this.ctx.fill();
+            }
+
+            // Fixed-width line for paths
+            fixedLine(x1, y1, x2, y2, color, pixelWidth = 1, alpha = 1.0) {
+                const p1 = this.toScreen(x1, y1);
+                const p2 = this.toScreen(x2, y2);
+                this.ctx.save();
+                this.ctx.globalAlpha = alpha;
+                this.ctx.strokeStyle = color;
+                this.ctx.lineWidth = pixelWidth;
+                this.ctx.beginPath();
+                this.ctx.moveTo(p1.x, p1.y);
+                this.ctx.lineTo(p2.x, p2.y);
+                this.ctx.stroke();
+                this.ctx.restore();
+            }
+
+            fixedPoint(x, y, color, pixelSize = 3) {
+                const p = this.toScreen(x, y);
+                this.ctx.beginPath();
+                this.ctx.arc(p.x, p.y, pixelSize, 0, Math.PI * 2);
+                this.ctx.fillStyle = color || this.colors.primary;
+                this.ctx.fill();
+            }
+
+            fixedCircle(x, y, r, color, pixelWidth = 1) {
+                const p = this.toScreen(x, y);
+                const s = this.scale * this.zoom;
+                this.ctx.beginPath();
+                this.ctx.arc(p.x, p.y, r * s, 0, Math.PI * 2);
+                this.ctx.strokeStyle = color || this.colors.primary;
+                this.ctx.lineWidth = pixelWidth;
+                this.ctx.stroke();
+            }
+        }
+
+        function miniFFT(re, im) {
+            var N = re.length;
+            for (var i = 0; i < N; i++) {
+                for (var j = 0, h = i, k = N; k >>= 1; h >>= 1)
+                    j = (j << 1) | (h & 1);
+                if (j > i) {
+                    re[j] = [re[i], re[i] = re[j]][0]
+                    im[j] = [im[i], im[i] = im[j]][0]
+                }
+            }
+            for (var hN = 1; hN * 2 <= N; hN *= 2)
+                for (var i = 0; i < N; i += hN * 2)
+                    for (var j = i; j < i + hN; j++) {
+                        var cos = Math.cos(Math.PI * (j - i) / hN),
+                            sin = Math.sin(Math.PI * (j - i) / hN)
+                        var tre = re[j + hN] * cos + im[j + hN] * sin,
+                            tim = -re[j + hN] * sin + im[j + hN] * cos;
+                        re[j + hN] = re[j] - tre; im[j + hN] = im[j] - tim;
+                        re[j] += tre; im[j] += tim;
+                    }
+        }
+
+        /**
+         * Custom FFT using miniFFT
+         */
+        function computeFFT(x) {
+            const N = x.length;
+            const re = x.map(p => p.re);
+            const im = x.map(p => p.im);
+            miniFFT(re, im);
+            const X = [];
+            for (let k = 0; k < N; k++) {
+                const r = re[k] / N;
+                const i = im[k] / N;
+                const freq = k <= N / 2 ? k : k - N;
+                const amp = Math.sqrt(r * r + i * i);
+                const phase = Math.atan2(i, r);
+                X.push({ freq, amp, phase });
+            }
+            return X;
+        }
+
+        /**
+         * Resample points to the nearest power of 2
+         */
+        function resamplePath(points) {
+            if (points.length < 2) return [];
+
+            // Calculate current path length
+            let totalDist = 0;
+            const dists = [0];
+            for (let i = 1; i < points.length; i++) {
+                const d = Math.sqrt(Math.pow(points[i].x - points[i - 1].x, 2) + Math.pow(points[i].y - points[i - 1].y, 2));
+                totalDist += d;
+                dists.push(totalDist);
+            }
+
+            // Target count: nearest power of 2, minimum 256
+            const targetCount = Math.max(256, Math.pow(2, Math.round(Math.log2(points.length))));
+            const resampled = [];
+
+            for (let i = 0; i < targetCount; i++) {
+                const targetDist = (i / targetCount) * totalDist;
+
+                // Find segment
+                let low = 0, high = dists.length - 1;
+                while (low < high) {
+                    let mid = (low + high) >> 1;
+                    if (dists[mid] < targetDist) low = mid + 1;
+                    else high = mid;
+                }
+                const index = low;
+
+                if (index === 0) {
+                    resampled.push({ re: points[0].x, im: points[0].y });
+                } else {
+                    const p1 = points[index - 1];
+                    const p2 = points[index];
+                    const t = (targetDist - dists[index - 1]) / (dists[index] - dists[index - 1]);
+                    resampled.push({
+                        re: p1.x + (p2.x - p1.x) * t,
+                        im: p1.y + (p2.y - p1.y) * t
+                    });
+                }
+            }
+            return resampled;
+        }
+
+        function generatePreset(type) {
+            const points = [];
+            const size = 0.8;
+            if (type === 'square') {
+                for (let i = 0; i < 4; i++) {
+                    const t = (i / 4) * Math.PI * 2 + Math.PI / 4;
+                    points.push({ x: Math.cos(t) * size * 1.4, y: Math.sin(t) * size * 1.4 });
+                }
+                points.push({ x: points[0].x, y: points[0].y });
+            } else if (type === 'triangle') {
+                for (let i = 0; i < 3; i++) {
+                    const t = (i / 3) * Math.PI * 2 + Math.PI / 2;
+                    points.push({ x: Math.cos(t) * size * 1.4, y: Math.sin(t) * size * 1.4 });
+                }
+                points.push({ x: points[0].x, y: points[0].y });
+            } else if (type === 'pentagon') {
+                for (let i = 0; i < 5; i++) {
+                    const t = (i / 5) * Math.PI * 2 + Math.PI / 2;
+                    points.push({ x: Math.cos(t) * size * 1.4, y: Math.sin(t) * size * 1.4 });
+                }
+                points.push({ x: points[0].x, y: points[0].y });
+            } else if (type === 'pentagram') {
+                for (let i = 0; i < 10; i++) {
+                    const t = (i / 10) * Math.PI * 2 + Math.PI / 2;
+                    const r = i % 2 === 0 ? size * 1.5 : size * 0.6;
+                    points.push({ x: Math.cos(t) * r, y: Math.sin(t) * r });
+                }
+                points.push({ x: points[0].x, y: points[0].y });
+            } else if (type === 'circle') {
+                for (let i = 0; i < 128; i++) {
+                    const t = (i / 128) * Math.PI * 2;
+                    points.push({ x: Math.cos(t) * size, y: Math.sin(t) * size });
+                }
+                points.push({ x: points[0].x, y: points[0].y });
+            } else if (type === 'infinity') {
+                for (let i = 0; i < 128; i++) {
+                    const t = (i / 128) * Math.PI * 2;
+                    points.push({ x: Math.cos(t) * size * 1.5, y: Math.sin(2 * t) * size * 0.7 });
+                }
+            } else if (type === 'butterfly') {
+                for (let i = 0; i < 128; i++) {
+                    const t = (i / 128) * Math.PI * 2;
+                    const r = Math.exp(Math.cos(t)) - 2 * Math.cos(4 * t) + Math.pow(Math.sin(t / 12), 5);
+                    points.push({ x: r * Math.sin(t) * 0.4, y: r * Math.cos(t) * 0.4 });
+                }
+            }
+            return resamplePath(points);
+        }
+
+        let fourier = generatePreset('square');
+        const rc = new RenderingContext(canvas, ctx);
+        const state = {
+            mode: 'animate', // 'animate' or 'draw'
+            speed: 0.0002,
+            harmonics: 128,
+            follow: false,
+            time: 0,
+            tracedPath: [],
+            penPoints: [],
+            isDrawingMode: false
+        };
+
+        function updateFFT(newPath) {
+            pathData.length = 0;
+            newPath.forEach(p => pathData.push(p));
+            fourier = computeFFT(pathData);
+            fourier.sort((a, b) => b.amp - a.amp);
+
+            // Update range max
+            const range = document.getElementById('harmonicsRange');
+            range.value = state.harmonics / fourier.length;
+            document.getElementById('harmonicsVal').innerText = state.harmonics;
+
+            state.time = 0;
+            state.tracedPath = [];
+
+            // Trigger slider update to reflect new max harmonics
+            updateHarmonicsFromSlider();
+        }
+
+        const pathData = [];
+
+        function updateSpeedFromSlider() {
+            const t = parseFloat(document.getElementById('speedRange').value);
+            // Exponential: 0.00001 to 0.1
+            state.speed = 0.00001 * Math.pow(10000, t);
+            document.getElementById('speedVal').innerText = state.speed.toFixed(5);
+        }
+
+        function updateHarmonicsFromSlider() {
+            const t = parseFloat(document.getElementById('harmonicsRange').value);
+            const slider = document.getElementById('harmonicsRange');
+            const maxH = fourier.length;
+            state.harmonics = Math.max(1, Math.round(Math.pow(t, 2) * fourier.length));
+            document.getElementById('harmonicsVal').innerText = state.harmonics;
+            state.tracedPath = []; // Refresh path visualization
+        }
+
+        function setup() {
+            window.addEventListener('resize', () => rc.resize());
+            rc.resize();
+            rc.handleInput();
+
+            // Setup UI listeners
+            document.getElementById('speedRange').addEventListener('input', updateSpeedFromSlider);
+            document.getElementById('harmonicsRange').addEventListener('input', updateHarmonicsFromSlider);
+
+            // Initialization for speed slider position based on default 0.0002
+            // 0.0002 = 0.00001 * 10000^t => 20 = 10000^t => t = log(20)/log(10000)
+            const initialT = Math.log(20) / Math.log(10000);
+            document.getElementById('speedRange').value = initialT;
+            updateSpeedFromSlider();
+
+            document.getElementById('followCheck').addEventListener('change', (e) => {
+                state.follow = e.target.checked;
+            });
+
+            document.getElementById('presetSelect').addEventListener('change', (e) => {
+                const path = generatePreset(e.target.value);
+                updateFFT(path);
+            });
+
+            document.getElementById('penBtn').addEventListener('click', (e) => {
+                if (state.mode === 'animate') {
+                    state.mode = 'draw';
+                    state.penPoints = [];
+                    e.target.innerText = 'Finish & Run FFT';
+                    e.target.classList.add('active');
+                } else {
+                    state.mode = 'animate';
+                    e.target.innerText = 'Start Drawing (Pen)';
+                    e.target.classList.remove('active');
+                    if (state.penPoints.length > 2) {
+                        const path = resamplePath(state.penPoints);
+                        updateFFT(path);
+                    }
+                }
+            });
+
+            // Load initial preset
+            updateFFT(generatePreset('square'));
+        }
+
+        function update() {
+            if (state.mode === 'draw') return;
+
+            state.time += state.speed;
+
+            // Compute current point
+            let x = 0;
+            let y = 0;
+            for (let i = 0; i < Math.min(state.harmonics, fourier.length); i++) {
+                const { freq, amp, phase } = fourier[i];
+                x += amp * Math.cos(freq * state.time + phase);
+                y += amp * Math.sin(freq * state.time + phase);
+            }
+
+            // Record path
+            state.tracedPath.unshift({ x, y });
+            const maxLen = Math.ceil((Math.PI * 2) / state.speed);
+            if (state.tracedPath.length > maxLen) {
+                state.tracedPath.length = maxLen;
+            }
+
+            // Camera follow
+            if (state.follow) {
+                rc.targetCamX = x;
+                rc.targetCamY = y;
+            }
+
+            rc.smooth();
+        }
+
+        function draw() {
+            rc.clear();
+            rc.drawGrid();
+
+            if (state.mode === 'draw') {
+                // Drawing Preview
+                if (state.penPoints.length > 1) {
+                    for (let i = 0; i < state.penPoints.length - 1; i++) {
+                        const p1 = state.penPoints[i];
+                        const p2 = state.penPoints[i + 1];
+                        rc.fixedLine(p1.x, p1.y, p2.x, p2.y, rc.colors.primary, 3, 1.0);
+                    }
+                }
+                requestAnimationFrame(draw);
+                return;
+            }
+
+            // 1. Draw Original Path (Static, subtle)
+            for (let i = 0; i < pathData.length; i++) {
+                const p1 = pathData[i];
+                const p2 = pathData[(i + 1) % pathData.length];
+                rc.fixedLine(p1.re, p1.im, p2.re, p2.im, rc.colors.path, 1, 1);
+            }
+
+            // 2. Draw Epicycles
+            let x = 0;
+            let y = 0;
+            for (let i = 0; i < Math.min(state.harmonics, fourier.length); i++) {
+                const prevX = x;
+                const prevY = y;
+                const { freq, amp, phase } = fourier[i];
+                x += amp * Math.cos(freq * state.time + phase);
+                y += amp * Math.sin(freq * state.time + phase);
+
+                // Draw Circle (fixed pixel width stroke)
+                rc.circle(prevX, prevY, amp, rc.colors.circles, amp * 0.01);
+                // Draw Vector (line width proportional to amp - world units)
+                rc.line(prevX, prevY, x, y, rc.colors.primary, amp * 0.01);
+            }
+
+            // 3. Draw Fitted Path (Fade-out over one period)
+            const maxLen = Math.ceil((Math.PI * 2) / state.speed);
+            for (let i = 0; i < state.tracedPath.length - 1; i++) {
+                const p1 = state.tracedPath[i];
+                const p2 = state.tracedPath[i + 1];
+                const alpha = 1.0 - (i / maxLen);
+                rc.fixedLine(p1.x, p1.y, p2.x, p2.y, rc.colors.secondary, 2, alpha * 0.8);
+            }
+
+            // 4. Current Point
+            rc.fixedPoint(x, y, '#fff', 4);
+
+            requestAnimationFrame(() => {
+                update();
+                draw();
+            });
+        }
+
+        setup();
+        draw();
+    </script>
+</body>
+
+</html>
