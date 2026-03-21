@@ -3,6 +3,7 @@
 
 <head>
     <title>FFT Epicycles</title>
+    <script src="https://cdn.jsdelivr.net/npm/opentype.js/dist/opentype.min.js"></script>
     <style>
         body {
             margin: 0;
@@ -17,87 +18,112 @@
             height: 100%;
         }
 
-        /* Floating Toolbar */
+        /* Compact Floating Toolbar */
         .toolbar {
             position: fixed;
             bottom: 20px;
             right: 20px;
-            padding: 15px;
-            background: rgba(255, 255, 255, 0.05);
-            backdrop-filter: blur(10px);
-            -webkit-backdrop-filter: blur(10px);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            border-radius: 12px;
-            color: #e0e0e6;
+            display: flex;
+            flex-direction: column;
+            align-items: flex-end;
+            gap: 10px;
+            z-index: 1000;
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            font-size: 14px;
-            display: flex;
-            flex-direction: column;
-            gap: 12px;
-            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
-            z-index: 100;
-            min-width: 200px;
         }
 
-        .toolbar-item {
-            display: flex;
-            flex-direction: column;
-            gap: 4px;
-        }
-
-        .toolbar div.row {
+        .toolbar-main {
             display: flex;
             flex-direction: row;
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(15px);
+            -webkit-backdrop-filter: blur(15px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 30px;
+            padding: 5px;
+            gap: 5px;
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .toolbar.collapsed .toolbar-main {
+            width: 44px;
+            overflow: hidden;
+            padding: 5px;
+        }
+
+        .icon-btn {
+            width: 40px;
+            height: 40px;
+            display: flex;
             align-items: center;
-            justify-content: space-between;
-            gap: 10px;
-        }
-
-        input[type="range"] {
-            width: 100%;
-            accent-color: #4cc9f0;
+            justify-content: center;
+            background: transparent;
+            border: none;
+            border-radius: 50%;
             cursor: pointer;
+            font-size: 20px;
+            transition: background 0.2s, transform 0.1s;
+            position: relative;
         }
 
-        select,
-        button {
+        .icon-btn:hover {
             background: rgba(255, 255, 255, 0.1);
-            border: 1px solid rgba(255, 255, 255, 0.2);
-            color: #fff;
-            padding: 6px 10px;
-            border-radius: 6px;
-            font-size: 13px;
-            cursor: pointer;
-            transition: all 0.2s;
-            outline: none;
         }
 
-        select:hover,
-        button:hover {
-            background: rgba(255, 255, 255, 0.2);
+        .icon-btn:active {
+            transform: scale(0.9);
         }
 
-        button.active {
-            background: #4cc9f0;
-            color: #000;
-            border-color: #4cc9f0;
+        .icon-btn.active {
+            background: rgba(76, 201, 240, 0.2);
+            box-shadow: 0 0 10px rgba(76, 201, 240, 0.3);
+        }
+
+        /* Pop-up Controls */
+        .popover {
+            position: absolute;
+            bottom: 60px;
+            right: 0;
+            background: rgba(20, 20, 25, 0.9);
+            backdrop-filter: blur(15px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 12px;
+            padding: 12px;
+            display: none;
+            flex-direction: column;
+            gap: 8px;
+            min-width: 180px;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.5);
+            z-index: 1100;
+        }
+
+        .popover.active {
+            display: flex;
+        }
+
+        .popover .label {
+            font-size: 12px;
+            color: #aaa;
+            margin-bottom: 4px;
+        }
+
+        .popover input[type="range"] {
+            width: 100%;
+        }
+
+        .popover input[type="text"] {
+            width: calc(100% - 12px);
+        }
+
+        .popover .val-text {
+            color: #4cc9f0;
             font-weight: bold;
+            font-size: 12px;
         }
 
-        select option {
-            background: #1a1a1e;
-        }
-
-        input[type="checkbox"] {
-            width: 18px;
-            height: 18px;
-            accent-color: #4cc9f0;
-            cursor: pointer;
-        }
-
-        .label {
-            font-weight: 500;
-            opacity: 0.8;
+        /* Hide elements when collapsed */
+        .toolbar.collapsed .hidden-on-collapse {
+            display: none;
         }
     </style>
 </head>
@@ -105,36 +131,59 @@
 <body>
     <canvas id="canvas"></canvas>
 
-    <div class="toolbar">
-        <div class="toolbar-item">
-            <span class="label">Animation Speed: <span id="speedVal">0.0002</span></span>
-            <input type="range" id="speedRange" min="0" max="1" step="0.001" value="0.2">
-        </div>
-        <div class="toolbar-item">
-            <span class="label">Harmonics: <span id="harmonicsVal">128</span></span>
-            <input type="range" id="harmonicsRange" min="0" max="1" step="0.001" value="0.7">
-        </div>
-        <div class="toolbar-item">
-            <div class="row">
-                <span class="label">Presets</span>
-                <select id="presetSelect">
-                    <option value="square">Square</option>
-                    <option value="triangle">Triangle</option>
-                    <option value="pentagon">Pentagon</option>
-                    <option value="pentagram">Pentagram</option>
-                    <option value="circle">Circle</option>
-                    <option value="infinity">Infinity</option>
-                    <option value="butterfly">Butterfly</option>
-                </select>
-            </div>
-        </div>
-        <div class="toolbar-item">
-            <button id="penBtn">Start Drawing (Pen)</button>
-        </div>
-        <div class="toolbar-item">
-            <div class="row">
-                <span class="label">Camera Follow</span>
-                <input type="checkbox" id="followCheck">
+    <div class="toolbar" id="mainToolbar">
+        <div class="toolbar-main">
+            <!-- Toggle -->
+            <button class="icon-btn" id="toggleBar" title="Toggle Toolbar">🛠️</button>
+
+            <div class="hidden-on-collapse" style="display:flex; gap:5px;">
+                <!-- Speed -->
+                <button class="icon-btn" id="speedBtn" title="Speed">⏱️</button>
+                <div class="popover" id="speedPopover">
+                    <span class="label">Speed: <span id="speedVal" class="val-text">0.0002</span></span>
+                    <input type="range" id="speedRange" min="0" max="1" step="0.001">
+                </div>
+
+                <!-- Harmonics -->
+                <button class="icon-btn" id="harmonicsBtn" title="Harmonics">🧬</button>
+                <div class="popover" id="harmonicsPopover">
+                    <span class="label">Harmonics: <span id="harmonicsVal" class="val-text">128</span></span>
+                    <input type="range" id="harmonicsRange" min="0" max="1" step="0.001">
+                </div>
+
+                <!-- Presets -->
+                <button class="icon-btn" id="presetsBtn" title="Presets">📂</button>
+                <div class="popover" id="presetsPopover">
+                    <span class="label">Choose Preset</span>
+                    <select id="presetSelect" style="width:100%">
+                        <option value="square">Square</option>
+                        <option value="triangle">Triangle</option>
+                        <option value="pentagon">Pentagon</option>
+                        <option value="pentagram">Pentagram</option>
+                        <option value="circle">Circle</option>
+                        <option value="infinity">Infinity</option>
+                        <option value="butterfly">Butterfly</option>
+                    </select>
+                </div>
+
+                <!-- Pen -->
+                <button class="icon-btn" id="penBtn" title="Draw Path">✏️</button>
+
+                <!-- SVG -->
+                <button class="icon-btn" id="svgBtn" title="Import SVG">📥</button>
+                <input type="file" id="svgInput" accept=".svg" style="display:none">
+
+                <!-- Text -->
+                <button class="icon-btn" id="textBtnIcon" title="Text to Path">🔤</button>
+                <div class="popover" id="textPopover">
+                    <span class="label">Render Text</span>
+                    <input type="text" id="textInput" placeholder="Enter text...">
+                    <button id="textBtnRender" style="margin-top:5px; background: #4cc9f0; color:#000;">Build</button>
+                </div>
+
+                <!-- Follow -->
+                <button class="icon-btn" id="followBtn" title="Camera Follow">🎯</button>
+                <input type="checkbox" id="followCheck" style="display:none">
             </div>
         </div>
     </div>
@@ -567,6 +616,24 @@
         };
 
         function updateFFT(newPath) {
+            if (!newPath || newPath.length < 2) return;
+
+            // Normalize path: center and scale to roughly fit unit view
+            let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+            newPath.forEach(p => {
+                minX = Math.min(minX, p.re); maxX = Math.max(maxX, p.re);
+                minY = Math.min(minY, p.im); maxY = Math.max(maxY, p.im);
+            });
+            const cx = (minX + maxX) / 2;
+            const cy = (minY + maxY) / 2;
+            const size = Math.max(maxX - minX, maxY - minY);
+            const scale = 2.0 / (size || 1); // target fits in [-1.0, 1.0] roughly
+
+            newPath.forEach(p => {
+                p.re = (p.re - cx) * scale;
+                p.im = (p.im - cy) * scale;
+            });
+
             pathData.length = 0;
             newPath.forEach(p => pathData.push(p));
             fourier = computeFFT(pathData);
@@ -582,6 +649,35 @@
 
             // Trigger slider update to reflect new max harmonics
             updateHarmonicsFromSlider();
+        }
+
+        function sampleSVGPath(d) {
+            const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+            path.setAttribute('d', d);
+            const len = path.getTotalLength();
+            const points = [];
+            const count = 512; // High resolution for complex SVGs
+            for (let i = 0; i < count; i++) {
+                const p = path.getPointAtLength((i / count) * len);
+                points.push({ x: p.x, y: p.y });
+            }
+            return resamplePath(points);
+        }
+
+        let font = null;
+        function loadDefaultFont() {
+            // Roboto Medium from CDN
+            opentype.load('https://raw.githubusercontent.com/google/fonts/main/apache/robotomono/static/RobotoMono-Medium.ttf', (err, f) => {
+                if (err) console.error('Font could not be loaded:', err);
+                else font = f;
+            });
+        }
+        loadDefaultFont();
+
+        function renderTextToPath(text) {
+            if (!font || !text) return;
+            const path = font.getPath(text, 0, 0, 72);
+            return sampleSVGPath(path.toPathData(2));
         }
 
         const pathData = [];
@@ -607,38 +703,100 @@
             rc.resize();
             rc.handleInput();
 
+            // Toggle Bar
+            document.getElementById('toggleBar').addEventListener('click', () => {
+                document.getElementById('mainToolbar').classList.toggle('collapsed');
+            });
+
+            // Popovers logic
+            const buttons = ['speedBtn', 'harmonicsBtn', 'presetsBtn', 'textBtnIcon'];
+            const popovers = ['speedPopover', 'harmonicsPopover', 'presetsPopover', 'textPopover'];
+
+            buttons.forEach((id, i) => {
+                document.getElementById(id).addEventListener('click', (e) => {
+                    const pop = document.getElementById(popovers[i]);
+                    const isActive = pop.classList.contains('active');
+                    // Close others
+                    popovers.forEach(p => document.getElementById(p).classList.remove('active'));
+                    if (!isActive) pop.classList.add('active');
+                    e.stopPropagation();
+                });
+            });
+
+            document.addEventListener('click', (e) => {
+                if (!e.target.closest('.popover') && !e.target.closest('.icon-btn')) {
+                    popovers.forEach(p => document.getElementById(p).classList.remove('active'));
+                }
+            });
+
             // Setup UI listeners
             document.getElementById('speedRange').addEventListener('input', updateSpeedFromSlider);
             document.getElementById('harmonicsRange').addEventListener('input', updateHarmonicsFromSlider);
 
-            // Initialization for speed slider position based on default 0.0002
-            // 0.0002 = 0.00001 * 10000^t => 20 = 10000^t => t = log(20)/log(10000)
             const initialT = Math.log(20) / Math.log(10000);
             document.getElementById('speedRange').value = initialT;
             updateSpeedFromSlider();
 
-            document.getElementById('followCheck').addEventListener('change', (e) => {
-                state.follow = e.target.checked;
+            const followBtn = document.getElementById('followBtn');
+            const followCheck = document.getElementById('followCheck');
+            followBtn.addEventListener('click', () => {
+                state.follow = !state.follow;
+                followCheck.checked = state.follow;
+                followBtn.classList.toggle('active', state.follow);
             });
 
             document.getElementById('presetSelect').addEventListener('change', (e) => {
                 const path = generatePreset(e.target.value);
                 updateFFT(path);
+                document.getElementById('presetsPopover').classList.remove('active');
             });
 
             document.getElementById('penBtn').addEventListener('click', (e) => {
                 if (state.mode === 'animate') {
                     state.mode = 'draw';
                     state.penPoints = [];
-                    e.target.innerText = 'Finish & Run FFT';
                     e.target.classList.add('active');
+                    e.target.title = 'Finish Drawing';
                 } else {
                     state.mode = 'animate';
-                    e.target.innerText = 'Start Drawing (Pen)';
                     e.target.classList.remove('active');
+                    e.target.title = 'Draw Path';
                     if (state.penPoints.length > 2) {
                         const path = resamplePath(state.penPoints);
                         updateFFT(path);
+                    }
+                }
+            });
+
+            // SVG Upload
+            document.getElementById('svgBtn').addEventListener('click', () => {
+                document.getElementById('svgInput').click();
+            });
+            document.getElementById('svgInput').addEventListener('change', (e) => {
+                const file = e.target.files[0];
+                if (!file) return;
+                const reader = new FileReader();
+                reader.onload = (event) => {
+                    const parser = new DOMParser();
+                    const doc = parser.parseFromString(event.target.result, 'image/svg+xml');
+                    const paths = Array.from(doc.querySelectorAll('path'));
+                    if (paths.length > 0) {
+                        const d = paths.map(p => p.getAttribute('d')).join(' ');
+                        const sample = sampleSVGPath(d);
+                        updateFFT(sample);
+                    }
+                };
+                reader.readAsText(file);
+            });
+
+            // Text Render
+            document.getElementById('textBtnRender').addEventListener('click', () => {
+                const text = document.getElementById('textInput').value;
+                if (text) {
+                    const sample = renderTextToPath(text);
+                    if (sample) {
+                        updateFFT(sample);
+                        document.getElementById('textPopover').classList.remove('active');
                     }
                 }
             });
