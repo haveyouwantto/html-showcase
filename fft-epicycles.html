@@ -3,7 +3,8 @@
 
 <head>
     <title>FFT Epicycles</title>
-    <script src="https://cdn.jsdelivr.net/npm/opentype.js/dist/opentype.min.js"></script>
+    <!-- <script src="https://cdn.jsdelivr.net/npm/opentype.js/dist/opentype.min.js"></script> -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <style>
         body {
             margin: 0;
@@ -125,6 +126,33 @@
         .toolbar.collapsed .hidden-on-collapse {
             display: none;
         }
+
+        .hidden-on-collapse {
+            display: flex;
+            flex-direction: row;
+            gap: 5px;
+        }
+
+        /* Responsive vertical toolbar for narrow screens */
+        @media (max-width: 600px) {
+            .toolbar-main {
+                flex-direction: column;
+                border-radius: 25px;
+            }
+
+            .hidden-on-collapse {
+                flex-direction: column;
+            }
+
+            .popover {
+                bottom: 15px;
+                right: 60px;
+            }
+
+            .toolbar.collapsed .toolbar-main {
+                height: 44px;
+            }
+        }
     </style>
 </head>
 
@@ -136,7 +164,7 @@
             <!-- Toggle -->
             <button class="icon-btn" id="toggleBar" title="Toggle Toolbar">🛠️</button>
 
-            <div class="hidden-on-collapse" style="display:flex; gap:5px;">
+            <div class="hidden-on-collapse">
                 <!-- Speed -->
                 <button class="icon-btn" id="speedBtn" title="Speed">⏱️</button>
                 <div class="popover" id="speedPopover">
@@ -150,6 +178,15 @@
                     <span class="label">Harmonics: <span id="harmonicsVal" class="val-text">128</span></span>
                     <input type="range" id="harmonicsRange" min="0" max="1" step="0.001">
                 </div>
+
+                <!-- Show/Hide Circles -->
+                <button class="icon-btn active" id="circlesToggleBtn" title="Toggle Epicycles (Circles)">⭕</button>
+
+                <!-- Show/Hide Vectors -->
+                <button class="icon-btn active" id="vectorsToggleBtn" title="Toggle Vectors (Lines)">↗️</button>
+
+                <!-- Minimap -->
+                <button class="icon-btn" id="mapToggleBtn" title="Toggle Minimap">🗺️</button>
 
                 <!-- Presets -->
                 <button class="icon-btn" id="presetsBtn" title="Presets">📂</button>
@@ -226,7 +263,8 @@
                     secondary: '#f72585', // Pink
                     accent: '#7209b7',    // Purple
                     text: '#e0e0e6',
-                    circles: "#ffffff40",
+                    vector: '#4cc9f0c0',
+                    circles: "#80808080",
                     path: "#ffff0080"
                 };
             }
@@ -694,6 +732,9 @@
             speed: 0.0002,
             harmonics: 128,
             follow: false,
+            showCircles: true,
+            showVectors: true,
+            showMap: false,
             time: 0,
             tracedPath: [],
             penPoints: [],
@@ -750,14 +791,14 @@
         }
 
         let font = null;
-        function loadDefaultFont() {
-            // Roboto Medium from CDN
-            opentype.load('https://raw.githubusercontent.com/google/fonts/main/apache/robotomono/static/RobotoMono-Medium.ttf', (err, f) => {
-                if (err) console.error('Font could not be loaded:', err);
-                else font = f;
-            });
-        }
-        loadDefaultFont();
+        // function loadDefaultFont() {
+        //     // Roboto Medium from CDN
+        //     opentype.load('https://raw.githubusercontent.com/google/fonts/main/apache/robotomono/static/RobotoMono-Medium.ttf', (err, f) => {
+        //         if (err) console.error('Font could not be loaded:', err);
+        //         else font = f;
+        //     });
+        // }
+        // loadDefaultFont();
 
         function renderTextToPath(text) {
             if (!font || !text) return;
@@ -828,6 +869,24 @@
                 state.follow = !state.follow;
                 followCheck.checked = state.follow;
                 followBtn.classList.toggle('active', state.follow);
+            });
+
+            const circlesToggleBtn = document.getElementById('circlesToggleBtn');
+            circlesToggleBtn.addEventListener('click', () => {
+                state.showCircles = !state.showCircles;
+                circlesToggleBtn.classList.toggle('active', state.showCircles);
+            });
+
+            const vectorsToggleBtn = document.getElementById('vectorsToggleBtn');
+            vectorsToggleBtn.addEventListener('click', () => {
+                state.showVectors = !state.showVectors;
+                vectorsToggleBtn.classList.toggle('active', state.showVectors);
+            });
+
+            const mapToggleBtn = document.getElementById('mapToggleBtn');
+            mapToggleBtn.addEventListener('click', () => {
+                state.showMap = !state.showMap;
+                mapToggleBtn.classList.toggle('active', state.showMap);
             });
 
             document.getElementById('presetSelect').addEventListener('change', (e) => {
@@ -954,10 +1013,15 @@
                 x += amp * Math.cos(freq * state.time + phase);
                 y += amp * Math.sin(freq * state.time + phase);
 
-                // Draw Circle (fixed pixel width stroke)
-                rc.circle(prevX, prevY, amp, rc.colors.circles, amp * 0.01);
-                // Draw Vector (line width proportional to amp - world units)
-                rc.line(prevX, prevY, x, y, rc.colors.primary, amp * 0.01);
+                if (state.showCircles) {
+                    // Draw Circle (fixed pixel width stroke)
+                    rc.circle(prevX, prevY, amp, rc.colors.circles, amp * 0.01);
+                }
+
+                if (state.showVectors) {
+                    // Draw Vector (line width proportional to amp - world units)
+                    rc.line(prevX, prevY, x, y, rc.colors.vector, amp * 0.01);
+                }
             }
 
             // 3. Draw Fitted Path (Fade-out over one period)
@@ -971,6 +1035,72 @@
 
             // 4. Current Point
             rc.fixedPoint(x, y, '#fff', 4);
+
+            // 5. Minimap Overlay
+            if (state.showMap && pathData.length > 0) {
+                const padding = 20;
+                const mapSize = 150;
+                const mapX = padding;
+                const mapY = padding;
+
+                // Draw Map Background
+                ctx.save();
+                ctx.setTransform(1, 0, 0, 1, 0, 0); // Absolute screen coordinates
+                ctx.fillStyle = 'rgba(20, 20, 25, 0.7)';
+                ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
+                ctx.lineWidth = 1;
+                ctx.fillRect(mapX, mapY, mapSize, mapSize);
+                ctx.strokeRect(mapX, mapY, mapSize, mapSize);
+
+                // Find bounds for minimap
+                let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+                pathData.forEach(p => {
+                    minX = Math.min(minX, p.re); maxX = Math.max(maxX, p.re);
+                    minY = Math.min(minY, p.im); maxY = Math.max(maxY, p.im);
+                });
+                const cx = (minX + maxX) / 2;
+                const cy = (minY + maxY) / 2;
+                const size = Math.max(maxX - minX, maxY - minY) || 1;
+                const scale = (mapSize * 0.8) / size;
+
+                const toMapCoords = (wx, wy) => {
+                    return {
+                        x: mapX + mapSize / 2 + (wx - cx) * scale,
+                        y: mapY + mapSize / 2 - (wy - cy) * scale // y is flipped in world
+                    };
+                };
+
+                // Draw original path in minimap
+                ctx.beginPath();
+                for (let i = 0; i < pathData.length; i++) {
+                    const p = pathData[i];
+                    const pts = toMapCoords(p.re, p.im);
+                    if (i === 0) ctx.moveTo(pts.x, pts.y);
+                    else ctx.lineTo(pts.x, pts.y);
+                }
+                ctx.closePath();
+                ctx.strokeStyle = rc.colors.path;
+                ctx.lineWidth = 1;
+                ctx.stroke();
+
+                // Draw current position
+                const current = toMapCoords(x, y);
+                ctx.beginPath();
+                ctx.arc(current.x, current.y, 3, 0, Math.PI * 2);
+                ctx.fillStyle = '#4cc9f0';
+                ctx.fill();
+
+                // Draw viewport rect
+                const tl = rc.toWorld(0, 0);
+                const br = rc.toWorld(rc.width, rc.height);
+                const tlm = toMapCoords(tl.x, tl.y);
+                const brm = toMapCoords(br.x, br.y);
+                ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
+                ctx.lineWidth = 1;
+                ctx.strokeRect(tlm.x, tlm.y, brm.x - tlm.x, brm.y - tlm.y);
+
+                ctx.restore();
+            }
 
             requestAnimationFrame(() => {
                 update();
