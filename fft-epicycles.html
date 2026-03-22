@@ -558,7 +558,7 @@
                     const mouseW = this.toWorld(e.clientX, e.clientY);
 
                     this.targetZoom *= factor;
-                    this.targetZoom = Math.min(Math.max(this.targetZoom, 0.1), 1e5);
+                    this.targetZoom = Math.min(Math.max(this.targetZoom, 0.1), 1e10);
 
                     // After zooming, we adjust target position to keep point under mouse stationary
                     const s_new = this.scale * this.targetZoom;
@@ -622,7 +622,7 @@
                             const factor = currentDistance / this.initialPinchDistance;
 
                             this.targetZoom = this.initialPinchZoom * factor;
-                            this.targetZoom = Math.min(Math.max(this.targetZoom, 0.1), 1e5);
+                            this.targetZoom = Math.min(Math.max(this.targetZoom, 0.1), 1e10);
 
                             const centerX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
                             const centerY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
