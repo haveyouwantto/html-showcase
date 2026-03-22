@@ -332,15 +332,7 @@
                 <button class="icon-btn" id="presetsBtn" title="Presets">🎁</button>
                 <div class="popover" id="presetsPopover">
                     <span class="label">Choose Preset</span>
-                    <select id="presetSelect">
-                        <option value="square">Square</option>
-                        <option value="triangle">Triangle</option>
-                        <option value="pentagon">Pentagon</option>
-                        <option value="pentagram">Pentagram</option>
-                        <option value="circle">Circle</option>
-                        <option value="infinity">Infinity</option>
-                        <option value="butterfly">Butterfly</option>
-                    </select>
+                    <select id="presetSelect"></select>
                 </div>
 
                 <!-- Pen -->
@@ -962,53 +954,188 @@
             return resampled;
         }
 
-        function generatePreset(type) {
-            const points = [];
-            const size = 0.8;
-            if (type === 'square') {
-                for (let i = 0; i < 4; i++) {
-                    const t = (i / 4) * Math.PI * 2 + Math.PI / 4;
-                    points.push({ x: Math.cos(t) * size * 1.4, y: Math.sin(t) * size * 1.4 });
+        const PRESETS = {
+            square: {
+                name: 'Square',
+                func: (size) => {
+                    const pts = [];
+                    for (let i = 0; i < 4; i++) {
+                        const t = (i / 4) * Math.PI * 2 + Math.PI / 4;
+                        pts.push({ x: Math.cos(t) * size * 1.4, y: Math.sin(t) * size * 1.4 });
+                    }
+                    pts.push({ ...pts[0] });
+                    return pts;
                 }
-                points.push({ x: points[0].x, y: points[0].y });
-            } else if (type === 'triangle') {
-                for (let i = 0; i < 3; i++) {
-                    const t = (i / 3) * Math.PI * 2 + Math.PI / 2;
-                    points.push({ x: Math.cos(t) * size * 1.4, y: Math.sin(t) * size * 1.4 });
+            },
+            triangle: {
+                name: 'Triangle',
+                func: (size) => {
+                    const pts = [];
+                    for (let i = 0; i < 3; i++) {
+                        const t = (i / 3) * Math.PI * 2 + Math.PI / 2;
+                        pts.push({ x: Math.cos(t) * size * 1.4, y: Math.sin(t) * size * 1.4 });
+                    }
+                    pts.push({ ...pts[0] });
+                    return pts;
                 }
-                points.push({ x: points[0].x, y: points[0].y });
-            } else if (type === 'pentagon') {
-                for (let i = 0; i < 5; i++) {
-                    const t = (i / 5) * Math.PI * 2 + Math.PI / 2;
-                    points.push({ x: Math.cos(t) * size * 1.4, y: Math.sin(t) * size * 1.4 });
+            },
+            pentagon: {
+                name: 'Pentagon',
+                func: (size) => {
+                    const pts = [];
+                    for (let i = 0; i < 5; i++) {
+                        const t = (i / 5) * Math.PI * 2 + Math.PI / 2;
+                        pts.push({ x: Math.cos(t) * size * 1.4, y: Math.sin(t) * size * 1.4 });
+                    }
+                    pts.push({ ...pts[0] });
+                    return pts;
                 }
-                points.push({ x: points[0].x, y: points[0].y });
-            } else if (type === 'pentagram') {
-                for (let i = 0; i < 10; i++) {
-                    const t = (i / 10) * Math.PI * 2 + Math.PI / 2;
-                    const r = i % 2 === 0 ? size * 1.5 : size * 0.6;
-                    points.push({ x: Math.cos(t) * r, y: Math.sin(t) * r });
+            },
+            pentagram: {
+                name: 'Pentagram',
+                func: (size) => {
+                    const pts = [];
+                    for (let i = 0; i < 10; i++) {
+                        const t = (i / 10) * Math.PI * 2 + Math.PI / 2;
+                        const r = i % 2 === 0 ? size * 1.5 : size * 0.6;
+                        pts.push({ x: Math.cos(t) * r, y: Math.sin(t) * r });
+                    }
+                    pts.push({ ...pts[0] });
+                    return pts;
                 }
-                points.push({ x: points[0].x, y: points[0].y });
-            } else if (type === 'circle') {
-                for (let i = 0; i < 128; i++) {
-                    const t = (i / 128) * Math.PI * 2;
-                    points.push({ x: Math.cos(t) * size, y: Math.sin(t) * size });
+            },
+            star6: {
+                name: 'Hexagram',
+                func: (size) => {
+                    const pts = [];
+                    for (let i = 0; i < 12; i++) {
+                        const t = (i / 12) * Math.PI * 2 + Math.PI / 2;
+                        const r = i % 2 === 0 ? size * 1.5 : size * 0.7;
+                        pts.push({ x: Math.cos(t) * r, y: Math.sin(t) * r });
+                    }
+                    pts.push({ ...pts[0] });
+                    return pts;
                 }
-                points.push({ x: points[0].x, y: points[0].y });
-            } else if (type === 'infinity') {
-                for (let i = 0; i < 128; i++) {
-                    const t = (i / 128) * Math.PI * 2;
-                    points.push({ x: Math.cos(t) * size * 1.5, y: Math.sin(2 * t) * size * 0.7 });
+            },
+            circle: {
+                name: 'Circle',
+                func: (size) => {
+                    const pts = [];
+                    for (let i = 0; i < 128; i++) {
+                        const t = (i / 128) * Math.PI * 2;
+                        pts.push({ x: Math.cos(t) * size, y: Math.sin(t) * size });
+                    }
+                    pts.push({ ...pts[0] });
+                    return pts;
                 }
-            } else if (type === 'butterfly') {
-                for (let i = 0; i < 128; i++) {
-                    const t = (i / 128) * Math.PI * 2;
-                    const r = Math.exp(Math.cos(t)) - 2 * Math.cos(4 * t) + Math.pow(Math.sin(t / 12), 5);
-                    points.push({ x: r * Math.sin(t) * 0.4, y: r * Math.cos(t) * 0.4 });
+            },
+            heart: {
+                name: 'Heart',
+                func: (size) => {
+                    const pts = [];
+                    for (let i = 0; i < 128; i++) {
+                        const t = (i / 128) * Math.PI * 2;
+                        const st = Math.sin(t);
+                        const x = 16 * Math.pow(st, 3);
+                        const y = 13 * Math.cos(t) - 5 * Math.cos(2 * t) - 2 * Math.cos(3 * t) - Math.cos(4 * t);
+                        pts.push({ x: x * 0.05 * size, y: y * 0.05 * size });
+                    }
+                    pts.push({ ...pts[0] });
+                    return pts;
+                }
+            },
+            plus: {
+                name: 'Plus',
+                func: (size) => {
+                    const s = size * 1.2;
+                    const h = s * 0.3;
+                    const pts = [
+                        { x: -h, y: s }, { x: h, y: s },
+                        { x: h, y: h }, { x: s, y: h },
+                        { x: s, y: -h }, { x: h, y: -h },
+                        { x: h, y: -s }, { x: -h, y: -s },
+                        { x: -h, y: -h }, { x: -s, y: -h },
+                        { x: -s, y: h }, { x: -h, y: h }
+                    ];
+                    pts.push({ ...pts[0] });
+                    return pts;
+                }
+            },
+            clover: {
+                name: 'Clover',
+                func: (size) => {
+                    const pts = [];
+                    for (let i = 0; i < 128; i++) {
+                        const t = (i / 128) * Math.PI * 2;
+                        const r = Math.sin(2 * t) * size * 1.5;
+                        pts.push({ x: r * Math.cos(t), y: r * Math.sin(t) });
+                    }
+                    pts.push({ ...pts[0] });
+                    return pts;
+                }
+            },
+            infinity: {
+                name: 'Infinity',
+                func: (size) => {
+                    const pts = [];
+                    for (let i = 0; i < 128; i++) {
+                        const t = (i / 128) * Math.PI * 2;
+                        pts.push({ x: Math.cos(t) * size * 1.5, y: Math.sin(2 * t) * size * 0.7 });
+                    }
+                    pts.push({ ...pts[0] });
+                    return pts;
+                }
+            },
+            butterfly: {
+                name: 'Butterfly',
+                func: (size) => {
+                    const pts = [];
+                    for (let i = 0; i < 128; i++) {
+                        const t = (i / 128) * Math.PI * 2;
+                        const r = Math.exp(Math.cos(t)) - 2 * Math.cos(4 * t) + Math.pow(Math.sin(t / 12), 5);
+                        pts.push({ x: r * Math.sin(t) * 0.4, y: r * Math.cos(t) * 0.4 });
+                    }
+                    pts.push({ ...pts[0] });
+                    return pts;
+                }
+            },
+            spiral: {
+                name: 'Spiral',
+                func: (size) => {
+                    const pts = [];
+                    const turns = 3;
+                    for (let i = 0; i < 256; i++) {
+                        const t = (i / 256) * Math.PI * 2 * turns;
+                        const r = (t / (Math.PI * 2 * turns)) * size * 1.5;
+                        pts.push({ x: r * Math.cos(t), y: r * Math.sin(t) });
+                    }
+                    pts.push({ x: 0, y: 0 });
+                    pts.push({ ...pts[0] });
+                    return pts;
+                }
+            },
+            wave: {
+                name: 'Wave',
+                func: (size) => {
+                    const pts = [];
+                    for (let i = 0; i < 128; i++) {
+                        const t = (i / 128) * Math.PI * 2;
+                        const x = (t - Math.PI) * size * 0.5;
+                        const y = Math.sin(t * 3) * size * 0.3;
+                        pts.push({ x, y });
+                    }
+                    pts.push({ x: size * 0.5 * Math.PI, y: -size });
+                    pts.push({ x: -size * 0.5 * Math.PI, y: -size });
+                    pts.push({ ...pts[0] });
+                    return pts;
                 }
             }
-            return resamplePath(points);
+        };
+
+        function generatePreset(type) {
+            const size = 0.8;
+            const preset = PRESETS[type] || PRESETS.square;
+            return resamplePath(preset.func(size));
         }
 
         let fourier = generatePreset('square');
@@ -1349,7 +1476,6 @@
             document.getElementById('presetSelect').addEventListener('change', (e) => {
                 const path = generatePreset(e.target.value);
                 updateFFT(path);
-                document.getElementById('presetsPopover').classList.remove('active');
             });
 
             document.getElementById('penBtn').addEventListener('click', (e) => {
@@ -1417,6 +1543,15 @@
                         document.getElementById('textPopover').classList.remove('active');
                     }
                 }
+            });
+
+            // Populate presets
+            const presetSelect = document.getElementById('presetSelect');
+            Object.keys(PRESETS).forEach(key => {
+                const opt = document.createElement('option');
+                opt.value = key;
+                opt.textContent = PRESETS[key].name;
+                presetSelect.appendChild(opt);
             });
 
             // Load initial preset
