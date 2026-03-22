@@ -1633,13 +1633,17 @@
             const followCheck = document.getElementById('followCheck');
             const snapFollowBtn = document.getElementById('snapFollowBtn');
             followBtn.addEventListener('click', () => {
-                state.follow = !state.follow;
+                updateFollowState(!state.follow);
+            });
+
+            function updateFollowState(follow) {
+                state.follow = follow;
                 followCheck.checked = state.follow;
                 followBtn.classList.toggle('active', state.follow);
                 // If follow is off, snap is irrelevant visually
                 if (!state.follow) snapFollowBtn.classList.remove('active');
                 else snapFollowBtn.classList.toggle('active', state.snapFollow);
-            });
+            }
 
             snapFollowBtn.addEventListener('click', () => {
                 state.snapFollow = !state.snapFollow;
@@ -1837,6 +1841,8 @@
 
             // Load initial preset
             updateFFT(generatePreset('square'));
+
+            return { updateFollowState };
         }
 
         const visibleVectorItems = new Set();
@@ -1885,6 +1891,22 @@
                     });
                 });
 
+                item.addEventListener('dblclick', (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    state.selectedVector = i;
+
+                    // Zoom and follow the vector
+                    rc.targetZoom = 1 / v.amp;
+                    updateFollowState(true);
+
+                    // Update selection visual
+                    grid.querySelectorAll('.vector-item').forEach((el, idx) => {
+                        el.classList.toggle('selected', idx === state.selectedVector);
+                    });
+
+                });
+
                 grid.appendChild(item);
                 vectorObserver.observe(item);
             }
@@ -1893,7 +1915,8 @@
         function updateVectorIcons() {
             if (!document.getElementById('vectorPopover').classList.contains('active')) return;
             if (visibleVectorItems.size === 0) return;
-            const maxAmp = fourier.length > 0 ? fourier[0].amp : 1;
+            const maxAmpLog = fourier.length > 0 ? Math.log(fourier[0].amp) : 0;
+            const minAmpLog = fourier.length > 0 ? Math.log(fourier[fourier.length - 1].amp) : 0;
 
             visibleVectorItems.forEach(item => {
                 const i = parseInt(item.dataset.idx);
@@ -1910,11 +1933,8 @@
                 const radius = w * 0.4;
 
                 // Color: blue-to-gray by relative amplitude
-                const t = Math.min(Math.log(v.amp / maxAmp * 1000 + 1) / Math.log(1001), 1);
-                const r = Math.round(76 * t + 100 * (1 - t));
-                const g = Math.round(201 * t + 100 * (1 - t));
-                const b = Math.round(240 * t + 100 * (1 - t));
-                const color = `rgb(${r},${g},${b})`;
+                const t = Math.min((Math.log(v.amp) - minAmpLog) / (maxAmpLog - minAmpLog), 1);
+                const color = `rgb(${getColor(VECTOR_PALETTE, t).join(',')})`;
 
                 // Draw circle outline
                 c.beginPath();
@@ -1952,6 +1972,30 @@
                 c.fillStyle = color;
                 c.fill();
             });
+        }
+
+        const VECTOR_PALETTE = [[128, 128, 128], [76, 201, 240], [255, 255, 0], [247, 37, 133]];
+
+        function getColor(pal, t) {
+            // 边界处理
+            if (t <= 0) return pal[0];
+            if (t >= 1) return pal[pal.length - 1];
+
+            // 计算当前 t 落在哪个区间
+            // 比如 4 个颜色有 3 个区间，scaledT 会在 0-3 之间
+            const scaledT = t * (pal.length - 1);
+            const index = Math.floor(scaledT); // 左侧颜色索引
+            const weight = scaledT - index;     // 插值权重 (0-1)
+
+            const c1 = pal[index];
+            const c2 = pal[index + 1];
+
+            // 对 RGB 分量分别进行线性插值 (lerp)
+            return [
+                Math.round(c1[0] * (1 - weight) + c2[0] * weight),
+                Math.round(c1[1] * (1 - weight) + c2[1] * weight),
+                Math.round(c1[2] * (1 - weight) + c2[2] * weight)
+            ];
         }
 
         function update() {
@@ -2165,7 +2209,7 @@
         });
         acquireWakelock();
 
-        setup();
+        let { updateFollowState } = setup();
         draw();
     </script>
 </body>
