@@ -1455,7 +1455,7 @@
 
                 const lbl = document.createElement('span');
                 lbl.className = 'freq-label';
-                lbl.textContent = 'f=' + v.freq;
+                lbl.textContent = v.freq;
                 item.appendChild(lbl);
 
                 item.addEventListener('click', () => {
@@ -1495,7 +1495,7 @@
                 const radius = w * 0.35;
 
                 // Color: blue-to-gray by relative amplitude
-                const t = Math.min(v.amp / maxAmp, 1);
+                const t = Math.min(Math.log(v.amp / maxAmp * 1000 + 1) / Math.log(1001), 1);
                 const r = Math.round(76 * t + 100 * (1 - t));
                 const g = Math.round(201 * t + 100 * (1 - t));
                 const b = Math.round(240 * t + 100 * (1 - t));
