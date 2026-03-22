@@ -707,7 +707,6 @@
                 const s = this.scale * this.zoom;
                 this.ctx.strokeStyle = color || this.colors.primary;
                 this.ctx.lineWidth = Math.max(0.25, width * s);
-                // this.ctx.lineCap = 'round';
                 this.ctx.beginPath();
                 this.ctx.moveTo(p1.x, p1.y);
                 this.ctx.lineTo(p2.x, p2.y);
@@ -815,8 +814,6 @@
                 this.ctx.globalAlpha = alpha;
                 this.ctx.strokeStyle = color;
                 this.ctx.lineWidth = pixelWidth;
-                this.ctx.lineCap = 'round';
-                this.ctx.lineJoin = 'round';
                 this.ctx.beginPath();
 
                 const getX = (p) => p.x !== undefined ? p.x : p.re;
@@ -838,8 +835,6 @@
                 this.ctx.save();
                 this.ctx.strokeStyle = color;
                 this.ctx.lineWidth = pixelWidth;
-                this.ctx.lineCap = 'round';
-                this.ctx.lineJoin = 'round';
 
                 const chunks = 25; // 25 stroke calls is very fast and looks perfectly smooth
                 const chunkSize = Math.max(1, Math.ceil(points.length / chunks));
