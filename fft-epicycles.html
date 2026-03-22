@@ -54,6 +54,8 @@
         .icon-btn {
             width: 40px;
             height: 40px;
+            min-width: 40px;
+            min-height: 40px;
             display: flex;
             align-items: center;
             justify-content: center;
@@ -130,6 +132,8 @@
             display: flex;
             flex-direction: row;
             gap: 5px;
+            max-height: 60vh;
+            overflow-y: auto;
         }
 
         /* Responsive vertical toolbar for narrow screens */
@@ -146,10 +150,6 @@
             .popover {
                 bottom: 15px;
                 right: 60px;
-            }
-
-            .toolbar.collapsed .toolbar-main {
-                height: 44px;
             }
         }
 
@@ -186,7 +186,7 @@
                 </div>
 
                 <!-- Harmonics -->
-                <button class="icon-btn" id="harmonicsBtn" title="Harmonics">🧬</button>
+                <button class="icon-btn" id="harmonicsBtn" title="Harmonics">📶</button>
                 <div class="popover" id="harmonicsPopover">
                     <span class="label">Harmonics: <span id="harmonicsVal" class="val-text">128</span></span>
                     <input type="range" id="harmonicsRange" min="0" max="1" step="0.001">
@@ -202,7 +202,7 @@
                 <button class="icon-btn active" id="mapToggleBtn" title="Toggle Minimap">🗺️</button>
 
                 <!-- Presets -->
-                <button class="icon-btn" id="presetsBtn" title="Presets">📂</button>
+                <button class="icon-btn" id="presetsBtn" title="Presets">🎁</button>
                 <div class="popover" id="presetsPopover">
                     <span class="label">Choose Preset</span>
                     <select id="presetSelect" style="width:100%">
@@ -220,7 +220,7 @@
                 <button class="icon-btn" id="penBtn" title="Draw Path">✏️</button>
 
                 <!-- SVG / Image -->
-                <button class="icon-btn" id="svgBtn" title="Import SVG or Image">📥</button>
+                <button class="icon-btn" id="svgBtn" title="Import SVG or Image">🖼️</button>
                 <input type="file" id="svgInput" accept=".svg, image/*" style="display:none">
 
                 <!-- Text -->
@@ -1118,7 +1118,7 @@
             document.getElementById('speedRange').addEventListener('input', updateSpeedFromSlider);
             document.getElementById('harmonicsRange').addEventListener('input', updateHarmonicsFromSlider);
 
-            const initialT = Math.log(20) / Math.log(10000);
+            const initialT = 0.5;
             document.getElementById('speedRange').value = initialT;
             updateSpeedFromSlider();
 
@@ -1395,6 +1395,27 @@
                 draw();
             });
         }
+
+        function acquireWakelock() {
+            if ('wakeLock' in navigator) {
+                try {
+                    navigator.wakeLock.request('screen').then(lock => {
+                        lock.addEventListener('release', e => {
+                            console.log("wakelock released");
+                        })
+                    });
+                } catch (error) {
+                    console.error(error);
+                }
+            }
+        }
+
+        document.addEventListener("visibilitychange", function () {
+            if (document.visibilityState === 'visible') {
+                acquireWakelock();
+            }
+        });
+        acquireWakelock();
 
         setup();
         draw();
