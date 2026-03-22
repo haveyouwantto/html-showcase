@@ -550,8 +550,8 @@
                 if (checkSize && Math.abs(p1.x - p2.x) <= MIN_VISIBLE_SIZE && Math.abs(p1.y - p2.y) <= MIN_VISIBLE_SIZE) return false;
                 const s = this.scale * this.zoom;
                 this.ctx.strokeStyle = color || this.colors.primary;
-                this.ctx.lineWidth = Math.max(1, width * s);
-                this.ctx.lineCap = 'round';
+                this.ctx.lineWidth = Math.max(0.25, width * s);
+                // this.ctx.lineCap = 'round';
                 this.ctx.beginPath();
                 this.ctx.moveTo(p1.x, p1.y);
                 this.ctx.lineTo(p2.x, p2.y);
@@ -570,7 +570,7 @@
                     this.ctx.fill();
                 } else {
                     this.ctx.strokeStyle = color || this.colors.primary;
-                    this.ctx.lineWidth = Math.max(1, width * s);
+                    this.ctx.lineWidth = Math.max(0.25, width * s);
                     this.ctx.stroke();
                 }
                 return true;
@@ -623,6 +623,33 @@
                 this.ctx.strokeStyle = color || this.colors.primary;
                 this.ctx.lineWidth = pixelWidth;
                 this.ctx.stroke();
+                return true;
+            }
+
+            arrowhead(x, y, angle, color, headSizeWorld = 0.05) {
+                const s = this.scale * this.zoom;
+                if (headSizeWorld * s < 0.25) return false;
+
+                const alpha = Math.PI / 7;
+                const pTip = this.toScreen(x, y);
+                const pWing1 = this.toScreen(
+                    x - headSizeWorld * Math.cos(angle - alpha),
+                    y - headSizeWorld * Math.sin(angle - alpha)
+                );
+                const pWing2 = this.toScreen(
+                    x - headSizeWorld * Math.cos(angle + alpha),
+                    y - headSizeWorld * Math.sin(angle + alpha)
+                );
+
+                this.ctx.save();
+                this.ctx.fillStyle = color || this.colors.primary;
+                this.ctx.beginPath();
+                this.ctx.moveTo(pTip.x, pTip.y);
+                this.ctx.lineTo(pWing1.x, pWing1.y);
+                this.ctx.lineTo(pWing2.x, pWing2.y);
+                this.ctx.closePath();
+                this.ctx.fill();
+                this.ctx.restore();
                 return true;
             }
 
@@ -1266,14 +1293,27 @@
                     // Wait, if it's too small, it's skipped.
                     const prevX = x - amp * Math.cos(freq * state.time + phase);
                     const prevY = y - amp * Math.sin(freq * state.time + phase);
-                    if (rc.circle(prevX, prevY, amp, rc.colors.circles, amp * 0.01, false, true)) {
+                    if (rc.circle(prevX, prevY, amp, rc.colors.circles, amp * 0.005, false, true)) {
                         drawnAny = true;
                     }
                 }
 
                 if (state.showVectors) {
                     // Draw Vector from last visible position to current theoretical position
-                    if (rc.line(lastVisibleX, lastVisibleY, x, y, rc.colors.vector, amp * 0.01, true)) {
+                    const dx = x - lastVisibleX;
+                    const dy = y - lastVisibleY;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+                    const angle = Math.atan2(dy, dx);
+                    const headSize = amp * 0.15;
+                    const shortening = headSize * Math.cos(Math.PI / 7); // Slightly less than base to ensure overlap
+
+                    // Shorten the line so it doesn't overlap with the arrowhead
+                    if (dist > shortening) {
+                        const xShort = x - shortening * Math.cos(angle);
+                        const yShort = y - shortening * Math.sin(angle);
+                        rc.line(lastVisibleX, lastVisibleY, xShort, yShort, rc.colors.vector, amp * 0.01, true);
+
+                        rc.arrowhead(x, y, angle, rc.colors.vector, headSize);
                         lastVisibleX = x;
                         lastVisibleY = y;
                         drawnAny = true;
