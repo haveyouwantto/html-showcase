@@ -329,20 +329,6 @@
     <div class="toolbar" id="mainToolbar">
         <div class="toolbar-main">
             <div class="hidden-on-collapse">
-                <!-- Speed -->
-                <button class="icon-btn" id="speedBtn" title="Speed">⏱️</button>
-                <div class="popover" id="speedPopover">
-                    <span class="label">Speed: <span id="speedVal" class="val-text">0.0002</span></span>
-                    <input type="range" id="speedRange" min="0" max="1" step="0.0001">
-                </div>
-
-                <!-- Harmonics -->
-                <button class="icon-btn" id="harmonicsBtn" title="Harmonics">📶</button>
-                <div class="popover" id="harmonicsPopover">
-                    <span class="label">Harmonics: <span id="harmonicsVal" class="val-text">128</span></span>
-                    <input type="range" id="harmonicsRange" min="0" max="1" step="0.001">
-                </div>
-
                 <!-- Presets -->
                 <button class="icon-btn" id="presetsBtn" title="Presets">🎁</button>
                 <div class="popover" id="presetsPopover">
@@ -396,6 +382,20 @@
                 <div class="popover" id="vectorPopover">
                     <span class="label">Vectors (by amplitude)</span>
                     <div class="vector-grid" id="vectorGrid"></div>
+                </div>
+
+                <!-- Speed -->
+                <button class="icon-btn" id="speedBtn" title="Speed">⏱️</button>
+                <div class="popover" id="speedPopover">
+                    <span class="label">Speed: <span id="speedVal" class="val-text">0.0002</span></span>
+                    <input type="range" id="speedRange" min="0" max="1" step="0.0001">
+                </div>
+
+                <!-- Harmonics -->
+                <button class="icon-btn" id="harmonicsBtn" title="Harmonics">📶</button>
+                <div class="popover" id="harmonicsPopover">
+                    <span class="label">Harmonics: <span id="harmonicsVal" class="val-text">128</span></span>
+                    <input type="range" id="harmonicsRange" min="0" max="1" step="0.001">
                 </div>
 
                 <input type="checkbox" id="followCheck" style="display:none">
