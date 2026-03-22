@@ -240,6 +240,51 @@
             border-right: 1px solid gray;
         }
 
+        /* Vector Grid inside popover */
+        .vector-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 6px;
+            max-height: 280px;
+            max-width: 260px;
+            overflow-y: auto;
+            padding: 4px;
+        }
+
+        .vector-item {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            cursor: pointer;
+            padding: 4px;
+            border-radius: 8px;
+            transition: background 0.15s;
+            border: 2px solid transparent;
+        }
+
+        .vector-item:hover {
+            background: rgba(255, 255, 255, 0.05);
+        }
+
+        .vector-item.selected {
+            border-color: #4cc9f0;
+            background: rgba(76, 201, 240, 0.1);
+        }
+
+        .vector-item canvas {
+            width: 44px;
+            height: 44px;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.03);
+        }
+
+        .vector-item .freq-label {
+            font-size: 9px;
+            margin-top: 2px;
+            color: #aaa;
+            white-space: nowrap;
+        }
+
         /* Responsive vertical toolbar for narrow screens */
         @media (max-width: 600px) {
             .toolbar-main {
@@ -298,15 +343,6 @@
                     <input type="range" id="harmonicsRange" min="0" max="1" step="0.001">
                 </div>
 
-                <!-- Show/Hide Circles -->
-                <button class="icon-btn active" id="circlesToggleBtn" title="Toggle Epicycles (Circles)">⭕</button>
-
-                <!-- Show/Hide Vectors -->
-                <button class="icon-btn active" id="vectorsToggleBtn" title="Toggle Vectors (Lines)">↗️</button>
-
-                <!-- Minimap -->
-                <button class="icon-btn active" id="mapToggleBtn" title="Toggle Minimap">🗺️</button>
-
                 <!-- Presets -->
                 <button class="icon-btn" id="presetsBtn" title="Presets">🎁</button>
                 <div class="popover" id="presetsPopover">
@@ -337,8 +373,31 @@
                     <button id="textBtnRender" class="action-btn">Build</button>
                 </div>
 
+                <!-- Show/Hide Circles -->
+                <button class="icon-btn active" id="circlesToggleBtn" title="Toggle Epicycles (Circles)">⭕</button>
+
+                <!-- Show/Hide Vectors -->
+                <button class="icon-btn active" id="vectorsToggleBtn" title="Toggle Vectors (Lines)">↗️</button>
+
+                <!-- Show/Hide Reference Path -->
+                <button class="icon-btn active" id="pathToggleBtn" title="Toggle Reference Path">🟡</button>
+
+                <!-- Minimap -->
+                <button class="icon-btn active" id="mapToggleBtn" title="Toggle Minimap">🗺️</button>
+
                 <!-- Follow -->
-                <button class="icon-btn" id="followBtn" title="Camera Follow">🎯</button>
+                <button class="icon-btn" id="followBtn" title="Camera Follow (Smooth)">🎯</button>
+
+                <!-- Snap Follow -->
+                <button class="icon-btn" id="snapFollowBtn" title="Camera Snap Follow">📌</button>
+
+                <!-- Vector List -->
+                <button class="icon-btn" id="vectorListBtn" title="Vector List">📊</button>
+                <div class="popover" id="vectorPopover">
+                    <span class="label">Vectors (by amplitude)</span>
+                    <div class="vector-grid" id="vectorGrid"></div>
+                </div>
+
                 <input type="checkbox" id="followCheck" style="display:none">
             </div>
 
@@ -960,9 +1019,12 @@
             speed: 0.0002,
             harmonics: 128,
             follow: false,
+            snapFollow: false,
             showCircles: true,
             showVectors: true,
+            showPath: true,
             showMap: true,
+            selectedVector: -1, // index into sorted fourier array, -1 = none
             time: 0,
             tracedPath: [],
             penPoints: [],
@@ -992,6 +1054,7 @@
             newPath.forEach(p => pathData.push(p));
             fourier = computeFFT(pathData);
             fourier.sort((a, b) => b.amp - a.amp);
+            fourier = fourier.filter(v => v.amp > 1e-10);
 
             // Update range max
             const range = document.getElementById('harmonicsRange');
@@ -1187,6 +1250,8 @@
             state.harmonics = Math.max(1, Math.round(Math.pow(t, 2) * fourier.length));
             document.getElementById('harmonicsVal').innerText = state.harmonics;
             state.tracedPath = []; // Refresh path visualization
+            // Rebuild vector grid if open
+            if (document.getElementById('vectorPopover').classList.contains('active')) buildVectorGrid();
         }
 
         function setup() {
@@ -1200,8 +1265,8 @@
             });
 
             // Popovers logic
-            const buttons = ['speedBtn', 'harmonicsBtn', 'presetsBtn', 'textBtnIcon'];
-            const popovers = ['speedPopover', 'harmonicsPopover', 'presetsPopover', 'textPopover'];
+            const buttons = ['speedBtn', 'harmonicsBtn', 'presetsBtn', 'textBtnIcon', 'vectorListBtn'];
+            const popovers = ['speedPopover', 'harmonicsPopover', 'presetsPopover', 'textPopover', 'vectorPopover'];
 
             buttons.forEach((id, i) => {
                 document.getElementById(id).addEventListener('click', (e) => {
@@ -1209,7 +1274,12 @@
                     const isActive = pop.classList.contains('active');
                     // Close others
                     popovers.forEach(p => document.getElementById(p).classList.remove('active'));
-                    if (!isActive) pop.classList.add('active');
+                    if (!isActive) {
+                        pop.classList.add('active');
+                        if (popovers[i] === 'vectorPopover') buildVectorGrid();
+                    } else {
+                        if (popovers[i] === 'vectorPopover') state.selectedVector = -1;
+                    }
                     e.stopPropagation();
                 });
             });
@@ -1230,10 +1300,24 @@
 
             const followBtn = document.getElementById('followBtn');
             const followCheck = document.getElementById('followCheck');
+            const snapFollowBtn = document.getElementById('snapFollowBtn');
             followBtn.addEventListener('click', () => {
                 state.follow = !state.follow;
                 followCheck.checked = state.follow;
                 followBtn.classList.toggle('active', state.follow);
+                // If follow is off, snap is irrelevant visually
+                if (!state.follow) snapFollowBtn.classList.remove('active');
+                else snapFollowBtn.classList.toggle('active', state.snapFollow);
+            });
+
+            snapFollowBtn.addEventListener('click', () => {
+                state.snapFollow = !state.snapFollow;
+                snapFollowBtn.classList.toggle('active', state.snapFollow);
+                // Turning snap on implicitly enables follow
+                if (state.snapFollow && !state.follow) {
+                    state.follow = true;
+                    followBtn.classList.add('active');
+                }
             });
 
             const circlesToggleBtn = document.getElementById('circlesToggleBtn');
@@ -1248,12 +1332,20 @@
                 vectorsToggleBtn.classList.toggle('active', state.showVectors);
             });
 
+            const pathToggleBtn = document.getElementById('pathToggleBtn');
+            pathToggleBtn.addEventListener('click', () => {
+                state.showPath = !state.showPath;
+                pathToggleBtn.classList.toggle('active', state.showPath);
+            });
+
             const mapToggleBtn = document.getElementById('mapToggleBtn');
             mapToggleBtn.addEventListener('click', () => {
                 state.showMap = !state.showMap;
                 mapToggleBtn.classList.toggle('active', state.showMap);
                 minimap.style.display = state.showMap ? 'block' : 'none';
             });
+
+
 
             document.getElementById('presetSelect').addEventListener('change', (e) => {
                 const path = generatePreset(e.target.value);
@@ -1332,6 +1424,121 @@
             updateFFT(generatePreset('square'));
         }
 
+        const visibleVectorItems = new Set();
+        let vectorObserver = null;
+
+        function buildVectorGrid() {
+            const grid = document.getElementById('vectorGrid');
+            grid.innerHTML = '';
+
+            // Cleanup old observer
+            if (vectorObserver) vectorObserver.disconnect();
+            visibleVectorItems.clear();
+
+            // Create IntersectionObserver scoped to the grid's scroll container
+            vectorObserver = new IntersectionObserver((entries) => {
+                entries.forEach(e => {
+                    if (e.isIntersecting) visibleVectorItems.add(e.target);
+                    else visibleVectorItems.delete(e.target);
+                });
+            }, { root: grid, threshold: 0 });
+
+            for (let i = 0; i < Math.min(state.harmonics, fourier.length); i++) {
+                const v = fourier[i];
+                const item = document.createElement('div');
+                item.className = 'vector-item' + (state.selectedVector === i ? ' selected' : '');
+                item.dataset.idx = i;
+
+                const cvs = document.createElement('canvas');
+                cvs.width = 96; cvs.height = 96;
+                item.appendChild(cvs);
+
+                const lbl = document.createElement('span');
+                lbl.className = 'freq-label';
+                lbl.textContent = 'f=' + v.freq;
+                item.appendChild(lbl);
+
+                item.addEventListener('click', () => {
+                    if (state.selectedVector === i) {
+                        state.selectedVector = -1;
+                    } else {
+                        state.selectedVector = i;
+                    }
+                    // Update selection visual
+                    grid.querySelectorAll('.vector-item').forEach((el, idx) => {
+                        el.classList.toggle('selected', idx === state.selectedVector);
+                    });
+                });
+
+                grid.appendChild(item);
+                vectorObserver.observe(item);
+            }
+        }
+
+        function updateVectorIcons() {
+            if (!document.getElementById('vectorPopover').classList.contains('active')) return;
+            if (visibleVectorItems.size === 0) return;
+            const maxAmp = fourier.length > 0 ? fourier[0].amp : 1;
+
+            visibleVectorItems.forEach(item => {
+                const i = parseInt(item.dataset.idx);
+                if (i >= fourier.length) return;
+                const cvs = item.querySelector('canvas');
+                if (!cvs) return;
+                const c = cvs.getContext('2d');
+                const w = cvs.width, h = cvs.height;
+                c.clearRect(0, 0, w, h);
+
+                const v = fourier[i];
+                const angle = v.freq * state.time + v.phase;
+                const cx = w / 2, cy = h / 2;
+                const radius = w * 0.35;
+
+                // Color: blue-to-gray by relative amplitude
+                const t = Math.min(v.amp / maxAmp, 1);
+                const r = Math.round(76 * t + 100 * (1 - t));
+                const g = Math.round(201 * t + 100 * (1 - t));
+                const b = Math.round(240 * t + 100 * (1 - t));
+                const color = `rgb(${r},${g},${b})`;
+
+                // Draw circle outline
+                c.beginPath();
+                c.arc(cx, cy, radius, 0, Math.PI * 2);
+                c.strokeStyle = 'rgba(255,255,255,0.1)';
+                c.lineWidth = 1;
+                c.stroke();
+
+                // Draw arrow
+                const ex = cx + radius * Math.cos(-angle);
+                const ey = cy + radius * Math.sin(-angle);
+                c.beginPath();
+                c.moveTo(cx, cy);
+                c.lineTo(ex, ey);
+                c.strokeStyle = color;
+                c.lineWidth = 2.5;
+                c.stroke();
+
+                // Arrowhead
+                const headLen = 8;
+                const a1 = -angle + Math.PI * 0.8;
+                const a2 = -angle - Math.PI * 0.8;
+                c.beginPath();
+                c.moveTo(ex, ey);
+                c.lineTo(ex + headLen * Math.cos(a1), ey + headLen * Math.sin(a1));
+                c.moveTo(ex, ey);
+                c.lineTo(ex + headLen * Math.cos(a2), ey + headLen * Math.sin(a2));
+                c.strokeStyle = color;
+                c.lineWidth = 2;
+                c.stroke();
+
+                // Dot at center
+                c.beginPath();
+                c.arc(cx, cy, 2, 0, Math.PI * 2);
+                c.fillStyle = color;
+                c.fill();
+            });
+        }
+
         function update() {
             if (state.mode === 'draw') return;
 
@@ -1355,11 +1562,35 @@
 
             // Camera follow
             if (state.follow) {
-                rc.targetCamX = x;
-                rc.targetCamY = y;
+                // Determine follow target
+                let tx = x, ty = y;
+                if (state.selectedVector >= 0 && state.selectedVector < Math.min(state.harmonics, fourier.length)) {
+                    // Follow the root of the selected vector
+                    tx = 0; ty = 0;
+                    for (let i = 0; i < state.selectedVector; i++) {
+                        const { freq, amp, phase } = fourier[i];
+                        tx += amp * Math.cos(freq * state.time + phase);
+                        ty += amp * Math.sin(freq * state.time + phase);
+                    }
+                }
+
+                if (state.snapFollow) {
+                    // Instant (no smoothing)
+                    rc.camX = tx;
+                    rc.camY = ty;
+                    rc.targetCamX = tx;
+                    rc.targetCamY = ty;
+                } else {
+                    // Smooth
+                    rc.targetCamX = tx;
+                    rc.targetCamY = ty;
+                }
             }
 
             rc.smooth();
+
+            // Update vector icons every few frames
+            updateVectorIcons();
         }
 
         function draw() {
@@ -1376,7 +1607,7 @@
             }
 
             // 1. Draw Original Path (Static, subtle)
-            if (pathData.length > 1) {
+            if (state.showPath && pathData.length > 1) {
                 rc.fixedPath(pathData, rc.colors.path, 1, 1.0, true);
             }
 
@@ -1393,41 +1624,37 @@
 
                 let drawnAny = false;
 
+                const isSelected = (state.selectedVector === i);
+                const circleColor = isSelected ? '#ffffff' : rc.colors.circles;
+                const vectorColor = isSelected ? '#ffffff' : rc.colors.vector;
+
                 if (state.showCircles) {
-                    // Draw Circle (fixed pixel width stroke) at the current end of the vector chain
-                    // However, we center it at the THEORETICAL previous position (stalling it might look weird for circles)
-                    // Wait, if it's too small, it's skipped.
                     const prevX = x - amp * Math.cos(freq * state.time + phase);
                     const prevY = y - amp * Math.sin(freq * state.time + phase);
-                    if (rc.circle(prevX, prevY, amp, rc.colors.circles, amp * 0.005, false, true)) {
+                    if (rc.circle(prevX, prevY, amp, circleColor, amp * 0.005, false, true)) {
                         drawnAny = true;
                     }
                 }
 
                 if (state.showVectors) {
-                    // Draw Vector from last visible position to current theoretical position
                     const dx = x - lastVisibleX;
                     const dy = y - lastVisibleY;
                     const dist = Math.sqrt(dx * dx + dy * dy);
                     const angle = Math.atan2(dy, dx);
                     const headSize = amp * 0.15;
-                    const shortening = headSize * Math.cos(Math.PI / 7); // Slightly less than base to ensure overlap
+                    const shortening = headSize * Math.cos(Math.PI / 7);
 
-                    // Shorten the line so it doesn't overlap with the arrowhead
                     if (dist > shortening) {
                         const xShort = x - shortening * Math.cos(angle);
                         const yShort = y - shortening * Math.sin(angle);
-                        rc.line(lastVisibleX, lastVisibleY, xShort, yShort, rc.colors.vector, amp * 0.01, true);
+                        rc.line(lastVisibleX, lastVisibleY, xShort, yShort, vectorColor, amp * 0.01, true);
 
-                        rc.arrowhead(x, y, angle, rc.colors.vector, headSize);
+                        rc.arrowhead(x, y, angle, vectorColor, headSize);
                         lastVisibleX = x;
                         lastVisibleY = y;
                         drawnAny = true;
                     }
                 } else {
-                    // Even if vectors are hidden, we should update lastVisible if a virtual "segment" was handled?
-                    // Actually, if vectors are hidden, there's no "chain" to connect visually.
-                    // But we should probably keep track of where we are.
                     lastVisibleX = x;
                     lastVisibleY = y;
                 }
