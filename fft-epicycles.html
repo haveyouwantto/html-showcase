@@ -3,7 +3,7 @@
 
 <head>
     <title>FFT Epicycles</title>
-    <!-- <script src="https://cdn.jsdelivr.net/npm/opentype.js/dist/opentype.min.js"></script> -->
+    <script src="https://cdn.jsdelivr.net/npm/opentype.js/dist/opentype.min.js"></script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <style>
         body {
@@ -346,8 +346,18 @@
                 <button class="icon-btn" id="textBtnIcon" title="Text to Path">🔤</button>
                 <div class="popover" id="textPopover">
                     <span class="label">Render Text</span>
-                    <input type="text" id="textInput" placeholder="Enter text...">
-                    <button id="textBtnRender" class="action-btn">Build</button>
+                    <input type="text" id="textInput" placeholder="Enter text..."
+                        style="width:100%; box-sizing:border-box">
+                    <div style="display:flex; gap:5px; margin-top:8px">
+                        <button id="textBtnRender" class="action-btn" style="flex:1">Build</button>
+                        <button id="fontFileBtn" class="action-btn" style="width: unset"
+                            title="Upload Font File">📂</button>
+                    </div>
+                    <button id="localFontBtn" class="action-btn" style="margin-top:8px; width:100%; display:none">Use
+                        System Fonts</button>
+                    <select id="localFontSelect"
+                        style="display:none; margin-top:8px; width:100%; background:#1e1e24; color:#fff; border:1px solid #3a3a45; padding:4px; border-radius:4px"></select>
+                    <input type="file" id="fontFileInput" accept=".ttf,.otf" style="display:none">
                 </div>
 
                 <!-- Show/Hide Circles -->
@@ -1477,33 +1487,68 @@
             return resamplePath(path);
         }
 
-        function sampleSVGPath(d) {
+        function sampleSVGPath(d, targetCount = 1024) {
             const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
             path.setAttribute('d', d);
             const len = path.getTotalLength();
             const points = [];
-            const count = 512; // High resolution for complex SVGs
+            const count = Math.max(1024, targetCount);
             for (let i = 0; i < count; i++) {
                 const p = path.getPointAtLength((i / count) * len);
-                points.push({ x: p.x, y: -p.y }); // Reverse Y axis to match Cartesian world
+                points.push({ x: p.x, y: -p.y });
             }
             return resamplePath(points);
         }
 
         let font = null;
-        // function loadDefaultFont() {
-        //     // Roboto Medium from CDN
-        //     opentype.load('https://raw.githubusercontent.com/google/fonts/main/apache/robotomono/static/RobotoMono-Medium.ttf', (err, f) => {
-        //         if (err) console.error('Font could not be loaded:', err);
-        //         else font = f;
-        //     });
-        // }
-        // loadDefaultFont();
+        async function loadFont() {
+            if (font) return font;
+            return new Promise((resolve, reject) => {
+                const url = 'https://cdn.jsdelivr.net/npm/dejavu-fonts-ttf@2.37.3/ttf/DejaVuSans.ttf';
+                opentype.load(url, (err, f) => {
+                    if (err) reject(err);
+                    else {
+                        font = f;
+                        resolve(f);
+                    }
+                });
+            });
+        }
 
-        function renderTextToPath(text) {
-            if (!font || !text) return;
-            const path = font.getPath(text, 0, 0, 72);
-            return sampleSVGPath(path.toPathData(2));
+        async function renderTextToPath(text) {
+            if (!text) return;
+            try {
+                const f = await loadFont();
+                if (!f) throw new Error("No font loaded");
+                const path = f.getPath(text, 0, 0, 72);
+                const sampleRes = Math.max(1024, text.length * 512);
+                return sampleSVGPath(path.toPathData(2), sampleRes);
+            } catch (e) {
+                console.error('Text rendering failed:', e);
+                alert("Failed to render text. Please try loading a font first.");
+                return null;
+            }
+        }
+
+        async function loadLocalFonts() {
+            if (!('queryLocalFonts' in window)) return;
+            try {
+                const fonts = await window.queryLocalFonts();
+                const select = document.getElementById('localFontSelect');
+                select.innerHTML = '<option value="">-- Choose System Font --</option>';
+                // Filter and sort unique font families
+                const families = Array.from(new Set(fonts.map(f => f.family))).sort();
+                families.forEach(fam => {
+                    const opt = document.createElement('option');
+                    opt.value = fam;
+                    opt.textContent = fam;
+                    select.appendChild(opt);
+                });
+                select.style.display = 'block';
+                document.getElementById('localFontBtn').style.display = 'none';
+            } catch (e) {
+                console.error("Local font access denied:", e);
+            }
         }
 
         const pathData = [];
@@ -1680,15 +1725,69 @@
             });
 
             // Text Render
-            document.getElementById('textBtnRender').addEventListener('click', () => {
+            document.getElementById('textBtnRender').addEventListener('click', async () => {
+                const btn = document.getElementById('textBtnRender');
                 const text = document.getElementById('textInput').value;
                 if (text) {
-                    const sample = renderTextToPath(text);
-                    if (sample) {
-                        updateFFT(sample);
-                        document.getElementById('textPopover').classList.remove('active');
+                    const originalText = btn.textContent;
+                    btn.textContent = 'Loading...';
+                    btn.disabled = true;
+                    try {
+                        const sample = await renderTextToPath(text);
+                        if (sample) {
+                            updateFFT(sample);
+                            document.getElementById('textPopover').classList.remove('active');
+                        }
+                    } finally {
+                        btn.textContent = originalText;
+                        btn.disabled = false;
                     }
                 }
+            });
+
+            // Local Font Access
+            const localFontBtn = document.getElementById('localFontBtn');
+            if ('queryLocalFonts' in window) {
+                localFontBtn.style.display = 'block';
+                localFontBtn.addEventListener('click', loadLocalFonts);
+            }
+
+            document.getElementById('localFontSelect').addEventListener('change', async (e) => {
+                const family = e.target.value;
+                if (!family) return;
+                try {
+                    const fonts = await window.queryLocalFonts();
+                    const fontData = fonts.find(f => f.family === family);
+                    if (fontData) {
+                        const blob = await fontData.blob();
+                        const buffer = await blob.arrayBuffer();
+                        font = opentype.parse(buffer);
+                        console.log("Loaded system font:", family);
+                    }
+                } catch (e) {
+                    console.error("Failed to load local font:", e);
+                }
+            });
+
+            // Font File Upload
+            document.getElementById('fontFileBtn').addEventListener('click', () => {
+                document.getElementById('fontFileInput').click();
+            });
+
+            document.getElementById('fontFileInput').addEventListener('change', (e) => {
+                const file = e.target.files[0];
+                if (!file) return;
+                const reader = new FileReader();
+                reader.onload = (event) => {
+                    try {
+                        font = opentype.parse(event.target.result);
+                        console.log("Loaded font file:", file.name);
+                    } catch (err) {
+                        console.error("Failed to parse font file:", err);
+                        alert("Invalid font file. Please use a valid .ttf or .otf file.");
+                    }
+                };
+                reader.readAsArrayBuffer(file);
             });
 
             // Populate presets
