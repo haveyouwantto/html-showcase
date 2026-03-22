@@ -77,8 +77,8 @@
         }
 
         .icon-btn.active {
-            background: rgba(76, 201, 240, 0.2);
-            box-shadow: 0 0 10px rgba(76, 201, 240, 0.3);
+            background: rgba(76, 201, 240, 0.4);
+            box-shadow: 0 0 8px rgba(76, 201, 240, 0.6);
         }
 
         /* Pop-up Controls */
@@ -109,18 +109,121 @@
             margin-bottom: 4px;
         }
 
-        .popover input[type="range"] {
-            width: 100%;
-        }
-
-        .popover input[type="text"] {
-            width: calc(100% - 12px);
-        }
-
         .popover .val-text {
             color: #4cc9f0;
             font-weight: bold;
             font-size: 12px;
+        }
+
+        /* Custom Form Styling */
+        .popover input[type="range"] {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 100%;
+            background: transparent;
+            margin: 12px 0;
+            cursor: pointer;
+        }
+
+        .popover input[type="range"]:focus {
+            outline: none;
+        }
+
+        /* Track */
+        .popover input[type="range"]::-webkit-slider-runnable-track {
+            width: 100%;
+            height: 4px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 2px;
+            transition: background 0.2s;
+        }
+
+        .popover input[type="range"]:hover::-webkit-slider-runnable-track {
+            background: rgba(255, 255, 255, 0.15);
+        }
+
+        /* Thumb */
+        .popover input[type="range"]::-webkit-slider-thumb {
+            height: 16px;
+            width: 16px;
+            border-radius: 50%;
+            background: #4cc9f0;
+            -webkit-appearance: none;
+            margin-top: -6px;
+            box-shadow: 0 0 10px rgba(76, 201, 240, 0.5);
+            transition: transform 0.1s;
+        }
+
+        .popover input[type="range"]:active::-webkit-slider-thumb {
+            transform: scale(1.2);
+        }
+
+        /* Firefox Support */
+        .popover input[type="range"]::-moz-range-track {
+            width: 100%;
+            height: 4px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 2px;
+        }
+
+        .popover input[type="range"]::-moz-range-thumb {
+            height: 16px;
+            width: 16px;
+            border-radius: 50%;
+            background: #4cc9f0;
+            border: none;
+            box-shadow: 0 0 10px rgba(76, 201, 240, 0.5);
+        }
+
+        .popover input[type="text"],
+        .popover select {
+            width: 100%;
+            box-sizing: border-box;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 999px;
+            color: #fff;
+            padding: 6px 12px;
+            font-family: inherit;
+            font-size: 13px;
+            outline: none;
+            transition: all 0.2s;
+        }
+
+        .popover input[type="text"]:focus,
+        .popover select:focus {
+            border-color: #4cc9f0;
+            background: rgba(255, 255, 255, 0.08);
+            box-shadow: 0 0 8px rgba(76, 201, 240, 0.2);
+        }
+
+        .popover select option {
+            background: #141419;
+            color: #fff;
+        }
+
+        .popover .action-btn {
+            width: 100%;
+            border: none;
+            border-radius: 8px;
+            padding: 10px;
+            cursor: pointer;
+            font-weight: bold;
+            font-size: 13px;
+            transition: all 0.2s;
+            background: #4cc9f0;
+            color: #000;
+            margin-top: 8px;
+        }
+
+        .popover .action-btn:hover {
+            opacity: 0.9;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(76, 201, 240, 0.3);
+        }
+
+        .popover .action-btn:active {
+            transform: translateY(0);
         }
 
         /* Hide elements when collapsed */
@@ -205,7 +308,7 @@
                 <button class="icon-btn" id="presetsBtn" title="Presets">🎁</button>
                 <div class="popover" id="presetsPopover">
                     <span class="label">Choose Preset</span>
-                    <select id="presetSelect" style="width:100%">
+                    <select id="presetSelect">
                         <option value="square">Square</option>
                         <option value="triangle">Triangle</option>
                         <option value="pentagon">Pentagon</option>
@@ -228,7 +331,7 @@
                 <div class="popover" id="textPopover">
                     <span class="label">Render Text</span>
                     <input type="text" id="textInput" placeholder="Enter text...">
-                    <button id="textBtnRender" style="margin-top:5px; background: #4cc9f0; color:#000;">Build</button>
+                    <button id="textBtnRender" class="action-btn">Build</button>
                 </div>
 
                 <!-- Follow -->
