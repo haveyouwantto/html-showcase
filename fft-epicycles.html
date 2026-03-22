@@ -182,7 +182,7 @@
                 <button class="icon-btn" id="speedBtn" title="Speed">⏱️</button>
                 <div class="popover" id="speedPopover">
                     <span class="label">Speed: <span id="speedVal" class="val-text">0.0002</span></span>
-                    <input type="range" id="speedRange" min="0" max="1" step="0.001">
+                    <input type="range" id="speedRange" min="0" max="1" step="0.0001">
                 </div>
 
                 <!-- Harmonics -->
@@ -550,7 +550,7 @@
                 if (checkSize && Math.abs(p1.x - p2.x) <= MIN_VISIBLE_SIZE && Math.abs(p1.y - p2.y) <= MIN_VISIBLE_SIZE) return false;
                 const s = this.scale * this.zoom;
                 this.ctx.strokeStyle = color || this.colors.primary;
-                this.ctx.lineWidth = Math.max(0.5, width * s);
+                this.ctx.lineWidth = Math.max(1, width * s);
                 this.ctx.lineCap = 'round';
                 this.ctx.beginPath();
                 this.ctx.moveTo(p1.x, p1.y);
@@ -570,7 +570,7 @@
                     this.ctx.fill();
                 } else {
                     this.ctx.strokeStyle = color || this.colors.primary;
-                    this.ctx.lineWidth = Math.max(0.5, width * s);
+                    this.ctx.lineWidth = Math.max(1, width * s);
                     this.ctx.stroke();
                 }
                 return true;
@@ -1043,8 +1043,8 @@
         function updateSpeedFromSlider() {
             const t = parseFloat(document.getElementById('speedRange').value);
             // Exponential: 0.00001 to 0.1
-            state.speed = 0.00001 * Math.pow(10000, t);
-            document.getElementById('speedVal').innerText = state.speed.toFixed(5);
+            state.speed = 0.000001 * Math.pow(100000, t);
+            document.getElementById('speedVal').innerText = state.speed.toFixed(6);
         }
 
         function updateHarmonicsFromSlider() {
