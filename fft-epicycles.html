@@ -1141,25 +1141,25 @@
                     for (let t = -Math.PI / 2; t <= Math.PI / 2; t += 0.1) {
                         pts.push({ x: r * Math.cos(t), y: r * Math.sin(t) });
                     }
-                    // 2. To top center (0, r/2) and draw dot
-                    pts.push({ x: 0, y: r / 2 });
-                    for (let t = 0; t <= Math.PI * 2.1; t += 0.2) {
+                    // 2. To top dot circumference (0, r/2 + dr) and draw dot
+                    pts.push({ x: 0, y: r / 2 + dr });
+                    for (let t = Math.PI / 2; t <= Math.PI * 2.5; t += 0.2) {
                         pts.push({ x: dr * Math.cos(t), y: r / 2 + dr * Math.sin(t) });
                     }
-                    pts.push({ x: 0, y: r / 2 });
-                    pts.push({ x: 0, y: r }); // Back to top
+                    pts.push({ x: 0, y: r / 2 + dr });
+                    pts.push({ x: 0, y: r }); // Back to top boundary
 
                     // 3. Left semi-circle: Top (0, r) to Bottom (0, -r)
                     for (let t = Math.PI / 2; t <= 3 * Math.PI / 2; t += 0.1) {
                         pts.push({ x: r * Math.cos(t), y: r * Math.sin(t) });
                     }
-                    // 4. To bottom center (0, -r/2) and draw dot
-                    pts.push({ x: 0, y: -r / 2 });
-                    for (let t = 0; t <= Math.PI * 2.1; t += 0.2) {
+                    // 4. To bottom dot circumference (0, -r/2 - dr) and draw dot
+                    pts.push({ x: 0, y: -r / 2 - dr });
+                    for (let t = 3 * Math.PI / 2; t <= 5.5 * Math.PI; t += 0.2) {
                         pts.push({ x: dr * Math.cos(t), y: -r / 2 + dr * Math.sin(t) });
                     }
-                    pts.push({ x: 0, y: -r / 2 });
-                    pts.push({ x: 0, y: -r }); // Back to bottom
+                    pts.push({ x: 0, y: -r / 2 - dr });
+                    pts.push({ x: 0, y: -r }); // Back to bottom boundary
 
                     // 5. Large S-curve: Bottom (0, -r) to Top (0, r)
                     for (let t = 3 * Math.PI / 2; t <= 5 * Math.PI / 2; t += 0.1) {
