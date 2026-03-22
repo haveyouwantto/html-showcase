@@ -244,7 +244,6 @@
         .vector-grid {
             display: grid;
             grid-template-columns: repeat(4, 1fr);
-            gap: 6px;
             max-height: 280px;
             max-width: 260px;
             overflow-y: auto;
@@ -256,7 +255,7 @@
             flex-direction: column;
             align-items: center;
             cursor: pointer;
-            padding: 4px;
+            padding: 2px;
             border-radius: 8px;
             transition: background 0.15s;
             border: 2px solid transparent;
@@ -1492,7 +1491,7 @@
                 const v = fourier[i];
                 const angle = v.freq * state.time + v.phase;
                 const cx = w / 2, cy = h / 2;
-                const radius = w * 0.35;
+                const radius = w * 0.4;
 
                 // Color: blue-to-gray by relative amplitude
                 const t = Math.min(Math.log(v.amp / maxAmp * 1000 + 1) / Math.log(1001), 1);
@@ -1519,7 +1518,7 @@
                 c.stroke();
 
                 // Arrowhead
-                const headLen = 8;
+                const headLen = 12;
                 const a1 = -angle + Math.PI * 0.8;
                 const a2 = -angle - Math.PI * 0.8;
                 c.beginPath();
