@@ -547,7 +547,7 @@
             line(x1, y1, x2, y2, color, width = 0.01, checkSize = false) {
                 const p1 = this.toScreen(x1, y1);
                 const p2 = this.toScreen(x2, y2);
-                if (checkSize && Math.abs(p1.x - p2.x) <= MIN_VISIBLE_SIZE && Math.abs(p1.y - p2.y) <= MIN_VISIBLE_SIZE) return;
+                if (checkSize && Math.abs(p1.x - p2.x) <= MIN_VISIBLE_SIZE && Math.abs(p1.y - p2.y) <= MIN_VISIBLE_SIZE) return false;
                 const s = this.scale * this.zoom;
                 this.ctx.strokeStyle = color || this.colors.primary;
                 this.ctx.lineWidth = Math.max(0.5, width * s);
@@ -556,11 +556,12 @@
                 this.ctx.moveTo(p1.x, p1.y);
                 this.ctx.lineTo(p2.x, p2.y);
                 this.ctx.stroke();
+                return true;
             }
 
             circle(x, y, r, color, width = 0.01, fill = false, checkSize = false) {
                 const s = this.scale * this.zoom;
-                if (checkSize && r * s * 2 <= MIN_VISIBLE_SIZE) return;
+                if (checkSize && r * s * 2 <= MIN_VISIBLE_SIZE) return false;
                 const p = this.toScreen(x, y);
                 this.ctx.beginPath();
                 this.ctx.arc(p.x, p.y, r * s, 0, Math.PI * 2);
@@ -572,23 +573,25 @@
                     this.ctx.lineWidth = Math.max(0.5, width * s);
                     this.ctx.stroke();
                 }
+                return true;
             }
 
             point(x, y, color, size = 0.02, checkSize = false) {
                 const s = this.scale * this.zoom;
-                if (checkSize && Math.max(1, size * s) * 2 <= MIN_VISIBLE_SIZE) return;
+                if (checkSize && Math.max(1, size * s) * 2 <= MIN_VISIBLE_SIZE) return false;
                 const p = this.toScreen(x, y);
                 this.ctx.beginPath();
                 this.ctx.arc(p.x, p.y, Math.max(1, size * s), 0, Math.PI * 2);
                 this.ctx.fillStyle = color || this.colors.primary;
                 this.ctx.fill();
+                return true;
             }
 
             // Fixed-width line for paths
             fixedLine(x1, y1, x2, y2, color, pixelWidth = 1, alpha = 1.0, checkSize = false) {
                 const p1 = this.toScreen(x1, y1);
                 const p2 = this.toScreen(x2, y2);
-                if (checkSize && Math.abs(p1.x - p2.x) <= MIN_VISIBLE_SIZE && Math.abs(p1.y - p2.y) <= MIN_VISIBLE_SIZE) return;
+                if (checkSize && Math.abs(p1.x - p2.x) <= MIN_VISIBLE_SIZE && Math.abs(p1.y - p2.y) <= MIN_VISIBLE_SIZE) return false;
                 this.ctx.save();
                 this.ctx.globalAlpha = alpha;
                 this.ctx.strokeStyle = color;
@@ -598,26 +601,29 @@
                 this.ctx.lineTo(p2.x, p2.y);
                 this.ctx.stroke();
                 this.ctx.restore();
+                return true;
             }
 
             fixedPoint(x, y, color, pixelSize = 3, checkSize = false) {
-                if (checkSize && pixelSize * 2 <= MIN_VISIBLE_SIZE) return;
+                if (checkSize && pixelSize * 2 <= MIN_VISIBLE_SIZE) return false;
                 const p = this.toScreen(x, y);
                 this.ctx.beginPath();
                 this.ctx.arc(p.x, p.y, pixelSize, 0, Math.PI * 2);
                 this.ctx.fillStyle = color || this.colors.primary;
                 this.ctx.fill();
+                return true;
             }
 
             fixedCircle(x, y, r, color, pixelWidth = 1, checkSize = false) {
                 const s = this.scale * this.zoom;
-                if (checkSize && r * s * 2 <= MIN_VISIBLE_SIZE) return;
+                if (checkSize && r * s * 2 <= MIN_VISIBLE_SIZE) return false;
                 const p = this.toScreen(x, y);
                 this.ctx.beginPath();
                 this.ctx.arc(p.x, p.y, r * s, 0, Math.PI * 2);
                 this.ctx.strokeStyle = color || this.colors.primary;
                 this.ctx.lineWidth = pixelWidth;
                 this.ctx.stroke();
+                return true;
             }
 
             fixedPath(points, color, pixelWidth = 1, alpha = 1.0, isClosed = false) {
@@ -867,7 +873,7 @@
         }
 
         function processImageToPath(img) {
-            const MAX_DIM = 250;
+            const MAX_DIM = 1000;
             let w = img.width;
             let h = img.height;
             if (w > MAX_DIM || h > MAX_DIM) {
@@ -1244,21 +1250,40 @@
             // 2. Draw Epicycles
             let x = 0;
             let y = 0;
+            let lastVisibleX = 0;
+            let lastVisibleY = 0;
+
             for (let i = 0; i < Math.min(state.harmonics, fourier.length); i++) {
-                const prevX = x;
-                const prevY = y;
                 const { freq, amp, phase } = fourier[i];
                 x += amp * Math.cos(freq * state.time + phase);
                 y += amp * Math.sin(freq * state.time + phase);
 
+                let drawnAny = false;
+
                 if (state.showCircles) {
-                    // Draw Circle (fixed pixel width stroke)
-                    rc.circle(prevX, prevY, amp, rc.colors.circles, amp * 0.01, false, true);
+                    // Draw Circle (fixed pixel width stroke) at the current end of the vector chain
+                    // However, we center it at the THEORETICAL previous position (stalling it might look weird for circles)
+                    // Wait, if it's too small, it's skipped.
+                    const prevX = x - amp * Math.cos(freq * state.time + phase);
+                    const prevY = y - amp * Math.sin(freq * state.time + phase);
+                    if (rc.circle(prevX, prevY, amp, rc.colors.circles, amp * 0.01, false, true)) {
+                        drawnAny = true;
+                    }
                 }
 
                 if (state.showVectors) {
-                    // Draw Vector (line width proportional to amp - world units)
-                    rc.line(prevX, prevY, x, y, rc.colors.vector, amp * 0.01, true);
+                    // Draw Vector from last visible position to current theoretical position
+                    if (rc.line(lastVisibleX, lastVisibleY, x, y, rc.colors.vector, amp * 0.01, true)) {
+                        lastVisibleX = x;
+                        lastVisibleY = y;
+                        drawnAny = true;
+                    }
+                } else {
+                    // Even if vectors are hidden, we should update lastVisible if a virtual "segment" was handled?
+                    // Actually, if vectors are hidden, there's no "chain" to connect visually.
+                    // But we should probably keep track of where we are.
+                    lastVisibleX = x;
+                    lastVisibleY = y;
                 }
             }
 
