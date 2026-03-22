@@ -1129,6 +1129,157 @@
                     pts.push({ ...pts[0] });
                     return pts;
                 }
+            },
+            yinyang: {
+                name: 'Yin Yang',
+                func: (size) => {
+                    const pts = [];
+                    const r = size * 1.5;
+                    const dr = r * 0.12; // Dot radius
+
+                    // 1. Right semi-circle: Bottom (0, -r) to Top (0, r)
+                    for (let t = -Math.PI / 2; t <= Math.PI / 2; t += 0.1) {
+                        pts.push({ x: r * Math.cos(t), y: r * Math.sin(t) });
+                    }
+                    // 2. To top center (0, r/2) and draw dot
+                    pts.push({ x: 0, y: r / 2 });
+                    for (let t = 0; t <= Math.PI * 2.1; t += 0.2) {
+                        pts.push({ x: dr * Math.cos(t), y: r / 2 + dr * Math.sin(t) });
+                    }
+                    pts.push({ x: 0, y: r / 2 });
+                    pts.push({ x: 0, y: r }); // Back to top
+
+                    // 3. Left semi-circle: Top (0, r) to Bottom (0, -r)
+                    for (let t = Math.PI / 2; t <= 3 * Math.PI / 2; t += 0.1) {
+                        pts.push({ x: r * Math.cos(t), y: r * Math.sin(t) });
+                    }
+                    // 4. To bottom center (0, -r/2) and draw dot
+                    pts.push({ x: 0, y: -r / 2 });
+                    for (let t = 0; t <= Math.PI * 2.1; t += 0.2) {
+                        pts.push({ x: dr * Math.cos(t), y: -r / 2 + dr * Math.sin(t) });
+                    }
+                    pts.push({ x: 0, y: -r / 2 });
+                    pts.push({ x: 0, y: -r }); // Back to bottom
+
+                    // 5. Large S-curve: Bottom (0, -r) to Top (0, r)
+                    for (let t = 3 * Math.PI / 2; t <= 5 * Math.PI / 2; t += 0.1) {
+                        pts.push({ x: (r / 2) * Math.cos(t), y: (r / 2) * Math.sin(t) - r / 2 });
+                    }
+                    for (let t = 3 * Math.PI / 2; t >= Math.PI / 2; t -= 0.1) {
+                        pts.push({ x: (r / 2) * Math.cos(t), y: (r / 2) * Math.sin(t) + r / 2 });
+                    }
+                    // 6. Return S-curve for continuity
+                    for (let t = Math.PI / 2; t <= 3 * Math.PI / 2; t += 0.1) {
+                        pts.push({ x: (r / 2) * Math.cos(t), y: (r / 2) * Math.sin(t) + r / 2 });
+                    }
+                    for (let t = 5 * Math.PI / 2; t >= 3 * Math.PI / 2; t -= 0.1) {
+                        pts.push({ x: (r / 2) * Math.cos(t), y: (r / 2) * Math.sin(t) - r / 2 });
+                    }
+
+                    pts.push({ ...pts[0] });
+                    return pts;
+                }
+            },
+            peace: {
+                name: 'Peace',
+                func: (size) => {
+                    const pts = [];
+                    const r = size * 1.5;
+                    // Outer circle
+                    for (let t = Math.PI / 2; t <= 5 * Math.PI / 2; t += 0.1) {
+                        pts.push({ x: r * Math.cos(t), y: r * Math.sin(t) });
+                    }
+                    // Top to center
+                    pts.push({ x: 0, y: r });
+                    pts.push({ x: 0, y: 0 });
+                    // Center to bottom-left
+                    pts.push({ x: r * Math.cos(225 * Math.PI / 180), y: r * Math.sin(225 * Math.PI / 180) });
+                    // Bottom-left to center
+                    pts.push({ x: 0, y: 0 });
+                    // Center to bottom-right
+                    pts.push({ x: r * Math.cos(315 * Math.PI / 180), y: r * Math.sin(315 * Math.PI / 180) });
+                    // Bottom-right to center
+                    pts.push({ x: 0, y: 0 });
+                    // Center to bottom
+                    pts.push({ x: 0, y: -r });
+                    // Bottom to center
+                    pts.push({ x: 0, y: 0 });
+                    // Center to top
+                    pts.push({ x: 0, y: r });
+                    pts.push({ ...pts[0] });
+                    return pts;
+                }
+            },
+            ankh: {
+                name: 'Ankh',
+                func: (size) => {
+                    const pts = [];
+                    const s = size * 1.5;
+                    const w = s * 0.15;
+                    // Loop part
+                    for (let t = -Math.PI / 2; t <= 3 * Math.PI / 2; t += 0.2) {
+                        pts.push({ x: (s * 0.3) * Math.cos(t), y: (s * 0.4) * Math.sin(t) + s * 0.5 });
+                    }
+                    // Vertical stem
+                    pts.push({ x: -w, y: s * 0.1 });
+                    pts.push({ x: -w, y: -s });
+                    pts.push({ x: w, y: -s });
+                    pts.push({ x: w, y: s * 0.1 });
+                    // Horizontal arms
+                    pts.push({ x: s * 0.6, y: s * 0.1 });
+                    pts.push({ x: s * 0.6, y: -w });
+                    pts.push({ x: -s * 0.6, y: -w });
+                    pts.push({ x: -s * 0.6, y: s * 0.1 });
+                    pts.push({ ...pts[0] });
+                    return pts;
+                }
+            },
+            trefoil: {
+                name: 'Trefoil Knot',
+                func: (size) => {
+                    const pts = [];
+                    const s = size * 0.8;
+                    for (let t = 0; t < Math.PI * 2; t += 0.05) {
+                        const x = (2 + Math.cos(3 * t)) * Math.cos(2 * t);
+                        const y = (2 + Math.cos(3 * t)) * Math.sin(2 * t);
+                        pts.push({ x: x * s, y: y * s });
+                    }
+                    pts.push({ ...pts[0] });
+                    return pts;
+                }
+            },
+            radiation: {
+                name: 'Radiation',
+                func: (size) => {
+                    const pts = [];
+                    const r = size * 1.5;
+                    const r0 = r * 0.22;
+                    // Center circle
+                    for (let t = 0; t <= Math.PI * 2.1; t += 0.2) {
+                        pts.push({ x: r0 * Math.cos(t), y: r0 * Math.sin(t) });
+                    }
+                    // Three vanes
+                    for (let i = 0; i < 3; i++) {
+                        const ang = i * Math.PI * 2 / 3 + Math.PI / 6;
+                        const rotate = (p) => ({
+                            x: p.x * Math.cos(ang) - p.y * Math.sin(ang),
+                            y: p.x * Math.sin(ang) + p.y * Math.cos(ang)
+                        });
+
+                        pts.push(rotate({ x: r0, y: 0 }));
+                        pts.push(rotate({ x: r, y: 0 }));
+                        for (let t = 0; t <= Math.PI / 3; t += 0.1) {
+                            pts.push(rotate({ x: r * Math.cos(t), y: r * Math.sin(t) }));
+                        }
+                        pts.push(rotate({ x: r0 * Math.cos(Math.PI / 3), y: r0 * Math.sin(Math.PI / 3) }));
+                        // Arc along r0 to the next vane's start position (roundabout)
+                        for (let t = Math.PI / 3; t <= Math.PI * 2 / 3; t += 0.1) {
+                            pts.push(rotate({ x: r0 * Math.cos(t), y: r0 * Math.sin(t) }));
+                        }
+                    }
+                    pts.push({ ...pts[0] });
+                    return pts;
+                }
             }
         };
 
