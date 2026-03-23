@@ -1181,7 +1181,7 @@
                     }
                     // 4. To bottom dot circumference (0, -r/2 - dr) and draw dot
                     pts.push({ x: 0, y: -r / 2 - dr });
-                    for (let t = 3 * Math.PI / 2; t <= 5.5 * Math.PI; t += 0.2) {
+                    for (let t = 3 * Math.PI / 2; t <= 3.5 * Math.PI; t += 0.2) {
                         pts.push({ x: dr * Math.cos(t), y: -r / 2 + dr * Math.sin(t) });
                     }
                     pts.push({ x: 0, y: -r / 2 - dr });
@@ -1371,6 +1371,7 @@
                 // Color: blue-to-gray by relative amplitude
                 const t = Math.min((Math.log(v.amp) - minAmpLog) / (maxAmpLog - minAmpLog), 1);
                 v.color = `rgb(${getColor(VECTOR_PALETTE, t).join(',')})`;
+                v.colorTrans = `rgb(${getColor(VECTOR_PALETTE, t).join(',')}, 0.75)`;
             });
 
             // Update range max
@@ -2092,7 +2093,7 @@
             let lastVisibleY = 0;
 
             for (let i = 0; i < Math.min(state.harmonics, fourier.length); i++) {
-                const { freq, amp, phase, color } = fourier[i];
+                const { freq, amp, phase, colorTrans } = fourier[i];
                 x += amp * Math.cos(freq * state.time + phase);
                 y += amp * Math.sin(freq * state.time + phase);
 
@@ -2101,7 +2102,7 @@
                 const isSelected = (state.selectedVector === i);
                 const circleColor = isSelected ? '#ffffff' : rc.colors.circles;
                 const vectorColor = isSelected ? '#ffffff' : (
-                    state.vectorColorByAmp ? color : rc.colors.vector
+                    state.vectorColorByAmp ? colorTrans : rc.colors.vector
                 );
 
                 if (state.showCircles) {
