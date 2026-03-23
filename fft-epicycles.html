@@ -1359,6 +1359,16 @@
             fourier.sort((a, b) => b.amp - a.amp);
             fourier = fourier.filter(v => v.amp > 1e-10);
 
+
+            const maxAmpLog = fourier.length > 0 ? Math.log(fourier[0].amp) : 0;
+            const minAmpLog = fourier.length > 0 ? Math.log(fourier[fourier.length - 1].amp) : 0;
+
+            fourier.forEach(v => {
+                // Color: blue-to-gray by relative amplitude
+                const t = Math.min((Math.log(v.amp) - minAmpLog) / (maxAmpLog - minAmpLog), 1);
+                v.color = `rgb(${getColor(VECTOR_PALETTE, t).join(',')})`;
+            });
+
             // Update range max
             const range = document.getElementById('harmonicsRange');
             range.value = 0.5;
@@ -1915,8 +1925,6 @@
         function updateVectorIcons() {
             if (!document.getElementById('vectorPopover').classList.contains('active')) return;
             if (visibleVectorItems.size === 0) return;
-            const maxAmpLog = fourier.length > 0 ? Math.log(fourier[0].amp) : 0;
-            const minAmpLog = fourier.length > 0 ? Math.log(fourier[fourier.length - 1].amp) : 0;
 
             visibleVectorItems.forEach(item => {
                 const i = parseInt(item.dataset.idx);
@@ -1932,9 +1940,6 @@
                 const cx = w / 2, cy = h / 2;
                 const radius = w * 0.4;
 
-                // Color: blue-to-gray by relative amplitude
-                const t = Math.min((Math.log(v.amp) - minAmpLog) / (maxAmpLog - minAmpLog), 1);
-                const color = `rgb(${getColor(VECTOR_PALETTE, t).join(',')})`;
 
                 // Draw circle outline
                 c.beginPath();
@@ -1949,7 +1954,7 @@
                 c.beginPath();
                 c.moveTo(cx, cy);
                 c.lineTo(ex, ey);
-                c.strokeStyle = color;
+                c.strokeStyle = v.color;
                 c.lineWidth = 2.5;
                 c.stroke();
 
@@ -1962,14 +1967,14 @@
                 c.lineTo(ex + headLen * Math.cos(a1), ey + headLen * Math.sin(a1));
                 c.moveTo(ex, ey);
                 c.lineTo(ex + headLen * Math.cos(a2), ey + headLen * Math.sin(a2));
-                c.strokeStyle = color;
+                c.strokeStyle = v.color;
                 c.lineWidth = 2;
                 c.stroke();
 
                 // Dot at center
                 c.beginPath();
                 c.arc(cx, cy, 2, 0, Math.PI * 2);
-                c.fillStyle = color;
+                c.fillStyle = v.color;
                 c.fill();
             });
         }
