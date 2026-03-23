@@ -351,8 +351,8 @@
                     <button id="svgBtnFile" class="action-btn" style="margin-top:0">Select Image/SVG</button>
                     <input type="file" id="svgInput" accept=".svg, image/*" style="display:none">
 
-                    <span class="label" style="margin-top:10px">Max Points (<span id="maxPtsVal" class="val-text">65536</span>)</span>
-                    <input type="range" id="maxPtsRange" min="8" max="16" step="1" value="16">
+                    <span class="label" style="margin-top:10px">Target Points (<span id="maxPtsVal" class="val-text">4096</span>)</span>
+                    <input type="range" id="maxPtsRange" min="8" max="16" step="1" value="12">
 
                     <span class="label">Canny Thresh (%): <span id="cannyVal" class="val-text">15</span></span>
                     <input type="range" id="cannyRange" min="1" max="50" step="1" value="15">
@@ -1338,7 +1338,7 @@
         let fourier = generatePreset('square');
         const rc = new RenderingContext(canvas, ctx);
         const imgConfig = {
-            maxPointsExp: 16,
+            maxPointsExp: 12,
             cannyThresh: 0.15,
             smoothPasses: 2,
             smoothWindow: 2,
@@ -1609,7 +1609,7 @@
                 weights.push(totalWeight);
             }
 
-            const targetCount = Math.max(256, Math.pow(2, Math.round(Math.log2(path.length))));
+            const targetCount = Math.pow(2, imgConfig.maxPointsExp);
             const resampled = [];
 
             for (let i = 0; i < targetCount; i++) {
