@@ -441,6 +441,13 @@
                     <input type="range" id="harmonicsRange" min="0" max="1" step="0.001">
                 </div>
 
+                <!-- Progress -->
+                <button class="icon-btn" id="progressBtn" title="Progress">⏳</button>
+                <div class="popover" id="progressPopover">
+                    <span class="label">Progress: <span id="progressVal" class="val-text">0%</span></span>
+                    <input type="range" id="progressRange" min="0" max="6.283" step="0.001">
+                </div>
+
                 <input type="checkbox" id="followCheck" style="display:none">
             </div>
 
@@ -1409,6 +1416,11 @@
             range.value = 0.5;
             document.getElementById('harmonicsVal').innerText = state.harmonics;
 
+            // Update progress range
+            const progressRange = document.getElementById('progressRange');
+            progressRange.value = 0;
+            updateProgressText(0);
+
             state.time = 0;
             state.tracedPath = [];
 
@@ -1714,6 +1726,16 @@
             if (document.getElementById('vectorPopover').classList.contains('active')) buildVectorGrid();
         }
 
+        function updateProgressFromSlider() {
+            const t = parseFloat(document.getElementById('progressRange').value);
+            state.time = t;
+            updateProgressText(t);
+        }
+
+        function updateProgressText(t) {
+            document.getElementById('progressVal').innerText = (t / 6.2831852 * 100).toFixed(4) + '%';
+        }
+
         function setup() {
             window.addEventListener('resize', () => rc.resize());
             rc.resize();
@@ -1725,8 +1747,8 @@
             });
 
             // Popovers logic
-            const buttons = ['speedBtn', 'harmonicsBtn', 'presetsBtn', 'textBtnIcon', 'vectorListBtn', 'svgBtnIcon'];
-            const popovers = ['speedPopover', 'harmonicsPopover', 'presetsPopover', 'textPopover', 'vectorPopover', 'svgPopover'];
+            const buttons = ['speedBtn', 'harmonicsBtn', 'progressBtn', 'presetsBtn', 'textBtnIcon', 'vectorListBtn', 'svgBtnIcon'];
+            const popovers = ['speedPopover', 'harmonicsPopover', 'progressPopover', 'presetsPopover', 'textPopover', 'vectorPopover', 'svgPopover'];
 
             buttons.forEach((id, i) => {
                 document.getElementById(id).addEventListener('click', (e) => {
@@ -1753,6 +1775,7 @@
             // Setup UI listeners
             document.getElementById('speedRange').addEventListener('input', updateSpeedFromSlider);
             document.getElementById('harmonicsRange').addEventListener('input', updateHarmonicsFromSlider);
+            document.getElementById('progressRange').addEventListener('input', updateProgressFromSlider);
 
             const initialT = 0.5;
             document.getElementById('speedRange').value = initialT;
@@ -2210,6 +2233,9 @@
             updateVectorIcons();
         }
 
+        const progressRange = document.getElementById('progressRange');
+        const progressVal = document.getElementById('progressVal');
+
         function draw() {
             rc.clear();
             rc.drawGrid();
@@ -2341,6 +2367,12 @@
                 minictx.lineWidth = 1;
                 minictx.strokeRect(tlm.x, tlm.y, brm.x - tlm.x, brm.y - tlm.y);
             }
+
+            // Update progress range
+            let progressValue = state.time % (Math.PI * 2);
+            progressRange.value = progressValue;
+            updateProgressText(progressValue);
+
 
             requestAnimationFrame(() => {
                 update();
