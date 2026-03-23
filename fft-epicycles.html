@@ -390,6 +390,9 @@
                 <!-- Minimap -->
                 <button class="icon-btn active" id="mapToggleBtn" title="Toggle Minimap">🗺️</button>
 
+                <!-- Rainbow Vectors -->
+                <button class="icon-btn" id="rainbowToggleBtn" title="Toggle Rainbow Vectors">🌈</button>
+
                 <!-- Follow -->
                 <button class="icon-btn" id="followBtn" title="Camera Follow (Smooth)">🎯</button>
 
@@ -1322,6 +1325,7 @@
             snapFollow: false,
             showCircles: true,
             showVectors: true,
+            vectorColorByAmp: false,
             showPath: true,
             showMap: true,
             selectedVector: -1, // index into sorted fourier array, -1 = none
@@ -1675,6 +1679,12 @@
             vectorsToggleBtn.addEventListener('click', () => {
                 state.showVectors = !state.showVectors;
                 vectorsToggleBtn.classList.toggle('active', state.showVectors);
+            });
+
+            const rainbowToggleBtn = document.getElementById('rainbowToggleBtn');
+            rainbowToggleBtn.addEventListener('click', () => {
+                state.vectorColorByAmp = !state.vectorColorByAmp;
+                rainbowToggleBtn.classList.toggle('active', state.vectorColorByAmp);
             });
 
             const pathToggleBtn = document.getElementById('pathToggleBtn');
@@ -2082,7 +2092,7 @@
             let lastVisibleY = 0;
 
             for (let i = 0; i < Math.min(state.harmonics, fourier.length); i++) {
-                const { freq, amp, phase } = fourier[i];
+                const { freq, amp, phase, color } = fourier[i];
                 x += amp * Math.cos(freq * state.time + phase);
                 y += amp * Math.sin(freq * state.time + phase);
 
@@ -2090,7 +2100,9 @@
 
                 const isSelected = (state.selectedVector === i);
                 const circleColor = isSelected ? '#ffffff' : rc.colors.circles;
-                const vectorColor = isSelected ? '#ffffff' : rc.colors.vector;
+                const vectorColor = isSelected ? '#ffffff' : (
+                    state.vectorColorByAmp ? color : rc.colors.vector
+                );
 
                 if (state.showCircles) {
                     const prevX = x - amp * Math.cos(freq * state.time + phase);
