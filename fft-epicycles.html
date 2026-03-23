@@ -1476,7 +1476,7 @@
 
             if (points.length === 0) return [];
 
-            const MAX_POINTS = 4096;
+            const MAX_POINTS = 65536;
             if (points.length > MAX_POINTS) {
                 const sampled = [];
                 const step = points.length / MAX_POINTS;
@@ -1520,7 +1520,91 @@
                 }
             }
 
-            return resamplePath(path);
+            if (path.length < 2) return [];
+
+            // Smooth path to remove pixel staircasing
+            const SMOOTH_PASSES = 2;
+            const WINDOW = 2;
+            for (let pass = 0; pass < SMOOTH_PASSES; pass++) {
+                const temp = new Array(path.length);
+                for (let i = 0; i < path.length; i++) {
+                    let sx = 0, sy = 0, count = 0;
+                    for (let j = -WINDOW; j <= WINDOW; j++) {
+                        let idx = i + j;
+                        if (idx < 0) idx = 0;
+                        if (idx >= path.length) idx = path.length - 1;
+                        sx += path[idx].x;
+                        sy += path[idx].y;
+                        count++;
+                    }
+                    temp[i] = { x: sx / count, y: sy / count };
+                }
+                for (let i = 0; i < path.length; i++) {
+                    path[i] = temp[i];
+                }
+            }
+
+            const curvatures = new Float32Array(path.length);
+            const STEP = Math.max(1, Math.min(3, Math.floor(path.length / 10)));
+            for (let i = 1; i < path.length - 1; i++) {
+                const prev = Math.max(0, i - STEP);
+                const next = Math.min(path.length - 1, i + STEP);
+                const dx1 = path[i].x - path[prev].x;
+                const dy1 = path[i].y - path[prev].y;
+                const dx2 = path[next].x - path[i].x;
+                const dy2 = path[next].y - path[i].y;
+                const d1 = Math.sqrt(dx1 * dx1 + dy1 * dy1);
+                const d2 = Math.sqrt(dx2 * dx2 + dy2 * dy2);
+                if (d1 === 0 || d2 === 0) continue;
+                let a1 = Math.atan2(dy1, dx1);
+                let a2 = Math.atan2(dy2, dx2);
+                let diff = Math.abs(a2 - a1);
+                while (diff > Math.PI) diff -= 2 * Math.PI;
+                curvatures[i] = Math.abs(diff);
+            }
+            if (path.length > 2) {
+                curvatures[0] = curvatures[1];
+                curvatures[path.length - 1] = curvatures[path.length - 2];
+            }
+
+            let totalWeight = 0;
+            const weights = [0];
+            for (let i = 1; i < path.length; i++) {
+                const dx = path[i].x - path[i - 1].x;
+                const dy = path[i].y - path[i - 1].y;
+                const d = Math.sqrt(dx * dx + dy * dy);
+                const curv = Math.max(curvatures[i - 1], curvatures[i]);
+                // adaptive weight based on distance and curvature
+                const weight = d * (1 + 10.0 * curv);
+                totalWeight += weight;
+                weights.push(totalWeight);
+            }
+
+            const targetCount = Math.max(256, Math.pow(2, Math.round(Math.log2(path.length))));
+            const resampled = [];
+
+            for (let i = 0; i < targetCount; i++) {
+                const targetW = (i / targetCount) * totalWeight;
+
+                let low = 0, high = weights.length - 1;
+                while (low < high) {
+                    let mid = (low + high) >> 1;
+                    if (weights[mid] < targetW) low = mid + 1;
+                    else high = mid;
+                }
+                const index = Math.max(1, low);
+
+                const p1 = path[index - 1];
+                const p2 = path[index];
+                const wDiff = weights[index] - weights[index - 1];
+                const t = wDiff > 1e-6 ? (targetW - weights[index - 1]) / wDiff : 0;
+                resampled.push({
+                    re: p1.x + (p2.x - p1.x) * t,
+                    im: p1.y + (p2.y - p1.y) * t
+                });
+            }
+
+            return resampled;
         }
 
         function sampleSVGPath(d, targetCount = 1024) {
