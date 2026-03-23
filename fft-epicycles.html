@@ -347,11 +347,12 @@
                 <button class="icon-btn" id="svgBtnIcon" title="Import/Settings for Image">🖼️</button>
                 <div class="popover" id="svgPopover" style="min-width: 200px;">
                     <span class="label">Image Processing Settings</span>
-                    
+
                     <button id="svgBtnFile" class="action-btn" style="margin-top:0">Select Image/SVG</button>
                     <input type="file" id="svgInput" accept=".svg, image/*" style="display:none">
 
-                    <span class="label" style="margin-top:10px">Target Points (<span id="maxPtsVal" class="val-text">4096</span>)</span>
+                    <span class="label" style="margin-top:10px">Target Points (<span id="maxPtsVal"
+                            class="val-text">4096</span>)</span>
                     <input type="range" id="maxPtsRange" min="8" max="16" step="1" value="12">
 
                     <span class="label">Canny Thresh (%): <span id="cannyVal" class="val-text">15</span></span>
@@ -363,8 +364,8 @@
                     <span class="label">Smooth Window: <span id="smoothWVal" class="val-text">2</span></span>
                     <input type="range" id="smoothWRange" min="2" max="5" step="1" value="2">
 
-                    <span class="label">Curvature Wt: <span id="curvWVal" class="val-text">10</span></span>
-                    <input type="range" id="curvWRange" min="0" max="50" step="1" value="10">
+                    <span class="label">Curvature Wt: <span id="curvWVal" class="val-text">5</span></span>
+                    <input type="range" id="curvWRange" min="0" max="10" step="1" value="5">
                 </div>
 
                 <!-- Text -->
