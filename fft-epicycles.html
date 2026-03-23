@@ -344,8 +344,28 @@
                 <button class="icon-btn" id="penBtn" title="Draw Path">✏️</button>
 
                 <!-- SVG / Image -->
-                <button class="icon-btn" id="svgBtn" title="Import SVG or Image">🖼️</button>
-                <input type="file" id="svgInput" accept=".svg, image/*" style="display:none">
+                <button class="icon-btn" id="svgBtnIcon" title="Import/Settings for Image">🖼️</button>
+                <div class="popover" id="svgPopover" style="min-width: 200px;">
+                    <span class="label">Image Processing Settings</span>
+                    
+                    <button id="svgBtnFile" class="action-btn" style="margin-top:0">Select Image/SVG</button>
+                    <input type="file" id="svgInput" accept=".svg, image/*" style="display:none">
+
+                    <span class="label" style="margin-top:10px">Max Points (<span id="maxPtsVal" class="val-text">65536</span>)</span>
+                    <input type="range" id="maxPtsRange" min="8" max="16" step="1" value="16">
+
+                    <span class="label">Canny Thresh (%): <span id="cannyVal" class="val-text">15</span></span>
+                    <input type="range" id="cannyRange" min="1" max="50" step="1" value="15">
+
+                    <span class="label">Smooth Passes: <span id="smoothPVal" class="val-text">2</span></span>
+                    <input type="range" id="smoothPRange" min="0" max="4" step="1" value="2">
+
+                    <span class="label">Smooth Window: <span id="smoothWVal" class="val-text">2</span></span>
+                    <input type="range" id="smoothWRange" min="2" max="5" step="1" value="2">
+
+                    <span class="label">Curvature Wt: <span id="curvWVal" class="val-text">10</span></span>
+                    <input type="range" id="curvWRange" min="0" max="50" step="1" value="10">
+                </div>
 
                 <!-- Text -->
                 <button class="icon-btn" id="textBtnIcon" title="Text to Path">🔤</button>
@@ -1317,6 +1337,15 @@
 
         let fourier = generatePreset('square');
         const rc = new RenderingContext(canvas, ctx);
+        const imgConfig = {
+            maxPointsExp: 16,
+            cannyThresh: 0.15,
+            smoothPasses: 2,
+            smoothWindow: 2,
+            curvWeight: 10.0
+        };
+        let currentImage = null;
+
         const state = {
             mode: 'animate', // 'animate' or 'draw'
             speed: 0.0002,
@@ -1465,7 +1494,7 @@
             }
 
             let points = [];
-            const threshold = maxNms * 0.15;
+            const threshold = maxNms * imgConfig.cannyThresh;
             for (let y = 1; y < h - 1; y++) {
                 for (let x = 1; x < w - 1; x++) {
                     if (nms[y * w + x] > threshold) {
@@ -1476,7 +1505,7 @@
 
             if (points.length === 0) return [];
 
-            const MAX_POINTS = 65536;
+            const MAX_POINTS = Math.pow(2, imgConfig.maxPointsExp);
             if (points.length > MAX_POINTS) {
                 const sampled = [];
                 const step = points.length / MAX_POINTS;
@@ -1523,8 +1552,8 @@
             if (path.length < 2) return [];
 
             // Smooth path to remove pixel staircasing
-            const SMOOTH_PASSES = 2;
-            const WINDOW = 2;
+            const SMOOTH_PASSES = imgConfig.smoothPasses;
+            const WINDOW = imgConfig.smoothWindow;
             for (let pass = 0; pass < SMOOTH_PASSES; pass++) {
                 const temp = new Array(path.length);
                 for (let i = 0; i < path.length; i++) {
@@ -1575,7 +1604,7 @@
                 const d = Math.sqrt(dx * dx + dy * dy);
                 const curv = Math.max(curvatures[i - 1], curvatures[i]);
                 // adaptive weight based on distance and curvature
-                const weight = d * (1 + 10.0 * curv);
+                const weight = d * (1 + imgConfig.curvWeight * curv);
                 totalWeight += weight;
                 weights.push(totalWeight);
             }
@@ -1695,8 +1724,8 @@
             });
 
             // Popovers logic
-            const buttons = ['speedBtn', 'harmonicsBtn', 'presetsBtn', 'textBtnIcon', 'vectorListBtn'];
-            const popovers = ['speedPopover', 'harmonicsPopover', 'presetsPopover', 'textPopover', 'vectorPopover'];
+            const buttons = ['speedBtn', 'harmonicsBtn', 'presetsBtn', 'textBtnIcon', 'vectorListBtn', 'svgBtnIcon'];
+            const popovers = ['speedPopover', 'harmonicsPopover', 'presetsPopover', 'textPopover', 'vectorPopover', 'svgPopover'];
 
             buttons.forEach((id, i) => {
                 document.getElementById(id).addEventListener('click', (e) => {
@@ -1810,9 +1839,36 @@
             });
 
             // SVG or Image Upload
-            document.getElementById('svgBtn').addEventListener('click', () => {
+            document.getElementById('svgBtnFile').addEventListener('click', () => {
                 document.getElementById('svgInput').click();
             });
+
+            const reprocessImage = () => {
+                if (currentImage) {
+                    const path = processImageToPath(currentImage);
+                    if (path && path.length >= 2) {
+                        updateFFT(path);
+                    }
+                }
+            };
+
+            const bindSlider = (id, valId, configKey, displayFormat, transformVal) => {
+                const el = document.getElementById(id);
+                const valEl = document.getElementById(valId);
+                el.addEventListener('input', (e) => {
+                    const v = parseFloat(e.target.value);
+                    imgConfig[configKey] = transformVal ? transformVal(v) : v;
+                    valEl.innerText = displayFormat ? displayFormat(v) : v;
+                    reprocessImage();
+                });
+            };
+
+            bindSlider('maxPtsRange', 'maxPtsVal', 'maxPointsExp', v => Math.pow(2, v));
+            bindSlider('cannyRange', 'cannyVal', 'cannyThresh', v => v, v => v / 100);
+            bindSlider('smoothPRange', 'smoothPVal', 'smoothPasses');
+            bindSlider('smoothWRange', 'smoothWVal', 'smoothWindow');
+            bindSlider('curvWRange', 'curvWVal', 'curvWeight');
+
             document.getElementById('svgInput').addEventListener('change', (e) => {
                 const file = e.target.files[0];
                 if (!file) return;
@@ -1822,10 +1878,9 @@
                     reader.onload = (event) => {
                         const img = new Image();
                         img.onload = () => {
-                            const path = processImageToPath(img);
-                            if (path && path.length >= 2) {
-                                updateFFT(path);
-                            }
+                            currentImage = img;
+                            reprocessImage();
+                            document.getElementById('svgPopover').classList.remove('active');
                         };
                         img.src = event.target.result;
                     };
@@ -1841,7 +1896,9 @@
                     if (paths.length > 0) {
                         const d = paths.map(p => p.getAttribute('d')).join(' ');
                         const sample = sampleSVGPath(d);
+                        currentImage = null; // Unset image reference for SVG
                         updateFFT(sample);
+                        document.getElementById('svgPopover').classList.remove('active');
                     }
                 };
                 reader.readAsText(file);
