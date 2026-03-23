@@ -1573,7 +1573,7 @@
                 }
             }
 
-            const curvatures = new Float32Array(path.length);
+            const rawCurvatures = new Float32Array(path.length);
             const STEP = Math.max(1, Math.min(3, Math.floor(path.length / 10)));
             for (let i = 1; i < path.length - 1; i++) {
                 const prev = Math.max(0, i - STEP);
@@ -1589,11 +1589,24 @@
                 let a2 = Math.atan2(dy2, dx2);
                 let diff = Math.abs(a2 - a1);
                 while (diff > Math.PI) diff -= 2 * Math.PI;
-                curvatures[i] = Math.abs(diff);
+                rawCurvatures[i] = Math.abs(diff);
             }
             if (path.length > 2) {
-                curvatures[0] = curvatures[1];
-                curvatures[path.length - 1] = curvatures[path.length - 2];
+                rawCurvatures[0] = rawCurvatures[1];
+                rawCurvatures[path.length - 1] = rawCurvatures[path.length - 2];
+            }
+
+            // Smooth curvatures slightly so point density ramps up and down gracefully around corners
+            const curvatures = new Float32Array(path.length);
+            for (let i = 0; i < path.length; i++) {
+                let sum = 0;
+                let count = 0;
+                for (let j = -3; j <= 3; j++) {
+                    let idx = Math.max(0, Math.min(path.length - 1, i + j));
+                    sum += rawCurvatures[idx];
+                    count++;
+                }
+                curvatures[i] = sum / count;
             }
 
             let totalWeight = 0;
@@ -1603,8 +1616,11 @@
                 const dy = path[i].y - path[i - 1].y;
                 const d = Math.sqrt(dx * dx + dy * dy);
                 const curv = Math.max(curvatures[i - 1], curvatures[i]);
-                // adaptive weight based on distance and curvature
-                const weight = d * (1 + imgConfig.curvWeight * curv);
+                
+                // Exponential weight for user sensitivity slider (e.g. 10 -> 100x multiplier)
+                const curvMultiplier = imgConfig.curvWeight * imgConfig.curvWeight;
+                const weight = d * (1.0 + curvMultiplier * curv);
+                
                 totalWeight += weight;
                 weights.push(totalWeight);
             }
