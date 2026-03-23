@@ -414,6 +414,9 @@
                 <!-- Rainbow Vectors -->
                 <button class="icon-btn" id="rainbowToggleBtn" title="Toggle Rainbow Vectors">🌈</button>
 
+                <!-- Path Fading -->
+                <button class="icon-btn active" id="pathFadingBtn" title="Toggle Path Fading">📉</button>
+
                 <!-- Follow -->
                 <button class="icon-btn" id="followBtn" title="Camera Follow (Smooth)">🎯</button>
 
@@ -442,7 +445,7 @@
                 </div>
 
                 <!-- Progress -->
-                <button class="icon-btn" id="progressBtn" title="Progress">⏳</button>
+                <button class="icon-btn" id="progressBtn" title="Progress">🔁</button>
                 <div class="popover" id="progressPopover">
                     <span class="label">Progress: <span id="progressVal" class="val-text">0%</span></span>
                     <input type="range" id="progressRange" min="0" max="6.283" step="0.001">
@@ -1366,6 +1369,7 @@
             showPath: true,
             showMap: true,
             selectedVector: -1, // index into sorted fourier array, -1 = none
+            pathFading: true,
             time: 0,
             tracedPath: [],
             penPoints: [],
@@ -1823,6 +1827,12 @@
             rainbowToggleBtn.addEventListener('click', () => {
                 state.vectorColorByAmp = !state.vectorColorByAmp;
                 rainbowToggleBtn.classList.toggle('active', state.vectorColorByAmp);
+            });
+
+            const pathFadingBtn = document.getElementById('pathFadingBtn');
+            pathFadingBtn.addEventListener('click', () => {
+                state.pathFading = !state.pathFading;
+                pathFadingBtn.classList.toggle('active', state.pathFading);
             });
 
             const pathToggleBtn = document.getElementById('pathToggleBtn');
@@ -2308,7 +2318,11 @@
             // 3. Draw Fitted Path (Fade-out over one period)
             const maxLen = Math.ceil((Math.PI * 2) / state.speed);
             if (state.tracedPath.length > 1) {
-                rc.fadingPath(state.tracedPath, rc.colors.secondary, 2, maxLen);
+                if (state.pathFading) {
+                    rc.fadingPath(state.tracedPath, rc.colors.secondary, 2, maxLen);
+                } else {
+                    rc.fixedPath(state.tracedPath, rc.colors.secondary, 2);
+                }
             }
 
             // 4. Current Point
