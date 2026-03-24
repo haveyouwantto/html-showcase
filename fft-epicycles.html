@@ -1074,6 +1074,30 @@
                     return pts;
                 }
             },
+            star: {
+                name: 'Star',
+                func: (size) => {
+                    const pts = [];
+                    // Top-Right arc
+                    for (let t = Math.PI; t <= Math.PI * 1.5; t += 0.05) {
+                        pts.push({ x: size + size * Math.cos(t), y: size + size * Math.sin(t) });
+                    }
+                    // Bottom-Right arc
+                    for (let t = Math.PI / 2; t <= Math.PI; t += 0.05) {
+                        pts.push({ x: size + size * Math.cos(t), y: -size + size * Math.sin(t) });
+                    }
+                    // Bottom-Left arc
+                    for (let t = 0; t <= Math.PI / 2; t += 0.05) {
+                        pts.push({ x: -size + size * Math.cos(t), y: -size + size * Math.sin(t) });
+                    }
+                    // Top-Left arc
+                    for (let t = Math.PI * 1.5; t <= Math.PI * 2.0; t += 0.05) {
+                        pts.push({ x: -size + size * Math.cos(t), y: size + size * Math.sin(t) });
+                    }
+                    pts.push({ ...pts[0] });
+                    return pts;
+                }
+            },
             circle: {
                 name: 'Circle',
                 func: (size) => {
