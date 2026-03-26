@@ -2399,11 +2399,26 @@
 
                 // Draw original path in minimap
                 minictx.beginPath();
+
+                // Auto-simplify path
+                let accumulatedDistance = 0;
+                let lastPoint = null;
                 for (let i = 0; i < pathData.length; i++) {
                     const p = pathData[i];
                     const pts = toMapCoords(p.re, p.im);
-                    if (i === 0) minictx.moveTo(pts.x, pts.y);
-                    else minictx.lineTo(pts.x, pts.y);
+                    if (i === 0) {
+                        minictx.moveTo(pts.x, pts.y);
+                        lastPoint = pts;
+                    } else {
+                        const dx = pts.x - lastPoint.x;
+                        const dy = pts.y - lastPoint.y;
+                        accumulatedDistance += dx * dx + dy * dy;
+                        if (accumulatedDistance > 1) {
+                            minictx.lineTo(pts.x, pts.y);
+                            lastPoint = pts;
+                            accumulatedDistance = 0;
+                        }
+                    }
                 }
                 minictx.closePath();
                 minictx.strokeStyle = rc.colors.path;
