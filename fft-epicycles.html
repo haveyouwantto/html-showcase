@@ -344,8 +344,29 @@
                 <button class="icon-btn" id="penBtn" title="Draw Path">✏️</button>
 
                 <!-- SVG / Image -->
-                <button class="icon-btn" id="svgBtn" title="Import SVG or Image">🖼️</button>
-                <input type="file" id="svgInput" accept=".svg, image/*" style="display:none">
+                <button class="icon-btn" id="svgBtnIcon" title="Import/Settings for Image">🖼️</button>
+                <div class="popover" id="svgPopover" style="min-width: 200px;">
+                    <span class="label">Image Processing Settings</span>
+
+                    <button id="svgBtnFile" class="action-btn" style="margin-top:0">Select Image/SVG</button>
+                    <input type="file" id="svgInput" accept=".svg, image/*" style="display:none">
+
+                    <span class="label" style="margin-top:10px">Target Points (<span id="maxPtsVal"
+                            class="val-text">4096</span>)</span>
+                    <input type="range" id="maxPtsRange" min="8" max="16" step="1" value="12">
+
+                    <span class="label">Canny Thresh (%): <span id="cannyVal" class="val-text">15</span></span>
+                    <input type="range" id="cannyRange" min="1" max="50" step="1" value="15">
+
+                    <span class="label">Smooth Passes: <span id="smoothPVal" class="val-text">2</span></span>
+                    <input type="range" id="smoothPRange" min="0" max="4" step="1" value="2">
+
+                    <span class="label">Smooth Window: <span id="smoothWVal" class="val-text">2</span></span>
+                    <input type="range" id="smoothWRange" min="2" max="5" step="1" value="2">
+
+                    <span class="label">Curvature Wt: <span id="curvWVal" class="val-text">5</span></span>
+                    <input type="range" id="curvWRange" min="0" max="10" step="1" value="5">
+                </div>
 
                 <!-- Text -->
                 <button class="icon-btn" id="textBtnIcon" title="Text to Path">🔤</button>
@@ -390,6 +411,12 @@
                 <!-- Minimap -->
                 <button class="icon-btn active" id="mapToggleBtn" title="Toggle Minimap">🗺️</button>
 
+                <!-- Rainbow Vectors -->
+                <button class="icon-btn" id="rainbowToggleBtn" title="Toggle Rainbow Vectors">🌈</button>
+
+                <!-- Path Fading -->
+                <button class="icon-btn active" id="pathFadingBtn" title="Toggle Path Fading">📉</button>
+
                 <!-- Follow -->
                 <button class="icon-btn" id="followBtn" title="Camera Follow (Smooth)">🎯</button>
 
@@ -415,6 +442,13 @@
                 <div class="popover" id="harmonicsPopover">
                     <span class="label">Harmonics: <span id="harmonicsVal" class="val-text">128</span></span>
                     <input type="range" id="harmonicsRange" min="0" max="1" step="0.001">
+                </div>
+
+                <!-- Progress -->
+                <button class="icon-btn" id="progressBtn" title="Progress">🔁</button>
+                <div class="popover" id="progressPopover">
+                    <span class="label">Progress: <span id="progressVal" class="val-text">0%</span></span>
+                    <input type="range" id="progressRange" min="0" max="6.283" step="0.001">
                 </div>
 
                 <input type="checkbox" id="followCheck" style="display:none">
@@ -558,7 +592,7 @@
                     const mouseW = this.toWorld(e.clientX, e.clientY);
 
                     this.targetZoom *= factor;
-                    this.targetZoom = Math.min(Math.max(this.targetZoom, 0.1), 1e5);
+                    this.targetZoom = Math.min(Math.max(this.targetZoom, 0.1), 1e10);
 
                     // After zooming, we adjust target position to keep point under mouse stationary
                     const s_new = this.scale * this.targetZoom;
@@ -622,7 +656,7 @@
                             const factor = currentDistance / this.initialPinchDistance;
 
                             this.targetZoom = this.initialPinchZoom * factor;
-                            this.targetZoom = Math.min(Math.max(this.targetZoom, 0.1), 1e5);
+                            this.targetZoom = Math.min(Math.max(this.targetZoom, 0.1), 1e10);
 
                             const centerX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
                             const centerY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
@@ -1061,6 +1095,30 @@
                     return pts;
                 }
             },
+            star: {
+                name: 'Star',
+                func: (size) => {
+                    const pts = [];
+                    // Top-Right arc
+                    for (let t = Math.PI; t <= Math.PI * 1.5; t += 0.05) {
+                        pts.push({ x: size + size * Math.cos(t), y: size + size * Math.sin(t) });
+                    }
+                    // Bottom-Right arc
+                    for (let t = Math.PI / 2; t <= Math.PI; t += 0.05) {
+                        pts.push({ x: size + size * Math.cos(t), y: -size + size * Math.sin(t) });
+                    }
+                    // Bottom-Left arc
+                    for (let t = 0; t <= Math.PI / 2; t += 0.05) {
+                        pts.push({ x: -size + size * Math.cos(t), y: -size + size * Math.sin(t) });
+                    }
+                    // Top-Left arc
+                    for (let t = Math.PI * 1.5; t <= Math.PI * 2.0; t += 0.05) {
+                        pts.push({ x: -size + size * Math.cos(t), y: size + size * Math.sin(t) });
+                    }
+                    pts.push({ ...pts[0] });
+                    return pts;
+                }
+            },
             circle: {
                 name: 'Circle',
                 func: (size) => {
@@ -1199,7 +1257,7 @@
                     }
                     // 4. To bottom dot circumference (0, -r/2 - dr) and draw dot
                     pts.push({ x: 0, y: -r / 2 - dr });
-                    for (let t = 3 * Math.PI / 2; t <= 5.5 * Math.PI; t += 0.2) {
+                    for (let t = 3 * Math.PI / 2; t <= 3.5 * Math.PI; t += 0.2) {
                         pts.push({ x: dr * Math.cos(t), y: -r / 2 + dr * Math.sin(t) });
                     }
                     pts.push({ x: 0, y: -r / 2 - dr });
@@ -1335,6 +1393,15 @@
 
         let fourier = generatePreset('square');
         const rc = new RenderingContext(canvas, ctx);
+        const imgConfig = {
+            maxPointsExp: 12,
+            cannyThresh: 0.15,
+            smoothPasses: 2,
+            smoothWindow: 2,
+            curvWeight: 10.0
+        };
+        let currentImage = null;
+
         const state = {
             mode: 'animate', // 'animate' or 'draw'
             speed: 0.0002,
@@ -1343,9 +1410,11 @@
             snapFollow: false,
             showCircles: true,
             showVectors: true,
+            vectorColorByAmp: false,
             showPath: true,
             showMap: true,
             selectedVector: -1, // index into sorted fourier array, -1 = none
+            pathFading: true,
             time: 0,
             tracedPath: [],
             penPoints: [],
@@ -1380,10 +1449,26 @@
             fourier.sort((a, b) => b.amp - a.amp);
             fourier = fourier.filter(v => v.amp > 1e-10);
 
+
+            const maxAmpLog = fourier.length > 0 ? Math.log(fourier[0].amp) : 0;
+            const minAmpLog = fourier.length > 0 ? Math.log(fourier[fourier.length - 1].amp) : 0;
+
+            fourier.forEach(v => {
+                // Color: blue-to-gray by relative amplitude
+                const t = Math.min((Math.log(v.amp) - minAmpLog) / (maxAmpLog - minAmpLog), 1);
+                v.color = `rgb(${getColor(VECTOR_PALETTE, t).join(',')})`;
+                v.colorTrans = `rgb(${getColor(VECTOR_PALETTE, t).join(',')}, 0.75)`;
+            });
+
             // Update range max
             const range = document.getElementById('harmonicsRange');
             range.value = 0.5;
             document.getElementById('harmonicsVal').innerText = state.harmonics;
+
+            // Update progress range
+            const progressRange = document.getElementById('progressRange');
+            progressRange.value = 0;
+            updateProgressText(0);
 
             state.time = 0;
             state.tracedPath = [];
@@ -1471,7 +1556,7 @@
             }
 
             let points = [];
-            const threshold = maxNms * 0.15;
+            const threshold = maxNms * imgConfig.cannyThresh;
             for (let y = 1; y < h - 1; y++) {
                 for (let x = 1; x < w - 1; x++) {
                     if (nms[y * w + x] > threshold) {
@@ -1482,7 +1567,7 @@
 
             if (points.length === 0) return [];
 
-            const MAX_POINTS = 4096;
+            const MAX_POINTS = Math.pow(2, imgConfig.maxPointsExp);
             if (points.length > MAX_POINTS) {
                 const sampled = [];
                 const step = points.length / MAX_POINTS;
@@ -1526,7 +1611,91 @@
                 }
             }
 
-            return resamplePath(path);
+            if (path.length < 2) return [];
+
+            // Smooth path to remove pixel staircasing
+            const SMOOTH_PASSES = imgConfig.smoothPasses;
+            const WINDOW = imgConfig.smoothWindow;
+            for (let pass = 0; pass < SMOOTH_PASSES; pass++) {
+                const temp = new Array(path.length);
+                for (let i = 0; i < path.length; i++) {
+                    let sx = 0, sy = 0, count = 0;
+                    for (let j = -WINDOW; j <= WINDOW; j++) {
+                        let idx = i + j;
+                        if (idx < 0) idx = 0;
+                        if (idx >= path.length) idx = path.length - 1;
+                        sx += path[idx].x;
+                        sy += path[idx].y;
+                        count++;
+                    }
+                    temp[i] = { x: sx / count, y: sy / count };
+                }
+                for (let i = 0; i < path.length; i++) {
+                    path[i] = temp[i];
+                }
+            }
+
+            const curvatures = new Float32Array(path.length);
+            const STEP = Math.max(1, Math.min(3, Math.floor(path.length / 10)));
+            for (let i = 1; i < path.length - 1; i++) {
+                const prev = Math.max(0, i - STEP);
+                const next = Math.min(path.length - 1, i + STEP);
+                const dx1 = path[i].x - path[prev].x;
+                const dy1 = path[i].y - path[prev].y;
+                const dx2 = path[next].x - path[i].x;
+                const dy2 = path[next].y - path[i].y;
+                const d1 = Math.sqrt(dx1 * dx1 + dy1 * dy1);
+                const d2 = Math.sqrt(dx2 * dx2 + dy2 * dy2);
+                if (d1 === 0 || d2 === 0) continue;
+                let a1 = Math.atan2(dy1, dx1);
+                let a2 = Math.atan2(dy2, dx2);
+                let diff = Math.abs(a2 - a1);
+                while (diff > Math.PI) diff -= 2 * Math.PI;
+                curvatures[i] = Math.abs(diff);
+            }
+            if (path.length > 2) {
+                curvatures[0] = curvatures[1];
+                curvatures[path.length - 1] = curvatures[path.length - 2];
+            }
+
+            let totalWeight = 0;
+            const weights = [0];
+            for (let i = 1; i < path.length; i++) {
+                const dx = path[i].x - path[i - 1].x;
+                const dy = path[i].y - path[i - 1].y;
+                const d = Math.sqrt(dx * dx + dy * dy);
+                const curv = Math.max(curvatures[i - 1], curvatures[i]);
+                // adaptive weight based on distance and curvature
+                const weight = d * (1 + imgConfig.curvWeight * curv);
+                totalWeight += weight;
+                weights.push(totalWeight);
+            }
+
+            const targetCount = Math.pow(2, imgConfig.maxPointsExp);
+            const resampled = [];
+
+            for (let i = 0; i < targetCount; i++) {
+                const targetW = (i / targetCount) * totalWeight;
+
+                let low = 0, high = weights.length - 1;
+                while (low < high) {
+                    let mid = (low + high) >> 1;
+                    if (weights[mid] < targetW) low = mid + 1;
+                    else high = mid;
+                }
+                const index = Math.max(1, low);
+
+                const p1 = path[index - 1];
+                const p2 = path[index];
+                const wDiff = weights[index] - weights[index - 1];
+                const t = wDiff > 1e-6 ? (targetW - weights[index - 1]) / wDiff : 0;
+                resampled.push({
+                    re: p1.x + (p2.x - p1.x) * t,
+                    im: p1.y + (p2.y - p1.y) * t
+                });
+            }
+
+            return resampled;
         }
 
         function sampleSVGPath(d, targetCount = 1024) {
@@ -1606,6 +1775,16 @@
             if (document.getElementById('vectorPopover').classList.contains('active')) buildVectorGrid();
         }
 
+        function updateProgressFromSlider() {
+            const t = parseFloat(document.getElementById('progressRange').value);
+            state.time = t;
+            updateProgressText(t);
+        }
+
+        function updateProgressText(t) {
+            document.getElementById('progressVal').innerText = (t / 6.2831852 * 100).toFixed(4) + '%';
+        }
+
         function setup() {
             window.addEventListener('resize', () => rc.resize());
             rc.resize();
@@ -1617,8 +1796,8 @@
             });
 
             // Popovers logic
-            const buttons = ['speedBtn', 'harmonicsBtn', 'presetsBtn', 'textBtnIcon', 'vectorListBtn'];
-            const popovers = ['speedPopover', 'harmonicsPopover', 'presetsPopover', 'textPopover', 'vectorPopover'];
+            const buttons = ['speedBtn', 'harmonicsBtn', 'progressBtn', 'presetsBtn', 'textBtnIcon', 'vectorListBtn', 'svgBtnIcon'];
+            const popovers = ['speedPopover', 'harmonicsPopover', 'progressPopover', 'presetsPopover', 'textPopover', 'vectorPopover', 'svgPopover'];
 
             buttons.forEach((id, i) => {
                 document.getElementById(id).addEventListener('click', (e) => {
@@ -1645,6 +1824,7 @@
             // Setup UI listeners
             document.getElementById('speedRange').addEventListener('input', updateSpeedFromSlider);
             document.getElementById('harmonicsRange').addEventListener('input', updateHarmonicsFromSlider);
+            document.getElementById('progressRange').addEventListener('input', updateProgressFromSlider);
 
             const initialT = 0.5;
             document.getElementById('speedRange').value = initialT;
@@ -1654,13 +1834,17 @@
             const followCheck = document.getElementById('followCheck');
             const snapFollowBtn = document.getElementById('snapFollowBtn');
             followBtn.addEventListener('click', () => {
-                state.follow = !state.follow;
+                updateFollowState(!state.follow);
+            });
+
+            function updateFollowState(follow) {
+                state.follow = follow;
                 followCheck.checked = state.follow;
                 followBtn.classList.toggle('active', state.follow);
                 // If follow is off, snap is irrelevant visually
                 if (!state.follow) snapFollowBtn.classList.remove('active');
                 else snapFollowBtn.classList.toggle('active', state.snapFollow);
-            });
+            }
 
             snapFollowBtn.addEventListener('click', () => {
                 state.snapFollow = !state.snapFollow;
@@ -1682,6 +1866,18 @@
             vectorsToggleBtn.addEventListener('click', () => {
                 state.showVectors = !state.showVectors;
                 vectorsToggleBtn.classList.toggle('active', state.showVectors);
+            });
+
+            const rainbowToggleBtn = document.getElementById('rainbowToggleBtn');
+            rainbowToggleBtn.addEventListener('click', () => {
+                state.vectorColorByAmp = !state.vectorColorByAmp;
+                rainbowToggleBtn.classList.toggle('active', state.vectorColorByAmp);
+            });
+
+            const pathFadingBtn = document.getElementById('pathFadingBtn');
+            pathFadingBtn.addEventListener('click', () => {
+                state.pathFading = !state.pathFading;
+                pathFadingBtn.classList.toggle('active', state.pathFading);
             });
 
             const pathToggleBtn = document.getElementById('pathToggleBtn');
@@ -1722,9 +1918,36 @@
             });
 
             // SVG or Image Upload
-            document.getElementById('svgBtn').addEventListener('click', () => {
+            document.getElementById('svgBtnFile').addEventListener('click', () => {
                 document.getElementById('svgInput').click();
             });
+
+            const reprocessImage = () => {
+                if (currentImage) {
+                    const path = processImageToPath(currentImage);
+                    if (path && path.length >= 2) {
+                        updateFFT(path);
+                    }
+                }
+            };
+
+            const bindSlider = (id, valId, configKey, displayFormat, transformVal) => {
+                const el = document.getElementById(id);
+                const valEl = document.getElementById(valId);
+                el.addEventListener('input', (e) => {
+                    const v = parseFloat(e.target.value);
+                    imgConfig[configKey] = transformVal ? transformVal(v) : v;
+                    valEl.innerText = displayFormat ? displayFormat(v) : v;
+                    reprocessImage();
+                });
+            };
+
+            bindSlider('maxPtsRange', 'maxPtsVal', 'maxPointsExp', v => Math.pow(2, v));
+            bindSlider('cannyRange', 'cannyVal', 'cannyThresh', v => v, v => v / 100);
+            bindSlider('smoothPRange', 'smoothPVal', 'smoothPasses');
+            bindSlider('smoothWRange', 'smoothWVal', 'smoothWindow');
+            bindSlider('curvWRange', 'curvWVal', 'curvWeight');
+
             document.getElementById('svgInput').addEventListener('change', (e) => {
                 const file = e.target.files[0];
                 if (!file) return;
@@ -1734,10 +1957,9 @@
                     reader.onload = (event) => {
                         const img = new Image();
                         img.onload = () => {
-                            const path = processImageToPath(img);
-                            if (path && path.length >= 2) {
-                                updateFFT(path);
-                            }
+                            currentImage = img;
+                            reprocessImage();
+                            document.getElementById('svgPopover').classList.remove('active');
                         };
                         img.src = event.target.result;
                     };
@@ -1753,7 +1975,9 @@
                     if (paths.length > 0) {
                         const d = paths.map(p => p.getAttribute('d')).join(' ');
                         const sample = sampleSVGPath(d);
+                        currentImage = null; // Unset image reference for SVG
                         updateFFT(sample);
+                        document.getElementById('svgPopover').classList.remove('active');
                     }
                 };
                 reader.readAsText(file);
@@ -1858,6 +2082,8 @@
 
             // Load initial preset
             updateFFT(generatePreset('square'));
+
+            return { updateFollowState };
         }
 
         const visibleVectorItems = new Set();
@@ -1906,6 +2132,22 @@
                     });
                 });
 
+                item.addEventListener('dblclick', (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    state.selectedVector = i;
+
+                    // Zoom and follow the vector
+                    rc.targetZoom = 1 / v.amp;
+                    updateFollowState(true);
+
+                    // Update selection visual
+                    grid.querySelectorAll('.vector-item').forEach((el, idx) => {
+                        el.classList.toggle('selected', idx === state.selectedVector);
+                    });
+
+                });
+
                 grid.appendChild(item);
                 vectorObserver.observe(item);
             }
@@ -1914,7 +2156,6 @@
         function updateVectorIcons() {
             if (!document.getElementById('vectorPopover').classList.contains('active')) return;
             if (visibleVectorItems.size === 0) return;
-            const maxAmp = fourier.length > 0 ? fourier[0].amp : 1;
 
             visibleVectorItems.forEach(item => {
                 const i = parseInt(item.dataset.idx);
@@ -1930,12 +2171,6 @@
                 const cx = w / 2, cy = h / 2;
                 const radius = w * 0.4;
 
-                // Color: blue-to-gray by relative amplitude
-                const t = Math.min(Math.log(v.amp / maxAmp * 1000 + 1) / Math.log(1001), 1);
-                const r = Math.round(76 * t + 100 * (1 - t));
-                const g = Math.round(201 * t + 100 * (1 - t));
-                const b = Math.round(240 * t + 100 * (1 - t));
-                const color = `rgb(${r},${g},${b})`;
 
                 // Draw circle outline
                 c.beginPath();
@@ -1950,7 +2185,7 @@
                 c.beginPath();
                 c.moveTo(cx, cy);
                 c.lineTo(ex, ey);
-                c.strokeStyle = color;
+                c.strokeStyle = v.color;
                 c.lineWidth = 2.5;
                 c.stroke();
 
@@ -1963,16 +2198,40 @@
                 c.lineTo(ex + headLen * Math.cos(a1), ey + headLen * Math.sin(a1));
                 c.moveTo(ex, ey);
                 c.lineTo(ex + headLen * Math.cos(a2), ey + headLen * Math.sin(a2));
-                c.strokeStyle = color;
+                c.strokeStyle = v.color;
                 c.lineWidth = 2;
                 c.stroke();
 
                 // Dot at center
                 c.beginPath();
                 c.arc(cx, cy, 2, 0, Math.PI * 2);
-                c.fillStyle = color;
+                c.fillStyle = v.color;
                 c.fill();
             });
+        }
+
+        const VECTOR_PALETTE = [[128, 128, 128], [76, 201, 240], [255, 255, 0], [247, 37, 133]];
+
+        function getColor(pal, t) {
+            // 边界处理
+            if (t <= 0) return pal[0];
+            if (t >= 1) return pal[pal.length - 1];
+
+            // 计算当前 t 落在哪个区间
+            // 比如 4 个颜色有 3 个区间，scaledT 会在 0-3 之间
+            const scaledT = t * (pal.length - 1);
+            const index = Math.floor(scaledT); // 左侧颜色索引
+            const weight = scaledT - index;     // 插值权重 (0-1)
+
+            const c1 = pal[index];
+            const c2 = pal[index + 1];
+
+            // 对 RGB 分量分别进行线性插值 (lerp)
+            return [
+                Math.round(c1[0] * (1 - weight) + c2[0] * weight),
+                Math.round(c1[1] * (1 - weight) + c2[1] * weight),
+                Math.round(c1[2] * (1 - weight) + c2[2] * weight)
+            ];
         }
 
         function update() {
@@ -2029,6 +2288,9 @@
             updateVectorIcons();
         }
 
+        const progressRange = document.getElementById('progressRange');
+        const progressVal = document.getElementById('progressVal');
+
         function draw() {
             rc.clear();
             rc.drawGrid();
@@ -2054,7 +2316,7 @@
             let lastVisibleY = 0;
 
             for (let i = 0; i < Math.min(state.harmonics, fourier.length); i++) {
-                const { freq, amp, phase } = fourier[i];
+                const { freq, amp, phase, colorTrans } = fourier[i];
                 x += amp * Math.cos(freq * state.time + phase);
                 y += amp * Math.sin(freq * state.time + phase);
 
@@ -2062,7 +2324,9 @@
 
                 const isSelected = (state.selectedVector === i);
                 const circleColor = isSelected ? '#ffffff' : rc.colors.circles;
-                const vectorColor = isSelected ? '#ffffff' : rc.colors.vector;
+                const vectorColor = isSelected ? '#ffffff' : (
+                    state.vectorColorByAmp ? colorTrans : rc.colors.vector
+                );
 
                 if (state.showCircles) {
                     const prevX = x - amp * Math.cos(freq * state.time + phase);
@@ -2099,7 +2363,11 @@
             // 3. Draw Fitted Path (Fade-out over one period)
             const maxLen = Math.ceil((Math.PI * 2) / state.speed);
             if (state.tracedPath.length > 1) {
-                rc.fadingPath(state.tracedPath, rc.colors.secondary, 2, maxLen);
+                if (state.pathFading) {
+                    rc.fadingPath(state.tracedPath, rc.colors.secondary, 2, maxLen);
+                } else {
+                    rc.fixedPath(state.tracedPath, rc.colors.secondary, 2);
+                }
             }
 
             // 4. Current Point
@@ -2159,6 +2427,12 @@
                 minictx.strokeRect(tlm.x, tlm.y, brm.x - tlm.x, brm.y - tlm.y);
             }
 
+            // Update progress range
+            let progressValue = state.time % (Math.PI * 2);
+            progressRange.value = progressValue;
+            updateProgressText(progressValue);
+
+
             requestAnimationFrame(() => {
                 update();
                 draw();
@@ -2186,7 +2460,7 @@
         });
         acquireWakelock();
 
-        setup();
+        let { updateFollowState } = setup();
         draw();
     </script>
 </body>
