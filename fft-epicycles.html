@@ -890,9 +890,9 @@
                     p = this.toScreen(getX(points[i]), getY(points[i]));
                     const dx = p.x - prevP.x;
                     const dy = p.y - prevP.y;
-                    accumulatedDistance += Math.sqrt(dx * dx + dy * dy);
+                    accumulatedDistance += dx * dx + dy * dy;
                     // Auto-simplify path by skipping points that are too close
-                    if (accumulatedDistance > 0.25) {
+                    if (accumulatedDistance > 0.0625) { // 0.25
                         this.ctx.lineTo(p.x, p.y);
                         accumulatedDistance = 0;
                     }
@@ -930,9 +930,9 @@
                         p = this.toScreen(getX(points[i]), getY(points[i]));
                         const dx = p.x - prevP.x;
                         const dy = p.y - prevP.y;
-                        accumulatedDistance += Math.sqrt(dx * dx + dy * dy);
+                        accumulatedDistance += dx * dx + dy * dy;
                         // Auto-simplify path by skipping points that are too close
-                        if (accumulatedDistance > 0.25) {
+                        if (accumulatedDistance > 0.0625) { // 0.25
                             this.ctx.lineTo(p.x, p.y);
                             accumulatedDistance = 0;
                         }
@@ -2339,12 +2339,12 @@
                 if (state.showVectors) {
                     const dx = x - lastVisibleX;
                     const dy = y - lastVisibleY;
-                    const dist = Math.sqrt(dx * dx + dy * dy);
+                    const dist = dx * dx + dy * dy;
                     const angle = Math.atan2(dy, dx);
                     const headSize = amp * 0.15;
                     const shortening = headSize * Math.cos(Math.PI / 7);
 
-                    if (dist > shortening) {
+                    if (dist > shortening * shortening) {
                         const xShort = x - shortening * Math.cos(angle);
                         const yShort = y - shortening * Math.sin(angle);
                         rc.line(lastVisibleX, lastVisibleY, xShort, yShort, vectorColor, amp * 0.01, true);
