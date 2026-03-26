@@ -849,7 +849,7 @@
 
             arrowhead(x, y, angle, color, headSizeWorld = 0.05) {
                 const s = this.scale * this.zoom;
-                if (headSizeWorld * s < 1) return false;
+                if (headSizeWorld * s < 0.5) return false;
 
                 const alpha = Math.PI / 7;
                 const pTip = this.toScreen(x, y);
