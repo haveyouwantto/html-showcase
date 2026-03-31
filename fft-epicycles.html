@@ -310,7 +310,7 @@
             color: #4cc9f0 !important;
         }
 
-        #minimap {
+        .minimap-container {
             position: absolute;
             top: 20px;
             left: 20px;
@@ -321,16 +321,25 @@
             border-radius: 8px;
             z-index: 1000;
             pointer-events: none;
+            overflow: hidden;
             display: block;
-            /* backdrop-filter: blur(5px);
-            -webkit-backdrop-filter: blur(5px); */
+        }
+        .minimap-container canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
         }
     </style>
 </head>
 
 <body>
     <canvas id="canvas"></canvas>
-    <canvas id="minimap"></canvas>
+    <div class="minimap-container" id="minimapWrapper">
+        <canvas id="minimapBg"></canvas>
+        <canvas id="minimapOverlay"></canvas>
+    </div>
 
     <div class="toolbar" id="mainToolbar">
         <div class="toolbar-main">
@@ -498,8 +507,12 @@
         const ctx = canvas.getContext('2d');
 
         /** @type {HTMLCanvasElement} */
-        const minimap = document.getElementById('minimap');
-        const minictx = minimap.getContext('2d');
+        /** @type {HTMLCanvasElement} */
+        const minimapBg = document.getElementById('minimapBg');
+        const minictxBg = minimapBg.getContext('2d');
+        const minimapOverlay = document.getElementById('minimapOverlay');
+        const minictxOverlay = minimapOverlay.getContext('2d');
+        const minimapWrapper = document.getElementById('minimapWrapper');
 
         const MIN_VISIBLE_SIZE = 1;
 
@@ -557,10 +570,19 @@
                 this.canvas.height = this.height * window.devicePixelRatio;
                 this.ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
 
-                minimap.width = 150 * window.devicePixelRatio;
-                minimap.height = 150 * window.devicePixelRatio;
-                minictx.setTransform(1, 0, 0, 1, 0, 0); // reset before scale
-                minictx.scale(window.devicePixelRatio, window.devicePixelRatio);
+                const dpr = window.devicePixelRatio;
+                minimapBg.width = 150 * dpr;
+                minimapBg.height = 150 * dpr;
+                minictxBg.setTransform(1, 0, 0, 1, 0, 0);
+                minictxBg.scale(dpr, dpr);
+
+                minimapOverlay.width = 150 * dpr;
+                minimapOverlay.height = 150 * dpr;
+                minictxOverlay.setTransform(1, 0, 0, 1, 0, 0);
+                minictxOverlay.scale(dpr, dpr);
+
+                // Path changed due to resize/DPR, redraw background
+                drawMinimapBackground();
             }
 
             toScreen(x, y) {
@@ -1439,6 +1461,7 @@
             curvWeight: 10.0
         };
         let currentImage = null;
+        let minimapTransform = { cx: 0, cy: 0, scale: 1 };
 
         const state = {
             mode: 'animate', // 'animate' or 'draw'
@@ -1487,6 +1510,9 @@
             fourier = computeFFT(pathData);
             fourier.sort((a, b) => b.amp - a.amp);
             fourier = fourier.filter(v => v.amp > 1e-10);
+
+            // Redraw static minimap
+            drawMinimapBackground();
 
 
             const maxAmpLog = fourier.length > 0 ? Math.log(fourier[0].amp) : 0;
@@ -2051,7 +2077,7 @@
             mapToggleBtn.addEventListener('click', () => {
                 state.showMap = !state.showMap;
                 mapToggleBtn.classList.toggle('active', state.showMap);
-                minimap.style.display = state.showMap ? 'block' : 'none';
+                minimapWrapper.style.display = state.showMap ? 'block' : 'none';
             });
 
 
@@ -2248,6 +2274,7 @@
             // Load initial preset
             updateFFT(generatePreset('square'));
 
+            drawMinimapBackground();
             return { updateFollowState };
         }
 
@@ -2455,6 +2482,56 @@
             updateVectorIcons();
         }
 
+        function drawMinimapBackground() {
+            if (pathData.length === 0) return;
+            const mapSize = 150;
+            minictxBg.clearRect(0, 0, mapSize, mapSize);
+
+            let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+            pathData.forEach(p => {
+                minX = Math.min(minX, p.re); maxX = Math.max(maxX, p.re);
+                minY = Math.min(minY, p.im); maxY = Math.max(maxY, p.im);
+            });
+            const cx = (minX + maxX) / 2;
+            const cy = (minY + maxY) / 2;
+            const size = Math.max(maxX - minX, maxY - minY) || 1;
+            const scale = (mapSize * 0.8) / size;
+            
+            minimapTransform = { cx, cy, scale };
+
+            const toMapCoords = (wx, wy) => {
+                return {
+                    x: mapSize / 2 + (wx - cx) * scale,
+                    y: mapSize / 2 - (wy - cy) * scale
+                };
+            };
+
+            minictxBg.beginPath();
+            let lastPoint = null;
+            let accumulatedDistance = 0;
+            for (let i = 0; i < pathData.length; i++) {
+                const p = pathData[i];
+                const pts = toMapCoords(p.re, p.im);
+                if (i === 0) {
+                    minictxBg.moveTo(pts.x, pts.y);
+                    lastPoint = pts;
+                } else {
+                    const dx = pts.x - lastPoint.x;
+                    const dy = pts.y - lastPoint.y;
+                    accumulatedDistance += dx * dx + dy * dy;
+                    if (accumulatedDistance > 1 || i === pathData.length - 1) {
+                        minictxBg.lineTo(pts.x, pts.y);
+                        lastPoint = pts;
+                        accumulatedDistance = 0;
+                    }
+                }
+            }
+            minictxBg.closePath();
+            minictxBg.strokeStyle = rc.colors.path;
+            minictxBg.lineWidth = 1;
+            minictxBg.stroke();
+        }
+
         const progressRange = document.getElementById('progressRange');
         const progressVal = document.getElementById('progressVal');
 
@@ -2545,69 +2622,33 @@
             if (state.showMap && pathData.length > 0) {
                 const mapSize = 150;
 
-                minictx.clearRect(0, 0, mapSize, mapSize);
+                minictxOverlay.clearRect(0, 0, mapSize, mapSize);
 
-                // Find bounds for minimap
-                let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
-                pathData.forEach(p => {
-                    minX = Math.min(minX, p.re); maxX = Math.max(maxX, p.re);
-                    minY = Math.min(minY, p.im); maxY = Math.max(maxY, p.im);
+                const { cx, cy, scale } = minimapTransform;
+                const toMapCoords = (wx, wy) => ({
+                    x: mapSize / 2 + (wx - cx) * scale,
+                    y: mapSize / 2 - (wy - cy) * scale
                 });
-                const cx = (minX + maxX) / 2;
-                const cy = (minY + maxY) / 2;
-                const size = Math.max(maxX - minX, maxY - minY) || 1;
-                const scale = (mapSize * 0.8) / size;
 
-                const toMapCoords = (wx, wy) => {
-                    return {
-                        x: mapSize / 2 + (wx - cx) * scale,
-                        y: mapSize / 2 - (wy - cy) * scale // y is flipped in world
-                    };
-                };
+                // legacy removed
 
-                // Draw original path in minimap
-                minictx.beginPath();
+                // legacy drawing removed
 
-                // Auto-simplify path
-                let accumulatedDistance = 0;
-                let lastPoint = null;
-                for (let i = 0; i < pathData.length; i++) {
-                    const p = pathData[i];
-                    const pts = toMapCoords(p.re, p.im);
-                    if (i === 0) {
-                        minictx.moveTo(pts.x, pts.y);
-                        lastPoint = pts;
-                    } else {
-                        const dx = pts.x - lastPoint.x;
-                        const dy = pts.y - lastPoint.y;
-                        accumulatedDistance += dx * dx + dy * dy;
-                        if (accumulatedDistance > 1 || i === pathData.length - 1) {
-                            minictx.lineTo(pts.x, pts.y);
-                            lastPoint = pts;
-                            accumulatedDistance = 0;
-                        }
-                    }
-                }
-                minictx.closePath();
-                minictx.strokeStyle = rc.colors.path;
-                minictx.lineWidth = 1;
-                minictx.stroke();
-
-                // Draw current position
+                // Current position
                 const current = toMapCoords(x, y);
-                minictx.beginPath();
-                minictx.arc(current.x, current.y, 3, 0, Math.PI * 2);
-                minictx.fillStyle = '#4cc9f0';
-                minictx.fill();
+                minictxOverlay.beginPath();
+                minictxOverlay.arc(current.x, current.y, 3, 0, Math.PI * 2);
+                minictxOverlay.fillStyle = '#4cc9f0';
+                minictxOverlay.fill();
 
-                // Draw viewport rect
+                // Viewport rect
                 const tl = rc.toWorld(0, 0);
                 const br = rc.toWorld(rc.width, rc.height);
                 const tlm = toMapCoords(tl.x, tl.y);
                 const brm = toMapCoords(br.x, br.y);
-                minictx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
-                minictx.lineWidth = 1;
-                minictx.strokeRect(tlm.x, tlm.y, brm.x - tlm.x, brm.y - tlm.y);
+                minictxOverlay.strokeStyle = 'rgba(255, 255, 255, 0.5)';
+                minictxOverlay.lineWidth = 1;
+                minictxOverlay.strokeRect(tlm.x, tlm.y, brm.x - tlm.x, brm.y - tlm.y);
             }
 
             // Update progress range
