@@ -440,24 +440,23 @@
                     <div class="vector-grid" id="vectorGrid"></div>
                 </div>
 
-                <!-- Speed -->
-                <button class="icon-btn" id="speedBtn" title="Speed">⏱️</button>
-                <div class="popover" id="speedPopover">
-                    <span class="label">Speed: <span id="speedVal" class="val-text">0.0002</span></span>
+                <!-- Playback Control -->
+                <button class="icon-btn" id="playbackBtn" title="Playback Controls">⏯️</button>
+                <div class="popover" id="playbackPopover" style="min-width: 220px;">
+                    <span class="label">Playback Control</span>
+                    
+                    <div style="display: flex; gap: 5px; margin-top: 5px;">
+                        <button id="pauseBtn" class="action-btn" style="flex: 1; background: rgba(255,255,255,0.1); color: #fff;">Pause</button>
+                        <button id="eraseTraceBtn" class="action-btn" style="flex: 1; background: rgba(255,255,255,0.1); color: #fff;">Erase Trace</button>
+                    </div>
+
+                    <span class="label" style="margin-top:10px">Speed: <span id="speedVal" class="val-text">0.0002</span></span>
                     <input type="range" id="speedRange" min="0" max="1" step="0.0001">
-                </div>
 
-                <!-- Harmonics -->
-                <button class="icon-btn" id="harmonicsBtn" title="Harmonics">📶</button>
-                <div class="popover" id="harmonicsPopover">
-                    <span class="label">Harmonics: <span id="harmonicsVal" class="val-text">128</span></span>
+                    <span class="label" style="margin-top:10px">Harmonics: <span id="harmonicsVal" class="val-text">128</span></span>
                     <input type="range" id="harmonicsRange" min="0" max="1" step="0.001">
-                </div>
 
-                <!-- Progress -->
-                <button class="icon-btn" id="progressBtn" title="Progress">🔁</button>
-                <div class="popover" id="progressPopover">
-                    <span class="label">Progress: <span id="progressVal" class="val-text">0%</span></span>
+                    <span class="label" style="margin-top:10px">Progress: <span id="progressVal" class="val-text">0%</span></span>
                     <input type="range" id="progressRange" min="0" max="6.283" step="0.001">
                 </div>
 
@@ -1436,6 +1435,7 @@
             mode: 'animate', // 'animate' or 'draw'
             speed: 0.0002,
             harmonics: 128,
+            paused: false,
             follow: false,
             snapFollow: false,
             showCircles: true,
@@ -1894,8 +1894,8 @@
             });
 
             // Popovers logic
-            const buttons = ['speedBtn', 'harmonicsBtn', 'progressBtn', 'presetsBtn', 'textBtnIcon', 'vectorListBtn', 'svgBtnIcon', 'viewBtn', 'exportBtn'];
-            const popovers = ['speedPopover', 'harmonicsPopover', 'progressPopover', 'presetsPopover', 'textPopover', 'vectorPopover', 'svgPopover', 'viewPopover', 'exportPopover'];
+            const buttons = ['playbackBtn', 'presetsBtn', 'textBtnIcon', 'vectorListBtn', 'svgBtnIcon', 'viewBtn', 'exportBtn'];
+            const popovers = ['playbackPopover', 'presetsPopover', 'textPopover', 'vectorPopover', 'svgPopover', 'viewPopover', 'exportPopover'];
 
             buttons.forEach((id, i) => {
                 document.getElementById(id).addEventListener('click', (e) => {
@@ -1963,6 +1963,19 @@
                 a.download = `fourier_coeffs.${ext}`;
                 a.click();
                 URL.revokeObjectURL(url);
+            });
+
+            const pauseBtn = document.getElementById('pauseBtn');
+            pauseBtn.addEventListener('click', () => {
+                state.paused = !state.paused;
+                pauseBtn.innerText = state.paused ? "Resume" : "Pause";
+                pauseBtn.style.background = state.paused ? "#4cc9f0" : "rgba(255,255,255,0.1)";
+                pauseBtn.style.color = state.paused ? "#000" : "#fff";
+                pauseBtn.style.boxShadow = state.paused ? "0 0 10px #4cc9f0" : "none";
+            });
+
+            document.getElementById('eraseTraceBtn').addEventListener('click', () => {
+                state.tracedPath = [];
             });
 
             const initialT = 0.5;
@@ -2376,7 +2389,9 @@
         function update() {
             if (state.mode === 'draw') return;
 
-            state.time += state.speed;
+            if (!state.paused) {
+                state.time += state.speed;
+            }
 
             // Compute current point
             let x = 0;
