@@ -338,7 +338,7 @@
                 <!-- Presets -->
                 <button class="icon-btn" id="presetsBtn" title="Presets">🎁</button>
                 <div class="popover" id="presetsPopover">
-                    <span class="label">Choose Preset</span>
+                    <span class="label">Load a preset path</span>
                     <select id="presetSelect"></select>
                 </div>
 
@@ -348,9 +348,13 @@
                 <!-- SVG / Image -->
                 <button class="icon-btn" id="svgBtnIcon" title="Import/Settings for Image">🖼️</button>
                 <div class="popover" id="svgPopover" style="min-width: 200px;">
-                    <span class="label">Image Processing Settings</span>
+                    <span class="label">Load an image/svg path</span>
 
-                    <button id="svgBtnFile" class="action-btn" style="margin-top:0">Select Image/SVG</button>
+                    <div style="display: flex; gap: 5px; margin-top: 0;">
+                        <button id="svgBtnFile" class="action-btn" style="flex: 1;">Upload</button>
+                        <button id="svgBtnApply" class="action-btn"
+                            style="flex: 1; background: #4cc9f0; color: #000;">Apply</button>
+                    </div>
                     <input type="file" id="svgInput" accept=".svg, image/*" style="display:none">
 
                     <span class="label" style="margin-top:10px">Target Points (<span id="maxPtsVal"
@@ -373,7 +377,7 @@
                 <!-- Text -->
                 <button class="icon-btn" id="textBtnIcon" title="Text to Path">🔤</button>
                 <div class="popover" id="textPopover">
-                    <span class="label">Render Text</span>
+                    <span class="label">Load a text path</span>
                     <input type="text" id="textInput" placeholder="Select font then enter text..."
                         style="width:100%; box-sizing:border-box">
 
@@ -2095,9 +2099,13 @@
                     const v = parseFloat(e.target.value);
                     imgConfig[configKey] = transformVal ? transformVal(v) : v;
                     valEl.innerText = displayFormat ? displayFormat(v) : v;
-                    reprocessImage();
+                    // No real-time reprocessing
                 });
             };
+
+            document.getElementById('svgBtnApply').addEventListener('click', () => {
+                reprocessImage();
+            });
 
             bindSlider('maxPtsRange', 'maxPtsVal', 'maxPointsExp', v => Math.pow(2, v));
             bindSlider('cannyRange', 'cannyVal', 'cannyThresh', v => v, v => v / 100);
