@@ -324,6 +324,7 @@
             overflow: hidden;
             display: block;
         }
+
         .minimap-container canvas {
             position: absolute;
             top: 0;
@@ -820,6 +821,15 @@
                     this.ctx.lineTo(origin.x, this.height);
                     this.ctx.stroke();
                 }
+
+                // Boundary Highlight: -1,-1 to 1,1
+                const tl = this.toScreen(-1, 1);
+                const br = this.toScreen(1, -1);
+                this.ctx.strokeStyle = this.colors.accent; //
+                this.ctx.lineWidth = 1;
+                this.ctx.setLineDash([5, 5]); // Dashed line for boundary
+                this.ctx.strokeRect(tl.x, tl.y, br.x - tl.x, br.y - tl.y);
+                this.ctx.setLineDash([]); // Reset
             }
 
             line(x1, y1, x2, y2, color, width = 0.01, checkSize = false, minWidth = 0.25) {
@@ -2496,7 +2506,7 @@
             const cy = (minY + maxY) / 2;
             const size = Math.max(maxX - minX, maxY - minY) || 1;
             const scale = (mapSize * 0.8) / size;
-            
+
             minimapTransform = { cx, cy, scale };
 
             const toMapCoords = (wx, wy) => {
