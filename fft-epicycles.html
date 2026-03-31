@@ -549,7 +549,7 @@
                     axis: '#3a3a45',
                     primary: '#4cc9f0',   // Cyan
                     secondary: '#f72585', // Pink
-                    accent: '#7209b7',    // Purple
+                    accent: '#008577',    // Teal
                     text: '#e0e0e6',
                     vector: '#4cc9f0c0',
                     circles: "#ffffff40",
@@ -825,10 +825,33 @@
                 // Boundary Highlight: -1,-1 to 1,1
                 const tl = this.toScreen(-1, 1);
                 const br = this.toScreen(1, -1);
-                this.ctx.strokeStyle = this.colors.accent; //
+                this.ctx.strokeStyle = this.colors.accent;
                 this.ctx.lineWidth = 1;
-                this.ctx.setLineDash([5, 5]); // Dashed line for boundary
-                this.ctx.strokeRect(tl.x, tl.y, br.x - tl.x, br.y - tl.y);
+                this.ctx.setLineDash([5, 5]);
+
+                // Draw 4 lines with viewport clipping
+                const drawH = (y, x1, x2) => {
+                    if (y < 0 || y > this.height) return;
+                    if (Math.max(x1, x2) < 0 || Math.min(x1, x2) > this.width) return;
+                    this.ctx.beginPath();
+                    this.ctx.moveTo(Math.max(0, Math.min(this.width, x1)), y);
+                    this.ctx.lineTo(Math.max(0, Math.min(this.width, x2)), y);
+                    this.ctx.stroke();
+                };
+                const drawV = (x, y1, y2) => {
+                    if (x < 0 || x > this.width) return;
+                    if (Math.max(y1, y2) < 0 || Math.min(y1, y2) > this.height) return;
+                    this.ctx.beginPath();
+                    this.ctx.moveTo(x, Math.max(0, Math.min(this.height, y1)));
+                    this.ctx.lineTo(x, Math.max(0, Math.min(this.height, y2)));
+                    this.ctx.stroke();
+                };
+
+                drawH(tl.y, tl.x, br.x); // Top
+                drawH(br.y, tl.x, br.x); // Bottom
+                drawV(tl.x, tl.y, br.y); // Left
+                drawV(br.x, tl.y, br.y); // Right
+
                 this.ctx.setLineDash([]); // Reset
             }
 
