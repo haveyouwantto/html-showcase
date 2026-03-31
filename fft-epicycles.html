@@ -241,13 +241,14 @@
         }
 
         /* Vector Grid inside popover */
-        .vector-grid {
+        .vector-grid, .view-grid {
             display: grid;
             grid-template-columns: repeat(4, 1fr);
             max-height: 280px;
             max-width: 260px;
             overflow-y: auto;
             padding: 4px;
+            gap: 8px;
         }
 
         .vector-item {
@@ -399,29 +400,36 @@
                         style="width:100%; margin-top:12px; background:#4cc9f0; color:#000">Build Path</button>
                 </div>
 
-                <!-- Show/Hide Circles -->
-                <button class="icon-btn active" id="circlesToggleBtn" title="Toggle Epicycles (Circles)">⭕</button>
+                <!-- View Options -->
+                <button class="icon-btn" id="viewBtn" title="View Options">👁️</button>
+                <div class="popover" id="viewPopover">
+                    <span class="label">View Toggles</span>
+                    <div class="view-grid">
+                        <!-- Show/Hide Circles -->
+                        <button class="icon-btn active" id="circlesToggleBtn" title="Toggle Epicycles (Circles)">⭕</button>
 
-                <!-- Show/Hide Vectors -->
-                <button class="icon-btn active" id="vectorsToggleBtn" title="Toggle Vectors (Lines)">↗️</button>
+                        <!-- Show/Hide Vectors -->
+                        <button class="icon-btn active" id="vectorsToggleBtn" title="Toggle Vectors (Lines)">↗️</button>
 
-                <!-- Show/Hide Reference Path -->
-                <button class="icon-btn active" id="pathToggleBtn" title="Toggle Reference Path">🟡</button>
+                        <!-- Show/Hide Reference Path -->
+                        <button class="icon-btn active" id="pathToggleBtn" title="Toggle Reference Path">🟡</button>
 
-                <!-- Minimap -->
-                <button class="icon-btn active" id="mapToggleBtn" title="Toggle Minimap">🗺️</button>
+                        <!-- Minimap -->
+                        <button class="icon-btn active" id="mapToggleBtn" title="Toggle Minimap">🗺️</button>
 
-                <!-- Rainbow Vectors -->
-                <button class="icon-btn" id="rainbowToggleBtn" title="Toggle Rainbow Vectors">🌈</button>
+                        <!-- Rainbow Vectors -->
+                        <button class="icon-btn" id="rainbowToggleBtn" title="Toggle Rainbow Vectors">🌈</button>
 
-                <!-- Path Fading -->
-                <button class="icon-btn active" id="pathFadingBtn" title="Toggle Path Fading">📉</button>
+                        <!-- Path Fading -->
+                        <button class="icon-btn active" id="pathFadingBtn" title="Toggle Path Fading">📉</button>
 
-                <!-- Follow -->
-                <button class="icon-btn" id="followBtn" title="Camera Follow (Smooth)">🎯</button>
+                        <!-- Follow -->
+                        <button class="icon-btn" id="followBtn" title="Camera Follow (Smooth)">🎯</button>
 
-                <!-- Snap Follow -->
-                <button class="icon-btn" id="snapFollowBtn" title="Camera Snap Follow">📌</button>
+                        <!-- Snap Follow -->
+                        <button class="icon-btn" id="snapFollowBtn" title="Camera Snap Follow">📌</button>
+                    </div>
+                </div>
 
                 <!-- Vector List -->
                 <button class="icon-btn" id="vectorListBtn" title="Vector List">📊</button>
@@ -1800,8 +1808,8 @@
             });
 
             // Popovers logic
-            const buttons = ['speedBtn', 'harmonicsBtn', 'progressBtn', 'presetsBtn', 'textBtnIcon', 'vectorListBtn', 'svgBtnIcon'];
-            const popovers = ['speedPopover', 'harmonicsPopover', 'progressPopover', 'presetsPopover', 'textPopover', 'vectorPopover', 'svgPopover'];
+            const buttons = ['speedBtn', 'harmonicsBtn', 'progressBtn', 'presetsBtn', 'textBtnIcon', 'vectorListBtn', 'svgBtnIcon', 'viewBtn'];
+            const popovers = ['speedPopover', 'harmonicsPopover', 'progressPopover', 'presetsPopover', 'textPopover', 'vectorPopover', 'svgPopover', 'viewPopover'];
 
             buttons.forEach((id, i) => {
                 document.getElementById(id).addEventListener('click', (e) => {
