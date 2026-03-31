@@ -241,7 +241,8 @@
         }
 
         /* Vector Grid inside popover */
-        .vector-grid, .view-grid {
+        .vector-grid,
+        .view-grid {
             display: grid;
             grid-template-columns: repeat(4, 1fr);
             max-height: 280px;
@@ -406,7 +407,8 @@
                     <span class="label">View Toggles</span>
                     <div class="view-grid">
                         <!-- Show/Hide Circles -->
-                        <button class="icon-btn active" id="circlesToggleBtn" title="Toggle Epicycles (Circles)">⭕</button>
+                        <button class="icon-btn active" id="circlesToggleBtn"
+                            title="Toggle Epicycles (Circles)">⭕</button>
 
                         <!-- Show/Hide Vectors -->
                         <button class="icon-btn active" id="vectorsToggleBtn" title="Toggle Vectors (Lines)">↗️</button>
@@ -457,6 +459,22 @@
                 <div class="popover" id="progressPopover">
                     <span class="label">Progress: <span id="progressVal" class="val-text">0%</span></span>
                     <input type="range" id="progressRange" min="0" max="6.283" step="0.001">
+                </div>
+
+                <!-- Export -->
+                <button class="icon-btn" id="exportBtn" title="Export Coefficients">📤</button>
+                <div class="popover" id="exportPopover">
+                    <span class="label">Export Format</span>
+                    <select id="exportFormatSelect">
+                        <option value="json">JSON</option>
+                        <option value="csv">CSV (freq, amp, phase)</option>
+                        <option value="js">JavaScript</option>
+                        <option value="numpy">Python NumPy</option>
+                        <option value="desmos">Desmos Formula</option>
+                    </select>
+                    <button id="copyExportBtn" class="action-btn" style="margin-top:10px">Copy to Clipboard</button>
+                    <button id="downloadExportBtn" class="action-btn"
+                        style="background: rgba(255,255,255,0.1); color: #fff; margin-top:5px">Download File</button>
                 </div>
 
                 <input type="checkbox" id="followCheck" style="display:none">
@@ -1797,6 +1815,74 @@
             document.getElementById('progressVal').innerText = (t / 6.2831852 * 100).toFixed(4) + '%';
         }
 
+        function getExportString(format) {
+            if (!fourier || fourier.length === 0) return "";
+
+            // Limit to current harmonics
+            const hCount = state.harmonics || fourier.length;
+            const data = fourier.slice(0, hCount);
+
+            const fn = (v) => {
+                if (v === 0) return "0";
+                const val = Number(v.toPrecision(5));
+                const s1 = val.toString(); // standard / scientific based on JS rules
+                const s1_clean = s1.replace(/e([+-]\d+)/, "e$1"); // ensure e-5 not e-05 for simplicity
+                const s2 = val.toExponential().replace(/\.?0+(?=e)/, ""); // explicitly scientific
+                return s1_clean.length <= s2.length ? s1_clean : s2;
+            };
+
+            switch (format) {
+                case 'json':
+                    return JSON.stringify(data.map(d => ({
+                        f: d.freq,
+                        a: Number(fn(d.amp)),
+                        p: Number(fn(d.phase))
+                    })), null, 2);
+                case 'csv':
+                    let csv = "freq,amp,phase\n";
+                    data.forEach(d => { csv += `${d.freq},${fn(d.amp)},${fn(d.phase)}\n`; });
+                    return csv;
+                case 'js':
+                    let js = "const coeffs = [\n";
+                    data.forEach(d => { js += `  [${d.freq}, ${fn(d.amp)}, ${fn(d.phase)}],\n`; });
+                    js += "];\n\n";
+                    js += "/**\n * Get a point at time t (0 to 1)\n */\n";
+                    js += "function getPoint(t) {\n";
+                    js += "  let x = 0, y = 0;\n";
+                    js += "  const twoPi = 2 * Math.PI;\n";
+                    js += "  for (const [f, amp, phase] of coeffs) {\n";
+                    js += "    const angle = f * twoPi * t + phase;\n";
+                    js += "    x += amp * Math.cos(angle);\n";
+                    js += "    y += amp * Math.sin(angle);\n";
+                    js += "  }\n";
+                    js += "  return { x, y };\n";
+                    js += "}\n";
+                    return js;
+                case 'numpy':
+                    let py = "import numpy as np\n\n";
+                    py += "coeffs = np.array([\n";
+                    data.forEach(d => { py += `    [${d.freq}, ${fn(d.amp)}, ${fn(d.phase)}],\n`; });
+                    py += "])\n\n";
+                    py += "def get_path(t):\n";
+                    py += "    \"\"\"Get points at time t (can be an array)\"\"\"\n";
+                    py += "    # t: (M,), f: (N, 1), p: (N, 1)\n";
+                    py += "    f = coeffs[:, 0, np.newaxis]\n";
+                    py += "    a = coeffs[:, 1, np.newaxis]\n";
+                    py += "    p = coeffs[:, 2, np.newaxis]\n";
+                    py += "    angles = f * 2 * np.pi * t + p\n";
+                    py += "    x = np.sum(a * np.cos(angles), axis=0)\n";
+                    py += "    y = np.sum(a * np.sin(angles), axis=0)\n";
+                    py += "    return x, y\n";
+                    return py;
+                case 'desmos':
+                    const dfn = (v) => fn(v).replace(/e([+-]\d+)/, "*10^{$1}");
+                    const xTerms = data.map(d => `${dfn(d.amp)}cos(${d.freq} * 2\\pi * t + ${dfn(d.phase)})`).join(" + ");
+                    const yTerms = data.map(d => `${dfn(d.amp)}sin(${d.freq} * 2\\pi * t + ${dfn(d.phase)})`).join(" + ");
+                    return `( ${xTerms}, ${yTerms} )`;
+                default: return "";
+            }
+        }
+
         function setup() {
             window.addEventListener('resize', () => rc.resize());
             rc.resize();
@@ -1808,8 +1894,8 @@
             });
 
             // Popovers logic
-            const buttons = ['speedBtn', 'harmonicsBtn', 'progressBtn', 'presetsBtn', 'textBtnIcon', 'vectorListBtn', 'svgBtnIcon', 'viewBtn'];
-            const popovers = ['speedPopover', 'harmonicsPopover', 'progressPopover', 'presetsPopover', 'textPopover', 'vectorPopover', 'svgPopover', 'viewPopover'];
+            const buttons = ['speedBtn', 'harmonicsBtn', 'progressBtn', 'presetsBtn', 'textBtnIcon', 'vectorListBtn', 'svgBtnIcon', 'viewBtn', 'exportBtn'];
+            const popovers = ['speedPopover', 'harmonicsPopover', 'progressPopover', 'presetsPopover', 'textPopover', 'vectorPopover', 'svgPopover', 'viewPopover', 'exportPopover'];
 
             buttons.forEach((id, i) => {
                 document.getElementById(id).addEventListener('click', (e) => {
@@ -1837,6 +1923,47 @@
             document.getElementById('speedRange').addEventListener('input', updateSpeedFromSlider);
             document.getElementById('harmonicsRange').addEventListener('input', updateHarmonicsFromSlider);
             document.getElementById('progressRange').addEventListener('input', updateProgressFromSlider);
+
+            document.getElementById('copyExportBtn').addEventListener('click', () => {
+                const format = document.getElementById('exportFormatSelect').value;
+                const str = getExportString(format);
+                navigator.clipboard.writeText(str).then(() => {
+                    const btn = document.getElementById('copyExportBtn');
+                    const oldText = btn.innerText;
+                    btn.innerText = "Copied!";
+                    setTimeout(() => btn.innerText = oldText, 2000);
+                });
+            });
+
+            document.getElementById('downloadExportBtn').addEventListener('click', () => {
+                const format = document.getElementById('exportFormatSelect').value;
+                const str = getExportString(format);
+                const blob = new Blob([str], { type: 'text/plain' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                let ext;
+                switch (format) {
+                    case 'json':
+                        ext = 'json';
+                        break;
+                    case 'csv':
+                        ext = 'csv';
+                        break;
+                    case 'js':
+                        ext = 'js';
+                        break;
+                    case 'numpy':
+                        ext = 'py';
+                        break;
+                    case 'desmos':
+                        ext = 'txt';
+                        break;
+                }
+                a.href = url;
+                a.download = `fourier_coeffs.${ext}`;
+                a.click();
+                URL.revokeObjectURL(url);
+            });
 
             const initialT = 0.5;
             document.getElementById('speedRange').value = initialT;
