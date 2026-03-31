@@ -444,19 +444,24 @@
                 <button class="icon-btn" id="playbackBtn" title="Playback Controls">⏯️</button>
                 <div class="popover" id="playbackPopover" style="min-width: 220px;">
                     <span class="label">Playback Control</span>
-                    
+
                     <div style="display: flex; gap: 5px; margin-top: 5px;">
-                        <button id="pauseBtn" class="action-btn" style="flex: 1; background: rgba(255,255,255,0.1); color: #fff;">Pause</button>
-                        <button id="eraseTraceBtn" class="action-btn" style="flex: 1; background: rgba(255,255,255,0.1); color: #fff;">Erase Trace</button>
+                        <button id="pauseBtn" class="action-btn"
+                            style="flex: 1; background: rgba(255,255,255,0.1); color: #fff;">Pause</button>
+                        <button id="eraseTraceBtn" class="action-btn"
+                            style="flex: 1; background: rgba(255,255,255,0.1); color: #fff;">Erase Trace</button>
                     </div>
 
-                    <span class="label" style="margin-top:10px">Speed: <span id="speedVal" class="val-text">0.0002</span></span>
+                    <span class="label" style="margin-top:10px">Speed: <span id="speedVal"
+                            class="val-text">0.0002</span></span>
                     <input type="range" id="speedRange" min="0" max="1" step="0.0001">
 
-                    <span class="label" style="margin-top:10px">Harmonics: <span id="harmonicsVal" class="val-text">128</span></span>
+                    <span class="label" style="margin-top:10px">Harmonics: <span id="harmonicsVal"
+                            class="val-text">128</span></span>
                     <input type="range" id="harmonicsRange" min="0" max="1" step="0.001">
 
-                    <span class="label" style="margin-top:10px">Progress: <span id="progressVal" class="val-text">0%</span></span>
+                    <span class="label" style="margin-top:10px">Progress: <span id="progressVal"
+                            class="val-text">0%</span></span>
                     <input type="range" id="progressRange" min="0" max="6.283" step="0.001">
                 </div>
 
@@ -791,13 +796,13 @@
                 }
             }
 
-            line(x1, y1, x2, y2, color, width = 0.01, checkSize = false) {
+            line(x1, y1, x2, y2, color, width = 0.01, checkSize = false, minWidth = 0.25) {
                 const p1 = this.toScreen(x1, y1);
                 const p2 = this.toScreen(x2, y2);
                 if (checkSize && Math.abs(p1.x - p2.x) <= MIN_VISIBLE_SIZE && Math.abs(p1.y - p2.y) <= MIN_VISIBLE_SIZE) return false;
                 const s = this.scale * this.zoom;
                 this.ctx.strokeStyle = color || this.colors.primary;
-                this.ctx.lineWidth = Math.max(0.25, width * s);
+                this.ctx.lineWidth = Math.max(minWidth, width * s);
                 this.ctx.beginPath();
                 this.ctx.moveTo(p1.x, p1.y);
                 this.ctx.lineTo(p2.x, p2.y);
@@ -805,7 +810,7 @@
                 return true;
             }
 
-            circle(x, y, r, color, width = 0.01, fill = false, checkSize = false) {
+            circle(x, y, r, color, width = 0.01, fill = false, checkSize = false, minWidth = 0.25) {
                 const s = this.scale * this.zoom;
                 if (checkSize && r * s * 2 <= MIN_VISIBLE_SIZE) return false;
                 const p = this.toScreen(x, y);
@@ -816,18 +821,18 @@
                     this.ctx.fill();
                 } else {
                     this.ctx.strokeStyle = color || this.colors.primary;
-                    this.ctx.lineWidth = Math.max(0.25, width * s);
+                    this.ctx.lineWidth = Math.max(minWidth, width * s);
                     this.ctx.stroke();
                 }
                 return true;
             }
 
-            point(x, y, color, size = 0.02, checkSize = false) {
+            point(x, y, color, size = 0.02, checkSize = false, minWidth = 1) {
                 const s = this.scale * this.zoom;
                 if (checkSize && Math.max(1, size * s) * 2 <= MIN_VISIBLE_SIZE) return false;
                 const p = this.toScreen(x, y);
                 this.ctx.beginPath();
-                this.ctx.arc(p.x, p.y, Math.max(1, size * s), 0, Math.PI * 2);
+                this.ctx.arc(p.x, p.y, Math.max(minWidth, size * s), 0, Math.PI * 2);
                 this.ctx.fillStyle = color || this.colors.primary;
                 this.ctx.fill();
                 return true;
@@ -2485,7 +2490,8 @@
                 if (state.showCircles) {
                     const prevX = x - amp * Math.cos(freq * state.time + phase);
                     const prevY = y - amp * Math.sin(freq * state.time + phase);
-                    if (rc.circle(prevX, prevY, amp, circleColor, amp * 0.005, false, true)) {
+                    //  circle(x, y, r, color, width = 0.01, fill = false, checkSize = false, minWidth = 0.25) {
+                    if (rc.circle(prevX, prevY, amp, circleColor, amp * 0.005, false, true, 0)) {
                         drawnAny = true;
                     }
                 }
