@@ -1293,6 +1293,28 @@
             return out;
         }
 
+        /**
+         * 检测一段 MDCT 系数是否为噪声
+         * @param {number[]} mdctSlice - MDCT 系数数组
+         * @returns {boolean} - 若为噪声则返回 true
+         */
+        function calculateSFM(mdctSlice) {
+            // 计算功率谱，加上小量避免数值问题
+            const power = mdctSlice.map(x => x * x + 1e-12);
+
+            // 算术平均
+            const arithmeticMean = power.reduce((a, b) => a + b, 0) / power.length;
+
+            // 几何平均 = exp(mean(log(power)))
+            const logSum = power.reduce((a, b) => a + Math.log(b), 0);
+            const geometricMean = Math.exp(logSum / power.length);
+
+            // 谱平坦度
+            const sfm = geometricMean / arithmeticMean;
+
+            return sfm;
+        }
+
         /* QFPv3 Functions */
 
         // Frame encapsulation
@@ -2233,8 +2255,8 @@
             encodeHeader() {
                 const buffer = new ArrayBuffer(21); // 文件头固定21字节
                 this.sampleRate = this.buffer.sampleRate; // 获取采样率
-                this.winSize = this.settings.winSize || roundDownToPowerOfTwo(this.sampleRate / 8);
-                this.groupSize = this.settings.groupSize || 64;
+                this.winSize = this.settings.winSize ?? roundDownToPowerOfTwo(this.sampleRate / 8);
+                this.groupSize = this.settings.groupSize ?? 64;
                 this.hopSize = this.winSize / 2; // 每组的跳跃大小
                 this.numWins = Math.floor(this.buffer.length / this.hopSize); // 根据音频长度和窗口大小计算总窗口数量
                 this.ampQuant = 0.1 / this.winSize;
@@ -2338,6 +2360,15 @@
                         } else {
                             ampCoeff.push(0.0); // 小于阈值的响度值设为0
                         }
+
+                        // 检查谱平坦度
+                        let sfm = calculateSFM(group);
+                        if (sfm > 0.37) { // approx. -3db sine vs white noise
+                            // 直接填充0
+                            for (let k = j * this.groupSize; k < (j + 1) * this.groupSize; k++) {
+                                mdctCoeffs[k] = 0;
+                            }
+                        }
                     }
 
                     // 丢弃小于阈值的mdct系数
@@ -2392,12 +2423,13 @@
 
         class QFP3Encoder {
             constructor(audioBuffer, settings) {
+                console.log(settings)
                 this.audioBuffer = audioBuffer;
                 this.settings = settings;
-                this.qp = settings.qp || 32;
-                this.winSize = settings.winSize || 2048;
+                this.qp = settings.qp ?? 32;
+                this.winSize = settings.winSize ?? 2048;
                 this.hopSize = this.winSize / 2;
-                this.bandSize = settings.groupSize || 64;
+                this.bandSize = settings.groupSize ?? 64;
                 this.nyquist = audioBuffer.sampleRate / 2;
                 this.numBands = Math.floor(this.hopSize / this.bandSize);
                 this.numWins = Math.floor(audioBuffer.length / this.hopSize) - 1;
@@ -2405,6 +2437,51 @@
                 this.l = audioBuffer.getChannelData(0); // 左声道数据
                 this.r = audioBuffer.numberOfChannels >= 2 ? audioBuffer.getChannelData(1) : this.l; // 右声道数据，如果单声道则与左声道相同
 
+            }
+
+            static getBandPlan(minFreq, maxFreq) {
+                let quantizerLevel, krBase;
+                if (minFreq < 1500) {
+                    quantizerLevel = 0;
+                    krBase = 1.0;
+                } else if (minFreq < 3000) {
+                    quantizerLevel = 1;
+                    krBase = 1.0;
+                } else if (minFreq < 4500) {
+                    quantizerLevel = 2;
+                    krBase = 1.0;
+                } else if (minFreq < 6000) {
+                    quantizerLevel = 3;
+                    krBase = 0.7;
+                } else if (minFreq < 7500) {
+                    quantizerLevel = 4;
+                    krBase = 0.6;
+                } else if (minFreq < 9000) {
+                    quantizerLevel = 5;
+                    krBase = 0.5;
+                } else if (minFreq < 10500) {
+                    quantizerLevel = 6;
+                    krBase = 0.4;
+                } else if (minFreq < 12000) {
+                    quantizerLevel = 7;
+                    krBase = 0.36;
+                } else if (minFreq < 13500) {
+                    quantizerLevel = 8;
+                    krBase = 0.32;
+                } else if (minFreq < 15000) {
+                    quantizerLevel = 9;
+                    krBase = 0.28;
+                } else if (minFreq < 18000) {
+                    quantizerLevel = 9;
+                    krBase = 0.24;
+                } else if (minFreq >= 20000) {
+                    quantizerLevel = 15;
+                    krBase = 0.0;
+                } else {
+                    quantizerLevel = 9;
+                    krBase = 0.2;
+                }
+                return { quantizerLevel, krBase };
             }
 
             encodeHeader() {
@@ -2444,38 +2521,7 @@
                     for (let i = 0; i < this.hopSize; i += this.bandSize) {
                         const minFreq = Math.floor(i * this.nyquist / this.hopSize);
                         const maxFreq = Math.floor((i + this.bandSize) * this.nyquist / this.hopSize);
-                        let quantizerLevel, krBase;
-                        if (minFreq < 4000) {
-                            quantizerLevel = 0;
-                            krBase = 1.0;
-                        } else if (minFreq < 6000) {
-                            quantizerLevel = 3;
-                            krBase = 0.7;
-                        } else if (minFreq < 8000) {
-                            quantizerLevel = 3;
-                            krBase = 1 / 2;
-                        } else if (minFreq < 10000) {
-                            quantizerLevel = 6;
-                            krBase = 1 / 4;
-                        } else if (minFreq < 12000) {
-                            quantizerLevel = 6;
-                            krBase = 1 / 4;
-                        } else if (minFreq < 14000) {
-                            quantizerLevel = 9;
-                            krBase = 1 / 6;
-                        } else if (minFreq < 16000) {
-                            quantizerLevel = 9;
-                            krBase = 1 / 6;
-                        } else if (minFreq < 18000) {
-                            quantizerLevel = 9;
-                            krBase = 1 / 8;
-                        } else if (minFreq >= 20000) {
-                            quantizerLevel = 15;
-                            krBase = 0.0;
-                        } else {
-                            quantizerLevel = 9;
-                            krBase = 1 / 8;
-                        }
+                        let { quantizerLevel, krBase } = QFP3Encoder.getBandPlan(minFreq, maxFreq);
                         this.bandPlan.push({ minFreq, maxFreq, quantizerLevel, krBase });
                     }
                     if (this.qp >= 52) {
@@ -2629,6 +2675,13 @@
                         }
                         for (let i = 0; i < prunedData.length; i++) {
                             prunedData[i] /= scale;
+                        }
+
+                        // 检查谱平坦度
+                        let sfm = calculateSFM(blockData);
+                        if (sfm > 0.37) { // approx. -3db sine vs white noise
+                            // 直接填充0
+                            prunedData.fill(0);
                         }
 
                         const quantizer = QUANT_LEVELS[qLvl]['plan'];
@@ -3524,17 +3577,12 @@
                 const maxFreq = Math.floor((i + 1) * nyquist / numBands);
 
                 // Default logic (logic copied from QFP3Encoder.encodeHeader for consistency)
-                let qLvl, krBase;
-                if (minFreq < 4000) { qLvl = 0; krBase = 1.0; }
-                else if (minFreq < 6000) { qLvl = 3; krBase = 0.7; }
-                else if (minFreq < 10000) { qLvl = 6; krBase = 0.5; }
-                else if (minFreq < 20000) { qLvl = 9; krBase = 0.125; }
-                else { qLvl = 15; krBase = 0.0; }
+                let { quantizerLevel, krBase } = QFP3Encoder.getBandPlan(minFreq, maxFreq);
 
                 const tr = document.createElement('tr');
                 tr.innerHTML = `
                     <td>${minFreq}-${maxFreq}</td>
-                    <td><input type="number" class="band-q" value="${qLvl}" min="0" max="15"></td>
+                    <td><input type="number" class="band-q" value="${quantizerLevel}" min="0" max="15"></td>
                     <td><input type="number" class="band-kr" value="${krBase}" min="0" max="2" step="0.1"></td>
                 `;
                 tableBody.appendChild(tr);
