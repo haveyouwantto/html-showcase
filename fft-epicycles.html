@@ -544,7 +544,7 @@
 
                 // Colors - Premium Dark Mode Palette
                 this.colors = {
-                    background: '#0a0a0c',
+                    background: '#000',
                     grid: '#1e1e24',
                     axis: '#3a3a45',
                     primary: '#4cc9f0',   // Cyan
@@ -2609,7 +2609,7 @@
                     const prevX = x - amp * Math.cos(freq * state.time + phase);
                     const prevY = y - amp * Math.sin(freq * state.time + phase);
                     //  circle(x, y, r, color, width = 0.01, fill = false, checkSize = false, minWidth = 0.25) {
-                    if (rc.circle(prevX, prevY, amp, circleColor, amp * 0.005, false, true, 0)) {
+                    if (rc.circle(prevX, prevY, amp, circleColor, amp * 0.005, false, true, 0.125)) {
                         drawnAny = true;
                     }
                 }
