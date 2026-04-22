@@ -2538,14 +2538,19 @@
                 // 构造双通道静态量化方案
                 this.quantLevelsCache = [];
                 let offset;
-                if (this.qp >= 48) {
-                    offset = 3;
-                } else if (this.qp > 16 && this.qp <= 24) {
-                    offset = -3;
-                } else if (this.qp <= 16) {
-                    offset = -6;
+                if (this.settings.manual) {
+                    offset = 0;               // 手动模式下不施加任何偏移
                 } else {
-                    offset = 0;
+                    // 原有的自动 offset 计算
+                    if (this.qp >= 48) {
+                        offset = 3;
+                    } else if (this.qp > 16 && this.qp <= 24) {
+                        offset = -3;
+                    } else if (this.qp <= 16) {
+                        offset = -6;
+                    } else {
+                        offset = 0;
+                    }
                 }
                 const lprPlanArr = new Uint8Array(this.bandPlan.length);
                 const lmrPlanArr = new Uint8Array(this.bandPlan.length);
