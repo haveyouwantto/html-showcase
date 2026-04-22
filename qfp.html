@@ -803,10 +803,28 @@
 
                 // 绘制分频带指示线 (Visualizer)
                 visualizerCtx.fillStyle = '#ffffff40';
-                SUB_BANDS.slice(1).forEach(e => {
-                    const x = e[0] / maxFreq * visualizerCanvas.width;
-                    visualizerCtx.fillRect(x, 0, 1, 1);
-                });
+                // if ( ?? "v1")
+                switch (player?.qfp?.getVersion() ?? "v1") {
+                    case "v1":
+                    case "v2":
+                        SUB_BANDS.slice(1).forEach(e => {
+                            const x = e[0] / maxFreq * visualizerCanvas.width;
+                            visualizerCtx.fillRect(x, 0, 1, 1);
+                        });
+                        break;
+                    case "v3":
+                        const gs = player.qfp.bandSize;
+                        const sr = player.qfp.sampleRate;
+                        const winSize = player.qfp.winSize / 2;
+                        const groupNum = winSize / gs;
+                        const nyquist = sr / 2;
+                        for (let i = 1; i < gs; i++) {
+                            const freq = i / groupNum * nyquist;
+                            const x = freq / maxFreq * visualizerCanvas.width;
+                            visualizerCtx.fillRect(x, 0, 1, 1);
+                        }
+                        break;
+                }
             }
 
             requestAnimationFrame(drawFFT);
