@@ -425,8 +425,8 @@
         }
 
         #editor-preview-wrapper:fullscreen {
-            width: 100vw;
-            height: 100vh;
+            width: 100dvw;
+            height: 100dvh;
             justify-content: center;
             padding: 0;
             margin: 0;
@@ -663,7 +663,8 @@
             }
 
             .editor-right {
-                width: 100%;
+                width: 90vw;
+                overflow-x: hidden;
                 border-left: none;
                 border-top: 1px solid #333;
                 padding: 15px;
@@ -731,13 +732,13 @@
             }
 
             dialog {
-                width: 95vw !important;
-                padding: 15px !important;
+                width: 95vw;
+                padding: 15px;
             }
 
             #video-preview-canvas {
-                max-width: 100% !important;
-                height: auto !important;
+                max-width: 100%;
+                height: auto;
             }
         }
 
