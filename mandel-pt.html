@@ -5454,11 +5454,15 @@
                     const reader = new FileReader();
                     reader.readAsText(file);
                     reader.onload = () => {
-                        const session = JSON.parse(reader.result);
-                        return session.center.re.equals(center.re.toString()) &&
-                            session.center.im.equals(center.im.toString()) &&
-                            session.size.base.equals(size.base.toString()) &&
-                            session.size.exp.equals(size.exp.toString());
+                        try {
+                            const session = JSON.parse(reader.result);
+                            return session.center.re.equals(center.re.toString()) &&
+                                session.center.im.equals(center.im.toString()) &&
+                                session.size.base.equals(size.base.toString()) &&
+                                session.size.exp.equals(size.exp.toString());
+                        } catch (e) {
+                            return false;
+                        }
                     }
                 } catch (e) {
                     console.error("FileReader error:", e);
