@@ -764,6 +764,7 @@
                 spectrumCtx.strokeStyle = '#ffffff22';
                 spectrumCtx.fillStyle = '#cccccc';
                 spectrumCtx.font = (11 * dpr) + 'px sans-serif';
+                spectrumCtx.textBaseline = 'top';
                 spectrumCtx.lineWidth = 1;
 
                 // 频率刻度 (X轴) - 4k
@@ -776,8 +777,9 @@
                     spectrumCtx.moveTo(x, 0);
                     spectrumCtx.lineTo(x, sh);
                     spectrumCtx.stroke();
-                    spectrumCtx.fillText((f / 1000) + 'k', x + 2, sh - 5);
+                    spectrumCtx.fillText((f / 1000) + 'kHz', x + 2, 5);
                 }
+                spectrumCtx.textBaseline = 'alphabetic';
 
                 // 动态 dB 刻度 (Y轴)
                 // 每 20dB 画一条线
@@ -818,10 +820,14 @@
                         const winSize = player.qfp.winSize / 2;
                         const groupNum = winSize / gs;
                         const nyquist = sr / 2;
-                        for (let i = 1; i < gs; i++) {
-                            const freq = i / groupNum * nyquist;
-                            const x = freq / maxFreq * visualizerCanvas.width;
+                        const freq = 1 / groupNum * nyquist;
+                        const xStep = freq / maxFreq * visualizerCanvas.width;
+                        for (let i = 0; i < gs; i++) {
+                            const x = i * xStep;
                             visualizerCtx.fillRect(x, 0, 1, 1);
+
+                            const quantLevel = player.qfp.dualChPlans[0];
+                            spectrumCtx.fillText(quantLevel[i], x + xStep * 0.5, spectrumCanvas.height - 5);
                         }
                         break;
                 }
