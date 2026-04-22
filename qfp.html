@@ -765,6 +765,7 @@
                 spectrumCtx.fillStyle = '#cccccc';
                 spectrumCtx.font = (11 * dpr) + 'px sans-serif';
                 spectrumCtx.textBaseline = 'top';
+                spectrumCtx.textAlign = 'left';
                 spectrumCtx.lineWidth = 1;
 
                 // 频率刻度 (X轴) - 4k
@@ -792,7 +793,7 @@
                     spectrumCtx.moveTo(0, y);
                     spectrumCtx.lineTo(sw, y);
                     spectrumCtx.stroke();
-                    spectrumCtx.fillText(db + ' dB', 5, y - 5);
+                    spectrumCtx.fillText(db + 'dB', 5, y - 5);
                 }
 
 
@@ -822,6 +823,7 @@
                         const nyquist = sr / 2;
                         const freq = 1 / groupNum * nyquist;
                         const xStep = freq / maxFreq * visualizerCanvas.width;
+                        spectrumCtx.textAlign = 'center';
                         for (let i = 0; i < gs; i++) {
                             const x = i * xStep;
                             visualizerCtx.fillRect(x, 0, 1, 1);
