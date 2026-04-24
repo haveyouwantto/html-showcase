@@ -928,11 +928,11 @@
             <select id="algorithm-select">
                 <option value="random">Fully Random</option>
                 <option value="random-bw">B&W Phases</option>
-                <option value="wandering" selected>Wandering Hue</option>
+                <option value="wandering">Wandering Hue</option>
                 <option value="golden">Golden Ratio</option>
                 <option value="teal-orange">Cinematic Teal-Orange</option>
                 <option value="organic-sine">Organic Waves</option>
-                <option value="uniform-lch">Uniform LCH</option>
+                <option value="uniform-lch" selected>Uniform LCH</option>
             </select>
             <button id="random-colors">Random</button>
         </div>
@@ -6818,7 +6818,7 @@
                 const color = oklch2rgb(
                     [
                         Math.random(),
-                        Math.random() * 0.4,
+                        Math.random() * 0.5,
                         Math.random() * 360
                     ]
                 )
