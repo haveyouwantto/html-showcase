@@ -1102,6 +1102,7 @@
         const sampleSelect = document.getElementById('samples')
         const sampleLoadBtn = document.getElementById('load-sample')
         const more = document.getElementById("more");
+        const audioCtx = new AudioContext();
 
 
         const CPU_CORES = Math.max(navigator.hardwareConcurrency ?? 1, 1);
@@ -5854,6 +5855,13 @@
                     // Fix: Use log2 for progress to avoid Infinity issues in deep mode
                     const maxOctaves = Math.ceil(5 - offMandel.size.log2Value());
 
+                    // Browser keep-alive
+                    const src = audioCtx.createConstantSource();
+                    const gain = audioCtx.createGain();
+                    gain.gain.value = 0.001;
+                    src.connect(gain).connect(audioCtx.destination);
+                    src.start();
+
                     // Collect keyframes using existing renderFrames
                     const renderedResults = await offMandel.renderFrames(
                         (frameIdx, frameProg, status) => {
@@ -5891,6 +5899,7 @@
                         this.keyframeMetadata = null;
                         progressDialog.close();
                         this.dialog.showModal();
+                        src.stop();
                         return;
                     }
 
