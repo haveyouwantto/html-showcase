@@ -880,7 +880,7 @@
                         const freq = 1 / groupNum * nyquist;
                         const xStep = freq / maxFreq * visualizerCanvas.width;
                         spectrumCtx.textAlign = 'center';
-                        for (let i = 0; i < gs; i++) {
+                        for (let i = 0; i < groupNum; i++) {
                             const x = i * xStep;
                             visualizerCtx.fillRect(x, 0, 1, 1);
 

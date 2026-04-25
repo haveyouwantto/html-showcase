@@ -928,10 +928,11 @@
             <select id="algorithm-select">
                 <option value="random">Fully Random</option>
                 <option value="random-bw">B&W Phases</option>
-                <option value="wandering" selected>Wandering Hue</option>
+                <option value="wandering">Wandering Hue</option>
                 <option value="golden">Golden Ratio</option>
                 <option value="teal-orange">Cinematic Teal-Orange</option>
                 <option value="organic-sine">Organic Waves</option>
+                <option value="uniform-lch" selected>Uniform LCH</option>
             </select>
             <button id="random-colors">Random</button>
         </div>
@@ -6674,6 +6675,46 @@
             return [Math.floor(r * 255), Math.floor(g * 255), Math.floor(b * 255)];
         }
 
+        const multiplyMatrices = (A, B) => {
+            return [
+                A[0] * B[0] + A[1] * B[1] + A[2] * B[2],
+                A[3] * B[0] + A[4] * B[1] + A[5] * B[2],
+                A[6] * B[0] + A[7] * B[1] + A[8] * B[2]
+            ];
+        };
+        const oklch2oklab = ([l, c, h]) => [
+            l,
+            isNaN(h) ? 0 : c * Math.cos(h * Math.PI / 180),
+            isNaN(h) ? 0 : c * Math.sin(h * Math.PI / 180)
+        ];
+        const oklab2xyz = lab => {
+            const LMSg = multiplyMatrices([
+                1, 0.3963377773761749, 0.2158037573099136,
+                1, -0.1055613458156586, -0.0638541728258133,
+                1, -0.0894841775298119, -1.2914855480194092
+            ], lab);
+            const LMS = LMSg.map(val => val ** 3);
+            return multiplyMatrices([
+                1.2268798758459243, -0.5578149944602171, 0.2813910456659647,
+                -0.0405757452148008, 1.1122868032803170, -0.0717110580655164,
+                -0.0763729366746601, -0.4214933324022432, 1.5869240198367816
+            ], LMS);
+        };
+        const xyz2rgbLinear = xyz => {
+            return multiplyMatrices([
+                3.2409699419045226, -1.537383177570094, -0.4986107602930034,
+                -0.9692436362808796, 1.8759675015077202, 0.04155505740717559,
+                0.05563007969699366, -0.20397695888897652, 1.0569715142428786
+            ], xyz);
+        };
+        const srgbLinear2rgb = rgb => rgb.map(c =>
+            Math.abs(c) > 0.0031308 ?
+                (c < 0 ? -1 : 1) * (1.055 * (Math.abs(c) ** (1 / 2.4)) - 0.055) :
+                12.92 * c
+        );
+        const oklch2rgb = lch =>
+            srgbLinear2rgb(xyz2rgbLinear(oklab2xyz(oklch2oklab(lch))));
+
         function generateRandomBWPalette(size) {
             const palette = [];
             for (let i = 0; i < size; i++) {
@@ -6778,6 +6819,29 @@
             return palette;
         }
 
+        const isValidRGB = rgb => rgb.every(c => c >= 0 && c <= 1);
+
+        function generateUniformLCHColor(size) {
+            const pal = [];
+            for (let i = 0; i < size; i++) {
+                const color = oklch2rgb(
+                    [
+                        Math.random(),
+                        Math.random() * 0.5,
+                        Math.random() * 360
+                    ]
+                )
+                if (isValidRGB(color)) {
+                    pal.push([
+                        Math.floor(color[0] * 255),
+                        Math.floor(color[1] * 255),
+                        Math.floor(color[2] * 255)
+                    ])
+                } else i--;
+            }
+            return pal;
+        }
+
         class PaletteEditor {
             constructor() {
                 this.dialog = document.getElementById('palette-dialog');
@@ -6815,6 +6879,9 @@
                             break;
                         case 'organic-sine':
                             palette = generateOrganicSinePalette(palette.length);
+                            break;
+                        case 'uniform-lch':
+                            palette = generateUniformLCHColor(palette.length);
                             break;
 
                     }
