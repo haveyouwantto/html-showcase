@@ -5857,6 +5857,7 @@
                     const maxOctaves = Math.ceil(5 - offMandel.size.log2Value());
 
                     // Browser keep-alive
+                    audioCtx.resume();
                     const src = audioCtx.createConstantSource();
                     const gain = audioCtx.createGain();
                     gain.gain.value = 0.001;
