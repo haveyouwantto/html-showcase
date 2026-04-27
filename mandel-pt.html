@@ -4374,7 +4374,15 @@
                 this.cancelling = false;
                 this.rendering = true;
 
+                // Browser keep-alive
                 const lock = await acquireWakelock();
+                audioCtx.resume();
+                const src = audioCtx.createConstantSource();
+                const gain = audioCtx.createGain();
+                gain.gain.value = 0.001;
+                src.connect(gain).connect(audioCtx.destination);
+                src.start();
+
                 try {
                     let preCalculated = 0;
                     for (let y = 0; y < this.canvas.height; y++) {
@@ -4465,6 +4473,7 @@
                 } finally {
                     this.rendering = false;
                     lock?.release();
+                    src?.stop();
                 }
             }
 
@@ -5856,14 +5865,6 @@
                     // Fix: Use log2 for progress to avoid Infinity issues in deep mode
                     const maxOctaves = Math.ceil(5 - offMandel.size.log2Value());
 
-                    // Browser keep-alive
-                    audioCtx.resume();
-                    const src = audioCtx.createConstantSource();
-                    const gain = audioCtx.createGain();
-                    gain.gain.value = 0.001;
-                    src.connect(gain).connect(audioCtx.destination);
-                    src.start();
-
                     // Collect keyframes using existing renderFrames
                     const renderedResults = await offMandel.renderFrames(
                         (frameIdx, frameProg, status) => {
@@ -5901,7 +5902,6 @@
                         this.keyframeMetadata = null;
                         progressDialog.close();
                         this.dialog.showModal();
-                        src.stop();
                         return;
                     }
 
