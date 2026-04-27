@@ -596,7 +596,7 @@
         analyser.smoothingTimeConstant = 0;
         analyser.fftSize = 2048; // Size of the FFT
 
-        const bufferLength = analyser.frequencyBinCount;
+        const bufferLength = 65536;
         const dataArray = new Float32Array(bufferLength);
         const byteDataArray = new Uint8Array(bufferLength);
 
@@ -776,7 +776,6 @@
                 // 使用 Uint8Array 获取用于瀑布图的字节数据（性能更好且足够）
                 analyser.getByteFrequencyData(byteDataArray);
 
-                const bufferLength = dataArray.length;
                 const sw = spectrumCanvas.width;
                 const sh = spectrumCanvas.height;
 
@@ -786,7 +785,7 @@
 
                 // 采样主要信号范围来决定缩放 (忽略极低频和极高频可能更稳定，或者全采样)
                 // 这里我们全采样以获取真实动态范围
-                for (let i = 0; i < bufferLength; i++) {
+                for (let i = 0; i < analyser.frequencyBinCount; i++) {
                     const val = dataArray[i];
                     if (val === -Infinity) continue;
                     if (val > currentMax) currentMax = val;
@@ -818,7 +817,7 @@
                 spectrumCtx.lineJoin = 'round';
 
                 for (let i = 0; i < sw; i++) {
-                    const dataIdx = Math.floor(i / sw * bufferLength);
+                    const dataIdx = Math.floor(i / sw * analyser.frequencyBinCount);
                     const dbVal = dataArray[dataIdx];
                     // 裁剪 dB 值到当前显示范围内
                     const clippedDb = Math.max(minDb, Math.min(maxDb, dbVal));
@@ -867,7 +866,7 @@
 
                 // --- 3. 绘制瀑布图新行 (Visualizer Canvas) ---
                 for (let i = 0; i < visualizerCanvas.width; i++) {
-                    let index = Math.floor(i / visualizerCanvas.width * bufferLength);
+                    let index = Math.floor(i / visualizerCanvas.width * analyser.frequencyBinCount);
                     visualizerCtx.fillStyle = colorTrans(palette, byteDataArray[index] / 255);
                     visualizerCtx.fillRect(i, 0, 1, 1);
                 }
@@ -3917,6 +3916,7 @@
                     let qfp = qfpFactory(arrayBuffer); // 创建解码器实例
                     if (player) player.stop(); // 如果已有播放器实例，先停止
                     player = new QFPPlayer(qfp); // 创建新的播放器实例
+                    analyser.fftSize = player.qfp.winSize / 2;
                     player.start(); // 开始播放
 
                     document.querySelectorAll('.player-opt').forEach(e => {
