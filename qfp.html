@@ -68,14 +68,12 @@
         #visualizer,
         #spectrum {
             width: 100%;
-            height: 150px;
+            height: 50%;
             background-color: #000;
-            border: 1px solid #333;
             display: block;
         }
 
         #spectrum {
-            margin-top: 16px;
             border-bottom: none;
         }
 
@@ -254,6 +252,13 @@
             text-decoration: underline;
         }
 
+        #canvas-container {
+            width: 60vw;
+            height: 300px;
+            border: 1px solid #333;
+            margin-top: 16px;
+        }
+
         @media only screen and (max-width:600px) {
             body {
                 width: 95%;
@@ -262,6 +267,11 @@
             .gray {
                 width: 100%;
             }
+
+            #canvas-container {
+                width: 100%;
+            }
+
         }
     </style>
 </head>
@@ -292,8 +302,10 @@
             </div>
             <div id="time" class="time">00:00 / 00:00</div>
         </div>
-        <canvas id="spectrum"></canvas>
-        <canvas id="visualizer"></canvas>
+        <div id="canvas-container">
+            <canvas id="spectrum"></canvas>
+            <canvas id="visualizer"></canvas>
+        </div>
 
         <h2>编码器</h2>
         <input type="file" id="audioInput" accept="audio/*" />
@@ -4042,6 +4054,18 @@
             e.addEventListener('change', () => {
                 player.setOption(e.dataset.key, e.checked)
             })
+        })
+
+        const canvasContainer = document.getElementById('canvas-container');
+        canvasContainer.addEventListener('click', e => {
+            if (!document.fullscreenElement) {
+                canvasContainer.requestFullscreen((e) => {
+                    console.log(e)
+                })
+            }
+            else {
+                document.exitFullscreen()
+            }
         })
 
         // 测试代码：批量编码并下载
