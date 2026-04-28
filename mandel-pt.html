@@ -4806,15 +4806,15 @@
                     // Zoom out to the start index zoom level
                     for (let i = 0; i < startIndex; i++) {
                         this.zoomOut();
-                        if (this.size.exp > -20 && !refreshRef) {
-                            this.center = new DeepComplex(
-                                new Decimal(this.center.re.toPrecision(30)),
-                                new Decimal(this.center.im.toPrecision(30))
-                            );
-                            this.refValid = false;
-                            this.iterations = Math.min(this.iterations, 1024);
-                            refreshRef = true;
-                        }
+                        // if (this.size.exp > -20 && !refreshRef) {
+                        //     this.center = new DeepComplex(
+                        //        new Decimal(this.center.re.toPrecision(30)),
+                        //        new Decimal(this.center.im.toPrecision(30))
+                        //     );
+                        //     this.refValid = false;
+                        //     this.iterations = Math.min(this.iterations, 1024);
+                        //     refreshRef = true;
+                        // }
                     }
 
                     while (this.size.doubleValue() < 32) {
@@ -5436,48 +5436,106 @@
 
             await mandelbrot.load(params);
         });
+        // ============================================================
+        //  MandelbrotAdapter — 将视频编辑器与具体 Mandelbrot 实现解耦
+        // ============================================================
+        class MandelbrotAdapter {
+            /**
+             * @param {Object} mandelbrot - 主 Mandelbrot 实例（必须）
+             * @param {Object} globals - 包含 palette, colorStep 等全局状态的对象
+             */
+            constructor(mandelbrot, globals) {
+                this.mandelbrot = mandelbrot;
+                this.globals = globals; // { palette, colorStep }
+            }
 
-        // Frame Storage for Video Editor (File System Access API)
+            /** 应用 KFR 数据，恢复模拟状态 */
+            applyKFR(kfrReader) {
+                this.mandelbrot.goto(new DeepComplex(kfrReader.re, kfrReader.im));
+                this.mandelbrot.zoom(FloatExp.FOUR.div(parseFloatExp(kfrReader.zoom)));
+                this.mandelbrot.setIterations(kfrReader.iter);
+                this.mandelbrot.smooth = kfrReader.smooth;
+
+                // 还原调色板（全局状态，但通过 adapter 管理）
+                this.globals.palette = kfrReader.colors;
+                this.globals.colorStep = 1024 / kfrReader.colors.length * kfrReader.iterDiv;
+            }
+
+            /** 备份当前模拟状态为 KFR 格式 */
+            saveKFR() {
+                const writer = new KFRWriter();
+                writer.load(this.mandelbrot);
+                return writer.toString();
+            }
+
+            /** 根据基础尺寸和帧索引计算缩放文本（解耦 FloatExp） */
+            getZoomDisplay(baseSize, frameIndex) {
+                const zoomStart = FloatExp.FOUR.div(baseSize);
+                const currZoomLog2 = zoomStart.log2Value() - frameIndex;
+                const currScale = FloatExp.fromLog2(currZoomLog2);
+                return `Zoom: ${currScale.exp < 7 ? currScale.doubleValue().toFixed(2) : currScale.base.toFixed(2) + 'E' + currScale.exp}`;
+            }
+
+            /** 创建离屏渲染器并返回统一接口 */
+            createOffscreenRenderer(width, height, center, size, iterations, smooth, ref, refValid) {
+                const offCanvas = new OffscreenCanvas(width, height);
+                const offMandel = new Mandelbrot(offCanvas, center.copy(), iterations, Math.sqrt(this.mandelbrot.bailout), true);
+                offMandel.setCanUpdateUrl(false);
+                offMandel.resizeCanvas(false, width, height);
+                offMandel.size = size.copy();
+                offMandel.smooth = smooth;
+                if (refValid) {
+                    offMandel.ref = ref;
+                    offMandel.refValid = true;
+                }
+                return {
+                    canvas: offCanvas,
+                    mandelbrot: offMandel,
+                    renderFrames: (...args) => offMandel.renderFrames(...args),
+                    cancel: () => offMandel.cancel(),
+                };
+            }
+        }
+
+        // ============================================================
+        //  FrameStorage — 纯粹的文件存储与缓存（无业务耦合）
+        // ============================================================
         class FrameStorage {
             constructor() {
                 this.dirHandle = null;
                 this.cache = new Map();
-                this.maxCacheSize = 20; // Reduced RAM cache
+                this.maxCacheSize = 20;
             }
 
             async initDir() {
                 try {
                     this.dirHandle = await window.showDirectoryPicker({
                         mode: 'readwrite',
-                        id: 'mandelbrot-video-frames'
+                        id: 'mandelbrot-video-frames',
                     });
                     return true;
                 } catch (e) {
-                    console.error("DirectoryPicker error:", e);
+                    console.error('DirectoryPicker error:', e);
                     return false;
                 }
             }
 
+            /** 检查目录中的会话是否与给定参数一致 */
             async equalsSession(center, size) {
                 if (!this.dirHandle) return false;
                 try {
                     const fileHandle = await this.dirHandle.getFileHandle('session.json');
                     const file = await fileHandle.getFile();
-                    const reader = new FileReader();
-                    reader.readAsText(file);
-                    reader.onload = () => {
-                        try {
-                            const session = JSON.parse(reader.result);
-                            return session.center.re.equals(center.re.toString()) &&
-                                session.center.im.equals(center.im.toString()) &&
-                                session.size.base.equals(size.base.toString()) &&
-                                session.size.exp.equals(size.exp.toString());
-                        } catch (e) {
-                            return false;
-                        }
-                    }
+                    const text = await file.text();
+                    const session = JSON.parse(text);
+                    // 字符串直接比较，无需 .equals()
+                    return (
+                        session.center.re === center.re.toString() &&
+                        session.center.im === center.im.toString() &&
+                        session.size.base === size.base.toString() &&
+                        session.size.exp === size.exp.toString()
+                    );
                 } catch (e) {
-                    console.error("FileReader error:", e);
                     return false;
                 }
             }
@@ -5493,22 +5551,18 @@
 
             async saveSession(metadata) {
                 if (!this.dirHandle) return;
+                metadata.kfrPath = 'session.kfr'; // 确保路径字段存在
                 const fileHandle = await this.dirHandle.getFileHandle('session.json', { create: true });
                 const writable = await fileHandle.createWritable();
-                // Ensure kfrPath is set
-                metadata.kfrPath = 'session.kfr';
                 await writable.write(JSON.stringify(metadata, null, 2));
                 await writable.close();
             }
 
-            async saveKFR(mandelbrot) {
+            async saveKFR(kfrString) {
                 if (!this.dirHandle) return;
-                const writer = new KFRWriter();
-                writer.load(mandelbrot);
-                const kfrContent = writer.toString();
                 const fileHandle = await this.dirHandle.getFileHandle('session.kfr', { create: true });
                 const writable = await fileHandle.createWritable();
-                await writable.write(kfrContent);
+                await writable.write(kfrString);
                 await writable.close();
             }
 
@@ -5524,23 +5578,12 @@
                 }
             }
 
-            async scanMissingFrames(count) {
-                if (!this.dirHandle) return [];
-                const missing = [];
-                for (let i = 0; i < count; i++) {
-                    const exists = await this.checkExistingFrame(i);
-                    if (!exists) missing.push(i);
-                }
-                return missing;
-            }
-
             async loadSession() {
                 if (!this.dirHandle) return null;
                 try {
                     const fileHandle = await this.dirHandle.getFileHandle('session.json');
                     const file = await fileHandle.getFile();
-                    const text = await file.text();
-                    return JSON.parse(text);
+                    return JSON.parse(await file.text());
                 } catch (e) {
                     return null;
                 }
@@ -5548,32 +5591,32 @@
 
             async checkExistingFrame(index) {
                 if (!this.dirHandle) return false;
-                const name = `frame_${index.toString().padStart(5, '0')}.png`;
                 try {
-                    await this.dirHandle.getFileHandle(name);
+                    await this.dirHandle.getFileHandle(`frame_${index.toString().padStart(5, '0')}.png`);
                     return true;
-                } catch (e) {
+                } catch {
                     return false;
                 }
             }
 
             async getFrame(index) {
                 if (this.cache.has(index)) {
-                    // Move to end of map (LRU)
-                    const val = this.cache.get(index);
+                    const img = this.cache.get(index);
                     this.cache.delete(index);
-                    this.cache.set(index, val);
-                    return val;
+                    this.cache.set(index, img); // LRU 移到末尾
+                    return img;
                 }
-
                 if (!this.dirHandle) return null;
-                const name = `frame_${index.toString().padStart(5, '0')}.png`;
                 try {
-                    const fileHandle = await this.dirHandle.getFileHandle(name);
+                    const fileHandle = await this.dirHandle.getFileHandle(`frame_${index.toString().padStart(5, '0')}.png`);
                     const file = await fileHandle.getFile();
-                    const img = new Image();
-                    img.src = URL.createObjectURL(file);
-                    await new Promise(r => img.onload = r);
+                    const url = URL.createObjectURL(file);
+                    const img = await new Promise((resolve, reject) => {
+                        const image = new Image();
+                        image.onload = () => resolve(image);
+                        image.onerror = reject;
+                        image.src = url;
+                    });
 
                     this.cache.set(index, img);
                     if (this.cache.size > this.maxCacheSize) {
@@ -5583,20 +5626,39 @@
                         this.cache.delete(firstKey);
                     }
                     return img;
-                } catch (e) {
+                } catch {
                     return null;
                 }
             }
 
             clear() {
-                this.cache.forEach(img => URL.revokeObjectURL(img.src));
+                for (const img of this.cache.values()) {
+                    URL.revokeObjectURL(img.src);
+                }
                 this.cache.clear();
             }
         }
 
-        // Video Editor Class
+        // ============================================================
+        //  VideoEditor — 纯粹的业务逻辑控制器（完全解耦）
+        // ============================================================
         class VideoEditor {
-            constructor() {
+            /**
+             * @param {MandelbrotAdapter|null} adapter - 若为 null，则使用全局 mandelbrot 构建默认适配器
+             * @param {FrameStorage|null} storage - 存储实例
+             */
+            constructor(adapter = null, storage = null) {
+                if (adapter) {
+                    this.adapter = adapter;
+                } else {
+                    // 保持向后兼容：使用全局变量构造默认适配器
+                    this.adapter = new MandelbrotAdapter(
+                        window.mandelbrot,
+                        { palette: window.palette, colorStep: window.colorStep }
+                    );
+                }
+                this.storage = storage || new FrameStorage();
+
                 this.keyframes = [];
                 this.keyframeMetadata = null;
                 this.timeline = [];
@@ -5607,9 +5669,7 @@
                 this.animationId = null;
                 this.lastAnimateTime = 0;
                 this.isScrubbing = false;
-                this.storage = new FrameStorage();
 
-                // UI Elements
                 this.dialog = document.getElementById('video-editor-dialog');
                 this.previewCanvas = document.getElementById('editor-preview-canvas');
                 this.timelineList = document.getElementById('timeline-list');
@@ -5618,27 +5678,30 @@
                 this.initUI();
             }
 
+            // ---------- UI 绑定（仅此一处） ----------
             initUI() {
-                // Close button
                 document.getElementById('editor-close').onclick = () => this.close();
 
-                // Settings
                 const widthInput = document.getElementById('editor-width');
                 const heightInput = document.getElementById('editor-height');
                 const fpsInput = document.getElementById('editor-fps');
                 const presetSelect = document.getElementById('editor-preset');
 
+                const presets = {
+                    '720p': [1280, 720],
+                    '1080p': [1920, 1080],
+                    '2k': [2560, 1440],
+                    '4k': [3840, 2160],
+                    '8k': [7680, 4320],
+                };
+
                 presetSelect.onchange = (e) => {
                     const val = e.target.value;
-                    if (val === '720p') { widthInput.value = 1280; heightInput.value = 720; }
-                    else if (val === '1080p') { widthInput.value = 1920; heightInput.value = 1080; }
-                    else if (val === '2k') { widthInput.value = 2560; heightInput.value = 1440; }
-                    else if (val === '4k') { widthInput.value = 3840; heightInput.value = 2160; }
-                    else if (val === '8k') { widthInput.value = 7680; heightInput.value = 4320; }
-
                     if (val !== 'custom') {
-                        this.resolution.width = parseInt(widthInput.value);
-                        this.resolution.height = parseInt(heightInput.value);
+                        widthInput.value = presets[val][0];
+                        heightInput.value = presets[val][1];
+                        this.resolution.width = presets[val][0];
+                        this.resolution.height = presets[val][1];
                     }
                 };
 
@@ -5650,236 +5713,231 @@
                     this.resolution.height = parseInt(e.target.value) || 1080;
                     presetSelect.value = 'custom';
                 };
-                fpsInput.oninput = (e) => {
-                    this.fps = parseInt(e.target.value) || 30;
-                };
+                fpsInput.oninput = (e) => (this.fps = parseInt(e.target.value) || 30);
 
-                // Buttons
                 document.getElementById('collect-keyframes-btn').onclick = () => this.collectKeyframes();
                 document.getElementById('resume-keyframes-btn').onclick = () => this.resumeRendering();
                 document.getElementById('clear-keyframes-btn').onclick = () => this.clearKeyframes();
                 document.getElementById('add-control-point').onclick = () => this.addControlPoint();
                 document.getElementById('export-video-btn').onclick = () => this.exportVideo();
 
-                // Playback controls
                 document.getElementById('play-pause-btn').onclick = () => this.togglePlayPause();
                 document.getElementById('stop-btn').onclick = () => this.stop();
-                document.getElementById('timeline-scrubber').oninput = (e) => {
-                    this.isScrubbing = true;
-                    const value = parseInt(e.target.value) / 1000;
-                    this.seekTo(value * this.getTotalDuration());
-                };
-                document.getElementById('timeline-scrubber').onchange = () => {
+
+                const scrubber = document.getElementById('timeline-scrubber');
+                scrubber.oninput = () => (this.isScrubbing = true);
+                scrubber.onchange = () => {
                     this.isScrubbing = false;
+                    const time = (parseFloat(scrubber.value) / 1000) * this.getTotalDuration();
+                    this.seekTo(time);
                 };
+
                 document.getElementById('fullscreen-btn').onclick = () => this.toggleFullscreen();
             }
 
             open() {
-                // Set initial resolution from current canvas
-                this.resolution.width = mandelbrot.canvas.width | 1 + 1;
-                this.resolution.height = mandelbrot.canvas.height | 1 + 1;
+                const m = this.adapter.mandelbrot;
+                this.resolution.width = m.canvas.width | 1 + 1;
+                this.resolution.height = m.canvas.height | 1 + 1;
                 document.getElementById('editor-width').value = this.resolution.width;
                 document.getElementById('editor-height').value = this.resolution.height;
                 document.getElementById('editor-fps').value = this.fps;
 
-                // Sync preset dropdown
                 const presetSelect = document.getElementById('editor-preset');
-                if (this.resolution.width === 1280 && this.resolution.height === 720) presetSelect.value = '720p';
-                else if (this.resolution.width === 1920 && this.resolution.height === 1080) presetSelect.value = '1080p';
-                else if (this.resolution.width === 2560 && this.resolution.height === 1440) presetSelect.value = '2k';
-                else if (this.resolution.width === 3840 && this.resolution.height === 2160) presetSelect.value = '4k';
-                else if (this.resolution.width === 7680 && this.resolution.height === 4320) presetSelect.value = '8k';
-                else presetSelect.value = 'custom';
+                const matchPreset = Object.entries({
+                    '720p': [1280, 720],
+                    '1080p': [1920, 1080],
+                    '2k': [2560, 1440],
+                    '4k': [3840, 2160],
+                    '8k': [7680, 4320],
+                }).find(([, [w, h]]) => this.resolution.width === w && this.resolution.height === h);
+                presetSelect.value = matchPreset ? matchPreset[0] : 'custom';
 
-                // Inhibit redraw on resize while editor is open
-                mandelbrot.setRedrawOnResize(false);
+                this.adapter.mandelbrot.setRedrawOnResize(false);
                 this.dialog.showModal();
             }
 
             close() {
                 this.stop();
-                mandelbrot.setRedrawOnResize(true);
+                this.adapter.mandelbrot.setRedrawOnResize(true);
                 this.storage.clear();
                 this.dialog.close();
             }
 
             async resumeRendering() {
-                const progressDialog = document.getElementById("video-progress-dialog");
-                const statusText = document.getElementById("video-status");
-
-                // Initialize storage (requests folder)
-                if (!await this.storage.initDir()) return;
-
-                this.dialog.close();
-                progressDialog.showModal();
-                statusText.innerText = "Loading session...";
+                const progress = this.showProgressDialog();
+                if (!(await this.storage.initDir())) return;
 
                 try {
+                    this.dialog.close();
+                    progress.showModal();
+                    progress.setStatus('Loading session…');
+
                     const session = await this.storage.loadSession();
-                    if (!session) {
-                        alert("No session.json found in this folder.");
-                        progressDialog.close();
+                    const kfr = await this.storage.loadKFR();
+                    if (!session || !kfr) {
+                        alert('Missing session data.');
                         this.dialog.showModal();
+                        progress.close();
                         return;
                     }
 
-                    const kfrReader = await this.storage.loadKFR();
-                    if (!kfrReader) {
-                        alert("No session.kfr found in this folder.");
-                        progressDialog.close();
-                        this.dialog.showModal();
-                        return;
-                    }
+                    this.adapter.applyKFR(kfr);
 
-                    // Restore simulation parameters from KFR
-                    mandelbrot.goto(new DeepComplex(kfrReader.re, kfrReader.im))
-                    mandelbrot.zoom(FloatExp.FOUR.div(parseFloatExp(kfrReader.zoom)));
-                    mandelbrot.setIterations(kfrReader.iter);
-                    mandelbrot.smooth = kfrReader.smooth;
-                    palette = kfrReader.colors;
-                    colorStep = 1024 / kfrReader.colors.length * kfrReader.iterDiv;
-                    mandelbrot.update();
-
-                    // Restore video settings from session.json
+                    // 从 session 恢复分辨率
                     this.resolution.width = session.resolution.width;
                     this.resolution.height = session.resolution.height;
                     this.fps = session.fps || 30;
 
-                    // Restore keyframe metadata for playback
+                    // 更新输入框
+                    document.getElementById('editor-width').value = this.resolution.width;
+                    document.getElementById('editor-height').value = this.resolution.height;
+                    document.getElementById('editor-fps').value = this.fps;
+
+                    // 同步编辑器预览 canvas 尺寸
+                    this.previewCanvas.width = this.resolution.width;
+                    this.previewCanvas.height = this.resolution.height;
+
                     this.keyframeMetadata = {
-                        center: mandelbrot.center.copy(),
-                        size: mandelbrot.size.copy(),
-                        startScale: new FloatExp(session.size.base, session.size.exp),
-                        frameCount: session.frames.length
+                        center: this.adapter.mandelbrot.center.copy(),
+                        size: this.adapter.mandelbrot.size.copy(),
+                        frameCount: session.frames.length,
                     };
 
-                    // Trigger collection with resume info
                     await this.collectKeyframes(true, session);
-
                 } catch (e) {
-                    console.error(e)
-                    alert("Error resuming session: " + e.message);
-                    progressDialog.close();
+                    alert('Resume error: ' + e.message);
                     this.dialog.showModal();
+                    progress.close();
                 }
             }
 
             async collectKeyframes(isResume = false, sessionData = null) {
-                const progressDialog = document.getElementById("video-progress-dialog");
-                const previewCanvas = document.getElementById("video-preview-canvas");
-                const previewCtx = previewCanvas.getContext('2d');
-                const totalProgBar = document.getElementById("video-total-progress");
-                const frameProgBar = document.getElementById("video-frame-progress");
-                const stageText = document.getElementById("video-stage");
-                const statusText = document.getElementById("video-status");
-                const cancelBtn = document.getElementById("video-cancel");
+                const progress = this.showProgressDialog();
 
-                this.dialog.close();
-                progressDialog.showModal();
-
-                let requestCancel = false;
-                let currentSession = {
-                    center: {
-                        re: mandelbrot.center.re.toString(),
-                        im: mandelbrot.center.im.toString()
-                    },
-                    resolution: {
-                        width: this.resolution.width,
-                        height: this.resolution.height
-                    },
-                    fps: this.fps,
-                    size: { base: mandelbrot.size.base, exp: mandelbrot.size.exp },
-                    frames: [] // Will store indices
-                };
-
-                // Initialize storage (requests folder)
                 if (!isResume) {
-                    if (!await this.storage.initDir()) {
-                        progressDialog.close();
-                        this.dialog.showModal();
-                        return;
-                    }
-                    if (!await this.storage.equalsSession(mandelbrot.center, mandelbrot.size)) {
-                        if (confirm("Another session exist, overwrite?")) {
-                            this.storage.clear()
-                            await this.storage.saveSession(currentSession);
-                        } else return;
-                    }
-
-                    // Initial save of simulation state
-                    await this.storage.saveKFR(mandelbrot);
+                    this.dialog.close();
+                    progress.showModal();
+                    progress.previewCanvas.width = this.resolution.width;
+                    progress.previewCanvas.height = this.resolution.height;
                 } else {
-                    currentSession = sessionData;
-                    this.resolution.width = sessionData.resolution.width;
-                    this.resolution.height = sessionData.resolution.height;
-                    document.getElementById('editor-width').value = this.resolution.width;
-                    document.getElementById('editor-height').value = this.resolution.height;
+                    // 恢复时，进度对话框已经由 resumeRendering 打开并显示了
+                    // 但我们需要确保其预览 canvas 尺寸正确
+                    progress.previewCanvas.width = this.resolution.width;
+                    progress.previewCanvas.height = this.resolution.height;
+                    this.dialog.close(); // 编辑器对话框在 resumeRendering 中已经关闭了，这里再关一次没问题
                 }
 
+                const currentSession = sessionData || {
+                    center: {
+                        re: this.adapter.mandelbrot.center.re.toString(),
+                        im: this.adapter.mandelbrot.center.im.toString(),
+                    },
+                    resolution: { width: this.resolution.width, height: this.resolution.height },
+                    fps: this.fps,
+                    size: {
+                        base: this.adapter.mandelbrot.size.base,
+                        exp: this.adapter.mandelbrot.size.exp,
+                    },
+                    frames: [],
+                };
 
                 try {
-                    const startIndex = 0;
+                    // === 智能跳过：仅在确认所有帧文件都存在且数量一致时才跳过 ===
+                    if (isResume && sessionData.frames && sessionData.frames.length > 0) {
+                        progress.setStatus('Checking existing frames…');
+                        const checks = await Promise.all(
+                            sessionData.frames.map(idx => this.storage.checkExistingFrame(idx))
+                        );
+                        const allExist = checks.every(Boolean);
 
-                    cancelBtn.onclick = async () => {
-                        requestCancel = true;
-                        statusText.innerText = "Saving and Cancelling...";
-                        // Final attempt to save metadata before stopping
-                        await this.storage.saveSession(currentSession);
-                        // Signal Mandelbrot to stop
-                        await offMandel.cancel();
-                    };
+                        // 还要确保磁盘上的实际文件数量等于记录的帧数，防止残留文件误导
+                        // 简单检查：抽屉中是否有额外的帧？我们只信任记录的索引集合
+                        // 同时快速抽查最后一个帧文件，提高可靠性
+                        const lastIdx = sessionData.frames[sessionData.frames.length - 1];
+                        const lastExist = await this.storage.checkExistingFrame(lastIdx);
 
-                    // Store metadata for the editor state
-                    this.keyframeMetadata = {
-                        center: mandelbrot.center.copy(),
-                        size: mandelbrot.size.copy(),
-                        startScale: mandelbrot.size.copy(),
-                        frameCount: 0
-                    };
+                        if (allExist && lastExist && checks.length === sessionData.frames.length) {
+                            // 全部存在，直接恢复数据结构
+                            this.keyframes = sessionData.frames.map(idx => ({ index: idx }));
+                            this.keyframeMetadata.frameCount = this.keyframes.length;
 
-                    // Create offscreen mandelbrot
-                    const offCanvas = new OffscreenCanvas(this.resolution.width, this.resolution.height);
-                    const offMandel = new Mandelbrot(
-                        offCanvas,
-                        mandelbrot.center.copy(),
-                        mandelbrot.iterations,
-                        Math.sqrt(mandelbrot.bailout),
-                        true
-                    );
+                            if (sessionData.timeline) {
+                                this.timeline = sessionData.timeline;
+                            } else {
+                                this.timeline = [
+                                    { time: 0, frame: 0 },
+                                    { time: this.keyframes.length, frame: this.keyframes.length - 1 },
+                                ];
+                            }
 
-                    offMandel.setCanUpdateUrl(false);
-                    offMandel.resizeCanvas(false, this.resolution.width, this.resolution.height);
-                    offMandel.size = mandelbrot.size.copy();
-                    offMandel.smooth = mandelbrot.smooth;
+                            this.updateAllDisplays();
+                            await this.saveCurrentSession();
+                            progress.close();
+                            this.dialog.showModal();
+                            return; // 跳过渲染
+                        }
 
-                    if (mandelbrot.refValid) {
-                        offMandel.ref = mandelbrot.ref;
-                        offMandel.refValid = true;
+                        progress.setStatus('Some frames missing, re-rendering…');
                     }
-                    await mandelbrot.cancel();
 
-                    previewCanvas.width = this.resolution.width;
-                    previewCanvas.height = this.resolution.height;
-
-                    // Fix: Use log2 for progress to avoid Infinity issues in deep mode
-                    const maxOctaves = Math.ceil(5 - offMandel.size.log2Value());
-
-                    // Collect keyframes using existing renderFrames
-                    const renderedResults = await offMandel.renderFrames(
-                        (frameIdx, frameProg, status) => {
-                            if (requestCancel) {
-                                offMandel.requestForCancel = true;
+                    // === 需要重新/补渲染 ===
+                    if (!isResume) {
+                        if (!(await this.storage.initDir())) {
+                            progress.close();
+                            this.dialog.showModal();
+                            return;
+                        }
+                        if (!(await this.storage.equalsSession(this.adapter.mandelbrot.center, this.adapter.mandelbrot.size))) {
+                            if (!confirm('Another session exists, overwrite?')) {
+                                progress.close();
+                                this.dialog.showModal();
                                 return;
                             }
-                            const totalProg = Math.min(0.99, (frameIdx - 1 + frameProg) / maxOctaves);
-                            totalProgBar.style.width = (totalProg * 100) + "%";
-                            frameProgBar.style.width = (frameProg * 100) + "%";
-                            stageText.innerText = "Collection Phase";
-                            statusText.innerText = status;
+                            this.storage.clear();
+                            await this.storage.saveSession(currentSession);
+                        }
+                        await this.storage.saveKFR(this.adapter.saveKFR());
+                    } else {
+                        // 恢复时分辨率已经在 resumeRendering 中处理完毕
+                    }
 
-                            // Live preview
-                            previewCtx.drawImage(offCanvas, 0, 0, previewCanvas.width, previewCanvas.height);
+                    progress.setCancelHandler(async () => {
+                        requestCancel = true;
+                        progress.setStatus('Cancelling…');
+                        await this.storage.saveSession(currentSession);
+                        // 取消离屏渲染器
+                        if (renderer) await renderer.cancel();
+                    });
+
+                    this.keyframeMetadata = {
+                        center: this.adapter.mandelbrot.center.copy(),
+                        size: this.adapter.mandelbrot.size.copy(),
+                        frameCount: 0,
+                    };
+
+                    const m = this.adapter.mandelbrot;
+                    const renderer = this.adapter.createOffscreenRenderer(
+                        this.resolution.width,
+                        this.resolution.height,
+                        m.center,
+                        m.size,
+                        m.iterations,
+                        m.smooth,
+                        m.ref,
+                        m.refValid
+                    );
+                    await m.cancel();
+
+                    const maxOctaves = Math.ceil(5 - renderer.mandelbrot.size.log2Value());
+
+                    await renderer.renderFrames(
+                        (idx, frameProg, status) => {
+                            if (requestCancel) renderer.cancel();
+                            const total = Math.min(0.99, (idx - 1 + frameProg) / maxOctaves);
+                            progress.update(total, frameProg, 'Collection', status);
+                            const ctx = progress.previewCanvas.getContext('2d');
+                            ctx.drawImage(renderer.canvas, 0, 0);
                         },
                         async (idx, blob, scale) => {
                             await this.storage.saveFrame(idx, blob);
@@ -5887,12 +5945,11 @@
                                 currentSession.frames.push(idx);
                                 currentSession.frames.sort((a, b) => a - b);
                             }
-                            // Periodically save session to avoid loss on crash
                             if (idx % 5 === 0) await this.storage.saveSession(currentSession);
                         },
-                        startIndex,
+                        0,
                         async (idx) => {
-                            // shouldSkip logic
+                            // 恢复模式下，跳过已存在的帧
                             return currentSession.frames.includes(idx);
                         }
                     );
@@ -5900,89 +5957,62 @@
                     if (requestCancel) {
                         this.keyframes = [];
                         this.keyframeMetadata = null;
-                        progressDialog.close();
+                        progress.close();
                         this.dialog.showModal();
                         return;
                     }
 
-                    // Final session save
                     await this.storage.saveSession(currentSession);
-
-                    // Reconstruct keyframes metadata (Index based)
-                    this.keyframes = currentSession.frames.map(idx => {
-                        return { index: idx };
-                    });
+                    this.keyframes = currentSession.frames.map(idx => ({ index: idx }));
 
                     if (this.keyframes.length < 2) {
-                        alert("Not enough frames collected (at least 2 required)");
+                        alert('Need at least 2 frames');
                         this.keyframes = [];
                         this.keyframeMetadata = null;
-                        progressDialog.close();
+                        progress.close();
                         this.dialog.showModal();
                         return;
                     }
 
                     this.keyframeMetadata.frameCount = this.keyframes.length;
-
-                    // Auto-populate initial timeline (Time in seconds)
-                    const durationInFrames = this.keyframes.length;
-
-                    if (sessionData && sessionData.timeline) {
+                    if (sessionData?.timeline) {
                         this.timeline = sessionData.timeline;
                     } else {
                         this.timeline = [
                             { time: 0, frame: 0 },
-                            { time: durationInFrames, frame: this.keyframes.length - 1 }
+                            { time: this.keyframes.length, frame: this.keyframes.length - 1 },
                         ];
                     }
 
-                    this.updateKeyframeDisplay();
-                    this.updateTimelineDisplay();
-                    this.updateExportButton();
-
-                    // Save the initial/restored state
+                    this.updateAllDisplays();
                     await this.saveCurrentSession();
-
-                    // Setup preview canvas
-                    this.previewCanvas.width = this.resolution.width;
-                    this.previewCanvas.height = this.resolution.height;
-
                 } catch (err) {
-                    console.error(err);
-                    alert('Error collecting keyframes: ' + err.message);
+                    alert('Collection error: ' + err.message);
                 } finally {
-                    progressDialog.close();
+                    progress.close();
                     this.dialog.showModal();
                 }
             }
 
             clearKeyframes() {
-                if (!confirm('Clear all keyframes and timeline data?')) return;
-
+                if (!confirm('Clear all keyframes and timeline?')) return;
                 this.keyframes = [];
                 this.keyframeMetadata = null;
                 this.timeline = [];
                 this.stop();
                 this.storage.clear();
-                // We don't save session here because clear() wipes the file
-                // But if we wanted to enforce empty state:
-                // this.saveCurrentSession(); (but session requires frames, so we can't really save a "valid" session without frames)
-
-                this.updateKeyframeDisplay();
-                this.updateTimelineDisplay();
-                this.updateExportButton();
+                this.updateAllDisplays();
             }
 
             updateKeyframeDisplay() {
                 const info = this.keyframeInfo;
-
-                if (this.keyframeMetadata && this.keyframes.length > 0) {
+                if (this.keyframeMetadata && this.keyframes.length) {
                     const { center, size, frameCount } = this.keyframeMetadata;
                     info.innerHTML = `
-                        <div class="info-status">✓ Collected (${frameCount} frames)</div>
-                        <div class="info-detail">Center: ${center.re.toFixed(4)} + ${center.im.toFixed(4)}i</div>
-                        <div class="info-detail">Size: ${size.toString()}</div>
-                    `;
+                <div class="info-status">✓ Collected (${frameCount} frames)</div>
+                <div class="info-detail">Center: ${center.re.toFixed(4)} + ${center.im.toFixed(4)}i</div>
+                <div class="info-detail">Size: ${size.toString()}</div>
+            `;
                     document.getElementById('collect-keyframes-btn').disabled = true;
                     document.getElementById('clear-keyframes-btn').style.display = 'block';
                 } else {
@@ -5994,61 +6024,41 @@
 
             updateTimelineDisplay() {
                 this.timelineList.innerHTML = '';
-
                 this.timeline.forEach((point, index) => {
-                    const item = document.createElement('div');
-                    item.className = 'control-point-item';
-                    item.innerHTML = `
-                        <label>Time (s):</label>
-                        <input type="number" step="0.1" value="${point.time}" data-index="${index}" data-field="time">
-                        <label>Frame:</label>
-                        <input type="number" step="0.1" value="${point.frame}" data-index="${index}" data-field="frame">
-                        <button onclick="videoEditor.removeControlPoint(${index})">×</button>
-                    `;
-
-                    // Add change listeners
-                    const inputs = item.querySelectorAll('input');
-                    inputs.forEach(input => {
-                        input.onchange = (e) => {
-                            const idx = parseInt(e.target.dataset.index);
-                            const field = e.target.dataset.field;
-                            this.timeline[idx][field] = parseFloat(e.target.value);
+                    const div = document.createElement('div');
+                    div.className = 'control-point-item';
+                    div.innerHTML = `
+                <label>Time (s):</label>
+                <input type="number" step="0.1" value="${point.time}" data-idx="${index}" data-field="time">
+                <label>Frame:</label>
+                <input type="number" step="0.1" value="${point.frame}" data-idx="${index}" data-field="frame">
+                <button onclick="videoEditor.removeControlPoint(${index})">×</button>
+            `;
+                    div.querySelectorAll('input').forEach(inp => {
+                        inp.onchange = () => {
+                            const idx = parseInt(inp.dataset.idx);
+                            this.timeline[idx][inp.dataset.field] = parseFloat(inp.value);
                             this.sortTimeline();
                             this.updateTimelineDisplay();
                             this.saveCurrentSession();
                         };
                     });
-
-                    this.timelineList.appendChild(item);
+                    this.timelineList.appendChild(div);
                 });
-
-                // Update time display
-                const totalDuration = this.getTotalDuration();
-                document.getElementById('total-duration').textContent = totalDuration.toFixed(1);
+                document.getElementById('total-duration').textContent = this.getTotalDuration().toFixed(1);
             }
 
             addControlPoint() {
-                if (this.keyframes.length === 0) {
-                    alert('Please collect keyframes first');
-                    return;
-                }
-
-                const maxFrame = this.keyframes.length - 1;
-                const lastPoint = this.timeline[this.timeline.length - 1];
-                const newTime = lastPoint ? lastPoint.time + 1 : 1;
-
-                this.timeline.push({ time: newTime, frame: Math.min(maxFrame, 0) });
+                if (!this.keyframes.length) return alert('Collect keyframes first');
+                const last = this.timeline[this.timeline.length - 1];
+                this.timeline.push({ time: last ? last.time + 1 : 1, frame: 0 });
                 this.sortTimeline();
-                this.updateTimelineDisplay();
-                this.updateExportButton();
+                this.updateAllDisplays();
                 this.saveCurrentSession();
             }
 
             removeControlPoint(index) {
-                if (this.timeline.length <= 2) {
-                    alert('Must have at least 2 control points');
-                    return;
-                }
+                if (this.timeline.length <= 2) return alert('Need at least 2 points');
                 this.timeline.splice(index, 1);
                 this.updateTimelineDisplay();
                 this.saveCurrentSession();
@@ -6059,187 +6069,119 @@
             }
 
             getTotalDuration() {
-                return this.timeline.length > 0 ? this.timeline[this.timeline.length - 1].time : 0;
+                return this.timeline.length ? this.timeline[this.timeline.length - 1].time : 0;
             }
 
             getFrameAtTime(time) {
-                if (this.timeline.length === 0) return 0;
-
-                // Clamp time
-                const minTime = this.timeline[0].time;
-                const maxTime = this.timeline[this.timeline.length - 1].time;
-                time = Math.max(minTime, Math.min(maxTime, time));
-
-                // Find surrounding control points
-                let before = this.timeline[0];
-                let after = this.timeline[this.timeline.length - 1];
-
+                if (!this.timeline.length) return 0;
+                time = Math.max(this.timeline[0].time, Math.min(this.timeline.at(-1).time, time));
+                let lo = this.timeline[0], hi = this.timeline.at(-1);
                 for (let i = 0; i < this.timeline.length - 1; i++) {
                     if (this.timeline[i].time <= time && this.timeline[i + 1].time >= time) {
-                        before = this.timeline[i];
-                        after = this.timeline[i + 1];
+                        lo = this.timeline[i];
+                        hi = this.timeline[i + 1];
                         break;
                     }
                 }
-
-                // Linear interpolation
-                if (after.time === before.time) return before.frame;
-                const t = (time - before.time) / (after.time - before.time);
-                return before.frame + (after.frame - before.frame) * t;
+                if (hi.time === lo.time) return lo.frame;
+                const t = (time - lo.time) / (hi.time - lo.time);
+                return lo.frame + (hi.frame - lo.frame) * t;
             }
 
-            async renderFrameAt(uiFrameIndex, useCanvas = null) {
-                if (this.keyframes.length === 0 || !this.keyframeMetadata) return;
-
-                // UX Mapping: UI 0 = Outermost (Shallow, Index N-1), UI N-1 = Innermost (Deep, Index 0)
-                // This makes the timeline naturally progress from defined start to defined end as Zoom In.
-                const totalFrames = this.keyframes.length;
-                const internalFrameIndex = (totalFrames - 1) - uiFrameIndex;
-
-                const lower = Math.floor(internalFrameIndex);
-                const upper = Math.ceil(internalFrameIndex);
-                const canvas = useCanvas || this.previewCanvas;
+            async renderFrameAt(uiFrameIndex, exportCanvas = null) {
+                if (!this.keyframes.length || !this.keyframeMetadata) return;
+                const total = this.keyframes.length;
+                const internalIdx = (total - 1) - uiFrameIndex; // 从外围(浅)到内(深)
+                const lower = Math.floor(internalIdx), upper = Math.ceil(internalIdx);
+                const canvas = exportCanvas || this.previewCanvas;
                 const ctx = canvas.getContext('2d');
                 const w = canvas.width, h = canvas.height, cx = w / 2, cy = h / 2;
+                const blend = internalIdx - lower;
 
-                const blend = internalFrameIndex - lower;
+                const idxA = Math.max(0, Math.min(total - 1, lower));
+                const idxB = Math.max(0, Math.min(total - 1, upper));
+                const diskA = this.keyframes[idxA].index;
+                const diskB = this.keyframes[idxB].index;
 
-                // Clamp indices to be safe
-                const idxLower = Math.max(0, Math.min(totalFrames - 1, lower));
-                const idxUpper = Math.max(0, Math.min(totalFrames - 1, upper));
+                const imgA = await this.storage.getFrame(diskA);
+                if (!imgA) return;
 
-                const kfLowerMetadata = this.keyframes[idxLower];
-                const diskIdxLower = kfLowerMetadata.index;
-
-                const kfLower = await this.storage.getFrame(diskIdxLower);
-                if (!kfLower) return;
-
-                if (idxLower === idxUpper) {
-                    // Exact frame
-                    ctx.drawImage(kfLower, 0, 0, w, h);
+                if (idxA === idxB) {
+                    ctx.drawImage(imgA, 0, 0, w, h);
                 } else {
-                    // Fractional - perform zoom interpolation
-                    const kfUpperMetadata = this.keyframes[idxUpper];
-                    const diskIdxUpper = kfUpperMetadata.index;
-                    const kfUpper = await this.storage.getFrame(diskIdxUpper);
-
-                    if (!kfUpper) {
-                        ctx.drawImage(kfLower, 0, 0, w, h);
+                    const imgB = await this.storage.getFrame(diskB);
+                    if (!imgB) {
+                        ctx.drawImage(imgA, 0, 0, w, h);
                     } else {
-                        // zoom-based blending (Interpolation)
-                        // scale1: 1.0 -> 0.5 (Lower/Deep frame shrinks relative to viewport moving out - or expands moving in)
                         const scale1 = Math.pow(2, -blend);
                         const scale2 = Math.pow(2, 1 - blend);
-
                         ctx.save();
                         ctx.clearRect(0, 0, w, h);
                         ctx.imageSmoothingEnabled = true;
 
-                        // Upper index frame (Shallow/Outside) - Background, Opaque
-                        ctx.drawImage(kfUpper, cx - (w * scale2) / 2, cy - (h * scale2) / 2, w * scale2, h * scale2);
+                        // 较浅/外层图（背景）
+                        ctx.drawImage(imgB, cx - (w * scale2) / 2, cy - (h * scale2) / 2, w * scale2, h * scale2);
 
-                        // Lower index frame (Deep/Inside) - Foreground, Fades In blending to 0 (Deep)
-                        // blend goes 1.0 (Shallow) -> 0.0 (Deep)
-                        // So alpha should go 0.0 -> 1.0
+                        // 较深/内层图（前景），淡入
                         ctx.globalAlpha = Math.max(0, Math.min(1, (1 - blend - 0.1) / 0.8));
-                        ctx.drawImage(kfLower, cx - (w * scale1) / 2, cy - (h * scale1) / 2, w * scale1, h * scale1);
-
+                        ctx.drawImage(imgA, cx - (w * scale1) / 2, cy - (h * scale1) / 2, w * scale1, h * scale1);
                         ctx.restore();
                     }
                 }
 
-                // --- Overlays ---
+                // 叠加文字（通过 adapter 获取缩放，不直接触碰 FloatExp）
                 ctx.save();
                 ctx.imageSmoothingEnabled = true;
-
-                // 1. Zoom Text Overlay (Based on internal Actual Zoom)
-                const zoomStart = FloatExp.FOUR.div(this.keyframeMetadata.size);
-                const currZoomLog2 = zoomStart.log2Value() - internalFrameIndex;
-                const currScale = FloatExp.fromLog2(currZoomLog2);
-                const zoomText = `Zoom: ${currScale.exp < 7 ? currScale.doubleValue().toFixed(2) : currScale.base.toFixed(2) + 'E' + currScale.exp}`;
-
+                const zoomText = this.adapter.getZoomDisplay(this.keyframeMetadata.size, internalIdx);
                 ctx.font = `${Math.round(w / 60)}px monospace`;
-                const zoomMetrics = ctx.measureText(zoomText);
-                const zoomPadding = 8;
-                const zoomRectW = zoomMetrics.width + zoomPadding * 2;
-                const zoomRectH = Math.round(w / 40);
-
-                ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
-                ctx.fillRect(20, 20, zoomRectW, zoomRectH);
-
+                const zm = ctx.measureText(zoomText);
+                const pad = 8, rh = Math.round(w / 40);
+                ctx.fillStyle = 'rgba(0,0,0,0.5)';
+                ctx.fillRect(20, 20, zm.width + pad * 2, rh);
                 ctx.fillStyle = 'white';
                 ctx.textBaseline = 'middle';
-                ctx.fillText(zoomText, 20 + zoomPadding, 20 + zoomRectH / 2);
+                ctx.fillText(zoomText, 20 + pad, 20 + rh / 2);
 
-                // 2. Frame Label (Only for editor preview, not export)
-                if (!useCanvas) {
-                    // Show the UI Frame Index (0 = Start)
+                if (!exportCanvas) {
                     const frameLabel = `Frame: ${uiFrameIndex.toFixed(2)}`;
-                    ctx.font = `${Math.round(w / 60)}px monospace`;
-                    const textMetrics = ctx.measureText(frameLabel);
-                    const padding = 8;
-                    const rectW = textMetrics.width + padding * 2;
-                    const rectH = Math.round(w / 40);
-
-                    ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
-                    ctx.fillRect(w - rectW - 20, 20, rectW, rectH);
-
+                    const fm = ctx.measureText(frameLabel);
+                    const rw = fm.width + pad * 2;
+                    ctx.fillStyle = 'rgba(0,0,0,0.5)';
+                    ctx.fillRect(w - rw - 20, 20, rw, rh);
                     ctx.fillStyle = 'white';
-                    ctx.textBaseline = 'middle';
-                    ctx.fillText(frameLabel, w - rectW - 20 + padding, 20 + rectH / 2);
+                    ctx.fillText(frameLabel, w - rw - 20 + pad, 20 + rh / 2);
                 }
-
                 ctx.restore();
             }
 
-            togglePlayPause() {
-                if (this.isPlaying) {
-                    this.pause();
-                } else {
-                    this.play();
-                }
-            }
-
+            togglePlayPause() { this.isPlaying ? this.pause() : this.play(); }
             play() {
-                if (this.keyframes.length === 0) return;
-
+                if (!this.keyframes.length) return;
                 this.isPlaying = true;
                 document.getElementById('play-pause-btn').textContent = '⏸';
-
                 this.lastAnimateTime = performance.now();
-                const totalDuration = this.getTotalDuration();
-
+                const total = this.getTotalDuration();
                 const animate = async (now) => {
                     if (!this.isPlaying) return;
-
-                    const elapsed = (now - this.lastAnimateTime) / 1000;
+                    const dt = (now - this.lastAnimateTime) / 1000;
                     this.lastAnimateTime = now;
-
-                    // If scrubbing, we don't advance the time or update the UI based on playback
-                    // The seekTo handler handles the updates
                     if (!this.isScrubbing) {
-                        this.currentTime = (this.currentTime + elapsed) % totalDuration;
-
-                        const frameIndex = this.getFrameAtTime(this.currentTime);
-                        await this.renderFrameAt(frameIndex);
-
+                        this.currentTime = (this.currentTime + dt) % total;
+                        const fi = this.getFrameAtTime(this.currentTime);
+                        await this.renderFrameAt(fi);
                         document.getElementById('current-time').textContent = this.currentTime.toFixed(1);
-                        document.getElementById('timeline-scrubber').value = (this.currentTime / totalDuration) * 1000;
+                        document.getElementById('timeline-scrubber').value = (this.currentTime / total) * 1000;
                     }
-
                     this.animationId = requestAnimationFrame(animate);
                 };
-
                 this.animationId = requestAnimationFrame(animate);
             }
 
             pause() {
                 this.isPlaying = false;
                 document.getElementById('play-pause-btn').textContent = '▶';
-                if (this.animationId) {
-                    cancelAnimationFrame(this.animationId);
-                    this.animationId = null;
-                }
+                if (this.animationId) cancelAnimationFrame(this.animationId);
+                this.animationId = null;
             }
 
             stop() {
@@ -6247,38 +6189,27 @@
                 this.currentTime = 0;
                 document.getElementById('current-time').textContent = '0.0';
                 document.getElementById('timeline-scrubber').value = 0;
-                if (this.keyframes.length > 0) {
-                    this.renderFrameAt(0);
-                }
+                if (this.keyframes.length) this.renderFrameAt(0);
             }
 
             async seekTo(time) {
                 this.currentTime = time;
-                const frameIndex = this.getFrameAtTime(time);
-                await this.renderFrameAt(frameIndex);
+                const fi = this.getFrameAtTime(time);
+                await this.renderFrameAt(fi);
                 document.getElementById('current-time').textContent = time.toFixed(1);
             }
 
-            /* 
-            recolorize() {
-                // Incompatible with FrameStorage (requires raw data)
-            }
-            */
-
             toggleFullscreen() {
-                const wrapper = document.getElementById('editor-preview-wrapper');
+                const wrap = document.getElementById('editor-preview-wrapper');
                 if (!document.fullscreenElement) {
-                    wrapper.requestFullscreen().catch(err => {
-                        alert(`Error attempting to enable full-screen mode: ${err.message} (${err.name})`);
-                    });
+                    wrap.requestFullscreen().catch(console.warn);
                 } else {
                     document.exitFullscreen();
                 }
             }
 
             updateExportButton() {
-                const canExport = this.keyframes.length > 0 && this.timeline.length >= 2;
-                document.getElementById('export-video-btn').disabled = !canExport;
+                document.getElementById('export-video-btn').disabled = !(this.keyframes.length && this.timeline.length >= 2);
             }
 
             async exportVideo() {
@@ -6398,25 +6329,52 @@
                 }
             }
 
-            async saveCurrentSession() {
-                if (!this.keyframeMetadata || this.keyframes.length === 0) return;
 
-                const currentSession = {
+            async saveCurrentSession() {
+                if (!this.keyframeMetadata || !this.keyframes.length) return;
+                const session = {
                     center: {
                         re: this.keyframeMetadata.center.re.toString(),
-                        im: this.keyframeMetadata.center.im.toString()
+                        im: this.keyframeMetadata.center.im.toString(),
                     },
-                    resolution: {
-                        width: this.resolution.width,
-                        height: this.resolution.height
-                    },
+                    resolution: { width: this.resolution.width, height: this.resolution.height },
                     fps: this.fps,
-                    size: { base: this.keyframeMetadata.size.base, exp: this.keyframeMetadata.size.exp },
-                    frames: this.keyframes.map(kf => kf.index),
-                    timeline: this.timeline
+                    size: {
+                        base: this.keyframeMetadata.size.base,
+                        exp: this.keyframeMetadata.size.exp,
+                    },
+                    frames: this.keyframes.map(k => k.index),
+                    timeline: this.timeline,
                 };
+                await this.storage.saveSession(session);
+            }
 
-                await this.storage.saveSession(currentSession);
+            // ---------- 辅助 ----------
+            updateAllDisplays() {
+                this.updateKeyframeDisplay();
+                this.updateTimelineDisplay();
+                this.updateExportButton();
+            }
+
+            showProgressDialog() {
+                const d = document.getElementById('video-progress-dialog');
+                return {
+                    showModal: () => d.showModal(),
+                    close: () => d.close(),
+                    setStatus: (text) => {
+                        document.getElementById('video-status').innerText = text;
+                    },
+                    update: (total, frame, stage, status) => {
+                        document.getElementById('video-total-progress').style.width = (total * 100) + '%';
+                        document.getElementById('video-frame-progress').style.width = (frame * 100) + '%';
+                        document.getElementById('video-stage').innerText = stage;
+                        document.getElementById('video-status').innerText = status;
+                    },
+                    setCancelHandler: (fn) => {
+                        document.getElementById('video-cancel').onclick = fn;
+                    },
+                    previewCanvas: document.getElementById('video-preview-canvas'),
+                };
             }
         }
 
@@ -6443,7 +6401,8 @@
             if (!checkVideoAPIs()) return;
 
             if (!videoEditor) {
-                videoEditor = new VideoEditor();
+                const adapter = new MandelbrotAdapter(mandelbrot, { palette, colorStep });
+                videoEditor = new VideoEditor(adapter, new FrameStorage());
             }
             videoEditor.open();
         });
