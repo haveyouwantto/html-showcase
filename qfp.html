@@ -3916,7 +3916,7 @@
                     let qfp = qfpFactory(arrayBuffer); // 创建解码器实例
                     if (player) player.stop(); // 如果已有播放器实例，先停止
                     player = new QFPPlayer(qfp); // 创建新的播放器实例
-                    analyser.fftSize = player.qfp.winSize / 2;
+                    analyser.fftSize = player.qfp.winSize * 2;
                     player.start(); // 开始播放
 
                     document.querySelectorAll('.player-opt').forEach(e => {
