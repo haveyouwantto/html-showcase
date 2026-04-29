@@ -814,7 +814,6 @@
                 spectrumCtx.beginPath();
                 spectrumCtx.strokeStyle = '#8e4bec';
                 spectrumCtx.lineWidth = 1.5 * dpr;
-                spectrumCtx.lineJoin = 'round';
 
                 for (let i = 0; i < sw; i++) {
                     const dataIdx = Math.floor(i / sw * analyser.frequencyBinCount);
@@ -3312,6 +3311,7 @@
                     const bitmapData = frameReader.read(bitmapSize);
 
                     const bitmap = unpackBits(bitmapData, this.numBands);
+                    console.log(bitmap)
 
                     const bandMeta = [];
                     for (let bIdx = 0; bIdx < this.numBands; bIdx++) {
