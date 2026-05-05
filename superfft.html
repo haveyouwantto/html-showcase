@@ -312,6 +312,24 @@ registerProcessor('loopback-processor', LoopbackProcessor);
             return `rgb(${r},${g},${b})`;
         }
 
+        function getHeatMapColor(value) { // value in [0, 1]
+            const c = [
+                [0.0, 0.0, 0.0],          // 黑
+                [0.0, 0.0, 1.0],          // 蓝
+                [0.0, 1.0, 1.0],          // 青
+                [1.0, 1.0, 0.0],          // 黄
+                [1.0, 0.0, 0.0],          // 红
+                [1.0, 0.0, 1.0]           // 品红
+            ];
+            const scaled = value * (c.length - 1);
+            const idx = Math.min(Math.floor(scaled), c.length - 2);
+            const t = scaled - idx;
+            const r = Math.round(((1 - t) * c[idx][0] + t * c[idx + 1][0]) * 255);
+            const g = Math.round(((1 - t) * c[idx][1] + t * c[idx + 1][1]) * 255);
+            const b = Math.round(((1 - t) * c[idx][2] + t * c[idx + 1][2]) * 255);
+            return `rgb(${r},${g},${b})`;
+        }
+
         function hann(N) {
             const win = new Float32Array(N);
             for (let n = 0; n < N; n++) {
@@ -379,13 +397,13 @@ registerProcessor('loopback-processor', LoopbackProcessor);
             // draw new line
             if (isComplex) {
                 for (let i = 0; i < fftsize; i++) {
-                    const color = getTurboColor(ampBuffer[i]);
+                    const color = getHeatMapColor(ampBuffer[i]);
                     ctx.fillStyle = color;
                     ctx.fillRect(i, 0, 1, 1);
                 }
             } else {
                 for (let i = fftsize * 0.5; i < fftsize; i++) {
-                    const color = getTurboColor(ampBuffer[i]);
+                    const color = getHeatMapColor(ampBuffer[i]);
                     ctx.fillStyle = color;
                     ctx.fillRect(i - fftsize * 0.5, 0, 1, 1);
                 }
