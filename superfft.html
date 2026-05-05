@@ -484,7 +484,7 @@
             }
 
             _computeDefaultFftSize() {
-                const targetFps = 15;
+                const targetFps = 30;
                 const idealSize = (2 * this.sampleRate) / targetFps;
                 const po2 = [256, 512, 1024, 2048, 4096, 8192, 16384, 32768];
                 let best = po2[0];
