@@ -6,8 +6,21 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Super FFT</title>
     <style>
+        :root {
+            --bg: #0a0a0a;
+            --surface: rgba(30, 30, 30, 0.75);
+            --text: #ffffff;
+            --primary: #ff6b6b;
+            --slider-track: #444;
+            --slider-fill: #ff6b6b;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
         html {
-            background-color: black;
+            background-color: var(--bg);
             width: 100dvw;
             height: 100dvh;
         }
@@ -17,102 +30,268 @@
             width: 100%;
             height: 100%;
             overflow: hidden;
+            font-family: 'Segoe UI', system-ui, sans-serif;
+            color: var(--text);
         }
 
         #fft {
+            display: block;
             width: 100%;
             height: 100%;
         }
 
-        .toolbox {
+        /* 工具箱容器 */
+        .toolbox-container {
             position: absolute;
-            bottom: 10px;
-            left: 10px;
-            z-index: 10;
+            bottom: 20px;
+            right: 20px;
+            z-index: 20;
             display: flex;
+            flex-direction: column;
+            align-items: flex-end;
             gap: 10px;
         }
 
-        .icon-button {
-            width: 32px;
-            height: 32px;
+        /* emoji 主按钮 */
+        .toolbox-toggle {
+            width: 48px;
+            height: 48px;
             border: none;
-            border-radius: 4px;
-            background-color: rgba(255, 255, 255, 0.2);
+            border-radius: 50%;
+            background: var(--surface);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            color: white;
+            font-size: 24px;
+            cursor: pointer;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+            transition: transform 0.2s, background 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            line-height: 1;
+        }
+
+        .toolbox-toggle:active {
+            transform: scale(0.92);
+        }
+
+        .toolbox-toggle.open {
+            background: rgba(255, 107, 107, 0.25);
+            transform: rotate(90deg);
+        }
+
+        /* 弹出面板 (popover) */
+        .popover {
+            display: none;
+            flex-direction: column;
+            gap: 14px;
+            background: var(--surface);
+            backdrop-filter: blur(24px);
+            -webkit-backdrop-filter: blur(24px);
+            border-radius: 20px;
+            padding: 20px;
+            min-width: 240px;
+            box-shadow: 0 16px 40px rgba(0, 0, 0, 0.6);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            animation: fadeIn 0.2s ease;
+        }
+
+        .popover.visible {
+            display: flex;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .control-row {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .control-label {
+            display: flex;
+            justify-content: space-between;
+            font-size: 13px;
+            opacity: 0.8;
+        }
+
+        input[type="range"] {
+            -webkit-appearance: none;
+            width: 100%;
+            height: 6px;
+            border-radius: 3px;
+            background: var(--slider-track);
+            outline: none;
+        }
+
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            background: var(--primary);
+            cursor: pointer;
+            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
+        }
+
+        .fft-size-selector {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        .fft-btn {
+            flex: 1;
+            padding: 6px 0;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 8px;
+            background: rgba(255, 255, 255, 0.05);
+            color: white;
+            font-size: 13px;
+            cursor: pointer;
+            transition: background 0.2s;
+            text-align: center;
+        }
+
+        .fft-btn.active {
+            background: var(--primary);
+            border-color: transparent;
+            font-weight: bold;
+        }
+
+        .source-toggle {
+            display: flex;
+            gap: 8px;
+        }
+
+        .source-btn {
+            flex: 1;
+            padding: 8px;
+            border-radius: 10px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            background: rgba(255, 255, 255, 0.05);
+            color: white;
+            cursor: pointer;
+            font-size: 14px;
+        }
+
+        .source-btn.active {
+            background: var(--primary);
+            border-color: transparent;
+        }
+
+        .mic-warning {
+            font-size: 11px;
+            opacity: 0.6;
+            text-align: center;
+        }
+
+        /* 关闭面板按钮 */
+        .close-popover {
+            align-self: flex-end;
+            background: none;
+            border: none;
             color: white;
             font-size: 18px;
             cursor: pointer;
+            opacity: 0.7;
         }
     </style>
 </head>
 
 <body>
     <canvas id="fft"></canvas>
-    <div class="toolbox">
-        <button id="startBtn" class="icon-button">></button>
-        <input type="range" id="minDb" min="-150" max="0" value="-100">
-        <input type="range" id="maxDb" min="-150" max="0" value="0">
+    <canvas id="overlay"
+        style="position:absolute; top:0; left:0; width:100%; height:100%; pointer-events:none;"></canvas>
+    <div class="toolbox-container">
+        <button id="toolboxToggle" class="toolbox-toggle">⚙️</button>
+        <div id="popover" class="popover">
+            <button class="close-popover" id="closePopover">✖</button>
+            <div class="control-row">
+                <div class="control-label"><span>Min dB</span><span id="minDbValue">-100</span></div>
+                <input type="range" id="minDbSlider" min="-150" max="0" value="-100" step="1">
+            </div>
+            <div class="control-row">
+                <div class="control-label"><span>Max dB</span><span id="maxDbValue">0</span></div>
+                <input type="range" id="maxDbSlider" min="-150" max="0" value="0" step="1">
+            </div>
+            <div class="control-row">
+                <div class="control-label">FFT Size</div>
+                <div class="fft-size-selector" id="fftSizeGroup">
+                </div>
+            </div>
+            <div class="control-row">
+                <div class="control-label">Source</div>
+                <div class="source-toggle">
+                    <button id="micSourceBtn" class="source-btn active">🎤 Mic</button>
+                    <button id="dummySourceBtn" class="source-btn">🔊 Test</button>
+                </div>
+                <div class="mic-warning">* 麦克风需用户手势启动</div>
+            </div>
+        </div>
     </div>
+
     <script>
+        // ------------------------------------------------------------
+        // 基础源类 (保持不变)
+        // ------------------------------------------------------------
         class Source {
-            constructor() {
-                this.callback = null;
-            }
-
-            getSupportedSampleRate() {
-                return [48000]
-            }
-
-            setCallback(func) {
-                this.callback = func;
-            }
-
-            start() {
-
-            }
-
-            setSampleRate(sr) {
-
-            }
+            constructor() { this.callback = null; }
+            getSupportedSampleRate() { return [48000]; }
+            setCallback(func) { this.callback = func; }
+            start() { }
+            setSampleRate(sr) { }
         }
 
+        // 虚拟噪声源
         class DummyNoiseSource extends Source {
             constructor() {
                 super();
                 this.t = 0;
             }
-
             start() {
                 this.int = setInterval(() => {
                     let arr = new Float32Array(2048);
                     for (let i = 0; i < arr.length; i++) {
-                        // Random + sine
                         arr[i] = Math.random() * 0.1 + Math.sin(2 * Math.PI * 12000 * this.t) * 0.15;
                         this.t += 1 / 48000;
                     }
                     this.callback(arr);
                 }, 23);
             }
+            stop() {
+                clearInterval(this.int);
+                this.callback = null;
+            }
         }
 
+        // 麦克风源 (AudioWorklet)
         const loopbackProcessorCode = `
-class LoopbackProcessor extends AudioWorkletProcessor {
-  process(inputs, outputs) {
-    const input = inputs[0];
-    if (input && input[0]) {
-      const channelData = input[0];            // Float32Array (只取第一通道)
-      const buffer = new Float32Array(channelData.length);
-      buffer.set(channelData);
-      // 通过 postMessage 将数据发送回主线程，转移所有权以提升性能
-      this.port.postMessage({ audio: buffer }, [buffer.buffer]);
-    }
-    // 返回 true 让处理器保持活动
-    return true;
-  }
-}
-
-registerProcessor('loopback-processor', LoopbackProcessor);
-`;
+            class LoopbackProcessor extends AudioWorkletProcessor {
+                process(inputs, outputs) {
+                    const input = inputs[0];
+                    if (input && input[0]) {
+                        const channelData = input[0];
+                        const buffer = new Float32Array(channelData.length);
+                        buffer.set(channelData);
+                        this.port.postMessage({ audio: buffer }, [buffer.buffer]);
+                    }
+                    return true;
+                }
+            }
+            registerProcessor('loopback-processor', LoopbackProcessor);
+        `;
 
         class MicrophoneSource extends Source {
             constructor() {
@@ -123,142 +302,88 @@ registerProcessor('loopback-processor', LoopbackProcessor);
                 this._sampleRate = null;
                 this.started = false;
             }
-
-            getSupportedSampleRate() {
-                // 浏览器的 AudioContext 通常支持这些采样率（视硬件而定）
-                return [44100, 48000, 96000];
-            }
-
-            setSampleRate(sr) {
-                this._sampleRate = sr;
-            }
+            getSupportedSampleRate() { return [44100, 48000, 96000]; }
+            setSampleRate(sr) { this._sampleRate = sr; }
 
             async start() {
                 if (this.started) return;
                 this.started = true;
-
-                // 1. 请求麦克风权限并获取流
                 this.stream = await navigator.mediaDevices.getUserMedia({
-                    audio: {
-                        channelCount: 1,               // 强制单声道，简化处理
-                        echoCancellation: false,
-                        noiseSuppression: false,
-                        autoGainControl: false
-                    }
+                    audio: { channelCount: 1, echoCancellation: false, noiseSuppression: false, autoGainControl: false }
                 });
-
-                // 2. 创建 AudioContext，尽可能使用指定采样率
-                const audioCtxOptions = {};
-                if (this._sampleRate) {
-                    audioCtxOptions.sampleRate = this._sampleRate;
-                }
+                const opts = this._sampleRate ? { sampleRate: this._sampleRate } : {};
                 try {
-                    this.audioContext = new AudioContext(audioCtxOptions);
+                    this.audioContext = new AudioContext(opts);
                 } catch (e) {
-                    // 如果指定的采样率不支持，回退到默认
-                    console.warn('Failed to create AudioContext with sampleRate', this._sampleRate, e);
+                    console.warn('Sample rate not supported, falling back', e);
                     this.audioContext = new AudioContext();
                 }
-
-                // 3. 加载 AudioWorklet 模块
                 const blob = new Blob([loopbackProcessorCode], { type: 'application/javascript' });
                 const url = URL.createObjectURL(blob);
                 await this.audioContext.audioWorklet.addModule(url);
                 URL.revokeObjectURL(url);
-
-                // 4. 创建麦克风源节点和 Loopback AudioWorkletNode
-                const source = this.audioContext.createMediaStreamSource(this.stream);
+                const sourceNode = this.audioContext.createMediaStreamSource(this.stream);
                 this.workletNode = new AudioWorkletNode(this.audioContext, 'loopback-processor');
-                source.connect(this.workletNode);
-                // 不需要连接到扬声器，因为我们只抽取数据
-
-                // 5. 接收来自 worklet 的音频数据
+                sourceNode.connect(this.workletNode);
                 this.workletNode.port.onmessage = (event) => {
-                    const audioData = event.data.audio;   // Float32Array (128 个采样点左右)
-                    if (this.callback) {
-                        this.callback(audioData);
-                    }
+                    if (this.callback) this.callback(event.data.audio);
                 };
-
-                // 6. 恢复 AudioContext（某些浏览器需要用户手势）
-                if (this.audioContext.state === 'suspended') {
-                    await this.audioContext.resume();
-                }
+                if (this.audioContext.state === 'suspended') await this.audioContext.resume();
             }
-
-            // 可选：添加停止方法释放资源
             stop() {
-                if (this.stream) {
-                    this.stream.getTracks().forEach(track => track.stop());
-                }
-                if (this.audioContext) {
-                    this.audioContext.close();
-                }
+                if (this.stream) { this.stream.getTracks().forEach(t => t.stop()); this.stream = null; }
+                if (this.audioContext) { this.audioContext.close(); this.audioContext = null; }
+                this.workletNode = null;
                 this.started = false;
+                this.callback = null;
             }
         }
 
+        // ------------------------------------------------------------
+        // FFTBuffer (保持不变)
+        // ------------------------------------------------------------
         class FFTBuffer {
             constructor(size, callback) {
-                this.size = size;               // FFT 帧大小
+                this.size = size;
                 this.callback = callback;
                 this.buffer = new Float32Array(size);
-                this.offset = 0;                // 当前写入位置
+                this.offset = 0;
             }
-
             push(data) {
                 let dataOffset = 0;
                 while (dataOffset < data.length) {
                     const remaining = this.size - this.offset;
                     const copyLen = Math.min(data.length - dataOffset, remaining);
-                    // 拷贝数据到缓冲区
                     this.buffer.set(data.subarray(dataOffset, dataOffset + copyLen), this.offset);
                     this.offset += copyLen;
                     dataOffset += copyLen;
-
-                    // 当缓冲区刚好填满时，触发回调并丢弃前一半数据
                     if (this.offset === this.size) {
                         this.callback(this.buffer);
                         const half = this.size >> 1;
-                        // 将后一半数据移动到数组开头
                         this.buffer.set(this.buffer.subarray(half, this.size), 0);
-                        this.offset = half;     // 写入位置调整到中间，准备接收新数据
+                        this.offset = half;
                     }
                 }
             }
         }
 
+        // ------------------------------------------------------------
+        // 纯函数: miniFFT, fftshift, 窗函数
+        // ------------------------------------------------------------
         function miniFFT(inRe, inIm, outRe, outIm) {
             const N = inRe.length;
-
-            // 1. 先将输入拷贝到输出数组，因为后续是原位计算
             for (let i = 0; i < N; i++) {
                 outRe[i] = inRe[i];
                 outIm[i] = inIm[i];
             }
-
-            // 2. 位反转置换 (Bit-reversal permutation)
             for (let i = 0; i < N; i++) {
-                let j = 0,
-                    h = i,
-                    k = N;
-                while (k >>= 1) {
-                    j = (j << 1) | (h & 1);
-                    h >>= 1;
-                }
+                let j = 0, h = i, k = N;
+                while (k >>= 1) { j = (j << 1) | (h & 1); h >>= 1; }
                 if (j > i) {
-                    // 交换 outRe
-                    let tempRe = outRe[i];
-                    outRe[i] = outRe[j];
-                    outRe[j] = tempRe;
-                    // 交换 outIm
-                    let tempIm = outIm[i];
-                    outIm[i] = outIm[j];
-                    outIm[j] = tempIm;
+                    [outRe[i], outRe[j]] = [outRe[j], outRe[i]];
+                    [outIm[i], outIm[j]] = [outIm[j], outIm[i]];
                 }
             }
-
-            // 3. 蝴蝶运算
             for (let hN = 1; hN * 2 <= N; hN *= 2) {
                 for (let i = 0; i < N; i += hN * 2) {
                     for (let j = i; j < i + hN; j++) {
@@ -275,168 +400,427 @@ registerProcessor('loopback-processor', LoopbackProcessor);
             }
         }
 
-        function getViridisColor(value) { // value in [0, 1]
-            const c = [
-                [0.267004, 0.004874, 0.329415],
-                [0.282327, 0.094955, 0.417331],
-                [0.253935, 0.265254, 0.529983],
-                [0.206756, 0.371758, 0.553117],
-                [0.164624, 0.471133, 0.558148],
-                [0.128983, 0.566949, 0.550556],
-                [0.135497, 0.659636, 0.517649],
-            ]
-            const idx = Math.min(Math.floor(value * (c.length - 1)), c.length - 2);
-            const t = (value * (c.length - 1)) - idx;
-            const r = Math.round((1 - t) * c[idx][0] * 255 + t * c[idx + 1][0] * 255);
-            const g = Math.round((1 - t) * c[idx][1] * 255 + t * c[idx + 1][1] * 255);
-            const b = Math.round((1 - t) * c[idx][2] * 255 + t * c[idx + 1][2] * 255);
-            return `rgb(${r},${g},${b})`;
-        }
-
-        function getTurboColor(value) { // value in [0, 1]
-            // Turbo 色图控制点 (RGB值, 0~1)
-            const c = [
-                [0.18995, 0.07176, 0.23217],  // 深蓝
-                [0.19490, 0.50057, 0.54626],  // 蓝绿
-                [0.46021, 0.86760, 0.21856],  // 绿
-                [0.94674, 0.87062, 0.12757],  // 黄
-                [0.97232, 0.40688, 0.07837],  // 橙红
-                [0.95892, 0.94015, 0.93993]   // 近白
-            ];
-            const scaled = value * (c.length - 1);
-            const idx = Math.min(Math.floor(scaled), c.length - 2);
-            const t = scaled - idx;
-            const r = Math.round(((1 - t) * c[idx][0] + t * c[idx + 1][0]) * 255);
-            const g = Math.round(((1 - t) * c[idx][1] + t * c[idx + 1][1]) * 255);
-            const b = Math.round(((1 - t) * c[idx][2] + t * c[idx + 1][2]) * 255);
-            return `rgb(${r},${g},${b})`;
-        }
-
-        function getHeatMapColor(value) { // value in [0, 1]
-            const c = [
-                [0.0, 0.0, 0.0],          // 黑
-                [0.0, 0.0, 1.0],          // 蓝
-                [0.0, 1.0, 1.0],          // 青
-                [1.0, 1.0, 0.0],          // 黄
-                [1.0, 0.0, 0.0],          // 红
-                [1.0, 0.0, 1.0]           // 品红
-            ];
-            const scaled = value * (c.length - 1);
-            const idx = Math.min(Math.floor(scaled), c.length - 2);
-            const t = scaled - idx;
-            const r = Math.round(((1 - t) * c[idx][0] + t * c[idx + 1][0]) * 255);
-            const g = Math.round(((1 - t) * c[idx][1] + t * c[idx + 1][1]) * 255);
-            const b = Math.round(((1 - t) * c[idx][2] + t * c[idx + 1][2]) * 255);
-            return `rgb(${r},${g},${b})`;
-        }
-
-        function hann(N) {
-            const win = new Float32Array(N);
-            for (let n = 0; n < N; n++) {
-                win[n] = 0.5 * (1 - Math.cos(2 * Math.PI * n / (N - 1)));
-            }
-            return win;
-        }
-
         function fftshift(arr) {
             const N = arr.length;
             const half = N >> 1;
             for (let i = 0; i < half; i++) {
-                const temp = arr[i];
-                arr[i] = arr[i + half];
-                arr[i + half] = temp;
+                [arr[i], arr[i + half]] = [arr[i + half], arr[i]];
             }
         }
 
+        function hann(N) {
+            const win = new Float32Array(N);
+            for (let n = 0; n < N; n++) win[n] = 0.5 * (1 - Math.cos(2 * Math.PI * n / (N - 1)));
+            return win;
+        }
+
+        // 颜色映射
+        function getHeatMapColor(value) {
+            const c = [
+                [0.0, 0.0, 0.0], [0.0, 0.0, 1.0], [0.0, 1.0, 1.0],
+                [1.0, 1.0, 0.0], [1.0, 0.0, 0.0], [1.0, 0.0, 1.0]
+            ];
+            const scaled = value * (c.length - 1);
+            const idx = Math.min(Math.floor(scaled), c.length - 2);
+            const t = scaled - idx;
+            const r = Math.round(((1 - t) * c[idx][0] + t * c[idx + 1][0]) * 255);
+            const g = Math.round(((1 - t) * c[idx][1] + t * c[idx + 1][1]) * 255);
+            const b = Math.round(((1 - t) * c[idx][2] + t * c[idx + 1][2]) * 255);
+            return `rgb(${r},${g},${b})`;
+        }
+
+        // ------------------------------------------------------------
+        // SpectrumAnalyzer 类
+        // ------------------------------------------------------------
+        class SpectrumAnalyzer {
+            constructor(canvas, overlayCanvas, { fftSize = null, source = null } = {}) {
+                this.canvas = canvas;
+                this.overlayCanvas = overlayCanvas;          // 独立的刻度画布
+                this.ctx = canvas.getContext('2d');
+                this.overlayCtx = overlayCanvas.getContext('2d');
+                this.dpr = window.devicePixelRatio || 1;
+
+                // 可控参数
+                this.minDb = -100;
+                this.maxDb = 0;
+                this.isComplex = false;
+
+                this.sampleRate = 48000;
+
+                this.source = source;
+                this.sourceCallbackBound = null;
+                this.fftBuffer = null;
+                this.startTime = 0;
+
+                // 数组
+                this.fftSize = 0;
+                this.outRe = null;
+                this.outIm = null;
+                this.inIm = null;
+                this.workBuffer = null;
+                this.ampBuffer = null;
+                this.win = null;
+
+                // 初始化采样率
+                if (source && typeof source.getSampleRate === 'function') {
+                    const rates = source.getSupportedSampleRate ? source.getSupportedSampleRate() : [48000];
+                    this.sampleRate = rates[0] || 48000;
+                }
+                const defaultSize = this._computeDefaultFftSize();
+                this.setFftSize(fftSize || defaultSize, false);
+
+                // 画布尺寸
+                this.resizeCanvas();
+
+                // 观察尺寸变化（两个 canvas 同步）
+                this.resizeObserver = new ResizeObserver(() => {
+                    this.resizeCanvas();
+                    this.drawScalesOnOverlay();   // 尺寸变化时重绘刻度
+                });
+                this.resizeObserver.observe(canvas);
+
+                // 启动源
+                if (this.source) this._startSource();
+            }
+
+            _computeDefaultFftSize() {
+                const targetFps = 15;
+                const idealSize = (2 * this.sampleRate) / targetFps;
+                const po2 = [256, 512, 1024, 2048, 4096, 8192, 16384, 32768];
+                let best = po2[0];
+                for (const s of po2) {
+                    if (Math.abs(s - idealSize) < Math.abs(best - idealSize)) best = s;
+                }
+                return best;
+            }
+
+            getAvailableFftSizes() {
+                const defaultSize = this._computeDefaultFftSize();
+                const candidates = [256, 512, 1024, 2048, 4096, 8192, 16384, 32768];
+                const minSize = Math.max(256, defaultSize / 4);
+                const maxSize = Math.min(32768, defaultSize * 4);
+                return candidates.filter(s => s >= minSize && s <= maxSize);
+            }
+
+            setFftSize(newSize, restart = true) {
+                if (newSize === this.fftSize) return;
+                this.fftSize = newSize;
+                this.outRe = new Float32Array(newSize);
+                this.outIm = new Float32Array(newSize);
+                this.inIm = new Float32Array(newSize);
+                this.workBuffer = new Float32Array(newSize);
+                this.ampBuffer = new Float32Array(newSize);
+                this.win = hann(newSize);
+                this._recreateFFTBuffer();
+                if (restart && this.source) {
+                    this._restartSource();
+                }
+                this.resizeCanvas();
+                this.drawScalesOnOverlay();   // FFT 大小变化影响频率轴范围
+            }
+
+            getFrameInterval() {
+                return (this.fftSize / 2) / this.sampleRate;
+            }
+
+            _recreateFFTBuffer() {
+                this.fftBuffer = new FFTBuffer(this.fftSize, this._drawCallback);
+            }
+
+            _restartSource() {
+                this._stopSource();
+                this._startSource();
+            }
+
+            _stopSource() {
+                if (this.source && this.source.stop) {
+                    this.source.stop();
+                }
+                this.sourceCallbackBound = null;
+                this.fftBuffer = null;
+            }
+
+            _startSource() {
+                if (!this.source) return;
+                this._recreateFFTBuffer();
+                this.startTime = performance.now() / 1000;
+                this.sourceCallbackBound = (data) => {
+                    if (this.fftBuffer) this.fftBuffer.push(data);
+                };
+                this.source.setCallback(this.sourceCallbackBound);
+                this.source.start();
+            }
+
+            _drawCallback = (buffer) => {
+                const N = this.fftSize;
+                // 加窗
+                for (let i = 0; i < N; i++) {
+                    this.workBuffer[i] = buffer[i] * this.win[i];
+                }
+                miniFFT(this.workBuffer, this.inIm, this.outRe, this.outIm);
+                fftshift(this.outRe);
+                fftshift(this.outIm);
+
+                const dynamicRange = this.maxDb - this.minDb;
+                // 计算归一化幅度
+                for (let i = 0; i < N; i++) {
+                    const amp = Math.sqrt(this.outRe[i] ** 2 + this.outIm[i] ** 2) / N * 2;
+                    let db = 20 * Math.log10(amp);
+                    if (db < this.minDb) db = this.minDb;
+                    if (db > this.maxDb) db = this.maxDb;
+                    this.ampBuffer[i] = (db - this.minDb) / dynamicRange;
+                }
+
+                // 滚动画布
+                const ctx = this.ctx;
+                ctx.drawImage(this.canvas, 0, 1);
+                ctx.fillStyle = 'black';
+                ctx.fillRect(0, 0, this.canvas.width, 1);
+
+                // 绘制新谱线
+                if (this.isComplex) {
+                    for (let i = 0; i < N; i++) {
+                        ctx.fillStyle = getHeatMapColor(this.ampBuffer[i]);
+                        ctx.fillRect(i, 0, 1, 1);
+                    }
+                } else {
+                    const startIdx = N / 2;
+                    for (let i = startIdx; i < N; i++) {
+                        ctx.fillStyle = getHeatMapColor(this.ampBuffer[i]);
+                        ctx.fillRect(i - startIdx, 0, 1, 1);
+                    }
+                }
+                // 不再在此绘制刻度
+            };
+
+            /**
+             * 在 overlay canvas 上绘制频率刻度和时间刻度
+             * - 频率：每 4 kHz 一条垂直线
+             * - 时间：每 10 秒一条水平线（标注相对当前时间）
+             */
+            drawScalesOnOverlay() {
+                const ctx = this.overlayCtx;
+                const w = this.overlayCanvas.width;
+                const h = this.overlayCanvas.height;
+                if (w === 0 || h === 0) return;
+
+                ctx.clearRect(0, 0, w, h);
+                ctx.save();
+                ctx.font = '16px monospace';
+                ctx.fillStyle = 'rgba(255,255,255,0.7)';
+                ctx.strokeStyle = 'rgba(255,255,255,0.3)';
+                ctx.lineWidth = 0.5;
+
+                const N = this.fftSize;
+                const fs = this.sampleRate;
+
+                // 频率范围（根据 isComplex 决定显示负频率/正频率）
+                const freqStart = this.isComplex ? -fs / 2 : 0;
+                const freqEnd = fs / 2;
+                const freqPixels = w;  // overlay 宽度对应整个频率范围
+
+                // 每隔 n kHz 标注
+                const freqStep = 4000;
+                const firstFreq = Math.ceil(freqStart / freqStep) * freqStep;
+                for (let f = firstFreq; f <= freqEnd; f += freqStep) {
+                    const x = ((f - freqStart) / (freqEnd - freqStart)) * freqPixels;
+                    if (x < 0 || x > w) continue;
+                    ctx.beginPath();
+                    ctx.moveTo(x, h - 20);
+                    ctx.lineTo(x, h - 5);
+                    ctx.stroke();
+                    ctx.fillText(`${(f / 1000).toFixed(0)}k`, x - 15, h - 25);
+                }
+
+                // 时间刻度：每 x 秒一条水平线
+                const frameInterval = this.getFrameInterval();       // 每行代表的时间（秒）
+                const timeStep = 10;                                 // x 秒间隔
+                const pixelsPerSecond = 1 / frameInterval;           // 每秒对应多少像素
+                const labelStepPixels = timeStep * pixelsPerSecond;  // x 秒对应像素
+
+                if (labelStepPixels > 0) {
+                    // 从顶部向下绘制，标注负数时间（因为顶部是最新数据，越往下越旧）
+                    // y=0 对应“现在”（当前帧），往下时间增加
+                    for (let y = 0; y <= h; y += labelStepPixels) {
+                        const secondsAgo = y / pixelsPerSecond;
+                        const label = secondsAgo < 0.01 ? 'now' : `-${secondsAgo.toFixed(0)}s`;
+                        ctx.beginPath();
+                        ctx.moveTo(10, y);
+                        ctx.lineTo(30, y);
+                        ctx.stroke();
+                        ctx.fillText(label, 35, y + 4);
+                    }
+                }
+
+                ctx.restore();
+            }
+
+            setSampleRate(rate) {
+                if (rate === this.sampleRate) return;
+                this.sampleRate = rate;
+                this._recreateFFTBuffer();
+                this.resizeCanvas();
+                this.drawScalesOnOverlay();
+            }
+
+            setMinDb(db) { this.minDb = Math.max(-150, Math.min(0, db)); }
+            setMaxDb(db) { this.maxDb = Math.max(-150, Math.min(0, db)); }
+
+            setSource(newSource) {
+                if (this.source === newSource) return;
+                this._stopSource();
+                this.source = newSource;
+                if (newSource) {
+                    if (newSource.getSupportedSampleRate) {
+                        const rates = newSource.getSupportedSampleRate();
+                        const newRate = rates[0] || 48000;
+                        if (newRate !== this.sampleRate) {
+                            this.sampleRate = newRate;
+                        }
+                    }
+                    this.setFftSize(this._computeDefaultFftSize(), false);
+                    this._startSource();
+                    this.drawScalesOnOverlay();
+                }
+            }
+
+            resizeCanvas() {
+                const dpr = this.dpr;
+                const widthCSS = this.canvas.clientWidth;
+                const heightCSS = this.canvas.clientHeight;
+                // 主 canvas 的绘图分辨率保持 FFT 点的映射
+                const drawWidth = this.isComplex ? this.fftSize : this.fftSize / 2;
+                this.canvas.width = drawWidth;
+                this.canvas.height = heightCSS * dpr;
+                this.overlayCanvas.width = widthCSS* dpr;
+                this.overlayCanvas.height = heightCSS * dpr;
+            }
+        }
+        // ------------------------------------------------------------
+        // 初始化
+        // ------------------------------------------------------------
         const canvas = document.getElementById('fft');
-        const ctx = canvas.getContext('2d');
-        const dpr = window.devicePixelRatio || 1;
-        const source = new MicrophoneSource();
+        const overlayCanvas = document.getElementById('overlay');
 
+        // 创建麦克风源实例
+        const micSource = new MicrophoneSource();
+        const dummySource = new DummyNoiseSource();
 
-        let isComplex = false;
-        const fftsize = 2048;
-        const outRe = new Float32Array(fftsize);
-        const outIm = new Float32Array(fftsize);
-        const inIm = new Float32Array(fftsize); // 输入虚部全为0
-        const workBuffer = new Float32Array(fftsize);
-        const ampBuffer = new Float32Array(fftsize);
-        const win = hann(fftsize);
-        canvas.width = isComplex ? fftsize : fftsize * 0.5;
-        canvas.height = document.documentElement.clientHeight * dpr;
+        // 初始用麦克风
+        const analyzer = new SpectrumAnalyzer(canvas, overlayCanvas, { source: micSource, fftSize: null });
+        updateFftSizeButtons(analyzer);
 
-        let maxDb = 0;
-        let minDb = -100;
+        // ------------------------------------------------------------
+        // UI 交互
+        // ------------------------------------------------------------
+        const toolboxToggle = document.getElementById('toolboxToggle');
+        const popover = document.getElementById('popover');
+        const closePopover = document.getElementById('closePopover');
 
-        const drawFunc = (buffer) => {
-            // apply window function
-            for (let i = 0; i < fftsize; i++) {
-                workBuffer[i] = buffer[i] * win[i];
+        // 工具面板显示/隐藏
+        toolboxToggle.addEventListener('click', () => {
+            const isOpen = popover.classList.toggle('visible');
+            toolboxToggle.classList.toggle('open', isOpen);
+        });
+        closePopover.addEventListener('click', () => {
+            popover.classList.remove('visible');
+            toolboxToggle.classList.remove('open');
+        });
+        // 点击画布外部关闭面板 (简单实现)
+        document.addEventListener('click', (e) => {
+            if (!popover.contains(e.target) && e.target !== toolboxToggle) {
+                popover.classList.remove('visible');
+                toolboxToggle.classList.remove('open');
             }
-            miniFFT(workBuffer, inIm, outRe, outIm);
-            fftshift(outRe);
-            fftshift(outIm);
-            // console.log(outRe)
+        });
 
-            let dynamicRange = maxDb - minDb;
+        // Min / Max dB 滑块
+        const minDbSlider = document.getElementById('minDbSlider');
+        const minDbValue = document.getElementById('minDbValue');
+        const maxDbSlider = document.getElementById('maxDbSlider');
+        const maxDbValue = document.getElementById('maxDbValue');
 
-            // convert to amplitude log scale
-            for (let i = 0; i < fftsize; i++) {
-                const amp = Math.sqrt(outRe[i] * outRe[i] + outIm[i] * outIm[i]) / fftsize * 2;
-                let db = 20 * Math.log10(amp);
-                if (db < minDb) db = minDb;
-                if (db > maxDb) db = maxDb;              // 只钳制，不修改全局 maxDb
-                const normalized = (db - minDb) / (maxDb - minDb);
-                ampBuffer[i] = normalized;
+        minDbSlider.addEventListener('input', () => {
+            let val = parseInt(minDbSlider.value);
+            if (val >= parseInt(maxDbSlider.value)) {
+                val = parseInt(maxDbSlider.value) - 3;
+                minDbSlider.value = val;
             }
-            // shift previous image to bottom by 1 pixel
-            ctx.drawImage(canvas, 0, 1);
-            // clear top line
-            ctx.fillStyle = 'black';
-            ctx.fillRect(0, 0, canvas.width, 1);
-            // draw new line
-            if (isComplex) {
-                for (let i = 0; i < fftsize; i++) {
-                    const color = getHeatMapColor(ampBuffer[i]);
-                    ctx.fillStyle = color;
-                    ctx.fillRect(i, 0, 1, 1);
+            analyzer.setMinDb(val);
+            minDbValue.textContent = val;
+        });
+        maxDbSlider.addEventListener('input', () => {
+            let val = parseInt(maxDbSlider.value);
+            if (val <= parseInt(minDbSlider.value)) {
+                val = parseInt(minDbSlider.value) + 3;
+                maxDbSlider.value = val;
+            }
+            analyzer.setMaxDb(val);
+            maxDbValue.textContent = val;
+        });
+
+        // FFT Size 按钮
+        const fftSizeGroup = document.getElementById('fftSizeGroup');
+        fftSizeGroup.addEventListener('click', (e) => {
+            if (e.target.classList.contains('fft-btn')) {
+                const size = parseInt(e.target.dataset.size);
+                if (size && size !== analyzer.fftSize) {
+                    // 更新按钮激活状态
+                    document.querySelectorAll('.fft-btn').forEach(btn => btn.classList.remove('active'));
+                    e.target.classList.add('active');
+                    analyzer.setFftSize(size);
                 }
-            } else {
-                for (let i = fftsize * 0.5; i < fftsize; i++) {
-                    const color = getHeatMapColor(ampBuffer[i]);
-                    ctx.fillStyle = color;
-                    ctx.fillRect(i - fftsize * 0.5, 0, 1, 1);
-                }
             }
-        };
-        const fftBuffer = new FFTBuffer(fftsize, drawFunc);
-        source.setCallback((data) => {
-            fftBuffer.push(data);
-        });
-        document.getElementById('startBtn').addEventListener('click', () => {
-            source.start();
         });
 
-        document.getElementById('minDb').addEventListener('input', (e) => {
-            minDb = parseInt(e.target.value);
-            if (maxDb < minDb) {
-                maxDb = minDb + 3; // 确保 maxDb 始终大于 minDb
-                document.getElementById('maxDb').value = maxDb;
+        // 源切换按钮
+        const micBtn = document.getElementById('micSourceBtn');
+        const dummyBtn = document.getElementById('dummySourceBtn');
+
+        micBtn.addEventListener('click', () => {
+            if (analyzer.source !== micSource) {
+                analyzer.setSource(micSource);
+                micBtn.classList.add('active');
+                dummyBtn.classList.remove('active');
             }
         });
-        document.getElementById('maxDb').addEventListener('input', (e) => {
-            maxDb = parseInt(e.target.value);
-            if (minDb > maxDb) {
-                minDb = maxDb - 3; // 确保 minDb 始终小于 maxDb
-                document.getElementById('minDb').value = minDb;
+        dummyBtn.addEventListener('click', () => {
+            if (analyzer.source !== dummySource) {
+                analyzer.setSource(dummySource);
+                dummyBtn.classList.add('active');
+                micBtn.classList.remove('active');
             }
         });
-        // 自动调整 canvas 绘图缓冲区尺寸
-        const resizeObserver = new ResizeObserver(() => {
-            canvas.width = isComplex ? fftsize : fftsize * 0.5;
-            canvas.height = document.documentElement.clientHeight * dpr;
-        });
-        resizeObserver.observe(canvas);
+
+        function updateFftSizeButtons(analyzer) {
+            const group = document.getElementById('fftSizeGroup');
+            if (!group) return;
+            group.innerHTML = ''; // 清空
+
+            const availableSizes = analyzer.getAvailableFftSizes();
+            const currentSize = analyzer.fftSize;
+
+            availableSizes.forEach(size => {
+                const btn = document.createElement('button');
+                btn.className = 'fft-btn';
+                btn.dataset.size = size;
+                btn.textContent = size;
+                if (size === currentSize) btn.classList.add('active');
+                btn.addEventListener('click', () => {
+                    if (analyzer.fftSize !== size) {
+                        analyzer.setFftSize(size);
+                        // 更新按钮激活样式
+                        document.querySelectorAll('.fft-btn').forEach(b => b.classList.remove('active'));
+                        btn.classList.add('active');
+                    }
+                });
+                group.appendChild(btn);
+            });
+        }
+
+        // 初始状态同步
+        minDbValue.textContent = analyzer.minDb;
+        maxDbValue.textContent = analyzer.maxDb;
     </script>
 </body>
 
