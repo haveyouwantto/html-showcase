@@ -32,6 +32,7 @@
             display: flex;
             gap: 10px;
         }
+
         .icon-button {
             width: 32px;
             height: 32px;
@@ -49,8 +50,8 @@
     <canvas id="fft"></canvas>
     <div class="toolbox">
         <button id="startBtn" class="icon-button">></button>
-    <input type="range" id="minDb" min="-150" max="0" value="-100">
-    <input type="range" id="maxDb" min="-150" max="0" value="0">
+        <input type="range" id="minDb" min="-150" max="0" value="-100">
+        <input type="range" id="maxDb" min="-150" max="0" value="0">
     </div>
     <script>
         class Source {
@@ -340,9 +341,10 @@ registerProcessor('loopback-processor', LoopbackProcessor);
         const outRe = new Float32Array(fftsize);
         const outIm = new Float32Array(fftsize);
         const inIm = new Float32Array(fftsize); // 输入虚部全为0
+        const workBuffer = new Float32Array(fftsize);
         const ampBuffer = new Float32Array(fftsize);
         const win = hann(fftsize);
-        canvas.width = isComplex? fftsize:fftsize * 0.5;
+        canvas.width = isComplex ? fftsize : fftsize * 0.5;
         canvas.height = document.documentElement.clientHeight * dpr;
 
         let maxDb = 0;
@@ -351,9 +353,9 @@ registerProcessor('loopback-processor', LoopbackProcessor);
         const drawFunc = (buffer) => {
             // apply window function
             for (let i = 0; i < fftsize; i++) {
-                buffer[i] *= win[i];
+                workBuffer[i] = buffer[i] * win[i];
             }
-            miniFFT(buffer, inIm, outRe, outIm);
+            miniFFT(workBuffer, inIm, outRe, outIm);
             fftshift(outRe);
             fftshift(outIm);
             // console.log(outRe)
@@ -385,7 +387,7 @@ registerProcessor('loopback-processor', LoopbackProcessor);
                 for (let i = fftsize * 0.5; i < fftsize; i++) {
                     const color = getTurboColor(ampBuffer[i]);
                     ctx.fillStyle = color;
-                    ctx.fillRect(i-fftsize*0.5, 0, 1, 1);
+                    ctx.fillRect(i - fftsize * 0.5, 0, 1, 1);
                 }
             }
         };
@@ -411,13 +413,13 @@ registerProcessor('loopback-processor', LoopbackProcessor);
                 document.getElementById('minDb').value = minDb;
             }
         });
-// 自动调整 canvas 绘图缓冲区尺寸
-const resizeObserver = new ResizeObserver(() => {
-    canvas.width = isComplex ? fftsize : fftsize * 0.5;
-    canvas.height = document.documentElement.clientHeight * dpr;
-});
-resizeObserver.observe(canvas);
-</script>
+        // 自动调整 canvas 绘图缓冲区尺寸
+        const resizeObserver = new ResizeObserver(() => {
+            canvas.width = isComplex ? fftsize : fftsize * 0.5;
+            canvas.height = document.documentElement.clientHeight * dpr;
+        });
+        resizeObserver.observe(canvas);
+    </script>
 </body>
 
 </html>
