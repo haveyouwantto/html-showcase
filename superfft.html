@@ -2,6 +2,8 @@
 <html>
 
 <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Super FFT</title>
     <style>
         html {
@@ -27,8 +29,8 @@
 <body>
     <canvas id="fft"></canvas>
     <button id="startBtn" style="position: absolute; top: 10px; left: 10px; z-index: 10;">Start Microphone</button>
-    <input type="range" id="minDb" min="-120" max="0" value="-100" style="position: absolute; top: 10px; left: 150px; z-index: 10;">
-    <input type="range" id="maxDb" min="-120" max="0" value="0" style="position: absolute; top: 10px; left: 300px; z-index: 10;">
+    <input type="range" id="minDb" min="-150" max="0" value="-100" style="position: absolute; top: 10px; left: 150px; z-index: 10;">
+    <input type="range" id="maxDb" min="-150" max="0" value="0" style="position: absolute; top: 10px; left: 300px; z-index: 10;">
     <script>
         class Source {
             constructor() {
