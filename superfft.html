@@ -29,8 +29,10 @@
 <body>
     <canvas id="fft"></canvas>
     <button id="startBtn" style="position: absolute; top: 10px; left: 10px; z-index: 10;">Start Microphone</button>
-    <input type="range" id="minDb" min="-150" max="0" value="-100" style="position: absolute; top: 10px; left: 150px; z-index: 10;">
-    <input type="range" id="maxDb" min="-150" max="0" value="0" style="position: absolute; top: 10px; left: 300px; z-index: 10;">
+    <input type="range" id="minDb" min="-150" max="0" value="-100"
+        style="position: absolute; top: 10px; left: 150px; z-index: 10;">
+    <input type="range" id="maxDb" min="-150" max="0" value="0"
+        style="position: absolute; top: 10px; left: 300px; z-index: 10;">
     <script>
         class Source {
             constructor() {
@@ -312,17 +314,20 @@ registerProcessor('loopback-processor', LoopbackProcessor);
         const ctx = canvas.getContext('2d');
         const dpr = window.devicePixelRatio || 1;
         const source = new MicrophoneSource();
+
+
+        let isComplex = false;
         const fftsize = 2048;
         const outRe = new Float32Array(fftsize);
         const outIm = new Float32Array(fftsize);
         const inIm = new Float32Array(fftsize); // 输入虚部全为0
         const ampBuffer = new Float32Array(fftsize);
         const win = hann(fftsize);
-        canvas.width = fftsize;
+        canvas.width = isComplex? fftsize:fftsize * 0.5;
         canvas.height = document.documentElement.clientHeight * dpr;
-        
-            let maxDb = 0;
-            let minDb = -100;
+
+        let maxDb = 0;
+        let minDb = -100;
 
         const drawFunc = (buffer) => {
             // apply window function
@@ -334,7 +339,6 @@ registerProcessor('loopback-processor', LoopbackProcessor);
             fftshift(outIm);
             // console.log(outRe)
 
-            let isComplex = false;
 
 
             let dynamicRange = maxDb - minDb;
@@ -344,8 +348,8 @@ registerProcessor('loopback-processor', LoopbackProcessor);
                 const amp = Math.sqrt(outRe[i] * outRe[i] + outIm[i] * outIm[i]) / fftsize * 2;
                 let db = 20 * Math.log10(amp);
                 if (db < minDb) db = minDb;
-                if (db > maxDb) maxDb = db;
-                const normalized = (db - minDb) / dynamicRange; // 0..1
+                if (db > maxDb) db = maxDb;              // 只钳制，不修改全局 maxDb
+                const normalized = (db - minDb) / (maxDb - minDb);
                 ampBuffer[i] = normalized;
             }
             // shift previous image to bottom by 1 pixel
@@ -354,10 +358,18 @@ registerProcessor('loopback-processor', LoopbackProcessor);
             ctx.fillStyle = 'black';
             ctx.fillRect(0, 0, canvas.width, 1);
             // draw new line
-            for (let i = 0; i < fftsize; i++) {
-                const color = getTurboColor(ampBuffer[i]);
-                ctx.fillStyle = color;
-                ctx.fillRect(i, 0, 1, 1);
+            if (isComplex) {
+                for (let i = 0; i < fftsize; i++) {
+                    const color = getTurboColor(ampBuffer[i]);
+                    ctx.fillStyle = color;
+                    ctx.fillRect(i, 0, 1, 1);
+                }
+            } else {
+                for (let i = fftsize * 0.5; i < fftsize; i++) {
+                    const color = getTurboColor(ampBuffer[i]);
+                    ctx.fillStyle = color;
+                    ctx.fillRect(i-fftsize*0.5, 0, 1, 1);
+                }
             }
         };
         const fftBuffer = new FFTBuffer(fftsize, drawFunc);
@@ -371,14 +383,14 @@ registerProcessor('loopback-processor', LoopbackProcessor);
         document.getElementById('minDb').addEventListener('input', (e) => {
             minDb = parseInt(e.target.value);
             if (maxDb < minDb) {
-                maxDb = minDb;
+                maxDb = minDb + 3; // 确保 maxDb 始终大于 minDb
                 document.getElementById('maxDb').value = maxDb;
             }
         });
         document.getElementById('maxDb').addEventListener('input', (e) => {
             maxDb = parseInt(e.target.value);
             if (minDb > maxDb) {
-                minDb = maxDb;
+                minDb = maxDb - 3; // 确保 minDb 始终小于 maxDb
                 document.getElementById('minDb').value = minDb;
             }
         });
