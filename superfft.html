@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Super FFT</title>
+    <style>
+        html {
+            background-color: black;
+            width: 100dvw;
+            height: 100dvh;
+        }
+
+        body {
+            margin: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+        }
+
+        #fft {
+            width: 100%;
+            height: 100%;
+        }
+    </style>
+</head>
+
+<body>
+    <canvas id="fft"></canvas>
+    <button id="startBtn" style="position: absolute; top: 10px; left: 10px; z-index: 10;">Start Microphone</button>
+    <input type="range" id="minDb" min="-120" max="0" value="-100" style="position: absolute; top: 10px; left: 150px; z-index: 10;">
+    <input type="range" id="maxDb" min="-120" max="0" value="0" style="position: absolute; top: 10px; left: 300px; z-index: 10;">
+    <script>
+        class Source {
+            constructor() {
+                this.callback = null;
+            }
+
+            getSupportedSampleRate() {
+                return [48000]
+            }
+
+            setCallback(func) {
+                this.callback = func;
+            }
+
+            start() {
+
+            }
+
+            setSampleRate(sr) {
+
+            }
+        }
+
+        class DummyNoiseSource extends Source {
+            constructor() {
+                super();
+                this.t = 0;
+            }
+
+            start() {
+                this.int = setInterval(() => {
+                    let arr = new Float32Array(2048);
+                    for (let i = 0; i < arr.length; i++) {
+                        // Random + sine
+                        arr[i] = Math.random() * 0.1 + Math.sin(2 * Math.PI * 12000 * this.t) * 0.15;
+                        this.t += 1 / 48000;
+                    }
+                    this.callback(arr);
+                }, 23);
+            }
+        }
+
+        const loopbackProcessorCode = `
+class LoopbackProcessor extends AudioWorkletProcessor {
+  process(inputs, outputs) {
+    const input = inputs[0];
+    if (input && input[0]) {
+      const channelData = input[0];            // Float32Array (只取第一通道)
+      const buffer = new Float32Array(channelData.length);
+      buffer.set(channelData);
+      // 通过 postMessage 将数据发送回主线程，转移所有权以提升性能
+      this.port.postMessage({ audio: buffer }, [buffer.buffer]);
+    }
+    // 返回 true 让处理器保持活动
+    return true;
+  }
+}
+
+registerProcessor('loopback-processor', LoopbackProcessor);
+`;
+
+        class MicrophoneSource extends Source {
+            constructor() {
+                super();
+                this.audioContext = null;
+                this.stream = null;
+                this.workletNode = null;
+                this._sampleRate = null;
+                this.started = false;
+            }
+
+            getSupportedSampleRate() {
+                // 浏览器的 AudioContext 通常支持这些采样率（视硬件而定）
+                return [44100, 48000, 96000];
+            }
+
+            setSampleRate(sr) {
+                this._sampleRate = sr;
+            }
+
+            async start() {
+                if (this.started) return;
+                this.started = true;
+
+                // 1. 请求麦克风权限并获取流
+                this.stream = await navigator.mediaDevices.getUserMedia({
+                    audio: {
+                        channelCount: 1,               // 强制单声道，简化处理
+                        echoCancellation: false,
+                        noiseSuppression: false,
+                        autoGainControl: false
+                    }
+                });
+
+                // 2. 创建 AudioContext，尽可能使用指定采样率
+                const audioCtxOptions = {};
+                if (this._sampleRate) {
+                    audioCtxOptions.sampleRate = this._sampleRate;
+                }
+                try {
+                    this.audioContext = new AudioContext(audioCtxOptions);
+                } catch (e) {
+                    // 如果指定的采样率不支持，回退到默认
+                    console.warn('Failed to create AudioContext with sampleRate', this._sampleRate, e);
+                    this.audioContext = new AudioContext();
+                }
+
+                // 3. 加载 AudioWorklet 模块
+                const blob = new Blob([loopbackProcessorCode], { type: 'application/javascript' });
+                const url = URL.createObjectURL(blob);
+                await this.audioContext.audioWorklet.addModule(url);
+                URL.revokeObjectURL(url);
+
+                // 4. 创建麦克风源节点和 Loopback AudioWorkletNode
+                const source = this.audioContext.createMediaStreamSource(this.stream);
+                this.workletNode = new AudioWorkletNode(this.audioContext, 'loopback-processor');
+                source.connect(this.workletNode);
+                // 不需要连接到扬声器，因为我们只抽取数据
+
+                // 5. 接收来自 worklet 的音频数据
+                this.workletNode.port.onmessage = (event) => {
+                    const audioData = event.data.audio;   // Float32Array (128 个采样点左右)
+                    if (this.callback) {
+                        this.callback(audioData);
+                    }
+                };
+
+                // 6. 恢复 AudioContext（某些浏览器需要用户手势）
+                if (this.audioContext.state === 'suspended') {
+                    await this.audioContext.resume();
+                }
+            }
+
+            // 可选：添加停止方法释放资源
+            stop() {
+                if (this.stream) {
+                    this.stream.getTracks().forEach(track => track.stop());
+                }
+                if (this.audioContext) {
+                    this.audioContext.close();
+                }
+                this.started = false;
+            }
+        }
+
+        class FFTBuffer {
+            constructor(size, callback) {
+                this.size = size;               // FFT 帧大小
+                this.callback = callback;
+                this.buffer = new Float32Array(size);
+                this.offset = 0;                // 当前写入位置
+            }
+
+            push(data) {
+                let dataOffset = 0;
+                while (dataOffset < data.length) {
+                    const remaining = this.size - this.offset;
+                    const copyLen = Math.min(data.length - dataOffset, remaining);
+                    // 拷贝数据到缓冲区
+                    this.buffer.set(data.subarray(dataOffset, dataOffset + copyLen), this.offset);
+                    this.offset += copyLen;
+                    dataOffset += copyLen;
+
+                    // 当缓冲区刚好填满时，触发回调并丢弃前一半数据
+                    if (this.offset === this.size) {
+                        this.callback(this.buffer);
+                        const half = this.size >> 1;
+                        // 将后一半数据移动到数组开头
+                        this.buffer.set(this.buffer.subarray(half, this.size), 0);
+                        this.offset = half;     // 写入位置调整到中间，准备接收新数据
+                    }
+                }
+            }
+        }
+
+        function miniFFT(inRe, inIm, outRe, outIm) {
+            const N = inRe.length;
+
+            // 1. 先将输入拷贝到输出数组，因为后续是原位计算
+            for (let i = 0; i < N; i++) {
+                outRe[i] = inRe[i];
+                outIm[i] = inIm[i];
+            }
+
+            // 2. 位反转置换 (Bit-reversal permutation)
+            for (let i = 0; i < N; i++) {
+                let j = 0,
+                    h = i,
+                    k = N;
+                while (k >>= 1) {
+                    j = (j << 1) | (h & 1);
+                    h >>= 1;
+                }
+                if (j > i) {
+                    // 交换 outRe
+                    let tempRe = outRe[i];
+                    outRe[i] = outRe[j];
+                    outRe[j] = tempRe;
+                    // 交换 outIm
+                    let tempIm = outIm[i];
+                    outIm[i] = outIm[j];
+                    outIm[j] = tempIm;
+                }
+            }
+
+            // 3. 蝴蝶运算
+            for (let hN = 1; hN * 2 <= N; hN *= 2) {
+                for (let i = 0; i < N; i += hN * 2) {
+                    for (let j = i; j < i + hN; j++) {
+                        const cos = Math.cos(Math.PI * (j - i) / hN);
+                        const sin = Math.sin(Math.PI * (j - i) / hN);
+                        const tre = outRe[j + hN] * cos + outIm[j + hN] * sin;
+                        const tim = -outRe[j + hN] * sin + outIm[j + hN] * cos;
+                        outRe[j + hN] = outRe[j] - tre;
+                        outIm[j + hN] = outIm[j] - tim;
+                        outRe[j] += tre;
+                        outIm[j] += tim;
+                    }
+                }
+            }
+        }
+
+        function getViridisColor(value) { // value in [0, 1]
+            const c = [
+                [0.267004, 0.004874, 0.329415],
+                [0.282327, 0.094955, 0.417331],
+                [0.253935, 0.265254, 0.529983],
+                [0.206756, 0.371758, 0.553117],
+                [0.164624, 0.471133, 0.558148],
+                [0.128983, 0.566949, 0.550556],
+                [0.135497, 0.659636, 0.517649],
+            ]
+            const idx = Math.min(Math.floor(value * (c.length - 1)), c.length - 2);
+            const t = (value * (c.length - 1)) - idx;
+            const r = Math.round((1 - t) * c[idx][0] * 255 + t * c[idx + 1][0] * 255);
+            const g = Math.round((1 - t) * c[idx][1] * 255 + t * c[idx + 1][1] * 255);
+            const b = Math.round((1 - t) * c[idx][2] * 255 + t * c[idx + 1][2] * 255);
+            return `rgb(${r},${g},${b})`;
+        }
+
+        function getTurboColor(value) { // value in [0, 1]
+            // Turbo 色图控制点 (RGB值, 0~1)
+            const c = [
+                [0.18995, 0.07176, 0.23217],  // 深蓝
+                [0.19490, 0.50057, 0.54626],  // 蓝绿
+                [0.46021, 0.86760, 0.21856],  // 绿
+                [0.94674, 0.87062, 0.12757],  // 黄
+                [0.97232, 0.40688, 0.07837],  // 橙红
+                [0.95892, 0.94015, 0.93993]   // 近白
+            ];
+            const scaled = value * (c.length - 1);
+            const idx = Math.min(Math.floor(scaled), c.length - 2);
+            const t = scaled - idx;
+            const r = Math.round(((1 - t) * c[idx][0] + t * c[idx + 1][0]) * 255);
+            const g = Math.round(((1 - t) * c[idx][1] + t * c[idx + 1][1]) * 255);
+            const b = Math.round(((1 - t) * c[idx][2] + t * c[idx + 1][2]) * 255);
+            return `rgb(${r},${g},${b})`;
+        }
+
+        function hann(N) {
+            const win = new Float32Array(N);
+            for (let n = 0; n < N; n++) {
+                win[n] = 0.5 * (1 - Math.cos(2 * Math.PI * n / (N - 1)));
+            }
+            return win;
+        }
+
+        function fftshift(arr) {
+            const N = arr.length;
+            const half = N >> 1;
+            for (let i = 0; i < half; i++) {
+                const temp = arr[i];
+                arr[i] = arr[i + half];
+                arr[i + half] = temp;
+            }
+        }
+
+        const canvas = document.getElementById('fft');
+        const ctx = canvas.getContext('2d');
+        const dpr = window.devicePixelRatio || 1;
+        const source = new MicrophoneSource();
+        const fftsize = 2048;
+        const outRe = new Float32Array(fftsize);
+        const outIm = new Float32Array(fftsize);
+        const inIm = new Float32Array(fftsize); // 输入虚部全为0
+        const ampBuffer = new Float32Array(fftsize);
+        const win = hann(fftsize);
+        canvas.width = fftsize;
+        canvas.height = document.documentElement.clientHeight * dpr;
+        
+            let maxDb = 0;
+            let minDb = -100;
+
+        const drawFunc = (buffer) => {
+            // apply window function
+            for (let i = 0; i < fftsize; i++) {
+                buffer[i] *= win[i];
+            }
+            miniFFT(buffer, inIm, outRe, outIm);
+            fftshift(outRe);
+            fftshift(outIm);
+            // console.log(outRe)
+
+            let isComplex = false;
+
+
+            let dynamicRange = maxDb - minDb;
+
+            // convert to amplitude log scale
+            for (let i = 0; i < fftsize; i++) {
+                const amp = Math.sqrt(outRe[i] * outRe[i] + outIm[i] * outIm[i]) / fftsize * 2;
+                let db = 20 * Math.log10(amp);
+                if (db < minDb) db = minDb;
+                if (db > maxDb) maxDb = db;
+                const normalized = (db - minDb) / dynamicRange; // 0..1
+                ampBuffer[i] = normalized;
+            }
+            // shift previous image to bottom by 1 pixel
+            ctx.drawImage(canvas, 0, 1);
+            // clear top line
+            ctx.fillStyle = 'black';
+            ctx.fillRect(0, 0, canvas.width, 1);
+            // draw new line
+            for (let i = 0; i < fftsize; i++) {
+                const color = getTurboColor(ampBuffer[i]);
+                ctx.fillStyle = color;
+                ctx.fillRect(i, 0, 1, 1);
+            }
+        };
+        const fftBuffer = new FFTBuffer(fftsize, drawFunc);
+        source.setCallback((data) => {
+            fftBuffer.push(data);
+        });
+        document.getElementById('startBtn').addEventListener('click', () => {
+            source.start();
+        });
+
+        document.getElementById('minDb').addEventListener('input', (e) => {
+            minDb = parseInt(e.target.value);
+            if (maxDb < minDb) {
+                maxDb = minDb;
+                document.getElementById('maxDb').value = maxDb;
+            }
+        });
+        document.getElementById('maxDb').addEventListener('input', (e) => {
+            maxDb = parseInt(e.target.value);
+            if (minDb > maxDb) {
+                minDb = maxDb;
+                document.getElementById('minDb').value = minDb;
+            }
+        });
+    </script>
+</body>
+
+</html>
