@@ -2519,6 +2519,7 @@
                 this.audioBuffer = audioBuffer;
                 this.settings = settings;
                 this.qp = settings.qp ?? 32;
+                this.targetBitRate = this.getTargetBitrate(this.qp);
                 this.winSize = settings.winSize ?? 2048;
                 this.hopSize = this.winSize / 2;
                 this.bandSize = settings.groupSize ?? 64;
@@ -2682,6 +2683,28 @@
                 return this.hopSize; // 返回每帧的长度
             }
 
+            getTargetBitrate(qp) {
+                // 限制范围
+                qp = Math.max(0, Math.min(63, qp));
+
+                // 使用指数映射: Bitrate = a * exp(-b * qp)
+                // 这种曲线能完美平滑地经过 0->1536k, 32->256k, 63->10k 左右的区间
+                // 我们可以分段或直接用一个平滑的幂函数逼近
+
+                let kbps;
+                if (qp <= 32) {
+                    // 在 0-32 区间，从 1536k 平滑降至 256k
+                    // 这里的系数经过调优，符合主观听感下降曲线
+                    kbps = 1536 * Math.pow(256 / 1536, qp / 32);
+                } else {
+                    // 在 32-63 区间，从 256k 快速降至 10k
+                    kbps = 256 * Math.pow(10 / 256, (qp - 32) / (63 - 32));
+                }
+
+                // 返回 bps (比特每秒)
+                return Math.floor(kbps * 1024);
+            }
+
             encodeFrame() {
 
                 let L = this.l.slice(this.i * this.hopSize, this.i * this.hopSize + this.winSize); // 当前帧的左声道数据
@@ -2733,16 +2756,38 @@
                     }
 
                     const weightedCoeffs = absCoeffs.map((val, idx) => val * weights[idx]);
-                    const channelBouns = ch ? 1 : clamp(msRatio * 1.5, 0.1, 0.5);
-                    let keepRatioBase = warpSteep(1.0 - (this.qp / 63), 2);
-                    // 当 QP >= 60 时，增加保留率
-                    if (this.qp >= 60) {
-                        keepRatioBase = Math.max(1 / this.bandSize, keepRatioBase * 3.5);
-                    }
-                    const globalKeepRatio = clamp(Math.max(0, keepRatioBase) * channelBouns, 0, 0.99);
-                    const validWeighted = weightedCoeffs.filter((val) => val > 0);
-                    const threshold = validWeighted.length > 0 ? percentile(validWeighted, (1 - globalKeepRatio)) : 0;
 
+                    // 基于目标比特率的预测剔除逻辑 ---
+                    // 计算单声道每帧的目标 Bit 数量 (乘以 0.7 预留给 Pos 编码和帧头的开销)
+                    const targetBitsPerChannel = (this.targetBitRate * this.hopSize / this.audioBuffer.sampleRate / 2) * 0.7;
+
+                    let coeffStats = [];
+                    for (let i = 0; i < weightedCoeffs.length; i++) {
+                        if (weightedCoeffs[i] > 0) {
+                            const bIdx = Math.floor(i / this.bandSize);
+                            const qLvl = this.quantLevelsCache[ch][bIdx];
+                            if (qLvl === 15) continue; // 跳过被完全丢弃的频段
+
+                            const qBits = QUANT_LEVELS[qLvl]['bits'];
+                            coeffStats.push({ weight: weightedCoeffs[i], bits: qBits });
+                        }
+                    }
+
+                    // 按照权重(重要性)从大到小排序
+                    coeffStats.sort((a, b) => b.weight - a.weight);
+
+                    let currentBits = 0;
+                    let threshold = 0;
+
+                    // 贪心累加预测体积，直到超过目标预算
+                    for (let i = 0; i < coeffStats.length; i++) {
+                        currentBits += coeffStats[i].bits;
+                        if (currentBits > targetBitsPerChannel) {
+                            threshold = coeffStats[i].weight;
+                            break;
+                        }
+                    }
+                    // ------------------------------------------
 
                     const bandsData = [];
                     const bandBitmap = new Uint8Array(this.numBands);
@@ -2778,7 +2823,7 @@
                         let sfm = calculateSFM(blockData);
                         if (sfm > 0.37) { // approx. -3db sine vs white noise
                             // 直接填充0
-                            prunedData.fill(0);
+                            // prunedData.fill(0);
                         }
 
                         const quantizer = QUANT_LEVELS[qLvl]['plan'];
