@@ -2758,8 +2758,8 @@
                     const weightedCoeffs = absCoeffs.map((val, idx) => val * weights[idx]);
 
                     // 基于目标比特率的预测剔除逻辑 ---
-                    // 计算单声道每帧的目标 Bit 数量 (乘以 0.7 预留给 Pos 编码和帧头的开销)
-                    const targetBitsPerChannel = (this.targetBitRate * this.hopSize / this.audioBuffer.sampleRate / 2) * 0.7;
+                    // 计算单声道每帧的目标 Bit 数量
+                    const targetBitsPerChannel = (this.targetBitRate * this.hopSize / this.audioBuffer.sampleRate / 2);
 
                     let coeffStats = [];
                     for (let i = 0; i < weightedCoeffs.length; i++) {
