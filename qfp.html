@@ -2455,7 +2455,7 @@
 
                         // 检查谱平坦度
                         let sfm = calculateSFM(group);
-                        if (sfm > 0.37) { // approx. -3db sine vs white noise
+                        if (sfm > 0.5) { // approx. -3db sine vs white noise
                             // 直接填充0
                             for (let k = j * this.groupSize; k < (j + 1) * this.groupSize; k++) {
                                 mdctCoeffs[k] = 0;
@@ -2688,14 +2688,14 @@
                 qp = Math.max(0, Math.min(63, qp));
 
                 // 使用指数映射: Bitrate = a * exp(-b * qp)
-                // 这种曲线能完美平滑地经过 0->1536k, 32->256k, 63->10k 左右的区间
+                // 这种曲线能完美平滑地经过 0->768k, 32->256k, 63->10k 左右的区间
                 // 我们可以分段或直接用一个平滑的幂函数逼近
 
                 let kbps;
                 if (qp <= 32) {
-                    // 在 0-32 区间，从 1536k 平滑降至 256k
+                    // 在 0-32 区间，从 768k 平滑降至 256k
                     // 这里的系数经过调优，符合主观听感下降曲线
-                    kbps = 1536 * Math.pow(256 / 1536, qp / 32);
+                    kbps = 768 * Math.pow(256 / 768, qp / 32);
                 } else {
                     // 在 32-63 区间，从 256k 快速降至 10k
                     kbps = 256 * Math.pow(10 / 256, (qp - 32) / (63 - 32));
@@ -2821,9 +2821,9 @@
 
                         // 检查谱平坦度
                         let sfm = calculateSFM(blockData);
-                        if (sfm > 0.37) { // approx. -3db sine vs white noise
+                        if (sfm > 0.5) {
                             // 直接填充0
-                            // prunedData.fill(0);
+                            prunedData.fill(0);
                         }
 
                         const quantizer = QUANT_LEVELS[qLvl]['plan'];
