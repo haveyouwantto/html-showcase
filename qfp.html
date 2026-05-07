@@ -2635,9 +2635,12 @@
                     offset = 0;               // 手动模式下不施加任何偏移
                 } else {
                     // 原有的自动 offset 计算
-                    if (this.qp >= 48) {
+                    if (this.qp >= 56) {
+                        offset = 6;
+                    } else if (this.qp >= 48) {
                         offset = 3;
-                    } else if (this.qp > 16 && this.qp <= 24) {
+                    }
+                    else if (this.qp > 16 && this.qp <= 24) {
                         offset = -3;
                     } else if (this.qp <= 16) {
                         offset = -6;
@@ -2759,7 +2762,8 @@
 
                     // 基于目标比特率的预测剔除逻辑 ---
                     // 计算单声道每帧的目标 Bit 数量
-                    const targetBitsPerChannel = (this.targetBitRate * this.hopSize / this.audioBuffer.sampleRate / 2);
+                    let targetBitsPerChannel = (this.targetBitRate * this.hopSize / this.audioBuffer.sampleRate / 2);
+                    if (this.qp >= 60) targetBitsPerChannel *= 1.5;
 
                     let coeffStats = [];
                     for (let i = 0; i < weightedCoeffs.length; i++) {
