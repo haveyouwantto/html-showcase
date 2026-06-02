@@ -224,6 +224,89 @@
                 background-position: -200% 0;
             }
         }
+
+        .ip-info {
+            margin-top: 1.5rem;
+            padding-top: 1.5rem;
+            border-top: 1px solid var(--border-color);
+            display: none;
+            flex-direction: column;
+            gap: 1rem;
+            animation: slideUp 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        .ip-info.visible {
+            display: flex;
+        }
+
+        .ip-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 0.75rem;
+        }
+
+        .ip-row .label {
+            margin-bottom: 0;
+            text-align: left;
+            white-space: nowrap;
+        }
+
+        .ip-value {
+            font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+            font-size: 0.95rem;
+            font-weight: 600;
+            color: var(--text-primary);
+            letter-spacing: 0.03em;
+            text-align: right;
+            overflow-wrap: anywhere;
+        }
+
+        .country-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.45rem;
+            background: rgba(88, 166, 255, 0.08);
+            border: 1px solid rgba(88, 166, 255, 0.2);
+            border-radius: 0.5rem;
+            padding: 0.2rem 0.6rem;
+            font-size: 0.95rem;
+            font-weight: 600;
+            color: var(--accent);
+        }
+
+        .country-flag {
+            font-size: 1.2rem;
+            line-height: 1;
+        }
+
+        .ip-value-wrap {
+            display: flex;
+            align-items: center;
+            gap: 0.45rem;
+        }
+
+        .ip-toggle-btn {
+            background: none;
+            border: none;
+            padding: 0.15rem;
+            cursor: pointer;
+            color: var(--text-secondary);
+            display: flex;
+            align-items: center;
+            border-radius: 0.3rem;
+            transition: color 0.2s, background 0.2s;
+            flex-shrink: 0;
+        }
+
+        .ip-toggle-btn:hover {
+            color: var(--accent);
+            background: rgba(88, 166, 255, 0.1);
+        }
+
+        .ip-value.masked {
+            color: var(--text-secondary);
+        }
     </style>
 </head>
 
@@ -256,15 +339,45 @@
             <div class="city-name" id="city-display">Determining...</div>
         </div>
 
+        <div class="ip-info" id="ip-info">
+            <div class="ip-row">
+                <div class="label">Your IP Address</div>
+                <div class="ip-value-wrap">
+                    <div class="ip-value" id="ip-display">—</div>
+                    <button class="ip-toggle-btn" id="ip-toggle-btn" title="Toggle IP visibility" aria-label="Toggle IP visibility">
+                        <!-- eye icon (visible state) -->
+                        <svg id="icon-eye" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                            <circle cx="12" cy="12" r="3"/>
+                        </svg>
+                        <!-- eye-off icon (hidden state) -->
+                        <svg id="icon-eye-off" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:none">
+                            <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/>
+                            <path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/>
+                            <line x1="1" y1="1" x2="23" y2="23"/>
+                        </svg>
+                    </button>
+                </div>
+            </div>
+            <div class="ip-row">
+                <div class="label">Geolocation</div>
+                <div class="country-badge" id="country-display">
+                    <span class="country-flag" id="country-flag"></span>
+                    <span id="country-code">—</span>
+                </div>
+            </div>
+        </div>
+
         <div class="status">
             <div class="dot requesting" id="status-dot"></div>
             <span id="status-text">Network Status: Requesting...</span>
         </div>
         <button class="redetect-btn spinning" id="redetect-btn" disabled>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-                <polyline points="23 4 23 10 17 10"/>
-                <polyline points="1 20 1 14 7 14"/>
-                <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
+                stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="23 4 23 10 17 10" />
+                <polyline points="1 20 1 14 7 14" />
+                <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
             </svg>
             Re-detect
         </button>
@@ -629,12 +742,52 @@
         const statusText = document.getElementById('status-text');
         const redetectBtn = document.getElementById('redetect-btn');
 
+        const ipInfo = document.getElementById('ip-info');
+        const ipDisplay = document.getElementById('ip-display');
+        const countryFlag = document.getElementById('country-flag');
+        const countryCode = document.getElementById('country-code');
+        const ipToggleBtn = document.getElementById('ip-toggle-btn');
+        const iconEye = document.getElementById('icon-eye');
+        const iconEyeOff = document.getElementById('icon-eye-off');
+
+        let ipHidden = false;
+        let realIp = '';
+
+        function maskIp(ip) {
+            // Replace every digit with a bullet, preserve dots and colons for structure
+            return ip.replace(/[0-9a-fA-F]/g, '•');
+        }
+
+        ipToggleBtn.addEventListener('click', () => {
+            ipHidden = !ipHidden;
+            ipDisplay.innerText = ipHidden ? maskIp(realIp) : realIp;
+            ipDisplay.classList.toggle('masked', ipHidden);
+            iconEye.style.display = ipHidden ? 'none' : '';
+            iconEyeOff.style.display = ipHidden ? '' : 'none';
+            ipToggleBtn.title = ipHidden ? 'Show IP' : 'Hide IP';
+        });
+
+        function countryCodeToFlag(cc) {
+            // Convert ISO 3166-1 alpha-2 country code to emoji flag
+            if (!cc || cc.length !== 2) return '';
+            return [...cc.toUpperCase()].map(c => String.fromCodePoint(0x1F1E6 - 65 + c.charCodeAt(0))).join('');
+        }
+
         function detect() {
             // Reset to loading state
             detectionContent.classList.add('loading');
             locationContent.classList.add('loading');
             codeDisplay.innerText = '---';
             cityDisplay.innerText = 'Determining...';
+            ipInfo.classList.remove('visible');
+            ipDisplay.innerText = '—';
+            ipDisplay.classList.remove('masked');
+            iconEye.style.display = '';
+            iconEyeOff.style.display = 'none';
+            ipHidden = false;
+            realIp = '';
+            countryFlag.textContent = '';
+            countryCode.textContent = '—';
             statusDot.className = 'dot requesting';
             statusText.innerText = 'Network Status: Requesting...';
             redetectBtn.disabled = true;
@@ -656,6 +809,15 @@
 
                         codeDisplay.innerText = loc;
                         cityDisplay.innerText = CFlocationMap[loc] || 'Unknown Location (' + loc + ')';
+
+                        // Populate IP info
+                        const ip = data['headers']['Cf-Connecting-Ip'] || data['headers']['Cf-Connecting-Ip'.toLowerCase()] || '—';
+                        const cc = data['headers']['Cf-Ipcountry'] || data['headers']['Cf-Ipcountry'.toLowerCase()] || '';
+                        realIp = ip;
+                        ipDisplay.innerText = ip;
+                        countryCode.textContent = cc || '—';
+                        countryFlag.textContent = countryCodeToFlag(cc);
+                        ipInfo.classList.add('visible');
 
                         // Update status to success
                         statusDot.className = 'dot success';
