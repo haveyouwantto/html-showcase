@@ -113,6 +113,46 @@
             gap: 0.6rem;
         }
 
+        .redetect-btn {
+            margin-top: 1.25rem;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.45rem;
+            padding: 0.5rem 1.2rem;
+            background: transparent;
+            border: 1px solid var(--border-color);
+            border-radius: 0.6rem;
+            color: var(--text-secondary);
+            font-size: 0.8rem;
+            font-family: inherit;
+            cursor: pointer;
+            transition: border-color 0.2s, color 0.2s, background 0.2s;
+        }
+
+        .redetect-btn:hover {
+            border-color: var(--accent);
+            color: var(--accent);
+            background: rgba(88, 166, 255, 0.07);
+        }
+
+        .redetect-btn:active {
+            transform: scale(0.96);
+        }
+
+        .redetect-btn:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .redetect-btn svg {
+            transition: transform 0.5s ease;
+        }
+
+        .redetect-btn.spinning svg {
+            animation: spin 0.8s linear infinite;
+        }
+
         .dot {
             width: 8px;
             height: 8px;
@@ -220,6 +260,14 @@
             <div class="dot requesting" id="status-dot"></div>
             <span id="status-text">Network Status: Requesting...</span>
         </div>
+        <button class="redetect-btn spinning" id="redetect-btn" disabled>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="23 4 23 10 17 10"/>
+                <polyline points="1 20 1 14 7 14"/>
+                <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
+            </svg>
+            Re-detect
+        </button>
     </div>
 
     <script>
@@ -579,42 +627,61 @@
         const locationContent = document.getElementById('location-content');
         const statusDot = document.getElementById('status-dot');
         const statusText = document.getElementById('status-text');
+        const redetectBtn = document.getElementById('redetect-btn');
 
-        // Fetch using the proxy as in original code
-        fetch('https://api.maple-kaede.eu.org/?https://httpbin.org/get')
-            .then(response => {
-                if (!response.ok) throw new Error('Network response was not ok');
-                return response.json();
-            })
-            .then(data => {
-                const cfRay = data['headers']['Cf-Ray'];
-                if (cfRay) {
-                    const loc = cfRay.split('-')[1];
+        function detect() {
+            // Reset to loading state
+            detectionContent.classList.add('loading');
+            locationContent.classList.add('loading');
+            codeDisplay.innerText = '---';
+            cityDisplay.innerText = 'Determining...';
+            statusDot.className = 'dot requesting';
+            statusText.innerText = 'Network Status: Requesting...';
+            redetectBtn.disabled = true;
+            redetectBtn.classList.add('spinning');
 
-                    // Remove loading states
+            fetch('https://api.maple-kaede.eu.org/?https://httpbin.org/get')
+                .then(response => {
+                    if (!response.ok) throw new Error('Network response was not ok');
+                    return response.json();
+                })
+                .then(data => {
+                    const cfRay = data['headers']['Cf-Ray'];
+                    if (cfRay) {
+                        const loc = cfRay.split('-')[1];
+
+                        // Remove loading states
+                        detectionContent.classList.remove('loading');
+                        locationContent.classList.remove('loading');
+
+                        codeDisplay.innerText = loc;
+                        cityDisplay.innerText = CFlocationMap[loc] || 'Unknown Location (' + loc + ')';
+
+                        // Update status to success
+                        statusDot.className = 'dot success';
+                        statusText.innerText = 'Network Status: Optimal';
+                    } else {
+                        throw new Error('Cf-Ray header missing');
+                    }
+                })
+                .catch(err => {
+                    console.error('Detection failed:', err);
+                    cityDisplay.innerText = 'Detection failed';
                     detectionContent.classList.remove('loading');
                     locationContent.classList.remove('loading');
 
-                    codeDisplay.innerText = loc;
-                    cityDisplay.innerText = CFlocationMap[loc] || 'Unknown Location (' + loc + ')';
+                    // Update status to error
+                    statusDot.className = 'dot error';
+                    statusText.innerText = 'Network Status: Failed';
+                })
+                .finally(() => {
+                    redetectBtn.disabled = false;
+                    redetectBtn.classList.remove('spinning');
+                });
+        }
 
-                    // Update status to success
-                    statusDot.className = 'dot success';
-                    statusText.innerText = 'Network Status: Optimal';
-                } else {
-                    throw new Error('Cf-Ray header missing');
-                }
-            })
-            .catch(err => {
-                console.error('Detection failed:', err);
-                cityDisplay.innerText = 'Detection failed';
-                detectionContent.classList.remove('loading');
-                locationContent.classList.remove('loading');
-
-                // Update status to error
-                statusDot.className = 'dot error';
-                statusText.innerText = 'Network Status: Failed';
-            });
+        redetectBtn.addEventListener('click', detect);
+        detect();
     </script>
 </body>
 
