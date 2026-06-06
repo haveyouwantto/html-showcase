@@ -37,13 +37,13 @@
             backdrop-filter: blur(16px);
             -webkit-backdrop-filter: blur(16px);
             border: 1px solid var(--border-color);
-            padding: 2.5rem;
+            padding: 2.5rem 2.5rem 0;
             border-radius: 1.25rem;
             box-shadow: 0 10px 40px rgba(0, 0, 0, 0.4);
             text-align: center;
             max-width: 440px;
             width: 90%;
-            max-height: calc(90vh - 4rem);
+            max-height: calc(80vh - 4rem);
             overflow-y: auto;
             overscroll-behavior: contain;
             animation: slideUp 0.6s cubic-bezier(0.16, 1, 0.3, 1);
@@ -137,7 +137,7 @@
         }
 
         .redetect-btn {
-            margin-top: 1.25rem;
+            margin-top: 0;
             display: inline-flex;
             align-items: center;
             gap: 0.45rem;
@@ -168,8 +168,26 @@
             transform: none;
         }
 
-        .redetect-btn svg {
-            transition: transform 0.5s ease;
+        .sticky-footer {
+            position: sticky;
+            bottom: 0;
+            margin: 1.5rem -2.5rem 0;
+            padding: 0 2.5rem 1.75rem;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 0.75rem;
+            background: linear-gradient(to bottom, transparent, var(--card-bg) 40%);
+            transition: box-shadow 0.25s ease;
+            pointer-events: none;
+        }
+
+        .sticky-footer > * {
+            pointer-events: auto;
+        }
+
+        .sticky-footer.elevated {
+            box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.35);
         }
 
         .redetect-btn.spinning svg {
@@ -534,19 +552,21 @@
             </details>
         </div>
 
-        <div class="status">
-            <div class="dot requesting" id="status-dot"></div>
-            <span id="status-text">Network Status: Requesting...</span>
+        <div class="sticky-footer" id="sticky-footer">
+            <div class="status">
+                <div class="dot requesting" id="status-dot"></div>
+                <span id="status-text">Network Status: Requesting...</span>
+            </div>
+            <button class="redetect-btn spinning" id="redetect-btn" disabled>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
+                    stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="23 4 23 10 17 10" />
+                    <polyline points="1 20 1 14 7 14" />
+                    <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
+                </svg>
+                Re-detect
+            </button>
         </div>
-        <button class="redetect-btn spinning" id="redetect-btn" disabled>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
-                stroke-linecap="round" stroke-linejoin="round">
-                <polyline points="23 4 23 10 17 10" />
-                <polyline points="1 20 1 14 7 14" />
-                <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
-            </svg>
-            Re-detect
-        </button>
     </div>
 
     <script>
@@ -1043,6 +1063,20 @@
 
         redetectBtn.addEventListener('click', detect);
         detect();
+
+        // Elevate sticky footer when not scrolled to bottom
+        const container = document.getElementById('app');
+        const stickyFooter = document.getElementById('sticky-footer');
+        function updateFooterElevation() {
+            const atBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 4;
+            stickyFooter.classList.toggle('elevated', !atBottom);
+        }
+        container.addEventListener('scroll', updateFooterElevation, { passive: true });
+        // Also re-check whenever content changes (panels open/close)
+        document.querySelectorAll('.detail-panel').forEach(p =>
+            p.addEventListener('toggle', () => setTimeout(updateFooterElevation, 50))
+        );
+        updateFooterElevation();
     </script>
 </body>
 
