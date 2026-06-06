@@ -25,10 +25,11 @@
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
             display: flex;
             justify-content: center;
-            align-items: center;
+            align-items: flex-start;
             min-height: 100vh;
             margin: 0;
-            overflow: hidden;
+            padding: 2rem 0;
+            box-sizing: border-box;
         }
 
         .container {
@@ -42,7 +43,29 @@
             text-align: center;
             max-width: 440px;
             width: 90%;
+            max-height: calc(90vh - 4rem);
+            overflow-y: auto;
+            overscroll-behavior: contain;
             animation: slideUp 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+            scrollbar-width: thin;
+            scrollbar-color: var(--border-color) transparent;
+        }
+
+        .container::-webkit-scrollbar {
+            width: 4px;
+        }
+
+        .container::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        .container::-webkit-scrollbar-thumb {
+            background: var(--border-color);
+            border-radius: 2px;
+        }
+
+        .container::-webkit-scrollbar-thumb:hover {
+            background: var(--text-secondary);
         }
 
         @keyframes slideUp {
@@ -307,6 +330,98 @@
         .ip-value.masked {
             color: var(--text-secondary);
         }
+
+        /* ── collapsible detail panels ── */
+        .detail-panel {
+            border: 1px solid var(--border-color);
+            border-radius: 0.6rem;
+            overflow: hidden;
+        }
+
+        .detail-panel summary {
+            list-style: none;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0.55rem 0.85rem;
+            cursor: pointer;
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            color: var(--text-secondary);
+            user-select: none;
+            transition: background 0.15s, color 0.15s;
+        }
+
+        .detail-panel summary::-webkit-details-marker { display: none; }
+
+        .detail-panel summary:hover {
+            background: rgba(255,255,255,0.03);
+            color: var(--text-primary);
+        }
+
+        .detail-panel[open] summary {
+            color: var(--accent);
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .chevron {
+            transition: transform 0.25s ease;
+            flex-shrink: 0;
+        }
+
+        .detail-panel[open] .chevron {
+            transform: rotate(180deg);
+        }
+
+        .summary-label {
+            display: flex;
+            align-items: center;
+            gap: 0.4rem;
+        }
+
+        .detail-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.8rem;
+        }
+
+        .detail-table td {
+            padding: 0.42rem 0.85rem;
+            vertical-align: middle;
+        }
+
+        .detail-table tr:not(:last-child) td {
+            border-bottom: 1px solid rgba(48,54,61,0.6);
+        }
+
+        .detail-table .dk {
+            color: var(--text-secondary);
+            white-space: nowrap;
+            width: 1%;
+            padding-right: 1rem;
+        }
+
+        .detail-table .dv {
+            color: var(--text-primary);
+            font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+            font-size: 0.78rem;
+            text-align: right;
+            word-break: break-all;
+        }
+
+        .tag {
+            display: inline-block;
+            padding: 0.1rem 0.45rem;
+            border-radius: 0.3rem;
+            font-size: 0.72rem;
+            font-weight: 600;
+        }
+
+        .tag-green  { background: rgba(35,134,54,0.2);  color: #3fb950; }
+        .tag-blue   { background: rgba(88,166,255,0.15); color: var(--accent); }
+        .tag-orange { background: rgba(247,129,102,0.15); color: var(--cf-orange); }
     </style>
 </head>
 
@@ -360,12 +475,63 @@
                 </div>
             </div>
             <div class="ip-row">
-                <div class="label">Geolocation</div>
+                <div class="label">IP Territory</div>
                 <div class="country-badge" id="country-display">
                     <span class="country-flag" id="country-flag"></span>
                     <span id="country-code">—</span>
                 </div>
             </div>
+
+            <!-- Location details -->
+            <details class="detail-panel" id="panel-geo">
+                <summary>
+                    <span class="summary-label">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13S3 17 3 10a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+                        Location Details
+                    </span>
+                    <svg class="chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+                </summary>
+                <table class="detail-table" id="table-geo">
+                    <tr><td class="dk">Continent</td><td class="dv" id="d-continent">—</td></tr>
+                    <tr><td class="dk">Territory</td><td class="dv" id="d-country">—</td></tr>
+                    <tr><td class="dk">Region</td><td class="dv" id="d-region">—</td></tr>
+                    <tr><td class="dk">City</td><td class="dv" id="d-city">—</td></tr>
+                    <tr><td class="dk">Postal</td><td class="dv" id="d-postal">—</td></tr>
+                    <tr><td class="dk">Timezone</td><td class="dv" id="d-tz">—</td></tr>
+                    <tr><td class="dk">Coordinates</td><td class="dv" id="d-coords">—</td></tr>
+                </table>
+            </details>
+
+            <!-- Network / ASN -->
+            <details class="detail-panel" id="panel-asn">
+                <summary>
+                    <span class="summary-label">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="8" rx="2"/><rect x="2" y="14" width="20" height="8" rx="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></svg>
+                        Network
+                    </span>
+                    <svg class="chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+                </summary>
+                <table class="detail-table">
+                    <tr><td class="dk">ASN</td><td class="dv" id="d-asn">—</td></tr>
+                    <tr><td class="dk">Organization</td><td class="dv" id="d-org">—</td></tr>
+                </table>
+            </details>
+
+            <!-- Connection / HTTP + TLS -->
+            <details class="detail-panel" id="panel-conn">
+                <summary>
+                    <span class="summary-label">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                        Connection
+                    </span>
+                    <svg class="chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+                </summary>
+                <table class="detail-table">
+                    <tr><td class="dk">HTTP</td><td class="dv" id="d-http">—</td></tr>
+                    <tr><td class="dk">TLS Version</td><td class="dv" id="d-tls">—</td></tr>
+                    <tr><td class="dk">Cipher</td><td class="dv" id="d-cipher">—</td></tr>
+                </table>
+            </details>
         </div>
 
         <div class="status">
@@ -748,6 +914,39 @@
         const countryCode = document.getElementById('country-code');
         const ipToggleBtn = document.getElementById('ip-toggle-btn');
         const iconEye = document.getElementById('icon-eye');
+
+        // detail cell refs
+        const d = id => document.getElementById(id);
+        const detailIds = ['d-continent','d-country','d-region','d-city','d-postal','d-tz','d-coords','d-asn','d-org','d-http','d-tls','d-cipher'];
+        function resetDetails() {
+            detailIds.forEach(id => { const el = d(id); if (el) el.innerHTML = '—'; });
+            ['panel-geo','panel-asn','panel-conn'].forEach(id => { const el = d(id); if (el) el.removeAttribute('open'); });
+        }
+
+        function tag(text, cls) {
+            return `<span class="tag ${cls}">${text}</span>`;
+        }
+
+        function populateDetails(cf) {
+            // Location
+            const continentMap = {AF:'Africa',AN:'Antarctica',AS:'Asia',EU:'Europe',NA:'North America',OC:'Oceania',SA:'South America'};
+            d('d-continent').innerText = continentMap[cf.continent] || cf.continent || '—';
+            d('d-country').innerText   = cf.country || '—';
+            d('d-region').innerText    = cf.region ? `${cf.region} (${cf.regionCode})` : '—';
+            d('d-city').innerText      = cf.city || '—';
+            d('d-postal').innerText    = cf.postalCode || '—';
+            d('d-tz').innerText        = cf.timezone || '—';
+            d('d-coords').innerText    = (cf.latitude && cf.longitude) ? `${cf.latitude}, ${cf.longitude}` : '—';
+            // Network
+            d('d-asn').innerText  = cf.asn ? `AS${cf.asn}` : '—';
+            d('d-org').innerText  = cf.asOrganization || '—';
+            // Connection
+            const proto = cf.httpProtocol || '';
+            d('d-http').innerHTML = proto ? tag(proto, proto.includes('3') ? 'tag-green' : proto.includes('2') ? 'tag-blue' : 'tag-orange') : '—';
+            const tls = cf.tlsVersion || '';
+            d('d-tls').innerHTML  = tls ? tag(tls, tls.includes('1.3') ? 'tag-green' : 'tag-orange') : '—';
+            d('d-cipher').innerText = cf.tlsCipher || '—';
+        }
         const iconEyeOff = document.getElementById('icon-eye-off');
 
         let ipHidden = false;
@@ -786,6 +985,7 @@
             iconEyeOff.style.display = 'none';
             ipHidden = false;
             realIp = '';
+            resetDetails();
             countryFlag.textContent = '';
             countryCode.textContent = '—';
             statusDot.className = 'dot requesting';
@@ -810,11 +1010,12 @@
 
                         // Populate IP info (headers are lowercase in this API)
                         const ip = data['headers']['cf-connecting-ip'] || '—';
-                        const cc = data['headers']['cf-ipcountry'] || '';
+                        const cc = data['cf']['country'] || '';
                         realIp = ip;
                         ipDisplay.innerText = ip;
                         countryCode.textContent = cc || '—';
                         countryFlag.textContent = countryCodeToFlag(cc);
+                        populateDetails(data['cf'] || {});
                         ipInfo.classList.add('visible');
 
                         // Update status to success
