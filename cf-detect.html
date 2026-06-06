@@ -793,16 +793,14 @@
             redetectBtn.disabled = true;
             redetectBtn.classList.add('spinning');
 
-            fetch('https://api.maple-kaede.eu.org/?https://httpbin.org/get')
+            fetch('https://api.maple-kaede.eu.org/echo')
                 .then(response => {
                     if (!response.ok) throw new Error('Network response was not ok');
                     return response.json();
                 })
                 .then(data => {
-                    const cfRay = data['headers']['Cf-Ray'];
-                    if (cfRay) {
-                        const loc = cfRay.split('-')[1];
-
+                    const loc = data['cf']?.['colo'];
+                    if (loc) {
                         // Remove loading states
                         detectionContent.classList.remove('loading');
                         locationContent.classList.remove('loading');
@@ -810,9 +808,9 @@
                         codeDisplay.innerText = loc;
                         cityDisplay.innerText = CFlocationMap[loc] || 'Unknown Location (' + loc + ')';
 
-                        // Populate IP info
-                        const ip = data['headers']['Cf-Connecting-Ip'] || data['headers']['Cf-Connecting-Ip'.toLowerCase()] || '—';
-                        const cc = data['headers']['Cf-Ipcountry'] || data['headers']['Cf-Ipcountry'.toLowerCase()] || '';
+                        // Populate IP info (headers are lowercase in this API)
+                        const ip = data['headers']['cf-connecting-ip'] || '—';
+                        const cc = data['headers']['cf-ipcountry'] || '';
                         realIp = ip;
                         ipDisplay.innerText = ip;
                         countryCode.textContent = cc || '—';
@@ -823,7 +821,7 @@
                         statusDot.className = 'dot success';
                         statusText.innerText = 'Network Status: Optimal';
                     } else {
-                        throw new Error('Cf-Ray header missing');
+                        throw new Error('Colo field missing');
                     }
                 })
                 .catch(err => {
