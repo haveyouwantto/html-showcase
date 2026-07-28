@@ -1,0 +1,482 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        body {
+            background-color: white;
+            /* Ensure the iframe has a white background */
+        }
+    </style>
+</head>
+
+<body>
+    <!DOCTYPE html>
+    <html lang="en">
+
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>EAN-13 Generator</title>
+        <style>
+            :root {
+                --bg-primary: #0d1117;
+                --bg-secondary: #161b22;
+                --bg-tertiary: #21262d;
+                --border: #30363d;
+                --text-primary: #e6edf3;
+                --text-secondary: #8b949e;
+                --accent: #58a6ff;
+                --accent-hover: #79b8ff;
+                --danger: #f85149;
+                --success: #3fb950;
+                --radius: 10px;
+                --transition: 0.2s ease;
+            }
+
+            * {
+                margin: 0;
+                padding: 0;
+                box-sizing: border-box;
+            }
+
+            body {
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+                background: var(--bg-primary);
+                color: var(--text-primary);
+                min-height: 100vh;
+                display: flex;
+                justify-content: center;
+                align-items: flex-start;
+                padding: 40px 20px;
+            }
+
+            .container {
+                width: 100%;
+                max-width: 520px;
+            }
+
+            h2 {
+                font-size: 1.6rem;
+                font-weight: 600;
+                margin-bottom: 28px;
+                text-align: center;
+            }
+
+            .input-group {
+                display: flex;
+                gap: 10px;
+                margin-bottom: 24px;
+            }
+
+            input {
+                flex: 1;
+                padding: 14px 18px;
+                font-size: 1rem;
+                background: var(--bg-secondary);
+                border: 1px solid var(--border);
+                border-radius: var(--radius);
+                color: var(--text-primary);
+                transition: border-color var(--transition);
+                outline: none;
+            }
+
+            input::placeholder {
+                color: var(--text-secondary);
+            }
+
+            input:focus {
+                border-color: var(--accent);
+                box-shadow: 0 0 0 3px rgba(88, 166, 255, 0.12);
+            }
+
+            button {
+                padding: 14px 28px;
+                font-size: 1rem;
+                font-weight: 600;
+                background: var(--accent);
+                color: #fff;
+                border: none;
+                border-radius: var(--radius);
+                cursor: pointer;
+                transition: background var(--transition), transform var(--transition);
+                white-space: nowrap;
+            }
+
+            button:hover {
+                background: var(--accent-hover);
+                transform: translateY(-1px);
+            }
+
+            button:active {
+                transform: translateY(0);
+            }
+
+            .btn-secondary {
+                background: var(--bg-tertiary);
+                border: 1px solid var(--border);
+                color: var(--text-primary);
+            }
+
+            .btn-secondary:hover {
+                background: var(--border);
+                border-color: var(--accent);
+                color: var(--accent);
+            }
+
+            #result {
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                gap: 16px;
+            }
+
+            #result p {
+                color: var(--text-secondary);
+                font-size: 0.95rem;
+                word-break: break-all;
+            }
+
+            #result canvas {
+                border: 1px solid var(--border);
+                border-radius: var(--radius);
+                max-width: 100%;
+                height: auto;
+            }
+
+            #downloadBtn {
+                text-decoration: none;
+                display: inline-block;
+            }
+
+            @keyframes fadeIn {
+                from {
+                    opacity: 0;
+                    transform: translateY(8px);
+                }
+
+                to {
+                    opacity: 1;
+                    transform: translateY(0);
+                }
+            }
+
+            #result>* {
+                animation: fadeIn 0.3s ease;
+            }
+
+            @media (max-width: 480px) {
+                .input-group {
+                    flex-direction: column;
+                }
+
+                .input-group button {
+                    width: 100%;
+                }
+            }
+        </style>
+    </head>
+
+    <body>
+
+        <div class="container">
+            <h2>EAN-13 Barcode Generator</h2>
+
+            <div class="input-group">
+                <input id="eanInput" type="text" placeholder="Enter EAN-13 digits"
+                    onkeydown="if(event.key==='Enter') generateEAN13()" />
+                <button onclick="generateEAN13()">Generate</button>
+            </div>
+
+            <div id="result"></div>
+        </div>
+
+        <script>
+            /*
+            * EAN-13 barcode generator from scratch
+            *
+            * Features:
+            * - Automatically removes non-numeric characters
+            * - Accepts 12-digit input and calculates checksum
+            * - Accepts 13-digit input and validates checksum
+            * - Draws barcode using HTML5 Canvas
+            * - Download barcode as PNG
+            */
+
+            const L_CODES = [
+                "0001101",
+                "0011001",
+                "0010011",
+                "0111101",
+                "0100011",
+                "0110001",
+                "0101111",
+                "0111011",
+                "0110111",
+                "0001011"
+            ];
+
+            const G_CODES = [
+                "0100111",
+                "0110011",
+                "0011011",
+                "0100001",
+                "0011101",
+                "0111001",
+                "0000101",
+                "0010001",
+                "0001001",
+                "0010111"
+            ];
+
+            const R_CODES = [
+                "1110010",
+                "1100110",
+                "1101100",
+                "1000010",
+                "1011100",
+                "1001110",
+                "1010000",
+                "1000100",
+                "1001000",
+                "1110100"
+            ];
+
+            // Encoding pattern determined by the first digit
+            const PARITY_PATTERNS = [
+                "LLLLLL",
+                "LLGLGG",
+                "LLGGLG",
+                "LLGGGL",
+                "LGLLGG",
+                "LGGLLG",
+                "LGGGLL",
+                "LGLGLG",
+                "LGLGGL",
+                "LGGLGL"
+            ];
+
+
+            /**
+            * Calculate EAN-13 checksum.
+            *
+            * Input:
+            *     12 digits
+            *
+            * Output:
+            *     checksum digit
+            */
+            function calculateChecksum(digits) {
+                let sum = 0;
+
+                for (let i = 0; i < 12; i++) {
+                    const digit = Number(digits[i]);
+
+                    // Positions are counted from the left.
+                    // Odd positions: weight 1
+                    // Even positions: weight 3
+                    if (i % 2 === 0) {
+                        sum += digit;
+                    } else {
+                        sum += digit * 3;
+                    }
+                }
+
+                return (10 - (sum % 10)) % 10;
+            }
+
+
+            /**
+            * Validate the checksum of a complete 13-digit EAN.
+            */
+            function validateEAN13(ean) {
+                const checksum = calculateChecksum(ean.slice(0, 12));
+                return checksum === Number(ean[12]);
+            }
+
+
+            /**
+            * Convert EAN-13 digits into the binary barcode pattern.
+            */
+            function encodeEAN13(ean) {
+                const firstDigit = Number(ean[0]);
+
+                const leftDigits = ean.slice(1, 7);
+                const rightDigits = ean.slice(7, 13);
+
+                const parity = PARITY_PATTERNS[firstDigit];
+
+                let binary = "";
+
+                // Start guard
+                binary += "101";
+
+                // Left side
+                for (let i = 0; i < 6; i++) {
+                    const digit = Number(leftDigits[i]);
+
+                    if (parity[i] === "L") {
+                        binary += L_CODES[digit];
+                    } else {
+                        binary += G_CODES[digit];
+                    }
+                }
+
+                // Center guard
+                binary += "01010";
+
+                // Right side
+                for (let i = 0; i < 6; i++) {
+                    const digit = Number(rightDigits[i]);
+                    binary += R_CODES[digit];
+                }
+
+                // End guard
+                binary += "101";
+
+                return binary;
+            }
+
+
+            /**
+            * Draw barcode on HTML5 Canvas.
+            */
+            function drawBarcode(ean) {
+                const binary = encodeEAN13(ean);
+
+                const moduleWidth = 4;
+                const barHeight = 150;
+
+                const width = binary.length * moduleWidth + 40;
+                const height = 210;
+
+                const canvas = document.createElement("canvas");
+
+                canvas.width = width;
+                canvas.height = height;
+
+                const ctx = canvas.getContext("2d");
+
+                // White background
+                ctx.fillStyle = "white";
+                ctx.fillRect(0, 0, width, height);
+
+                // Draw bars
+                ctx.fillStyle = "black";
+
+                const offsetX = 20;
+
+                for (let i = 0; i < binary.length; i++) {
+                    if (binary[i] === "1") {
+                        ctx.fillRect(
+                            offsetX + i * moduleWidth,
+                            20,
+                            moduleWidth,
+                            barHeight
+                        );
+                    }
+                }
+
+                // Draw EAN number
+                ctx.fillStyle = "black";
+                ctx.font = "20px Arial";
+                ctx.textAlign = "center";
+
+                ctx.fillText(
+                    ean,
+                    width / 2,
+                    200
+                );
+
+                return canvas;
+            }
+
+
+            /**
+            * Download barcode as PNG.
+            */
+            function downloadBarcode(canvas, ean) {
+                const link = document.createElement("a");
+                link.download = "ean13_" + ean + ".png";
+                link.href = canvas.toDataURL("image/png");
+                link.click();
+            }
+
+
+            /**
+            * Main generator.
+            */
+            function generateEAN13() {
+                const input = document.getElementById("eanInput");
+                const result = document.getElementById("result");
+
+                // Automatically remove all non-numeric characters
+                let digits = input.value.replace(/\D/g, "");
+
+                // Update input with cleaned value
+                input.value = digits;
+
+                if (digits.length === 0) {
+                    result.innerHTML = "<p>Please enter some digits.</p>";
+                    return;
+                }
+
+                // If 12 digits are entered, calculate checksum
+                if (digits.length === 12) {
+                    const checksum = calculateChecksum(digits);
+                    digits += checksum;
+
+                    input.value = digits;
+                }
+
+                // EAN-13 must contain exactly 13 digits
+                if (digits.length !== 13) {
+                    result.innerHTML =
+                        "<p>EAN-13 requires 12 digits plus a checksum digit.</p>";
+                    return;
+                }
+
+                // Validate checksum
+                if (!validateEAN13(digits)) {
+                    result.innerHTML =
+                        "<p>Invalid EAN-13 checksum.</p>";
+                    return;
+                }
+
+                // Generate barcode
+                const canvas = drawBarcode(digits);
+
+                // Clear previous result
+                result.innerHTML = "";
+
+                // Add barcode
+                result.appendChild(canvas);
+
+                // Add information
+                const info = document.createElement("p");
+                info.textContent = "EAN-13: " + digits;
+                result.appendChild(info);
+
+                // Add download button
+                const downloadBtn = document.createElement("button");
+                downloadBtn.className = "btn-secondary";
+                downloadBtn.textContent = "⬇ Download PNG";
+                downloadBtn.onclick = function () {
+                    downloadBarcode(canvas, digits);
+                };
+                result.appendChild(downloadBtn);
+            }
+        </script>
+
+    </body>
+
+    </html>
+
+    <script>
+
+    </script>
+</body>
+
+</html>
