@@ -1114,6 +1114,8 @@
             static LOG10_2 = Math.log10(2);
             static LOG2_10 = Math.log2(10);
             static ADDITION_CUTOFF = 54;
+            static binaryBuffer = new ArrayBuffer(8);
+            static binaryDataView = new DataView(FloatExp.binaryBuffer);
 
             // Pre-allocate standard constants to avoid recreation
             static ZERO = new FloatExp(0, 0);
@@ -1123,6 +1125,29 @@
             static FOUR = new FloatExp(4, 0);
             static INFINITY = new FloatExp(1, Number.MAX_SAFE_INTEGER); // Set a very high exponent to represent infinity
             static NEGATIVE_INFINITY = new FloatExp(-1, Number.MAX_SAFE_INTEGER);
+
+            // Return floor(log2(abs(value))) by reading the IEEE-754 exponent.
+            // This avoids Math.log2(value) followed by Math.floor(value).
+            static getBinaryExponent(value) {
+                const absValue = Math.abs(value);
+                if (absValue === 0) return -Infinity;
+                if (!Number.isFinite(absValue)) return Number.MAX_SAFE_INTEGER;
+
+                const bits = FloatExp.binaryDataView;
+                bits.setFloat64(0, absValue, false);
+                const high = bits.getUint32(0, false);
+                const rawExponent = (high >>> 20) & 0x7ff;
+                if (rawExponent !== 0) return rawExponent - 1023;
+
+                // Subnormal value: its exponent is -1074 plus the position
+                // of the highest set bit in the 52-bit fraction.
+                const highFraction = high & 0xfffff;
+                const lowFraction = bits.getUint32(4, false);
+                const highestBit = highFraction !== 0
+                    ? 32 + (31 - Math.clz32(highFraction))
+                    : 31 - Math.clz32(lowFraction);
+                return -1074 + highestBit;
+            }
 
             constructor(base, exp = 0, normalize = true) {
                 // Removed validations for performance in this hot path, 
@@ -1155,7 +1180,7 @@
                     return this;
                 }
 
-                const shift = Math.floor(Math.log2(absBase));
+                const shift = FloatExp.getBinaryExponent(absBase);
                 if (shift !== 0) {
                     this.base = base * 2 ** -shift;
                     this.exp += shift;
@@ -1196,7 +1221,7 @@
                 let oBase, oExp;
                 if (typeof other === 'number') {
                     if (other === 0) return this.storeTo(store);
-                    oExp = Math.floor(Math.log2(Math.abs(other)));
+                    oExp = FloatExp.getBinaryExponent(other);
                     oBase = other / 2 ** oExp;
                 } else {
                     oBase = other.base;
@@ -1244,7 +1269,7 @@
                 let oBase, oExp;
                 if (typeof other === 'number') {
                     if (other === 0) return this.storeTo(store);
-                    oExp = Math.floor(Math.log2(Math.abs(other)));
+                    oExp = FloatExp.getBinaryExponent(other);
                     oBase = other / 2 ** oExp;
                 } else {
                     oBase = other.base;
@@ -1562,15 +1587,23 @@
             const [b, e] = normalized;
             const decimalMantissa = parseFloat(b);
             if (decimalMantissa === 0) return FloatExp.ZERO.copy();
-            const log2Value = Math.log2(Math.abs(decimalMantissa)) + e * FloatExp.LOG2_10;
-            const binaryExp = Math.floor(log2Value);
-            return new FloatExp(Math.sign(decimalMantissa) * 2 ** (log2Value - binaryExp), binaryExp, false);
+            const mantissaExp = FloatExp.getBinaryExponent(decimalMantissa);
+            const normalizedMantissa = Math.abs(decimalMantissa) / 2 ** mantissaExp;
+            const decimalLog2 = e * FloatExp.LOG2_10;
+            const decimalBinaryExp = Math.floor(decimalLog2);
+            return new FloatExp(
+                Math.sign(decimalMantissa) * 2 ** (
+                    Math.log2(normalizedMantissa) + decimalLog2 - decimalBinaryExp
+                ),
+                mantissaExp + decimalBinaryExp,
+                false
+            ).norm();
         }
 
         function doubleToFloatExp(num) {
             if (num === 0) return FloatExp.ZERO.copy();
             if (!Number.isFinite(num)) return new FloatExp(num, Number.MAX_SAFE_INTEGER, false);
-            const exponent = Math.floor(Math.log2(Math.abs(num)));
+            const exponent = FloatExp.getBinaryExponent(num);
             return new FloatExp(num / 2 ** exponent, exponent, false);
         }
 
@@ -1582,9 +1615,16 @@
             if (base === 0) return FloatExp.ZERO.copy();
             base *= num.s < 0 ? -1 : 1;
             const decimalExponent = num.e || 0;
-            const log2Value = Math.log2(Math.abs(base)) + decimalExponent * FloatExp.LOG2_10;
-            const binaryExp = Math.floor(log2Value);
-            return new FloatExp(Math.sign(base) * 2 ** (log2Value - binaryExp), binaryExp, false);
+            const binaryExp = FloatExp.getBinaryExponent(base);
+            const binaryMantissa = base / 2 ** binaryExp;
+            const log2Mantissa = Math.log2(Math.abs(binaryMantissa));
+            const decimalLog2 = decimalExponent * FloatExp.LOG2_10;
+            const decimalBinaryExp = Math.floor(decimalLog2);
+            return new FloatExp(
+                Math.sign(base) * 2 ** (log2Mantissa + decimalLog2 - decimalBinaryExp),
+                binaryExp + decimalBinaryExp,
+                false
+            ).norm();
         }
 
         function getFloatExp(obj) {
@@ -2699,9 +2739,10 @@
 
             let sign = Math.sign(mantissa);
             let absMantissa = Math.abs(mantissa);
-            const log2Value = Math.log2(absMantissa) + exponent;
-            const binaryExponent = Math.floor(log2Value);
-            return new FloatExp(sign * 2 ** (log2Value - binaryExponent), binaryExponent, false);
+            const result = doubleToFloatExp(absMantissa);
+            result.exp += exponent;
+            result.base *= sign;
+            return result;
         }
 
         const COMPRESS_THRESHOLD_FLOATEXP = new FloatExp(2 ** -40);
@@ -2822,7 +2863,7 @@
 
         function floorPowerOfTwo(n) {
             if (n <= 0) return 0;
-            return Math.pow(2, Math.floor(Math.log2(n)));
+            return Math.pow(2, FloatExp.getBinaryExponent(n));
         }
 
         const VAILD_SCALE = 5.960464477539063e-08;
