@@ -1985,6 +1985,13 @@
                 return store;
             }
 
+            // Hot-path variant: the operand is known to be FloatExpComplex.
+            addFloatExpTo(other, store) {
+                this.re.addTo(other.re, store.re);
+                this.im.addTo(other.im, store.im);
+                return store;
+            }
+
             sub(other) {
                 return this.subTo(other, new FloatExpComplex(new FloatExp(0), new FloatExp(0)));
             }
@@ -2111,6 +2118,25 @@
                 this.im.mulTo(this.im, FloatExpComplex.CACHE_2);
                 FloatExpComplex.CACHE_1.addTo(FloatExpComplex.CACHE_2, store);
                 return store;
+            }
+
+            // Hot-path variant: avoid the public API's typeof dispatch.
+            mulFloatExpTo(other, store) {
+                this.re.mulTo(other.re, FloatExpComplex.CACHE_1);
+                this.im.mulTo(other.im, FloatExpComplex.CACHE_2);
+                FloatExpComplex.CACHE_1.subTo(FloatExpComplex.CACHE_2, FloatExpComplex.CACHE_3);
+
+                this.re.mulTo(other.im, FloatExpComplex.CACHE_1);
+                this.im.mulTo(other.re, FloatExpComplex.CACHE_2);
+                FloatExpComplex.CACHE_1.addTo(FloatExpComplex.CACHE_2, FloatExpComplex.CACHE_4);
+
+                FloatExpComplex.CACHE_3.storeTo(store.re);
+                FloatExpComplex.CACHE_4.storeTo(store.im);
+                return store;
+            }
+
+            mulFloatExpMut(other) {
+                return this.mulFloatExpTo(other, this);
             }
 
             // Chebyshev norm
@@ -3667,8 +3693,8 @@
                     let step = steps[j];
 
                     // const newDz = dz.mul(step.Z.add(z))
-                    step.Z.addTo(z, tempVars.stepZZ)
-                    tempVars.stepZZ.mulTo(dz, tempVars.newDz)
+                    step.Z.addFloatExpTo(z, tempVars.stepZZ)
+                    tempVars.stepZZ.mulFloatExpTo(dz, tempVars.newDz)
 
                     if (tempVars.newDz.normCompareToFloatExp(step.radius) > 0 || dcNorm.gt(step.radiusC)) {
                         j = step.next;
@@ -3676,15 +3702,15 @@
                     }
 
                     // dz = tempVars.newDz.mul(step.A).addMut(dc.mul(step.B))
-                    tempVars.newDz.mulMut(step.A)
-                    dc.mulTo(step.B, tempVars.dcMulB)
-                    tempVars.newDz.addTo(tempVars.dcMulB, dz)
+                    tempVars.newDz.mulFloatExpMut(step.A)
+                    dc.mulFloatExpTo(step.B, tempVars.dcMulB)
+                    tempVars.newDz.addFloatExpTo(tempVars.dcMulB, dz)
 
                     i += step.length;
                     j++;
 
                     // z = dz.add(steps[j].Z);
-                    dz.addTo(steps[j].Z, z)
+                    dz.addFloatExpTo(steps[j].Z, z)
 
                     if (j == end || z.normCompareTo(dz) < 0) {
                         j = begin;
@@ -3699,9 +3725,9 @@
 
             while (i < maxIter) {
                 // dz = dz.mul(Z.add(z)).addMut(dc);
-                Z.addTo(z, tempVars.stepZZ)
-                tempVars.stepZZ.mulTo(dz, tempVars.newDz)
-                tempVars.newDz.addTo(dc, dz)
+                Z.addFloatExpTo(z, tempVars.stepZZ)
+                tempVars.stepZZ.mulFloatExpTo(dz, tempVars.newDz)
+                tempVars.newDz.addFloatExpTo(dc, dz)
 
                 i++; j++;
 
@@ -3709,13 +3735,13 @@
                 ref.getInplace(j, Z)
 
                 // z = dz.add(Z);
-                dz.addTo(Z, z)
+                dz.addFloatExpTo(Z, z)
 
                 z.abs2To(tempVars.zAbs2);
                 if (tempVars.zAbs2.doubleValue() > bailout) {
                     let iter = i - 1;
                     if (smooth) {
-                        let fracIter = Math.log(z.abs2().doubleValue()) / 2;
+                        let fracIter = Math.log(tempVars.zAbs2.doubleValue()) / 2;
                         fracIter = Math.log(fracIter / Math.LN2) / Math.LN2;
                         iter += 1 - fracIter;
                         return iter;
