@@ -3,41 +3,118 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0,user-scalable=no">
-<title>二维卫星轨道模拟器 (直觉拖拽版)</title>
-<style>
+<title>二维卫星轨道模拟器</title>
+  <style>
 *{box-sizing:border-box;touch-action:none}
 html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#05070d;color:#e8edf7;font-family:system-ui,-apple-system,"Segoe UI",sans-serif}
 #wrap{position:relative;width:100%;height:100%}
 canvas{display:block;width:100%;height:100%;cursor:grab}
 canvas:active{cursor:grabbing}
-#panel{
-  position:absolute;left:16px;top:16px;width:290px;padding:12px 14px;
-  background:rgba(8,12,22,.88);border:1px solid rgba(255,255,255,.12);
-  border-radius:12px;backdrop-filter:blur(10px);box-shadow:0 8px 30px rgba(0,0,0,.35);
-  font-size:12px;line-height:1.5;user-select:none;max-height:calc(100vh - 32px);overflow-y:auto;
+
+/* ---------- Floating Toolbar (fft-epicycles style) ---------- */
+.toolbar{
+  position:fixed;bottom:18px;right:18px;
+  display:flex;flex-direction:column;align-items:flex-end;gap:10px;
+  z-index:1000;font-family:system-ui,-apple-system,"Segoe UI",sans-serif;
+  transition:opacity .25s;
 }
-h1{font-size:15px;margin:0 0 6px;color:#a5c2f5}
-.grid{display:grid;grid-template-columns:1fr auto;gap:2px 10px}
-.label{color:#94a0b8}.value{font-variant-numeric:tabular-nums;text-align:right;font-weight:500}
-.sep{height:1px;background:rgba(255,255,255,.1);margin:8px 0}
-.btn-group{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:6px}
-button{padding:7px 4px;border:0;border-radius:6px;background:#2b3a55;color:#fff;font-size:11px;font-weight:600;cursor:pointer;transition:.15s}
-button:hover{background:#3d5075}
-button.active{background:#4f709c;border:1px solid #7096d1}
-button.highlight{background:#2e7d32;color:#fff}
-button.highlight:hover{background:#388e3c}
-#help{position:absolute;right:16px;bottom:14px;padding:8px 12px;border-radius:9px;
-  background:rgba(8,12,22,.8);color:#aeb8cb;font-size:11px;border:1px solid rgba(255,255,255,.08);pointer-events:none}
-input[type=range]{-webkit-appearance:none;appearance:none;height:4px;border-radius:2px;background:#2b3a55;outline:none;margin:6px 0 2px}
-input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:14px;height:14px;border-radius:50%;background:#7096d1;cursor:pointer;border:2px solid #a5c2f5}
-input[type=range]::-moz-range-thumb{width:14px;height:14px;border-radius:50%;background:#7096d1;cursor:pointer;border:2px solid #a5c2f5}
-.slider{width:100%}
+.toolbar-main{
+  display:flex;flex-direction:row;
+  background:rgba(12,16,28,.82);
+  border:1px solid rgba(255,255,255,.14);
+  border-radius:30px;padding:5px;gap:5px;
+  box-shadow:0 8px 32px rgba(0,0,0,.4);
+  transition:all .3s cubic-bezier(.4,0,.2,1);
+}
+.toolbar.collapsed .toolbar-main{overflow:hidden;padding:5px;}
+.icon-btn{
+  width:40px;height:40px;min-width:40px;min-height:40px;
+  display:flex;align-items:center;justify-content:center;
+  background:transparent;border:none;border-radius:50%;
+  cursor:pointer;font-size:20px;color:#e8edf7;
+  transition:background .2s,transform .1s;
+  position:relative;
+}
+.icon-btn:hover{background:rgba(255,255,255,.1)}
+.icon-btn:active{transform:scale(.9)}
+.icon-btn.active{background:rgba(112,150,209,.4);box-shadow:0 0 8px rgba(112,150,209,.55)}
+
+/* Pop-up panels */
+.popover{
+  position:absolute;bottom:58px;right:0;
+  background:rgba(12,16,28,.92);
+  border:1px solid rgba(255,255,255,.1);
+  border-radius:12px;padding:12px;
+  display:none;flex-direction:column;gap:8px;
+  min-width:200px;max-width:280px;max-height:60vh;overflow-y:auto;
+  box-shadow:0 5px 15px rgba(0,0,0,.5);
+  z-index:1100;
+}
+.popover.active{display:flex}
+.popover .label{font-size:12px;color:#94a0b8;margin-bottom:2px}
+.popover .val-text{color:#a5c2f5;font-weight:600;font-size:12px}
+
+.popover input[type=range]{
+  -webkit-appearance:none;appearance:none;width:100%;background:transparent;margin:8px 0;cursor:pointer;
+}
+.popover input[type=range]::-webkit-slider-runnable-track{
+  width:100%;height:4px;background:rgba(255,255,255,.1);border-radius:2px;
+}
+.popover input[type=range]::-webkit-slider-thumb{
+  -webkit-appearance:none;width:14px;height:14px;border-radius:50%;background:#7096d1;
+  margin-top:-5px;border:2px solid #a5c2f5;cursor:pointer;
+}
+.popover input[type=range]::-moz-range-track{width:100%;height:4px;background:rgba(255,255,255,.1);border-radius:2px}
+.popover input[type=range]::-moz-range-thumb{width:14px;height:14px;border-radius:50%;background:#7096d1;border:2px solid #a5c2f5;cursor:pointer}
+
+.popover .action-btn{
+  width:100%;border:none;border-radius:8px;padding:9px;cursor:pointer;
+  font-weight:600;font-size:12px;transition:all .2s;
+  background:#2b3a55;color:#fff;
+}
+.popover .action-btn:hover{background:#3d5075}
+.popover .action-btn.highlight{background:#2e7d32;color:#fff}
+.popover .action-btn.highlight:hover{background:#388e3c}
+
+.hidden-on-collapse{display:flex;flex-direction:row;gap:5px;max-height:60vh;overflow-y:auto}
+.toolbar.collapsed .hidden-on-collapse{display:none}
+
+/* Physics info panel (subtle) */
+#physicsPanel{
+  position:absolute;left:16px;top:16px;width:250px;padding:12px 14px;
+  background:rgba(8,12,22,.55);border:1px solid rgba(255,255,255,.08);
+  border-radius:12px;backdrop-filter:blur(6px);
+  box-shadow:0 4px 20px rgba(0,0,0,.25);
+  font-size:12px;line-height:1.5;user-select:none;
+  transition:opacity .25s,background .25s,pointer-events .25s;
+}
+#physicsPanel.faded{
+  opacity:.35;background:rgba(8,12,22,.25);pointer-events:none;
+}
+#physicsPanel h1{font-size:14px;margin:0 0 6px;color:#a5c2f5;font-weight:600}
+#physicsPanel .grid{display:grid;grid-template-columns:1fr auto;gap:2px 10px}
+#physicsPanel .label{color:#94a0b8}
+#physicsPanel .value{font-variant-numeric:tabular-nums;text-align:right;font-weight:500}
+#physicsPanel .sep{height:1px;background:rgba(255,255,255,.08);margin:8px 0}
+
+#help{position:absolute;right:16px;bottom:78px;padding:8px 12px;border-radius:9px;
+  background:rgba(8,12,22,.75);color:#aeb8cb;font-size:11px;border:1px solid rgba(255,255,255,.08);pointer-events:none}
+
+@media (max-width:600px){
+  .toolbar-main{flex-direction:column;border-radius:25px}
+  .hidden-on-collapse{flex-direction:column;border-bottom:1px solid rgba(255,255,255,.12)}
+  .popover{bottom:15px;right:58px;max-width:calc(100vw - 90px)}
+  #physicsPanel{width:calc(100% - 32px);max-width:280px}
+  #help{bottom:88px}
+}
 </style>
 </head>
 <body>
 <div id="wrap">
 <canvas id="canvas"></canvas>
-<div id="panel">
+
+<!-- Subtle physics info panel -->
+<div id="physicsPanel">
   <h1>二维卫星轨道模拟器</h1>
   <div class="grid">
    <span class="label">模拟时间</span><span class="value" id="time">0.00 s</span>
@@ -56,22 +133,48 @@ input[type=range]::-moz-range-thumb{width:14px;height:14px;border-radius:50%;bac
    <span class="label">轨道周期</span><span class="value" id="period">—</span>
    <span class="label">轨道类型</span><span class="value" id="type">—</span>
   </div>
-  <div class="sep"></div>
-  <div class="btn-group">
-    <button id="btnCircle" class="highlight">一键轨道圆化</button>
-    <button id="btnView">视图: 中心视角</button>
-  </div>
-  <div class="btn-group">
-    <button id="reset">重置卫星 (R)</button>
-    <button id="btnResetZoom">重置缩放/视角</button>
-  </div>
-  <div class="sep"></div>
-  <div class="grid">
-    <span class="label">时间速率</span><span class="value" id="speedFactorDisplay">1.00×</span>
-  </div>
-  <input type="range" class="slider" id="speedSlider" min="-100" max="100" value="0" step="1">
-  <div style="display:flex;justify-content:space-between;font-size:10px;color:#94a0b8;margin-top:-2px"><span>0.001×</span><span>1×</span><span>1000×</span></div>
 </div>
+
+<!-- Floating toolbar -->
+<div class="toolbar" id="mainToolbar">
+  <div class="toolbar-main">
+    <div class="hidden-on-collapse">
+      <!-- Physics info toggle -->
+      <button class="icon-btn" id="physicsToggleBtn" title="切换物理信息穿透">📊</button>
+
+      <!-- Time controls -->
+      <button class="icon-btn" id="timeBtn" title="时间控制">⏱️</button>
+      <div class="popover" id="timePopover">
+        <span class="label">时间速率 <span id="speedFactorDisplay" class="val-text">1.00×</span></span>
+        <input type="range" id="speedSlider" min="-100" max="100" value="0" step="1">
+        <div style="display:flex;justify-content:space-between;font-size:10px;color:#94a0b8"><span>0.001×</span><span>1×</span><span>1000×</span></div>
+      </div>
+
+      <!-- View controls -->
+      <button class="icon-btn" id="viewBtn" title="视图选项">👁️</button>
+      <div class="popover" id="viewPopover">
+        <span class="label">视图</span>
+        <button class="action-btn" id="btnView">视图: 中心视角</button>
+        <button class="action-btn" id="btnResetZoom">重置缩放/视角</button>
+      </div>
+
+      <!-- Orbit tools -->
+      <button class="icon-btn" id="orbitBtn" title="轨道工具">🪐</button>
+      <div class="popover" id="orbitPopover">
+        <span class="label">轨道工具</span>
+        <button class="action-btn highlight" id="btnCircle">一键轨道圆化</button>
+        <button class="action-btn" id="btnZeroVelocity">速度归零</button>
+      </div>
+
+      <!-- Reset -->
+      <button class="icon-btn" id="resetBtn" title="重置卫星 (R)">🔄</button>
+    </div>
+
+    <!-- Toggle -->
+    <button class="icon-btn" id="toggleBar" title="折叠工具栏">🛠️</button>
+  </div>
+</div>
+
 <div id="help">拖拽卫星周围: 任意方向加减速 | 拖拽空白处: 平移视角 | 滚轮/双指: 缩放</div>
 </div>
 
@@ -97,7 +200,9 @@ const ui = {
   btnView: document.getElementById("btnView"),
   btnCircle: document.getElementById("btnCircle"),
   speedSlider: document.getElementById("speedSlider"),
-  speedFactorDisplay: document.getElementById("speedFactorDisplay")
+  speedFactorDisplay: document.getElementById("speedFactorDisplay"),
+  physicsPanel: document.getElementById("physicsPanel"),
+  physicsToggleBtn: document.getElementById("physicsToggleBtn")
 };
 
 const GM = 18000;
@@ -296,16 +401,19 @@ canvas.addEventListener("wheel", e => {
 }, { passive: false });
 
 // ---------- UI 按钮 ----------
-ui.btnView.addEventListener("click", () => {
-  if (viewMode === "center") {
-    viewMode = "sat";
+function setViewMode(mode) {
+  viewMode = mode;
+  if (viewMode === "sat") {
     ui.btnView.textContent = "视图: 卫星中心";
     ui.btnView.classList.add("active");
   } else {
-    viewMode = "center";
     ui.btnView.textContent = "视图: 中心视角";
     ui.btnView.classList.remove("active");
   }
+}
+
+ui.btnView.addEventListener("click", () => {
+  setViewMode(viewMode === "center" ? "sat" : "center");
 });
 
 document.getElementById("btnResetZoom").addEventListener("click", () => {
@@ -360,6 +468,13 @@ ui.btnCircle.addEventListener("click", () => {
   };
 });
 
+// 速度归零
+document.getElementById("btnZeroVelocity").addEventListener("click", () => {
+  sat.vx = 0;
+  sat.vy = 0;
+  impulseMarker = null;
+});
+
 function reset() {
   Object.assign(sat, initial);
   simTime = 0;
@@ -369,7 +484,7 @@ function reset() {
   impulseMarker = null;
   panWorld = { x: 0, y: 0 };
 }
-document.getElementById("reset").addEventListener("click", reset);
+document.getElementById("resetBtn").addEventListener("click", reset);
 window.addEventListener("keydown", e => {
   if (e.key.toLowerCase() === "r") reset();
 });
@@ -407,6 +522,42 @@ function updateSpeedDisplay() {
 ui.speedSlider.addEventListener("input", updateSpeedDisplay);
 updateSpeedDisplay();
 
+// ---------- 工具栏交互 ----------
+(function setupToolbar() {
+  const toolbar = document.getElementById("mainToolbar");
+  document.getElementById("toggleBar").addEventListener("click", () => {
+    toolbar.classList.toggle("collapsed");
+  });
+
+  // 物理信息面板穿透切换
+  let physicsFaded = false;
+  ui.physicsToggleBtn.addEventListener("click", () => {
+    physicsFaded = !physicsFaded;
+    ui.physicsPanel.classList.toggle("faded", physicsFaded);
+    ui.physicsToggleBtn.classList.toggle("active", physicsFaded);
+  });
+
+  // Popover 切换逻辑
+  const buttons = ["timeBtn", "viewBtn", "orbitBtn"];
+  const popovers = ["timePopover", "viewPopover", "orbitPopover"];
+
+  buttons.forEach((id, i) => {
+    document.getElementById(id).addEventListener("click", (e) => {
+      const pop = document.getElementById(popovers[i]);
+      const isActive = pop.classList.contains("active");
+      popovers.forEach(p => document.getElementById(p).classList.remove("active"));
+      if (!isActive) pop.classList.add("active");
+      e.stopPropagation();
+    });
+  });
+
+  document.addEventListener("click", (e) => {
+    if (!e.target.closest(".popover") && !e.target.closest(".icon-btn")) {
+      popovers.forEach(p => document.getElementById(p).classList.remove("active"));
+    }
+  });
+})();
+
 // ---------- 轨道计算与绘制 ----------
 function getOrbitalElements(targetSat = sat) {
   const x = targetSat.x, y = targetSat.y, vx = targetSat.vx, vy = targetSat.vy;
@@ -416,6 +567,8 @@ function getOrbitalElements(targetSat = sat) {
 
   const energy = v2 / 2 - GM / r;
   const rv = x * vx + y * vy;
+  const h = x * vy - y * vx;
+  const p = h * h / GM;
   const ex = ((v2 - GM/r) * x - rv * vx) / GM;
   const ey = ((v2 - GM/r) * y - rv * vy) / GM;
   const e = Math.hypot(ex, ey);
@@ -433,20 +586,21 @@ function getOrbitalElements(targetSat = sat) {
   if (Math.abs(e - 1) < 1e-3) type = "抛物线";
   else if (e < 1) type = "椭圆";
 
-  return {r, v, energy, e, a, peri: Math.abs(peri), apo, period, type, ex, ey};
+  return {r, v, energy, e, a, peri: Math.abs(peri), apo, period, type, ex, ey, p};
 }
 
 function drawOrbit(el, strokeStyle = "rgba(130, 190, 255, 0.65)") {
+  const omega = Math.atan2(el.ey, el.ex);
+  const points = 360;
+
   if (el.e < 1 && el.a > 0) {
-    const omega = Math.atan2(el.ey, el.ex);
+    // 椭圆轨道
     ctx.save();
     ctx.beginPath();
 
-    const points = 360;
     for (let i = 0; i <= points; i++) {
       const nu = (2 * Math.PI * i) / points;
-      const p = el.a * (1 - el.e * el.e);
-      const rr = p / (1 + el.e * Math.cos(nu));
+      const rr = el.p / (1 + el.e * Math.cos(nu));
       const theta = nu + omega;
       const s = worldToScreen(rr * Math.cos(theta), rr * Math.sin(theta));
 
@@ -468,6 +622,42 @@ function drawOrbit(el, strokeStyle = "rgba(130, 190, 255, 0.65)") {
       const ax = -el.apo * Math.cos(omega);
       const ay = -el.apo * Math.sin(omega);
       drawMarker(ax, ay, "远点", "#96dcff");
+    }
+  } else {
+    // 双曲线/抛物线轨道：红色预测线
+    const maxR = Math.hypot(cssW, cssH) / Math.max(zoom, 0.01) * 2;
+    const nuMax = Math.acos(Math.min(1, -1 / el.e)) * 0.995;
+
+    ctx.save();
+    ctx.beginPath();
+    let first = true;
+    for (let i = 0; i <= points; i++) {
+      const t = (2 * i / points) - 1; // -1 ~ 1
+      const nu = t * nuMax;
+      const denom = 1 + el.e * Math.cos(nu);
+      if (denom <= 0.001) continue;
+      const rr = Math.min(el.p / denom, maxR);
+      const theta = nu + omega;
+      const s = worldToScreen(rr * Math.cos(theta), rr * Math.sin(theta));
+
+      if (first) {
+        ctx.moveTo(s.x, s.y);
+        first = false;
+      } else {
+        ctx.lineTo(s.x, s.y);
+      }
+    }
+
+    ctx.setLineDash([5, 5]);
+    ctx.lineWidth = 1.5;
+    ctx.strokeStyle = "rgba(255, 107, 107, 0.75)";
+    ctx.stroke();
+    ctx.restore();
+
+    if (Number.isFinite(el.peri)) {
+      const px = el.peri * Math.cos(omega);
+      const py = el.peri * Math.sin(omega);
+      drawMarker(px, py, "近点", "#ffbe64");
     }
   }
 }
