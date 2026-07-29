@@ -1297,8 +1297,24 @@
                     store.exp = this.exp;
                     return store;
                 } else {
-                    store.base = this.base + oBase * FloatExp.pow2(expDiff);
-                    store.exp = this.exp;
+                    if (expDiff > 0) {
+                        store.base = this.base * FloatExp.pow2(-expDiff) + oBase;
+                        store.exp = oExp;
+                    } else {
+                        store.base = this.base + oBase * FloatExp.pow2(expDiff);
+                        store.exp = this.exp;
+                    }
+                }
+                const absResult = Math.abs(store.base);
+                if (absResult === 0) {
+                    store.exp = 0;
+                    return store;
+                }
+                if (absResult >= 1 && absResult < 2) return store;
+                if (absResult >= 2 && absResult < 4) {
+                    store.base *= 0.5;
+                    store.exp++;
+                    return store;
                 }
                 return store.norm();
             }
@@ -1374,8 +1390,24 @@
                     store.exp = this.exp;
                     return store;
                 } else {
-                    store.base = this.base - oBase * FloatExp.pow2(expDiff);
-                    store.exp = this.exp;
+                    if (expDiff > 0) {
+                        store.base = this.base * FloatExp.pow2(-expDiff) - oBase;
+                        store.exp = oExp;
+                    } else {
+                        store.base = this.base - oBase * FloatExp.pow2(expDiff);
+                        store.exp = this.exp;
+                    }
+                }
+                const absResult = Math.abs(store.base);
+                if (absResult === 0) {
+                    store.exp = 0;
+                    return store;
+                }
+                if (absResult >= 1 && absResult < 2) return store;
+                if (absResult >= 2 && absResult < 4) {
+                    store.base *= 0.5;
+                    store.exp++;
+                    return store;
                 }
                 return store.norm();
             }
@@ -2187,12 +2219,69 @@
 
             // Hot-path variant: avoid the public API's typeof dispatch.
             mulFloatExpTo(other, store) {
-                this.re.mulFloatExpTo(other.re, FloatExpComplex.CACHE_1);
-                this.im.mulFloatExpTo(other.im, FloatExpComplex.CACHE_2);
+                const ar = this.re.base, ae = this.re.exp;
+                const ai = this.im.base, ie = this.im.exp;
+                const br = other.re.base, be = other.re.exp;
+                const bi = other.im.base, je = other.im.exp;
+
+                // Products of normalized mantissas are in [1, 4), so one
+                // multiply-by-half is sufficient; zero remains canonical.
+                let acBase = ar * br;
+                let acExp = ae + be;
+                if (acBase === 0) {
+                    FloatExpComplex.CACHE_1.base = 0;
+                    FloatExpComplex.CACHE_1.exp = 0;
+                } else {
+                    if (Math.abs(acBase) >= 2) {
+                        acBase *= 0.5;
+                        acExp++;
+                    }
+                    FloatExpComplex.CACHE_1.base = acBase;
+                    FloatExpComplex.CACHE_1.exp = acExp;
+                }
+
+                let bdBase = ai * bi;
+                let bdExp = ie + je;
+                if (bdBase === 0) {
+                    FloatExpComplex.CACHE_2.base = 0;
+                    FloatExpComplex.CACHE_2.exp = 0;
+                } else {
+                    if (Math.abs(bdBase) >= 2) {
+                        bdBase *= 0.5;
+                        bdExp++;
+                    }
+                    FloatExpComplex.CACHE_2.base = bdBase;
+                    FloatExpComplex.CACHE_2.exp = bdExp;
+                }
                 FloatExpComplex.CACHE_1.subFloatExpTo(FloatExpComplex.CACHE_2, FloatExpComplex.CACHE_3);
 
-                this.re.mulFloatExpTo(other.im, FloatExpComplex.CACHE_1);
-                this.im.mulFloatExpTo(other.re, FloatExpComplex.CACHE_2);
+                let adBase = ar * bi;
+                let adExp = ae + je;
+                if (adBase === 0) {
+                    FloatExpComplex.CACHE_1.base = 0;
+                    FloatExpComplex.CACHE_1.exp = 0;
+                } else {
+                    if (Math.abs(adBase) >= 2) {
+                        adBase *= 0.5;
+                        adExp++;
+                    }
+                    FloatExpComplex.CACHE_1.base = adBase;
+                    FloatExpComplex.CACHE_1.exp = adExp;
+                }
+
+                let bcBase = ai * br;
+                let bcExp = ie + be;
+                if (bcBase === 0) {
+                    FloatExpComplex.CACHE_2.base = 0;
+                    FloatExpComplex.CACHE_2.exp = 0;
+                } else {
+                    if (Math.abs(bcBase) >= 2) {
+                        bcBase *= 0.5;
+                        bcExp++;
+                    }
+                    FloatExpComplex.CACHE_2.base = bcBase;
+                    FloatExpComplex.CACHE_2.exp = bcExp;
+                }
                 FloatExpComplex.CACHE_1.addFloatExpTo(FloatExpComplex.CACHE_2, FloatExpComplex.CACHE_4);
 
                 FloatExpComplex.CACHE_3.storeTo(store.re);
