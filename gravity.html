@@ -120,6 +120,7 @@ canvas:active{cursor:grabbing}
    <span class="label">模拟时间</span><span class="value" id="time">0.00 s</span>
    <span class="label">当前距离</span><span class="value" id="radius">—</span>
    <span class="label">当前速度</span><span class="value" id="speed">—</span>
+   <span class="label">当前加速度</span><span class="value" id="accel">—</span>
    <span class="label">环绕速度</span><span class="value" id="circSpeed" style="color:#96dcff">—</span>
    <span class="label">逃逸速度</span><span class="value" id="escSpeed" style="color:#ff6b6b">—</span>
    <span class="label">缩放比例</span><span class="value" id="scaleDisplay">100%</span>
@@ -191,6 +192,7 @@ const ui = {
   circSpeed: document.getElementById("circSpeed"),
   escSpeed: document.getElementById("escSpeed"),
   scaleDisplay: document.getElementById("scaleDisplay"),
+  accel: document.getElementById("accel"),
   peri: document.getElementById("peri"),
   apo: document.getElementById("apo"),
   semi: document.getElementById("semi"),
@@ -761,6 +763,20 @@ function render() {
   ctx.lineTo(sSat.x + sat.vx * 8 * zoom, sSat.y + sat.vy * 8 * zoom);
   ctx.stroke();
 
+  // 当前加速度矢量线 (橙)
+  const r2 = sat.x*sat.x + sat.y*sat.y;
+  const r = Math.sqrt(r2);
+  const invR3 = 1 / (r2 * r);
+  const ax = -GM * sat.x * invR3;
+  const ay = -GM * sat.y * invR3;
+  const accelScale = 8 * zoom;
+  ctx.strokeStyle = "rgba(255, 165, 70, 0.75)";
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.moveTo(sSat.x, sSat.y);
+  ctx.lineTo(sSat.x + ax * accelScale, sSat.y + ay * accelScale);
+  ctx.stroke();
+
   // 刚刚施加的/圆动添加的 Δv 矢量提示 (绿)
   if (impulseMarker && impulseMarker.timer > 0) {
     const scale = 12 * zoom;
@@ -794,6 +810,12 @@ function updateUI(el) {
   ui.time.textContent = simTime.toFixed(2) + " s";
   ui.radius.textContent = el.r.toFixed(1) + " px";
   ui.speed.textContent = el.v.toFixed(2) + " px/s";
+
+  const r2 = sat.x*sat.x + sat.y*sat.y;
+  const r = Math.sqrt(r2);
+  const invR3 = 1 / (r2 * r);
+  const a = GM * invR3;
+  ui.accel.textContent = a.toFixed(3) + " px/s²";
 
   const vCirc = Math.sqrt(GM / el.r);
   const vEsc = vCirc * Math.SQRT2;
