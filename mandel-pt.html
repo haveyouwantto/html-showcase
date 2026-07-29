@@ -1109,12 +1109,11 @@
         const CPU_CORES = Math.max(navigator.hardwareConcurrency ?? 1, 1);
 
         class FloatExp {
-            static expTable = [];
-            static LOG2_10 = Math.log2(10);
+            // The mantissa is normalized to [1, 2), so exp is a binary
+            // exponent: value = base * 2 ** exp.
             static LOG10_2 = Math.log10(2);
-            static buffer = new ArrayBuffer(8);
-            static floatView = new Float64Array(FloatExp.buffer);
-            static int32View = new Int32Array(FloatExp.buffer);
+            static LOG2_10 = Math.log2(10);
+            static ADDITION_CUTOFF = 54;
 
             // Pre-allocate standard constants to avoid recreation
             static ZERO = new FloatExp(0, 0);
@@ -1125,57 +1124,6 @@
             static INFINITY = new FloatExp(1, Number.MAX_SAFE_INTEGER); // Set a very high exponent to represent infinity
             static NEGATIVE_INFINITY = new FloatExp(-1, Number.MAX_SAFE_INTEGER);
 
-            static {
-                this.expTable = [];
-                for (let i = 0; i < 324 + 308; i++) {
-                    this.expTable[i] = Math.pow(10, i - 324);
-                }
-            }
-
-            static getExp(exp) {
-                if (exp < -324) return 0;
-                else if (exp > 308) return Infinity;
-                return this.expTable[exp + 324];
-            }
-
-            static getExpOfDouble(d) {
-                if (d === 0) throw new Error("Exponent of zero is undefined.");
-
-                // Inlining some logic for speed could be done here, 
-                // but keeping original logic for safety as provided.
-                const LOG10_2 = Math.LOG10E;
-                const BIAS = 1023;
-                FloatExp.floatView[0] = d;
-                const highBits = FloatExp.int32View[1];
-                const lowBits = FloatExp.int32View[0];
-                const rawExp = (highBits >>> 20) & 0x7FF;
-
-                let actualExp;
-                if (rawExp === 0) {
-                    let mantissaHigh = highBits & 0xFFFFF;
-                    const mantissaLow = lowBits;
-                    let leadingZeros = 0;
-                    if (mantissaHigh === 0) {
-                        leadingZeros += 32;
-                        let temp = mantissaLow;
-                        while (temp !== 0 && (temp & 0x80000000) === 0) {
-                            temp <<= 1;
-                            leadingZeros++;
-                        }
-                    } else {
-                        let temp = mantissaHigh;
-                        while ((temp & 0x80000) === 0) {
-                            temp <<= 1;
-                            leadingZeros++;
-                        }
-                    }
-                    actualExp = -1022 - leadingZeros;
-                } else {
-                    actualExp = rawExp - BIAS;
-                }
-                return Math.floor(actualExp * LOG10_2);
-            }
-
             constructor(base, exp = 0, normalize = true) {
                 // Removed validations for performance in this hot path, 
                 // assuming internal usage ensures validity.
@@ -1185,31 +1133,42 @@
             }
 
             norm() {
-                if (this.base == 0) {
+                const base = this.base;
+                if (base === 0) {
                     this.exp = 0;
                     return this;
                 }
+                if (!Number.isFinite(base)) return this;
 
-                while (Math.abs(this.base) > 10) {
-                    this.base /= 10;
+                const absBase = Math.abs(base);
+                // Most hot-path results are already normalized, or are one
+                // factor of two away (products, quotients, and squares).
+                if (absBase >= 1 && absBase < 2) return this;
+                if (absBase >= 2 && absBase < 4) {
+                    this.base = base * 0.5;
                     this.exp++;
+                    return this;
+                }
+                if (absBase >= 0.5 && absBase < 1) {
+                    this.base = base * 2;
+                    this.exp--;
+                    return this;
                 }
 
-                while (Math.abs(this.base) < 1) {
-                    this.base *= 10;
+                const shift = Math.floor(Math.log2(absBase));
+                if (shift !== 0) {
+                    this.base = base * 2 ** -shift;
+                    this.exp += shift;
+                }
+                // Correct the two rounding edge cases around the boundary.
+                if (Math.abs(this.base) >= 2) {
+                    this.base /= 2;
+                    this.exp++;
+                } else if (Math.abs(this.base) < 1) {
+                    this.base *= 2;
                     this.exp--;
                 }
-
                 return this;
-
-                // if (this.base != 0 && (Math.abs(this.base) >= 10 || Math.abs(this.base) < 1)) {
-                //     let exp = FloatExp.getExpOfDouble(this.base);
-                //     if (exp != 0) {
-                //         this.exp += exp;
-                //         this.base /= FloatExp.getExp(exp);
-                //     }
-                // }
-                // return this;
             }
 
             /**
@@ -1236,8 +1195,9 @@
             addTo(other, store) {
                 let oBase, oExp;
                 if (typeof other === 'number') {
-                    oBase = other;
-                    oExp = 0;
+                    if (other === 0) return this.storeTo(store);
+                    oExp = Math.floor(Math.log2(Math.abs(other)));
+                    oBase = other / 2 ** oExp;
                 } else {
                     oBase = other.base;
                     oExp = other.exp;
@@ -1255,18 +1215,18 @@
                 if (expDiff === 0) {
                     store.base = this.base + oBase;
                     store.exp = this.exp;
-                } else if (expDiff > 16) {
+                } else if (expDiff > FloatExp.ADDITION_CUTOFF) {
                     store.base = oBase;
                     store.exp = oExp;
                     // No normalization needed here usually if 'other' is already norm, but safe to do so
                     return store;
-                } else if (expDiff < -16) {
+                } else if (expDiff < -FloatExp.ADDITION_CUTOFF) {
                     // 'other' is too small to affect 'this'
                     store.base = this.base;
                     store.exp = this.exp;
                     return store;
                 } else {
-                    store.base = this.base + oBase * FloatExp.getExp(expDiff);
+                    store.base = this.base + oBase * 2 ** expDiff;
                     store.exp = this.exp;
                 }
                 return store.norm();
@@ -1283,8 +1243,9 @@
             subTo(other, store) {
                 let oBase, oExp;
                 if (typeof other === 'number') {
-                    oBase = other;
-                    oExp = 0;
+                    if (other === 0) return this.storeTo(store);
+                    oExp = Math.floor(Math.log2(Math.abs(other)));
+                    oBase = other / 2 ** oExp;
                 } else {
                     oBase = other.base;
                     oExp = other.exp;
@@ -1302,18 +1263,18 @@
                 if (expDiff === 0) {
                     store.base = this.base - oBase;
                     store.exp = this.exp;
-                } else if (expDiff > 16) {
+                } else if (expDiff > FloatExp.ADDITION_CUTOFF) {
                     // Result is -other
                     store.base = -oBase;
                     store.exp = oExp;
                     return store;
-                } else if (expDiff < -16) {
+                } else if (expDiff < -FloatExp.ADDITION_CUTOFF) {
                     // other is insignificant
                     store.base = this.base;
                     store.exp = this.exp;
                     return store;
                 } else {
-                    store.base = this.base - oBase * FloatExp.getExp(expDiff);
+                    store.base = this.base - oBase * 2 ** expDiff;
                     store.exp = this.exp;
                 }
                 return store.norm();
@@ -1360,12 +1321,16 @@
             // --- Other Methods ---
 
             doubleValue() {
-                return this.base * FloatExp.getExp(this.exp);
+                return this.base * 2 ** this.exp;
             }
 
             toString() {
                 this.norm();
-                return `${this.base}e${this.exp}`;
+                if (this.base === 0) return "0e0";
+                const log10Value = Math.log10(Math.abs(this.base)) + this.exp * FloatExp.LOG10_2;
+                const decimalExp = Math.floor(log10Value);
+                const decimalMantissa = Math.sign(this.base) * 10 ** (log10Value - decimalExp);
+                return `${Number.parseFloat(decimalMantissa.toPrecision(15))}e${decimalExp}`;
             }
 
             abs() {
@@ -1379,9 +1344,9 @@
                 let newBase = this.base;
                 let newExp = this.exp;
 
-                // 如果指数是奇数，将10的因子转移到base中
+                // If the binary exponent is odd, move one factor of 2 to base.
                 if (newExp % 2 !== 0) {
-                    newBase *= 10;
+                    newBase *= 2;
                     newExp -= 1;
                 }
 
@@ -1439,14 +1404,13 @@
             }
 
             log2Value() {
-                const log2Mantissa = Math.log2(this.base);
-                const log2Exponent = this.exp * FloatExp.LOG2_10;
-                return log2Mantissa + log2Exponent;
+                return Math.log2(Math.abs(this.base)) + this.exp;
             }
 
             static fromLog2(val) {
-                const log10 = val * FloatExp.LOG10_2;
-                return new FloatExp(Math.pow(10, log10 - Math.trunc(log10)), Math.trunc(log10));
+                if (!Number.isFinite(val)) return new FloatExp(val < 0 ? 0 : 1, val);
+                const exp = Math.floor(val);
+                return new FloatExp(2 ** (val - exp), exp, false);
             }
 
             static max(...a) {
@@ -1592,20 +1556,22 @@
         }
 
         function parseFloatExp(string) {
-            var [b, e] = normalizeScientificNotation(string)
-            var fp = new FloatExp(parseFloat(b), (isNaN(e) ? 0 : e));
-            // fp.norm();
-            return fp;
+            const normalized = normalizeScientificNotation(string);
+            if (normalized === '0e0') return FloatExp.ZERO.copy();
+            if (typeof normalized === 'string') return new FloatExp(Number(normalized), 0);
+            const [b, e] = normalized;
+            const decimalMantissa = parseFloat(b);
+            if (decimalMantissa === 0) return FloatExp.ZERO.copy();
+            const log2Value = Math.log2(Math.abs(decimalMantissa)) + e * FloatExp.LOG2_10;
+            const binaryExp = Math.floor(log2Value);
+            return new FloatExp(Math.sign(decimalMantissa) * 2 ** (log2Value - binaryExp), binaryExp, false);
         }
 
         function doubleToFloatExp(num) {
             if (num === 0) return FloatExp.ZERO.copy();
-            // Get the exponent
-            let exponent = Math.floor(Math.log10(Math.abs(num)));
-            // Calculate the significand
-            let scale = FloatExp.getExp(exponent);
-            let significand = scale ? num / scale : 0;
-            return new FloatExp(significand, exponent);
+            if (!Number.isFinite(num)) return new FloatExp(num, Number.MAX_SAFE_INTEGER, false);
+            const exponent = Math.floor(Math.log2(Math.abs(num)));
+            return new FloatExp(num / 2 ** exponent, exponent, false);
         }
 
         function decimalToFloatExp(num) {
@@ -1613,10 +1579,12 @@
             for (let i = 1; i < 3; i++) {
                 if (num.d[i]) base = base * 1e8 + num.d[i];
             }
-            if (num.e == 0) return new FloatExp(base, 0);
-            let off = Math.floor(Math.log10(base));
-            let exp = num.e - off;
-            return new FloatExp(base, exp);
+            if (base === 0) return FloatExp.ZERO.copy();
+            base *= num.s < 0 ? -1 : 1;
+            const decimalExponent = num.e || 0;
+            const log2Value = Math.log2(Math.abs(base)) + decimalExponent * FloatExp.LOG2_10;
+            const binaryExp = Math.floor(log2Value);
+            return new FloatExp(Math.sign(base) * 2 ** (log2Value - binaryExp), binaryExp, false);
         }
 
         function getFloatExp(obj) {
@@ -2729,16 +2697,11 @@
                 return FloatExp.ZERO.copy();
             }
 
-            // 计算以10为底的对数
             let sign = Math.sign(mantissa);
             let absMantissa = Math.abs(mantissa);
-            // 计算 log10(absMantissa) + exponent * log10(2)
-            let log10_x = Math.log10(absMantissa) + exponent * FloatExp.LOG10_2;
-
-            let decimalExponent = Math.floor(log10_x);
-            let decimalMantissa = sign * Math.pow(10, log10_x - decimalExponent);
-
-            return new FloatExp(decimalMantissa, decimalExponent);
+            const log2Value = Math.log2(absMantissa) + exponent;
+            const binaryExponent = Math.floor(log2Value);
+            return new FloatExp(sign * 2 ** (log2Value - binaryExponent), binaryExponent, false);
         }
 
         const COMPRESS_THRESHOLD_FLOATEXP = new FloatExp(2 ** -40);
@@ -4119,7 +4082,7 @@
              */
             zoom(size) {
                 Decimal.config({
-                    precision: -size.exp + 10
+                    precision: Math.ceil(-size.exp * FloatExp.LOG10_2) + 10
                 })
                 this.size = size;
                 this.clear();
@@ -4295,7 +4258,8 @@
                     this.stats.statusText = 'Computing reference';
                     let nextTerm;
 
-                    let precisionInBits = Math.ceil((-this.size.exp) * 3.321928094887362) + 52; // Add extra double precision bits
+                    // FloatExp.exp is already a binary exponent.
+                    let precisionInBits = Math.max(53, Math.ceil(-this.size.exp) + 52);
 
                     const generator = this.deep ?
                         getReferenceOrbitFEMPFR(this.center, this.size, this.iterations, precisionInBits) :
@@ -4403,7 +4367,9 @@
 
 
                     let prevDeep = this.deep;
-                    this.deep = this.size.exp < -300;
+                    // The old decimal exponent threshold (-300) is about
+                    // 10^-300, i.e. a binary exponent of roughly -997.
+                    this.deep = this.size.exp < -997;
                     console.log(prevDeep, this.deep)
                     if (prevDeep !== this.deep) this.refValid = false;
 
@@ -4867,7 +4833,7 @@
                         this.zoomOut();
 
                         // Reference point management during zoom out
-                        if (this.size.exp > -20 && !refreshRef) {
+                        if (this.size.exp > -67 && !refreshRef) {
                             this.center = new DeepComplex(
                                 new Decimal(this.center.re.toPrecision(30)),
                                 new Decimal(this.center.im.toPrecision(30))
@@ -5473,7 +5439,7 @@
                 const zoomStart = FloatExp.FOUR.div(baseSize);
                 const currZoomLog2 = zoomStart.log2Value() - frameIndex;
                 const currScale = FloatExp.fromLog2(currZoomLog2);
-                return `Zoom: ${currScale.exp < 7 ? currScale.doubleValue().toFixed(2) : currScale.base.toFixed(2) + 'E' + currScale.exp}`;
+                return `Zoom: ${currScale.exp < 24 ? currScale.doubleValue().toFixed(2) : currScale.base.toFixed(2) + 'E' + currScale.exp}`;
             }
 
             /** 创建离屏渲染器并返回统一接口 */
@@ -6567,7 +6533,7 @@
                     offCtx.fillStyle = 'white'; offCtx.strokeStyle = 'black'; offCtx.lineWidth = 1;
                     const scaleBase = FloatExp.FOUR.div(currFrame.scale);
                     const currScale = FloatExp.fromLog2(scaleBase.log2Value() + currFrameProg);
-                    const zoomText = `Zoom: ${currScale.exp < 7 ? currScale.doubleValue().toFixed(2) : currScale.base.toFixed(2) + 'E' + currScale.exp}`;
+                    const zoomText = `Zoom: ${currScale.exp < 24 ? currScale.doubleValue().toFixed(2) : currScale.base.toFixed(2) + 'E' + currScale.exp}`;
                     offCtx.strokeText(zoomText, w * 0.05, h * 0.05);
                     offCtx.fillText(zoomText, w * 0.05, h * 0.05);
                     offCtx.restore();
