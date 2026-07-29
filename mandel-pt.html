@@ -1274,6 +1274,35 @@
                 return store.norm();
             }
 
+            // Hot-path variant: the operand is known to be FloatExp.
+            addFloatExpTo(other, store) {
+                const oBase = other.base;
+                const oExp = other.exp;
+                if (oBase === 0) return this.storeTo(store);
+                if (this.base === 0) {
+                    store.base = oBase;
+                    store.exp = oExp;
+                    return store;
+                }
+                const expDiff = oExp - this.exp;
+                if (expDiff === 0) {
+                    store.base = this.base + oBase;
+                    store.exp = this.exp;
+                } else if (expDiff > FloatExp.ADDITION_CUTOFF) {
+                    store.base = oBase;
+                    store.exp = oExp;
+                    return store;
+                } else if (expDiff < -FloatExp.ADDITION_CUTOFF) {
+                    store.base = this.base;
+                    store.exp = this.exp;
+                    return store;
+                } else {
+                    store.base = this.base + oBase * FloatExp.pow2(expDiff);
+                    store.exp = this.exp;
+                }
+                return store.norm();
+            }
+
             sub(other) {
                 return this.subTo(other, new FloatExp(0, 0, false));
             }
@@ -1322,6 +1351,35 @@
                 return store.norm();
             }
 
+            // Hot-path variant: the operand is known to be FloatExp.
+            subFloatExpTo(other, store) {
+                const oBase = other.base;
+                const oExp = other.exp;
+                if (oBase === 0) return this.storeTo(store);
+                if (this.base === 0) {
+                    store.base = -oBase;
+                    store.exp = oExp;
+                    return store;
+                }
+                const expDiff = oExp - this.exp;
+                if (expDiff === 0) {
+                    store.base = this.base - oBase;
+                    store.exp = this.exp;
+                } else if (expDiff > FloatExp.ADDITION_CUTOFF) {
+                    store.base = -oBase;
+                    store.exp = oExp;
+                    return store;
+                } else if (expDiff < -FloatExp.ADDITION_CUTOFF) {
+                    store.base = this.base;
+                    store.exp = this.exp;
+                    return store;
+                } else {
+                    store.base = this.base - oBase * FloatExp.pow2(expDiff);
+                    store.exp = this.exp;
+                }
+                return store.norm();
+            }
+
             mul(other) {
                 return this.mulTo(other, new FloatExp(0, 0, false));
             }
@@ -1338,6 +1396,13 @@
                     store.base = this.base * other;
                     store.exp = this.exp;
                 }
+                return store.norm();
+            }
+
+            // Hot-path variant: the operand is known to be FloatExp.
+            mulFloatExpTo(other, store) {
+                store.base = this.base * other.base;
+                store.exp = this.exp + other.exp;
                 return store.norm();
             }
 
@@ -1987,8 +2052,8 @@
 
             // Hot-path variant: the operand is known to be FloatExpComplex.
             addFloatExpTo(other, store) {
-                this.re.addTo(other.re, store.re);
-                this.im.addTo(other.im, store.im);
+                this.re.addFloatExpTo(other.re, store.re);
+                this.im.addFloatExpTo(other.im, store.im);
                 return store;
             }
 
@@ -2122,13 +2187,13 @@
 
             // Hot-path variant: avoid the public API's typeof dispatch.
             mulFloatExpTo(other, store) {
-                this.re.mulTo(other.re, FloatExpComplex.CACHE_1);
-                this.im.mulTo(other.im, FloatExpComplex.CACHE_2);
-                FloatExpComplex.CACHE_1.subTo(FloatExpComplex.CACHE_2, FloatExpComplex.CACHE_3);
+                this.re.mulFloatExpTo(other.re, FloatExpComplex.CACHE_1);
+                this.im.mulFloatExpTo(other.im, FloatExpComplex.CACHE_2);
+                FloatExpComplex.CACHE_1.subFloatExpTo(FloatExpComplex.CACHE_2, FloatExpComplex.CACHE_3);
 
-                this.re.mulTo(other.im, FloatExpComplex.CACHE_1);
-                this.im.mulTo(other.re, FloatExpComplex.CACHE_2);
-                FloatExpComplex.CACHE_1.addTo(FloatExpComplex.CACHE_2, FloatExpComplex.CACHE_4);
+                this.re.mulFloatExpTo(other.im, FloatExpComplex.CACHE_1);
+                this.im.mulFloatExpTo(other.re, FloatExpComplex.CACHE_2);
+                FloatExpComplex.CACHE_1.addFloatExpTo(FloatExpComplex.CACHE_2, FloatExpComplex.CACHE_4);
 
                 FloatExpComplex.CACHE_3.storeTo(store.re);
                 FloatExpComplex.CACHE_4.storeTo(store.im);
