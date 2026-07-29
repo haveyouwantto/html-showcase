@@ -4032,6 +4032,9 @@
             context;
 
             ref;
+            refCenter;
+            refCenterDelta;
+            refDeep;
 
             refValid;
 
@@ -4056,6 +4059,9 @@
 
                 this.size = FloatExp.FOUR.copy();
                 this.deep = false;
+                this.refCenter = null;
+                this.refCenterDelta = null;
+                this.refDeep = false;
 
                 this.canvas = canvas;
                 this.context = canvas.getContext('2d', { willReadFrequently: true });
@@ -4522,6 +4528,10 @@
             }
 
             async ensureReference() {
+                if (!this.refValid && this.ref && this.refCenter && this.tryReuseReference()) {
+                    this.refValid = true;
+                    return;
+                }
                 if (!this.refValid) {
                     console.log(performance.now() + " computing reference");
                     this.stats.statusText = 'Computing reference';
@@ -4552,6 +4562,11 @@
 
                     this.stats.ref = this.ref.length;
                     this.stats.refC = this.ref.size;
+                    this.refCenter = this.center.copy();
+                    this.refCenterDelta = this.deep
+                        ? new FloatExpComplex(0, 0)
+                        : new Complex(0, 0);
+                    this.refDeep = this.deep;
                     this.refValid = true;
                     this.rebuildBLA();
                 } else if (!this.blaTable) {
@@ -4561,10 +4576,34 @@
 
             setReference(ref) {
                 this.ref = ref;
+                this.refCenter = this.center.copy();
+                this.refCenterDelta = this.deep
+                    ? new FloatExpComplex(0, 0)
+                    : new Complex(0, 0);
+                this.refDeep = this.deep;
                 this.refValid = true;
                 this.stats.ref = ref.length;
                 this.stats.refC = ref.size;
                 this.rebuildBLA();
+            }
+
+            tryReuseReference() {
+                if (this.refDeep !== this.deep) return false;
+
+                const centerDelta = this.center.sub(this.refCenter);
+                if (this.deep) {
+                    const delta = centerDelta.toFloatExp();
+                    const reuseLimit = this.size.mul(0.25);
+                    if (delta.norm().gt(reuseLimit)) return false;
+                    this.refCenterDelta = delta;
+                } else {
+                    const delta = centerDelta.downCast();
+                    if (Math.max(Math.abs(delta.re), Math.abs(delta.im)) > this.size.doubleValue() * 0.25) {
+                        return false;
+                    }
+                    this.refCenterDelta = delta;
+                }
+                return true;
             }
 
             async load(params) {
@@ -4899,6 +4938,15 @@
 
             calculatePixel(x, y, drawWidth, drawHeight) {
                 let delta = this.getDelta(x, y);
+                // The perturbation solver is expressed around refCenter,
+                // while the UI coordinates are expressed around view center.
+                if (this.refCenterDelta) {
+                    if (this.deep) {
+                        delta.addFloatExpTo(this.refCenterDelta, delta);
+                    } else {
+                        delta.addTo(this.refCenterDelta, delta);
+                    }
+                }
                 let iter = this.deep ?
                     getPTBLAFE(
                         delta,
