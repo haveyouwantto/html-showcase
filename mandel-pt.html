@@ -1445,6 +1445,17 @@
                 return this.compareTo(o) === 0;
             }
 
+            // Compare magnitudes without creating an abs() temporary.
+            compareAbsTo(o) {
+                const thisBase = Math.abs(this.base);
+                const otherBase = Math.abs(o.base);
+                if (thisBase === 0 || otherBase === 0) {
+                    return thisBase === otherBase ? 0 : (thisBase === 0 ? -1 : 1);
+                }
+                if (this.exp !== o.exp) return this.exp > o.exp ? 1 : -1;
+                return thisBase > otherBase ? 1 : (thisBase < otherBase ? -1 : 0);
+            }
+
             log2Value() {
                 return Math.log2(Math.abs(this.base)) + this.exp;
             }
@@ -2095,9 +2106,27 @@
                 return this.re.mul(this.re).addMut(this.im.mul(this.im));
             }
 
+            abs2To(store) {
+                this.re.mulTo(this.re, FloatExpComplex.CACHE_1);
+                this.im.mulTo(this.im, FloatExpComplex.CACHE_2);
+                FloatExpComplex.CACHE_1.addTo(FloatExpComplex.CACHE_2, store);
+                return store;
+            }
+
             // Chebyshev norm
             norm() {
                 return FloatExp.max(this.re.abs(), this.im.abs());
+            }
+
+            normCompareToFloatExp(other) {
+                const maxComponent = this.re.compareAbsTo(this.im) >= 0 ? this.re : this.im;
+                return maxComponent.compareAbsTo(other);
+            }
+
+            normCompareTo(other) {
+                const thisMax = this.re.compareAbsTo(this.im) >= 0 ? this.re : this.im;
+                const otherMax = other.re.compareAbsTo(other.im) >= 0 ? other.re : other.im;
+                return thisMax.compareAbsTo(otherMax);
             }
 
             square() {
@@ -3621,7 +3650,8 @@
             let tempVars = {
                 stepZZ: FloatExpComplex.ZERO.copy(),
                 dcMulB: FloatExpComplex.ZERO.copy(),
-                newDz: FloatExpComplex.ZERO.copy()
+                newDz: FloatExpComplex.ZERO.copy(),
+                zAbs2: FloatExp.ZERO.copy()
             }
 
             let i = 0, j = 0;
@@ -3640,7 +3670,7 @@
                     step.Z.addTo(z, tempVars.stepZZ)
                     tempVars.stepZZ.mulTo(dz, tempVars.newDz)
 
-                    if (tempVars.newDz.norm().gt(step.radius) || dcNorm.gt(step.radiusC)) {
+                    if (tempVars.newDz.normCompareToFloatExp(step.radius) > 0 || dcNorm.gt(step.radiusC)) {
                         j = step.next;
                         break;
                     }
@@ -3656,7 +3686,7 @@
                     // z = dz.add(steps[j].Z);
                     dz.addTo(steps[j].Z, z)
 
-                    if (j == end || z.norm().lt(dz.norm())) {
+                    if (j == end || z.normCompareTo(dz) < 0) {
                         j = begin;
                         z.storeTo(dz)
                     }
@@ -3681,7 +3711,8 @@
                 // z = dz.add(Z);
                 dz.addTo(Z, z)
 
-                if (z.abs2().doubleValue() > bailout) {
+                z.abs2To(tempVars.zAbs2);
+                if (tempVars.zAbs2.doubleValue() > bailout) {
                     let iter = i - 1;
                     if (smooth) {
                         let fracIter = Math.log(z.abs2().doubleValue()) / 2;
@@ -3693,7 +3724,7 @@
                     }
                 }
 
-                if (j == ref.length - 1 || z.norm().lt(dz.norm())) {
+                if (j == ref.length - 1 || z.normCompareTo(dz) < 0) {
                     Z.zero();
                     z.storeTo(dz);
                     j = 0;
