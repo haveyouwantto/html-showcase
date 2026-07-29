@@ -1116,6 +1116,17 @@
             static ADDITION_CUTOFF = 54;
             static binaryBuffer = new ArrayBuffer(8);
             static binaryDataView = new DataView(FloatExp.binaryBuffer);
+            static POW2_MIN = -1074;
+            static POW2_MAX = 1023;
+            static POW2_TABLE = (() => {
+                const table = new Float64Array(FloatExp.POW2_MAX - FloatExp.POW2_MIN + 1);
+                let value = Number.MIN_VALUE;
+                for (let i = 0; i < table.length; i++) {
+                    table[i] = value;
+                    value *= 2;
+                }
+                return table;
+            })();
 
             // Pre-allocate standard constants to avoid recreation
             static ZERO = new FloatExp(0, 0);
@@ -1125,6 +1136,12 @@
             static FOUR = new FloatExp(4, 0);
             static INFINITY = new FloatExp(1, Number.MAX_SAFE_INTEGER); // Set a very high exponent to represent infinity
             static NEGATIVE_INFINITY = new FloatExp(-1, Number.MAX_SAFE_INTEGER);
+
+            static pow2(exp) {
+                if (exp < FloatExp.POW2_MIN) return 0;
+                if (exp > FloatExp.POW2_MAX) return Infinity;
+                return FloatExp.POW2_TABLE[exp - FloatExp.POW2_MIN];
+            }
 
             // Return floor(log2(abs(value))) by reading the IEEE-754 exponent.
             // This avoids Math.log2(value) followed by Math.floor(value).
@@ -1182,7 +1199,7 @@
 
                 const shift = FloatExp.getBinaryExponent(absBase);
                 if (shift !== 0) {
-                    this.base = base * 2 ** -shift;
+                    this.base = base * FloatExp.pow2(-shift);
                     this.exp += shift;
                 }
                 // Correct the two rounding edge cases around the boundary.
@@ -1222,7 +1239,7 @@
                 if (typeof other === 'number') {
                     if (other === 0) return this.storeTo(store);
                     oExp = FloatExp.getBinaryExponent(other);
-                    oBase = other / 2 ** oExp;
+                    oBase = other / FloatExp.pow2(oExp);
                 } else {
                     oBase = other.base;
                     oExp = other.exp;
@@ -1251,7 +1268,7 @@
                     store.exp = this.exp;
                     return store;
                 } else {
-                    store.base = this.base + oBase * 2 ** expDiff;
+                    store.base = this.base + oBase * FloatExp.pow2(expDiff);
                     store.exp = this.exp;
                 }
                 return store.norm();
@@ -1270,7 +1287,7 @@
                 if (typeof other === 'number') {
                     if (other === 0) return this.storeTo(store);
                     oExp = FloatExp.getBinaryExponent(other);
-                    oBase = other / 2 ** oExp;
+                    oBase = other / FloatExp.pow2(oExp);
                 } else {
                     oBase = other.base;
                     oExp = other.exp;
@@ -1299,7 +1316,7 @@
                     store.exp = this.exp;
                     return store;
                 } else {
-                    store.base = this.base - oBase * 2 ** expDiff;
+                    store.base = this.base - oBase * FloatExp.pow2(expDiff);
                     store.exp = this.exp;
                 }
                 return store.norm();
@@ -1346,7 +1363,7 @@
             // --- Other Methods ---
 
             doubleValue() {
-                return this.base * 2 ** this.exp;
+                return this.base * FloatExp.pow2(this.exp);
             }
 
             toString() {
@@ -1588,7 +1605,7 @@
             const decimalMantissa = parseFloat(b);
             if (decimalMantissa === 0) return FloatExp.ZERO.copy();
             const mantissaExp = FloatExp.getBinaryExponent(decimalMantissa);
-            const normalizedMantissa = Math.abs(decimalMantissa) / 2 ** mantissaExp;
+                const normalizedMantissa = Math.abs(decimalMantissa) / FloatExp.pow2(mantissaExp);
             const decimalLog2 = e * FloatExp.LOG2_10;
             const decimalBinaryExp = Math.floor(decimalLog2);
             return new FloatExp(
@@ -1604,7 +1621,7 @@
             if (num === 0) return FloatExp.ZERO.copy();
             if (!Number.isFinite(num)) return new FloatExp(num, Number.MAX_SAFE_INTEGER, false);
             const exponent = FloatExp.getBinaryExponent(num);
-            return new FloatExp(num / 2 ** exponent, exponent, false);
+            return new FloatExp(num / FloatExp.pow2(exponent), exponent, false);
         }
 
         function decimalToFloatExp(num) {
@@ -1616,7 +1633,7 @@
             base *= num.s < 0 ? -1 : 1;
             const decimalExponent = num.e || 0;
             const binaryExp = FloatExp.getBinaryExponent(base);
-            const binaryMantissa = base / 2 ** binaryExp;
+            const binaryMantissa = base / FloatExp.pow2(binaryExp);
             const log2Mantissa = Math.log2(Math.abs(binaryMantissa));
             const decimalLog2 = decimalExponent * FloatExp.LOG2_10;
             const decimalBinaryExp = Math.floor(decimalLog2);
@@ -2629,7 +2646,7 @@
             return new Promise(resolve => setTimeout(resolve, ms));
         }
 
-        const COMPRESS_THRESHOLD = 2 ** -40;
+        const COMPRESS_THRESHOLD = FloatExp.pow2(-40);
 
         async function* getReferenceOrbitMPFR(C, radius, iterations, precisionBits) {
             let Z = new DeepComplex(0, 0),
@@ -2745,7 +2762,7 @@
             return result;
         }
 
-        const COMPRESS_THRESHOLD_FLOATEXP = new FloatExp(2 ** -40);
+        const COMPRESS_THRESHOLD_FLOATEXP = new FloatExp(FloatExp.pow2(-40));
 
         async function* getReferenceOrbitFEMPFR(C, radius, iterations, precisionBits) {
 
@@ -2863,7 +2880,7 @@
 
         function floorPowerOfTwo(n) {
             if (n <= 0) return 0;
-            return Math.pow(2, FloatExp.getBinaryExponent(n));
+            return FloatExp.pow2(FloatExp.getBinaryExponent(n));
         }
 
         const VAILD_SCALE = 5.960464477539063e-08;
