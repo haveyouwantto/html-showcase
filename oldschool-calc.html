@@ -17,7 +17,6 @@
     --mono:ui-monospace,"SFMono-Regular",Menlo,Consolas,"Liberation Mono",monospace;
   }
   *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
-  html,body{height:100%;}
   body{
     margin:0; display:flex; flex-direction:column; align-items:center; justify-content:center;
     gap:22px; padding:34px 16px;
@@ -49,7 +48,7 @@
     transform:rotateX(4deg);
     transform-style:preserve-3d;
     border-radius:6.2cqw;
-    padding:5cqw 4.4cqw 5.4cqw;
+    padding:3cqw 4.4cqw 5.4cqw;
     background:linear-gradient(160deg,var(--plastic-1),var(--plastic-2));
     box-shadow:
       0 1px 0 rgba(255,255,255,.07) inset,
@@ -139,11 +138,13 @@
        background:var(--seg-off); transition:background .05s, box-shadow .05s; }
   .dp.on{ background:var(--seg-on); box-shadow:0 0 .4cqw rgba(22,27,21,.55); }
 
-  .meta{ display:flex; flex-direction:column; justify-content:flex-start; align-items:flex-end;
-         gap:.6cqw; width:14cqw; padding-top:1cqw; position:relative; z-index:1; }
+  .meta{ display:flex; flex-direction:row; justify-content:flex-start; align-items:center;
+         gap:2cqw; padding-top:1cqw; position:relative; z-index:1; }
   .meta .m1{ font-family:var(--disp); font-size:3.6cqw; font-weight:700; letter-spacing:.04em; color:#cfd3d8; }
-  .meta .m2{ font-size:3cqw; color:#9aa0a7; letter-spacing:.05em; }
-  .meta .m2 b{ font-family:var(--disp); font-size:4.8cqw; color:#e9ecef; }
+  .meta .m2{ font-size:3cqw; color:#9aa0a7; letter-spacing:.05em;display: flex;
+    flex-direction: column;
+    align-items: center; }
+  .meta .m2 b{ font-family:var(--disp); font-size:8cqw; color:#e9ecef; line-height: 0.7; }
 
   .switches{ display:flex; justify-content:space-between; gap:3cqw; padding:0 1cqw 3.4cqw; }
   .sw{ flex:1; }
@@ -236,6 +237,10 @@
       <div class="brand">
         <div class="logo">CASIO</div>
         <div class="solar"></div>
+          <div class="meta">
+          <div class="m1">DX-12B</div>
+          <div class="m2"><b>12</b> DIGITS</div>
+        </div>
       </div>
 
       <div class="bezel">
@@ -248,10 +253,6 @@
           </div>
           <div class="digits" id="digits"></div>
           <div class="screen-flash"></div>
-        </div>
-        <div class="meta">
-          <div class="m1">DX-12B</div>
-          <div class="m2"><b>12</b> DIGITS</div>
         </div>
       </div>
 
