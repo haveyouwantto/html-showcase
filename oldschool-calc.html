@@ -1,0 +1,685 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CASIO DX-12B · 仿真计算器</title>
+<style>
+  :root{
+    --plastic-1:#262a2f; --plastic-2:#141619; --plastic-edge:#3a3f46;
+    --lcd-1:#cdd6c6; --lcd-2:#a9b39f; --seg-on:#1b201a; --seg-off:rgba(33,44,33,.10);
+    --num-1:#7c746a; --num-2:#5f584f; --num-edge:#948b7f;
+    --fn-1:#2c3036; --fn-2:#1b1e22; --fn-edge:#41464d;
+    --op-1:#23272c; --op-2:#15181b;
+    --amber-1:#d98a2b; --amber-2:#a85f12; --amber-edge:#f0b25a;
+    --ink:#e9ecef;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  body{
+    margin:0; display:flex; flex-direction:column; align-items:center; justify-content:center;
+    gap:22px; padding:34px 16px;
+    font-family:ui-sans-serif,system-ui,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    color:var(--ink);
+    background:
+      radial-gradient(120% 90% at 18% 8%, #4a4f57 0%, rgba(74,79,87,0) 46%),
+      radial-gradient(120% 110% at 88% 100%, #0c0e11 0%, rgba(12,14,17,0) 55%),
+      radial-gradient(60% 50% at 50% 40%, #34383f 0%, #1d2024 70%, #15171a 100%);
+    background-attachment:fixed;
+    overflow-x:hidden;
+  }
+  body::before{
+    content:""; position:fixed; inset:0; pointer-events:none; opacity:.05; mix-blend-mode:overlay;
+    background-image:radial-gradient(rgba(255,255,255,.6) .5px, transparent .6px);
+    background-size:3px 3px;
+  }
+
+  .stage{ perspective:1700px; width:min(420px,94vw); }
+  .calc{
+    container-type:inline-size;
+    width:100%;
+    transform:rotateX(4deg);
+    transform-style:preserve-3d;
+    border-radius:6.2cqw;
+    padding:5cqw 4.4cqw 5.4cqw;
+    background:linear-gradient(160deg,var(--plastic-1),var(--plastic-2));
+    box-shadow:
+      0 1px 0 rgba(255,255,255,.07) inset,
+      0 -2px 6px rgba(0,0,0,.5) inset,
+      0 26px 50px -12px rgba(0,0,0,.7),
+      0 6px 14px rgba(0,0,0,.5);
+    position:relative;
+    transition:transform .5s cubic-bezier(.2,.8,.2,1);
+  }
+  .calc::before{
+    content:""; position:absolute; inset:0; border-radius:inherit; pointer-events:none;
+    background:linear-gradient(180deg, rgba(255,255,255,.10), rgba(255,255,255,0) 22%);
+  }
+  .contact{
+    width:78%; height:30px; margin:6px auto 0; border-radius:50%;
+    background:radial-gradient(50% 100% at 50% 0, rgba(0,0,0,.55), rgba(0,0,0,0) 75%);
+    filter:blur(4px);
+  }
+
+  .brand{ display:flex; align-items:center; justify-content:space-between; padding:0 1cqw 2.4cqw; }
+  .logo{ font-weight:800; font-style:italic; letter-spacing:.14em; font-size:6.4cqw; color:#f3f4f6;
+         text-shadow:0 1px 0 rgba(0,0,0,.6); }
+  .solar{ width:24cqw; height:5.4cqw; border-radius:1.2cqw; position:relative; overflow:hidden;
+          background:linear-gradient(180deg,#5a2a22,#3a1a16);
+          box-shadow:0 1px 2px rgba(0,0,0,.6) inset, 0 1px 0 rgba(255,255,255,.06); }
+  .solar::before{ content:""; position:absolute; inset:0;
+     background:repeating-linear-gradient(90deg, rgba(0,0,0,.5) 0 1px, transparent 1px 4cqw); }
+  .solar::after{ content:""; position:absolute; top:0; left:-40%; width:30%; height:100%;
+     background:linear-gradient(90deg,transparent,rgba(255,255,255,.35),transparent);
+     animation:sheen 5.5s ease-in-out infinite; }
+  @keyframes sheen{ 0%,60%{left:-40%} 80%,100%{left:120%} }
+
+  .bezel{ display:flex; gap:3cqw; align-items:stretch;
+          background:linear-gradient(180deg,#0e1012,#1a1d21);
+          border-radius:3.4cqw; padding:3.4cqw 3cqw; margin-bottom:3cqw;
+          box-shadow:0 2px 5px rgba(0,0,0,.6) inset, 0 1px 0 rgba(255,255,255,.05); }
+  .screen{
+    flex:1; position:relative; border-radius:2cqw; overflow:hidden;
+    background:linear-gradient(180deg,var(--lcd-1),var(--lcd-2));
+    box-shadow:0 2px 6px rgba(0,0,0,.45) inset, 0 0 0 1px rgba(0,0,0,.25) inset;
+    display:flex; align-items:stretch; padding:2.4cqw 2.6cqw;
+    aspect-ratio:3.5 / 1;
+  }
+  .screen::before{
+    content:""; position:absolute; inset:0; pointer-events:none; opacity:.5;
+    background:repeating-linear-gradient(0deg, rgba(0,0,0,.05) 0 1px, transparent 1px 3px);
+    animation:flick 7s linear infinite;
+  }
+  .screen::after{
+    content:""; position:absolute; inset:0; pointer-events:none;
+    background:linear-gradient(115deg, rgba(255,255,255,.32), rgba(255,255,255,0) 38%);
+  }
+  @keyframes flick{ 0%{background-position:0 0} 100%{background-position:0 6px} }
+
+  .ind{ display:flex; flex-direction:column; justify-content:space-between; padding:1cqw 0; width:7cqw; }
+  .ind span{ font-size:3.5cqw; font-weight:700; line-height:1; color:var(--seg-on);
+             opacity:.10; transition:opacity .12s; font-family:ui-monospace,Menlo,Consolas,monospace; }
+  .ind span.on{ opacity:1; }
+  .ind .e{ color:#7a1414; }
+
+  .digits{ flex:1; display:flex; align-items:center; justify-content:flex-end; gap:.4cqw; }
+  .cell{ position:relative; flex:1 1 0; aspect-ratio:.62 / 1; max-width:8.4cqw; }
+  .seg{ position:absolute; background:var(--seg-off); transition:background .05s, box-shadow .05s; }
+  .seg.on{ background:var(--seg-on); }
+  .seg.h{ left:15%; width:70%; height:7%;
+          clip-path:polygon(12% 0,88% 0,100% 50%,88% 100%,12% 100%,0 50%); }
+  .seg.v{ width:8%; height:40%;
+          clip-path:polygon(0 9%,50% 0,100% 9%,100% 91%,50% 100%,0 91%); }
+  .seg.a{ top:1%; } .seg.g{ top:46.5%; } .seg.d{ top:92%; }
+  .seg.f{ left:6%; top:9%; } .seg.b{ left:86%; top:9%; }
+  .seg.e{ left:6%; top:51%; } .seg.c{ left:86%; top:51%; }
+  .dp{ position:absolute; left:92%; top:90%; width:9%; height:6%; border-radius:50%;
+       background:var(--seg-off); }
+  .dp.on{ background:var(--seg-on); }
+
+  .meta{ display:flex; flex-direction:column; justify-content:flex-start; align-items:flex-end;
+         gap:.6cqw; width:14cqw; padding-top:1cqw; }
+  .meta .m1{ font-size:3.4cqw; font-weight:700; letter-spacing:.04em; color:#cfd3d8; }
+  .meta .m2{ font-size:3cqw; color:#9aa0a7; letter-spacing:.05em; }
+  .meta .m2 b{ font-size:4.6cqw; color:#e9ecef; }
+
+  .switches{ display:flex; justify-content:space-between; gap:3cqw; padding:0 1cqw 3.4cqw; }
+  .sw{ flex:1; }
+  .sw .track{ position:relative; height:3.4cqw; margin:1.6cqw 1.4cqw 0;
+              background:linear-gradient(180deg,#0c0e10,#20242a); border-radius:2cqw;
+              box-shadow:0 1px 2px rgba(0,0,0,.6) inset; }
+  .sw .knob{ position:absolute; top:50%; width:5cqw; height:5.4cqw; transform:translate(-50%,-50%);
+             border-radius:1.2cqw; background:linear-gradient(180deg,#cfd3d8,#8b9097);
+             box-shadow:0 1px 0 rgba(255,255,255,.6) inset,0 2px 3px rgba(0,0,0,.5);
+             transition:left .22s cubic-bezier(.3,1.3,.5,1); }
+  .sw .labels{ display:flex; justify-content:space-between; }
+  .sw .labels button{ flex:1; background:none; border:0; cursor:pointer; padding:0;
+             font:inherit; font-size:3cqw; font-weight:700; letter-spacing:.02em; color:#7f858d;
+             transition:color .15s; font-family:ui-monospace,Menlo,Consolas,monospace; }
+  .sw .labels button.active{ color:var(--amber-edge); }
+  .sw .labels button:hover{ color:#cfd3d8; }
+
+  .pad{ display:grid; gap:2.4cqw;
+        grid-template-columns:repeat(6,1fr);
+        grid-template-areas:
+          "mu mp mm mr mc gt"
+          "ac n7 n8 n9 pct sqrt"
+          "sgn n4 n5 n6 mul div"
+          "bsp n1 n2 n3 plus minus"
+          "clr n0 n00 dot plus eq"; }
+  .key{ position:relative; border:0; cursor:pointer; border-radius:2.2cqw; color:#f4f5f7;
+        font-family:inherit; font-weight:700; font-size:6cqw; line-height:1;
+        display:flex; flex-direction:column; align-items:center; justify-content:center;
+        aspect-ratio:1.18 / 1; user-select:none;
+        box-shadow:0 2.4cqw 0 rgba(0,0,0,.32), 0 3cqw 4px rgba(0,0,0,.4),
+                   0 1px 0 rgba(255,255,255,.10) inset;
+        transition:transform .06s, box-shadow .06s, filter .12s; }
+  .key:hover{ filter:brightness(1.08); }
+  .key:active,.key.pressed{ transform:translateY(2cqw);
+        box-shadow:0 .4cqw 0 rgba(0,0,0,.32), 0 1cqw 2px rgba(0,0,0,.4),
+                   0 1px 0 rgba(255,255,255,.08) inset; }
+  .key .sub{ font-size:2.7cqw; opacity:.7; margin-top:.4cqw; font-weight:600; }
+  .key.num{ background:linear-gradient(180deg,var(--num-1),var(--num-2));
+            box-shadow:0 2.4cqw 0 #403a33, 0 3cqw 4px rgba(0,0,0,.4), 0 1px 0 var(--num-edge) inset; }
+  .key.num:active,.key.num.pressed{ box-shadow:0 .4cqw 0 #403a33,0 1cqw 2px rgba(0,0,0,.4),0 1px 0 var(--num-edge) inset; }
+  .key.fn{ background:linear-gradient(180deg,var(--fn-1),var(--fn-2)); font-size:4.6cqw;
+           box-shadow:0 2.4cqw 0 #0c0e10,0 3cqw 4px rgba(0,0,0,.4),0 1px 0 var(--fn-edge) inset; }
+  .key.fn:active,.key.fn.pressed{ box-shadow:0 .4cqw 0 #0c0e10,0 1cqw 2px rgba(0,0,0,.4),0 1px 0 var(--fn-edge) inset; }
+  .key.op{ background:linear-gradient(180deg,var(--op-1),var(--op-2)); font-size:6.4cqw;
+           box-shadow:0 2.4cqw 0 #08090a,0 3cqw 4px rgba(0,0,0,.4),0 1px 0 #3a3f46 inset; }
+  .key.op:active,.key.op.pressed{ box-shadow:0 .4cqw 0 #08090a,0 1cqw 2px rgba(0,0,0,.4),0 1px 0 #3a3f46 inset; }
+  .key.clr{ background:linear-gradient(180deg,var(--amber-1),var(--amber-2)); color:#fff;
+            box-shadow:0 2.4cqw 0 #6f3d08,0 3cqw 4px rgba(0,0,0,.4),0 1px 0 var(--amber-edge) inset; }
+  .key.clr:active,.key.clr.pressed{ box-shadow:0 .4cqw 0 #6f3d08,0 1cqw 2px rgba(0,0,0,.4),0 1px 0 var(--amber-edge) inset; }
+  .key[data-id="plus"]{ aspect-ratio:auto; font-size:7cqw; }
+
+  .caption{ text-align:center; max-width:min(420px,94vw); }
+  .caption .t{ font-size:13px; letter-spacing:.34em; text-transform:uppercase; color:#aab0b8; font-weight:700; }
+  .caption .s{ margin-top:7px; font-family:ui-monospace,Menlo,Consolas,monospace; font-size:11.5px;
+               color:#6b7178; letter-spacing:.04em; }
+  .caption .s b{ color:#c9873a; font-weight:600; }
+
+  .sound{ position:fixed; top:16px; right:16px; z-index:5; width:38px; height:38px; border-radius:50%;
+          border:1px solid rgba(255,255,255,.14); background:rgba(20,22,26,.7); color:#cfd3d8;
+          cursor:pointer; font-size:16px; backdrop-filter:blur(6px); transition:.2s; }
+  .sound:hover{ background:rgba(40,44,50,.85); }
+  .sound.off{ color:#5a6068; }
+</style>
+</head>
+<body>
+  <button class="sound" id="sound" title="按键音 开/关">🔊</button>
+
+  <div class="stage">
+    <div class="calc" id="calc">
+      <div class="brand">
+        <div class="logo">CASIO</div>
+        <div class="solar"></div>
+      </div>
+
+      <div class="bezel">
+        <div class="screen">
+          <div class="ind">
+            <span data-ind="gt">GT</span>
+            <span data-ind="m">M</span>
+            <span data-ind="minus">-</span>
+            <span data-ind="e" class="e">E</span>
+          </div>
+          <div class="digits" id="digits"></div>
+        </div>
+        <div class="meta">
+          <div class="m1">DX-12B</div>
+          <div class="m2"><b>12</b> DIGITS</div>
+        </div>
+      </div>
+
+      <div class="switches">
+        <div class="sw" id="swRound">
+          <div class="track"><div class="knob"></div></div>
+          <div class="labels"></div>
+        </div>
+        <div class="sw" id="swDec">
+          <div class="track"><div class="knob"></div></div>
+          <div class="labels"></div>
+        </div>
+      </div>
+
+      <div class="pad" id="pad"></div>
+    </div>
+    <div class="contact"></div>
+  </div>
+
+  <div class="caption">
+    <div class="t">DX-12B Simulator</div>
+    <div class="s">129×175 mm · 12 位精度 · GT/M 寄存器 · 舍入/小数拨档<br>
+      键盘：<b>0-9 . + - * /</b> 运算 · <b>Enter</b> = · <b>Backspace</b> 退格 · <b>Esc</b> AC · <b>%</b> 百分比</div>
+  </div>
+
+<script>
+"use strict";
+/* ============================================================
+   Dec —— 基于 BigInt 的十进制定点数，规避浮点误差
+   值 = m * 10^e   (m: bigint, e: number)
+   ============================================================ */
+class Dec{
+  constructor(m,e){ this.m=BigInt(m); this.e=e|0; }
+  static fromInt(n){ return new Dec(BigInt(n),0); }
+  static get ZERO(){ return new Dec(0n,0); }
+  isZero(){ return this.m===0n; }
+  sign(){ return this.m<0n?-1:(this.m>0n?1:0); }
+  neg(){ return new Dec(-this.m,this.e); }
+  abs(){ return new Dec(this.m<0n?-this.m:this.m,this.e); }
+  /* 对齐到较细（较小）的指数；缩放因子指数恒为非负，杜绝 BigInt 负幂 */
+  static _align(a,b){
+    if(a.e===b.e) return [a.m,b.m,a.e];
+    if(a.e<b.e) return [a.m, b.m*10n**BigInt(b.e-a.e), a.e];   // b 较粗，b 尾数放大
+    return [a.m*10n**BigInt(a.e-b.e), b.m, b.e];                // a 较粗，a 尾数放大
+  }
+  add(o){ const [am,bm,e]=Dec._align(this,o); return new Dec(am+bm,e); }
+  sub(o){ const [am,bm,e]=Dec._align(this,o); return new Dec(am-bm,e); }
+  mul(o){ return new Dec(this.m*o.m, this.e+o.e); }
+  div(o,prec=24){
+    if(o.isZero()) throw new Error("divzero");
+    const A=this.m<0n?-this.m:this.m, B=o.m<0n?-o.m:o.m;
+    const q=(A*10n**BigInt(prec))/B;
+    const sgn=(this.m<0n)!==(o.m<0n)?-1n:1n;
+    return new Dec(sgn*q, this.e-o.e-prec);
+  }
+  cmp(o){ const [am,bm]=Dec._align(this,o); return am<bm?-1:(am>bm?1:0); }
+  absCmp(o){ return this.abs().cmp(o.abs()); }
+}
+const OVERFLOW = Dec.fromInt(1000000000000); // 10^12
+const HUNDRED  = Dec.fromInt(100);
+const ONE      = Dec.fromInt(1);
+
+function isqrt(n){
+  if(n<0n) throw new Error("neg");
+  if(n<2n) return n;
+  let x=n, y=(x+1n)>>1n;
+  while(y<x){ x=y; y=(x+n/x)>>1n; }
+  return x;
+}
+function sqrtDec(v,prec=24){
+  if(v.sign()<0) throw new Error("neg");
+  if(v.isZero()) return Dec.ZERO;
+  let m=v.m<0n?-v.m:v.m, e=v.e;
+  if(((e%2)+2)%2===1){ m*=10n; e-=1; }
+  const r=isqrt(m*10n**BigInt(2*prec));
+  return new Dec(r, e/2-prec);
+}
+function intPartBigInt(d){
+  const m=d.m<0n?-d.m:d.m;
+  return d.e>=0 ? m*10n**BigInt(d.e) : m/10n**BigInt(-d.e);
+}
+function digitCount(b){ b=b<0n?-b:b; return b===0n?1:b.toString().length; }
+function parseDec(s){
+  s=(s||"0").trim(); if(s.endsWith(".")) s=s.slice(0,-1);
+  if(s===""||s===".") s="0";
+  const dot=s.indexOf("."); let digits=s.replace(".",""); if(digits==="") digits="0";
+  const e = dot<0 ? 0 : -(s.length-1-dot);
+  return new Dec(BigInt(digits), e);
+}
+function roundDec(v,dec,mode){
+  const sign=v.m<0n?-1n:1n, m=v.m<0n?-v.m:v.m, exp=v.e+dec;
+  let num,den;
+  if(exp>=0){ num=m*10n**BigInt(exp); den=1n; }
+  else      { num=m; den=10n**BigInt(-exp); }
+  const q=num/den, rem=num%den;
+  let r;
+  if(mode==="CUT") r=q;
+  else if(mode==="UP") r = rem>0n ? q+1n : q;
+  else r = (rem*2n>=den) ? q+1n : q;
+  return new Dec(sign*r, -dec);
+}
+
+/* ============================================================
+   计算器状态
+   ============================================================ */
+const ROUNDS=["CUT","UP","5/4"], DECS=["F","4","2","1","0","ADD2"];
+const S={
+  current:Dec.ZERO, previous:Dec.ZERO, operator:null,
+  overwrite:true, inputting:false,
+  inp:"0", raw2:"0",
+  mem:Dec.ZERO, gt:Dec.ZERO,
+  repeatOp:null, repeatOperand:null, constantDefined:false,
+  roundMode:"5/4", roundIndex:2, decMode:"F", decIndex:0,
+  error:false, errorType:null, lastKey:null, sound:true,
+  neg2:false, negInp:false,
+};
+
+/* ============================================================
+   输入字符串构造
+   ============================================================ */
+function add2Display(raw){ const r=(raw||"0").padStart(3,"0"); return r.slice(0,-2)+"."+r.slice(-2); }
+function inputString(){ return S.decMode==="ADD2" ? add2Display(S.raw2) : (S.inp||"0"); }
+function inputValue(){ return parseDec(inputString()); }
+
+function startInput(tok){
+  S.inputting=true; S.overwrite=false;
+  if(S.decMode==="ADD2"){ S.raw2 = (tok==="0"||tok==="00")?"0":tok; }
+  else { S.inp = (tok==="00")?"0":tok; }
+}
+function intPartOf(s){ return s.includes(".")?s.split(".")[0]:s; }
+function continueInput(tok){
+  if(S.decMode==="ADD2"){
+    if(S.raw2==="0"){ S.raw2 = /^[0]+$/.test(tok)?"0":tok; return; }
+    if(S.raw2.length+tok.length<=12) S.raw2+=tok;
+    return;
+  }
+  const hasDot=S.inp.includes("."), ip=intPartOf(S.inp), cnt=S.inp.replace(".","").length;
+  if(!hasDot){
+    if(ip==="0"){ S.inp = /^[0]+$/.test(tok)?"0":tok; return; }
+    if(ip.length+tok.length<=12) S.inp+=tok;
+  }else{
+    if(cnt+tok.length<=12) S.inp+=tok;
+  }
+}
+function pressDot(){
+  if(S.decMode==="ADD2") return;
+  if(!S.inputting||S.overwrite){ S.inputting=true; S.overwrite=false; S.inp="0."; return; }
+  if(S.inp.includes(".")) return;
+  if(intPartOf(S.inp).length>=12) return;
+  S.inp+=".";
+}
+function pressBack(){
+  if(!S.inputting||S.overwrite) return;
+  if(S.decMode==="ADD2"){ S.raw2 = S.raw2.length>1?S.raw2.slice(0,-1):"0"; return; }
+  if(S.inp.length<=1){ S.inp="0"; return; }
+  S.inp=S.inp.slice(0,-1); if(S.inp==="") S.inp="0";
+}
+function signedInputValue(){ const v=inputValue(); return (S.decMode==="ADD2"?S.neg2:S.negInp)?v.neg():v; }
+function commitInput(){ if(S.inputting){ S.current=signedInputValue(); S.inputting=false; S.neg2=false; S.negInp=false; } }
+
+/* ============================================================
+   运算核心
+   ============================================================ */
+function doCompute(a,op,b){
+  let r;
+  try{
+    if(op==="+") r=a.add(b);
+    else if(op==="-") r=a.sub(b);
+    else if(op==="*") r=a.mul(b);
+    else { if(b.isZero()){ setError("divzero",Dec.ZERO); return null; } r=a.div(b); }
+  }catch(e){ setError("divzero",Dec.ZERO); return null; }
+  if(r.absCmp(OVERFLOW)>=0){ setError("overflow",r); return null; }
+  S.current=r; return r;
+}
+function setError(type,val){ S.error=true; S.errorType=type; S.current=val; S.inputting=false; }
+function addGT(v){ S.gt=S.gt.add(v); if(S.gt.absCmp(OVERFLOW)>=0) setError("overflow",S.gt); }
+
+function pressOperator(op){
+  if(S.error) return;
+  const hadOp=S.operator!==null, entryOw=S.overwrite;
+  commitInput();
+  if(hadOp && !entryOw){
+    const r=doCompute(S.previous,S.operator,S.current);
+    if(r===null) return;
+  }
+  S.previous=S.current;
+  S.operator=op; S.overwrite=true;
+  if(hadOp && entryOw){
+    S.constantDefined=true; S.repeatOperand=S.previous; S.repeatOp=op;
+  }
+}
+function pressEquals(){
+  if(S.error) return;
+  commitInput();
+  if(S.operator!==null){
+    const operand = S.overwrite ? S.previous : S.current;
+    const r=doCompute(S.previous,S.operator,operand);
+    if(r===null) return;
+    if(!(S.constantDefined && S.repeatOp===S.operator)){ S.repeatOperand=operand; S.repeatOp=S.operator; }
+    S.constantDefined=false;
+    S.current=r; S.operator=null; S.overwrite=true; addGT(r);
+  }else if(S.repeatOp!==null){
+    const r=doCompute(S.current,S.repeatOp,S.repeatOperand);
+    if(r===null) return;
+    S.current=r; S.overwrite=true; addGT(r);
+  }
+}
+function pressPercent(){
+  if(S.error) return; commitInput();
+  const base=S.operator!==null?S.previous:null, cur=S.current; let r;
+  try{
+    if(S.operator==="+") r=base.add(base.mul(cur).div(HUNDRED));
+    else if(S.operator==="-") r=base.sub(base.mul(cur).div(HUNDRED));
+    else if(S.operator==="*") r=base.mul(cur).div(HUNDRED);
+    else if(S.operator==="/"){ const d=cur.div(HUNDRED); if(d.isZero()){setError("divzero",Dec.ZERO);return;} r=base.div(d); }
+    else r=cur.div(HUNDRED);
+  }catch(e){ setError("divzero",Dec.ZERO); return; }
+  if(r.absCmp(OVERFLOW)>=0){ setError("overflow",r); return; }
+  S.current=r; S.operator=null; S.overwrite=true; addGT(r);
+}
+function pressSqrt(){
+  if(S.error) return; commitInput();
+  if(S.current.sign()<0){
+    try{ const s=sqrtDec(S.current.abs()); setError("negsqrt",s); }
+    catch(e){ setError("negsqrt",Dec.ZERO); }
+  }else{
+    try{ S.current=sqrtDec(S.current); S.overwrite=true; }
+    catch(e){ setError("negsqrt",Dec.ZERO); }
+  }
+}
+function pressMU(){
+  if(S.error) return; commitInput();
+  let r;
+  try{
+    if(S.operator==="+"){ const d=ONE.sub(S.current.div(HUNDRED)); if(d.isZero()){setError("divzero",Dec.ZERO);return;} r=S.previous.div(d); }
+    else if(S.operator==="-"){ if(S.current.isZero()){setError("divzero",Dec.ZERO);return;} r=S.previous.sub(S.current).div(S.current).mul(HUNDRED); }
+    else r=S.current;
+  }catch(e){ setError("divzero",Dec.ZERO); return; }
+  if(r.absCmp(OVERFLOW)>=0){ setError("overflow",r); return; }
+  S.current=r; S.operator=null; S.overwrite=true; addGT(r);
+}
+function pressMplus(sign){
+  if(S.error) return; commitInput();
+  S.mem = sign>0 ? S.mem.add(S.current) : S.mem.sub(S.current);
+  if(S.mem.absCmp(OVERFLOW)>=0){ setError("overflow",S.mem); return; }
+  S.overwrite=true;
+}
+function pressMR(){ if(S.error) return; S.current=S.mem; S.overwrite=true; S.inputting=false; }
+function pressMC(){ if(S.error) return; S.mem=Dec.ZERO; }
+function pressGT(){
+  if(S.error) return;
+  if(S.lastKey==="gt"){ S.gt=Dec.ZERO; }
+  else { S.current=S.gt; S.overwrite=true; S.inputting=false; }
+}
+function pressSign(){
+  if(S.error) return;
+  if(S.inputting){ if(S.decMode==="ADD2") S.neg2=!S.neg2; else S.negInp=!S.negInp; return; }
+  S.current=S.current.neg();
+}
+function pressAC(){
+  S.current=Dec.ZERO; S.previous=Dec.ZERO; S.operator=null; S.overwrite=true; S.inputting=false;
+  S.inp="0"; S.raw2="0"; S.gt=Dec.ZERO; S.repeatOp=null; S.repeatOperand=null; S.constantDefined=false;
+  S.error=false; S.errorType=null; S.neg2=false; S.negInp=false;
+}
+function pressC(){
+  if(S.error) return;
+  S.current=Dec.ZERO; S.inp="0"; S.raw2="0"; S.overwrite=true; S.inputting=false; S.neg2=false; S.negInp=false;
+}
+function pressDigit(tok){
+  if(S.error) return;
+  if(S.overwrite||!S.inputting) startInput(tok); else continueInput(tok);
+}
+
+/* ============================================================
+   显示格式化
+   ============================================================ */
+function overflowDigits(v){
+  let d=intPartBigInt(v.abs()).toString();
+  if(d.length>12) d=d.slice(0,12);
+  return d;
+}
+function formatResult(v){
+  const mode=S.roundMode, dm=S.decMode;
+  let absV=v.abs(), ip=intPartBigInt(absV), intD=digitCount(ip), dec;
+  if(dm==="F") dec=Math.max(0,12-intD);
+  else if(dm==="ADD2") dec=2;
+  else dec=parseInt(dm,10);
+
+  let rounded=roundDec(v,dec,mode);
+  let rip=intPartBigInt(rounded.abs()), rintD=digitCount(rip);
+
+  if(dm==="F"){
+    if(rintD>12){ setError("overflow",rounded); return null; }
+    if(rintD>intD){ dec=Math.max(0,dec-(rintD-intD)); rounded=roundDec(v,dec,mode); rip=intPartBigInt(rounded.abs()); rintD=digitCount(rip); }
+  }else{
+    const need=rintD+(dec>0?1+dec:0);
+    if(need>12||rintD>12){ setError("overflow",rounded); return null; }
+  }
+  const mag=rounded.abs().m, factor=10n**BigInt(dec);
+  let intStr=(mag/factor).toString(), fracStr=(mag%factor).toString().padStart(dec,"0");
+  if(dec>0 && dm==="F"){ fracStr=fracStr.replace(/0+$/,""); return intStr+(fracStr?"."+fracStr:""); }
+  return dec>0 ? intStr+"."+fracStr : intStr;
+}
+/* 负号优先占用数码管最左空位（七段 '-'）；仅当 12 格被数字占满时才退用左侧指示灯 */
+function mapToCells(str, minus){
+  const slots=[];
+  for(const c of str){
+    if(c==="."){ if(slots.length) slots[slots.length-1].dp=true; }
+    else slots.push({ch:c,dp:false});
+  }
+  let indicatorMinus=false;
+  if(minus){
+    if(slots.length < 12) slots.unshift({ch:'-',dp:false});   // 数码管内显示负号
+    else indicatorMinus=true;                                  // 占满 → 指示灯
+  }
+  const pad=Math.max(0,12-slots.length);
+  let cells=Array.from({length:pad},()=>({ch:"",dp:false})).concat(slots);
+  if(cells.length>12) cells=cells.slice(cells.length-12);
+  return {cells, indicatorMinus};
+}
+function computeDisplay(){
+  let str, rawMinus;
+  if(S.inputting){
+    str=inputString(); rawMinus=(S.decMode==="ADD2"?S.neg2:S.negInp);
+  }else if(S.error){
+    if(S.errorType==="divzero"){ str="0"; rawMinus=false; }
+    else if(S.errorType==="negsqrt"){ str=formatResult(S.current)||"0"; rawMinus=true; }
+    else { str=overflowDigits(S.current); rawMinus=S.current.sign()<0; }
+  }else{
+    const f=formatResult(S.current);
+    if(f===null){ str=overflowDigits(S.current); rawMinus=S.current.sign()<0; }
+    else { str=f; rawMinus=S.current.sign()<0; }
+  }
+  const curVal = S.inputting ? signedInputValue() : S.current;
+  const minus = rawMinus && !curVal.isZero();     // -0 不显示负号
+  return mapToCells(str, minus);                  // {cells, indicatorMinus}
+}
+
+/* ============================================================
+   DOM 构建
+   ============================================================ */
+const SEG={"0":"abcdef","1":"bc","2":"abdeg","3":"abcdg","4":"bcfg","5":"acdfg","6":"acdefg","7":"abc","8":"abcdefg","9":"abcdfg","-":"g"};
+const cellRefs=[];
+(function buildDigits(){
+  const wrap=document.getElementById("digits");
+  for(let i=0;i<12;i++){
+    const cell=document.createElement("div"); cell.className="cell";
+    const segs={};
+    for(const k of "abcdefg"){ const d=document.createElement("div"); d.className="seg "+k+(k==="a"||k==="d"||k==="g"?" h":" v"); cell.appendChild(d); segs[k]=d; }
+    const dp=document.createElement("div"); dp.className="dp"; cell.appendChild(dp);
+    wrap.appendChild(cell); cellRefs.push({segs,dp});
+  }
+})();
+
+const META={
+  mu:["MU","fn"], "m+":["M+","fn"], "m-":["M−","fn"], mr:["MR","fn"], mc:["MC","fn"], gt:["GT","fn"],
+  ac:["AC","fn","ON"], "7":["7","num"], "8":["8","num"], "9":["9","num"], pct:["%","op"], sqrt:["√","op"],
+  sgn:["+/−","op"], "4":["4","num"], "5":["5","num"], "6":["6","num"], mul:["×","op"], div:["÷","op"],
+  bsp:["◀","op"], "1":["1","num"], "2":["2","num"], "3":["3","num"], plus:["+","op"], minus:["−","op"],
+  clr:["C","clr"], "0":["0","num"], "00":["00","num"], dot:["·","num"], eq:["=","op"],
+};
+const AREA={mu:"mu","m+":"mp","m-":"mm",mr:"mr",mc:"mc",gt:"gt",ac:"ac","7":"n7","8":"n8","9":"n9",pct:"pct",sqrt:"sqrt",sgn:"sgn","4":"n4","5":"n5","6":"n6",mul:"mul",div:"div",bsp:"bsp","1":"n1","2":"n2","3":"n3",plus:"plus",minus:"minus",clr:"clr","0":"n0","00":"n00",dot:"dot",eq:"eq"};
+const ORDER=["mu","m+","m-","mr","mc","gt","ac","7","8","9","pct","sqrt","sgn","4","5","6","mul","div","bsp","1","2","3","plus","minus","clr","0","00","dot","eq"];
+const btnEls={};
+(function buildPad(){
+  const pad=document.getElementById("pad");
+  for(const id of ORDER){
+    const [label,cls,sub]=META[id];
+    const b=document.createElement("button");
+    b.className="key "+cls; b.style.gridArea=AREA[id]; b.dataset.id=id;
+    b.innerHTML=label+(sub?`<span class="sub">${sub}</span>`:"");
+    pad.appendChild(b); btnEls[id]=b;
+    const fire=(e)=>{ e.preventDefault(); tick(); flash(id); handle(id); };
+    b.addEventListener("pointerdown",fire);
+  }
+})();
+
+function buildSwitch(elId,labels,curIdx,onPick){
+  const root=document.getElementById(elId);
+  const lab=root.querySelector(".labels"), knob=root.querySelector(".knob");
+  labels.forEach((t,i)=>{ const b=document.createElement("button"); b.textContent=t; b.dataset.i=i;
+    b.addEventListener("click",()=>{ if(S.error) return; tick(); onPick(i); }); lab.appendChild(b); });
+  return { render(){ knob.style.left=(curIdx()/(labels.length-1)*100)+"%";
+    [...lab.children].forEach((b,i)=>b.classList.toggle("active",i===curIdx())); } };
+}
+const swRound=buildSwitch("swRound",ROUNDS,()=>S.roundIndex,i=>{ S.roundIndex=i; S.roundMode=ROUNDS[i]; S.inputting=false; render(); });
+const swDec  =buildSwitch("swDec",DECS,()=>S.decIndex,i=>{ S.decIndex=i; S.decMode=DECS[i]; S.inputting=false; S.neg2=false; render(); });
+
+/* ============================================================
+   渲染
+   ============================================================ */
+function render(){
+  const {cells, indicatorMinus}=computeDisplay();
+  for(let i=0;i<12;i++){
+    const on=cells[i].ch?SEG[cells[i].ch]:"";
+    for(const k of "abcdefg") cellRefs[i].segs[k].classList.toggle("on", on.includes(k));
+    cellRefs[i].dp.classList.toggle("on", cells[i].dp);
+  }
+  const ind=(n,v)=>document.querySelector(`[data-ind="${n}"]`).classList.toggle("on",v);
+  ind("gt", !S.gt.isZero());
+  ind("m",  !S.mem.isZero());
+  ind("minus", indicatorMinus);
+  ind("e", S.error);
+  swRound.render(); swDec.render();
+}
+
+/* ============================================================
+   调度
+   ============================================================ */
+function handle(id){
+  if(S.error && id!=="ac") return;
+  switch(id){
+    case "0": case "00": case "1": case "2": case "3": case "4":
+    case "5": case "6": case "7": case "8": case "9": pressDigit(id); break;
+    case "dot": pressDot(); break;
+    case "bsp": pressBack(); break;
+    case "sgn": pressSign(); break;
+    case "plus": pressOperator("+"); break;
+    case "minus": pressOperator("-"); break;
+    case "mul": pressOperator("*"); break;
+    case "div": pressOperator("/"); break;
+    case "eq": pressEquals(); break;
+    case "pct": pressPercent(); break;
+    case "sqrt": pressSqrt(); break;
+    case "mu": pressMU(); break;
+    case "m+": pressMplus(1); break;
+    case "m-": pressMplus(-1); break;
+    case "mr": pressMR(); break;
+    case "mc": pressMC(); break;
+    case "gt": pressGT(); break;
+    case "ac": pressAC(); break;
+    case "clr": pressC(); break;
+  }
+  S.lastKey=id;
+  render();
+}
+function flash(id){ const b=btnEls[id]; if(!b) return; b.classList.add("pressed"); setTimeout(()=>b.classList.remove("pressed"),110); }
+
+const KEYMAP={"0":"0","1":"1","2":"2","3":"3","4":"4","5":"5","6":"6","7":"7","8":"8","9":"9",
+  ".":"dot","+":"plus","-":"minus","*":"mul","/":"div","Enter":"eq","=":"eq",
+  "Backspace":"bsp","Escape":"ac","Delete":"clr","%":"pct"};
+window.addEventListener("keydown",e=>{
+  let id=KEYMAP[e.key]; if(!id && (e.key==="c"||e.key==="C")) id="clr";
+  if(id){ e.preventDefault(); tick(); flash(id); handle(id); }
+});
+
+/* ============================================================
+   机械按键音
+   ============================================================ */
+let actx=null;
+function tick(){
+  if(!S.sound) return;
+  try{
+    if(!actx) actx=new (window.AudioContext||window.webkitAudioContext)();
+    if(actx.state==="suspended") actx.resume();
+    const t=actx.currentTime, o=actx.createOscillator(), g=actx.createGain();
+    o.type="square"; o.frequency.setValueAtTime(1900,t); o.frequency.exponentialRampToValueAtTime(620,t+0.028);
+    g.gain.setValueAtTime(0.0001,t); g.gain.exponentialRampToValueAtTime(0.07,t+0.002); g.gain.exponentialRampToValueAtTime(0.0001,t+0.05);
+    o.connect(g).connect(actx.destination); o.start(t); o.stop(t+0.06);
+  }catch(_){}
+}
+const soundBtn=document.getElementById("sound");
+soundBtn.addEventListener("click",()=>{ S.sound=!S.sound; soundBtn.classList.toggle("off",!S.sound); soundBtn.textContent=S.sound?"🔊":"🔇"; if(S.sound) tick(); });
+
+/* ============================================================
+   开机自检 + 初渲染
+   ============================================================ */
+(function boot(){
+  for(let i=0;i<12;i++){ for(const k of "abcdefg") cellRefs[i].segs[k].classList.add("on"); cellRefs[i].dp.classList.add("on"); }
+  swRound.render(); swDec.render();
+  setTimeout(render, 380);
+})();
+</script>
+</body>
+</html>
