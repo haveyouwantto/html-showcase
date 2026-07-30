@@ -7,18 +7,21 @@
 <style>
   :root{
     --plastic-1:#262a2f; --plastic-2:#141619; --plastic-edge:#3a3f46;
-    --lcd-1:#cdd6c6; --lcd-2:#a9b39f; --seg-on:#1b201a; --seg-off:rgba(33,44,33,.10);
+    --lcd-1:#cdd6c6; --lcd-2:#a9b39f; --seg-on:#161b15; --seg-off:rgba(33,44,33,.10);
     --num-1:#7c746a; --num-2:#5f584f; --num-edge:#948b7f;
     --fn-1:#2c3036; --fn-2:#1b1e22; --fn-edge:#41464d;
     --op-1:#23272c; --op-2:#15181b;
     --amber-1:#d98a2b; --amber-2:#a85f12; --amber-edge:#f0b25a;
     --ink:#e9ecef;
+    --disp:"Bahnschrift","DIN Alternate","DIN Condensed","Oswald","Segoe UI Semibold",system-ui,sans-serif;
+    --mono:ui-monospace,"SFMono-Regular",Menlo,Consolas,"Liberation Mono",monospace;
   }
   *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  html,body{height:100%;}
   body{
     margin:0; display:flex; flex-direction:column; align-items:center; justify-content:center;
     gap:22px; padding:34px 16px;
-    font-family:ui-sans-serif,system-ui,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    font-family:var(--mono);
     color:var(--ink);
     background:
       radial-gradient(120% 90% at 18% 8%, #4a4f57 0%, rgba(74,79,87,0) 46%),
@@ -32,8 +35,14 @@
     background-image:radial-gradient(rgba(255,255,255,.6) .5px, transparent .6px);
     background-size:3px 3px;
   }
+  body::after{
+    content:""; position:fixed; inset:-20%; pointer-events:none; z-index:0; opacity:.5;
+    background:radial-gradient(40% 35% at 30% 30%, rgba(120,140,170,.16), transparent 60%);
+    animation:drift 22s ease-in-out infinite alternate;
+  }
+  @keyframes drift{ 0%{transform:translate(-4%,-3%) scale(1)} 100%{transform:translate(6%,5%) scale(1.15)} }
 
-  .stage{ perspective:1700px; width:min(420px,94vw); }
+  .stage{ perspective:1700px; width:clamp(280px,92vw,440px); position:relative; z-index:1; }
   .calc{
     container-type:inline-size;
     width:100%;
@@ -61,7 +70,7 @@
   }
 
   .brand{ display:flex; align-items:center; justify-content:space-between; padding:0 1cqw 2.4cqw; }
-  .logo{ font-weight:800; font-style:italic; letter-spacing:.14em; font-size:6.4cqw; color:#f3f4f6;
+  .logo{ font-family:var(--disp); font-weight:700; font-style:italic; letter-spacing:.14em; font-size:6.6cqw; color:#f3f4f6;
          text-shadow:0 1px 0 rgba(0,0,0,.6); }
   .solar{ width:24cqw; height:5.4cqw; border-radius:1.2cqw; position:relative; overflow:hidden;
           background:linear-gradient(180deg,#5a2a22,#3a1a16);
@@ -81,46 +90,60 @@
     flex:1; position:relative; border-radius:2cqw; overflow:hidden;
     background:linear-gradient(180deg,var(--lcd-1),var(--lcd-2));
     box-shadow:0 2px 6px rgba(0,0,0,.45) inset, 0 0 0 1px rgba(0,0,0,.25) inset;
-    display:flex; align-items:stretch; padding:2.4cqw 2.6cqw;
+    display:flex; align-items:stretch; padding:1.8cqw 2.4cqw;
     aspect-ratio:3.5 / 1;
   }
   .screen::before{
-    content:""; position:absolute; inset:0; pointer-events:none; opacity:.5;
+    content:""; position:absolute; inset:0; pointer-events:none; opacity:.5; z-index:2;
     background:repeating-linear-gradient(0deg, rgba(0,0,0,.05) 0 1px, transparent 1px 3px);
     animation:flick 7s linear infinite;
   }
   .screen::after{
-    content:""; position:absolute; inset:0; pointer-events:none;
-    background:linear-gradient(115deg, rgba(255,255,255,.32), rgba(255,255,255,0) 38%);
+    content:""; position:absolute; inset:0; pointer-events:none; z-index:4;
+    background:linear-gradient(115deg, rgba(255,255,255,.30), rgba(255,255,255,0) 38%);
   }
   @keyframes flick{ 0%{background-position:0 0} 100%{background-position:0 6px} }
+  .screen-flash{
+    position:absolute; inset:0; z-index:5; pointer-events:none; opacity:0;
+    background:linear-gradient(180deg,var(--lcd-1),var(--lcd-2));
+  }
+  .screen.blink .screen-flash{ animation:lcdblink .12s linear; }
+  @keyframes lcdblink{ 0%{opacity:.86} 38%{opacity:.5} 100%{opacity:0} }
 
-  .ind{ display:flex; flex-direction:column; justify-content:space-between; padding:1cqw 0; width:7cqw; }
-  .ind span{ font-size:3.5cqw; font-weight:700; line-height:1; color:var(--seg-on);
-             opacity:.10; transition:opacity .12s; font-family:ui-monospace,Menlo,Consolas,monospace; }
+  .ind{ display:flex; flex-direction:column; justify-content:space-between; padding:1.4cqw 0; width:7cqw; position:relative; z-index:1; }
+  .ind span{ font-family:var(--mono); font-size:3.6cqw; font-weight:700; line-height:1; color:var(--seg-on);
+             opacity:.10; transition:opacity .12s; }
   .ind span.on{ opacity:1; }
   .ind .e{ color:#7a1414; }
 
-  .digits{ flex:1; display:flex; align-items:center; justify-content:flex-end; gap:.4cqw; }
-  .cell{ position:relative; flex:1 1 0; aspect-ratio:.62 / 1; max-width:8.4cqw; }
+  .digits{ flex:1; display:flex; align-items:stretch; justify-content:flex-end; gap:.7cqw; position:relative; z-index:1; }
+  .cell{ position:relative; flex:1 1 0; height:100%; }
+  .comma-row{ position:absolute; left:0; right:0; top:0; height:11%; }
+  .comma{ position:absolute; right:100%; top:8%; width:8%; height:80%;
+          background:var(--seg-off); transform:skewX(-18deg);
+          border-radius:42% 42% 52% 52%; transition:background .05s, box-shadow .05s; }
+  .comma.on{ background:var(--seg-on); box-shadow:0 0 .35cqw var(--seg-on); }
+  .digit-area{ position:absolute; left:0; right:0; top:11%; bottom:0; }
+
   .seg{ position:absolute; background:var(--seg-off); transition:background .05s, box-shadow .05s; }
-  .seg.on{ background:var(--seg-on); }
-  .seg.h{ left:15%; width:70%; height:7%;
-          clip-path:polygon(12% 0,88% 0,100% 50%,88% 100%,12% 100%,0 50%); }
-  .seg.v{ width:8%; height:40%;
-          clip-path:polygon(0 9%,50% 0,100% 9%,100% 91%,50% 100%,0 91%); }
-  .seg.a{ top:1%; } .seg.g{ top:46.5%; } .seg.d{ top:92%; }
-  .seg.f{ left:6%; top:9%; } .seg.b{ left:86%; top:9%; }
-  .seg.e{ left:6%; top:51%; } .seg.c{ left:86%; top:51%; }
-  .dp{ position:absolute; left:92%; top:90%; width:9%; height:6%; border-radius:50%;
-       background:var(--seg-off); }
-  .dp.on{ background:var(--seg-on); }
+  .seg.on{ background:var(--seg-on); box-shadow:0 0 .35cqw rgba(22,27,21,.5); }
+  /* 横段细 (9%)、竖段挺 (12%)；纵向 3*9 + 2*36.5 = 100 自洽 */
+  .seg.h{ left:15%; width:70%; height:9%;
+          clip-path:polygon(16% 0,84% 0,100% 50%,84% 100%,16% 100%,0 50%); }
+  .seg.v{ width:28%; height:36.5%;
+          clip-path:polygon(0 10%,50% 0,100% 10%,100% 90%,50% 100%,0 90%); }
+  .seg.a{ top:0%; } .seg.g{ top:42%; } .seg.d{ top:85.5%; }
+  .seg.f{ left:0%; top:7%; } .seg.b{ left:74%; top:7%; }
+  .seg.e{ left:0%; top:50%; } .seg.c{ left:74%; top:50%; }
+  .dp{ position:absolute; left:90%; top:89%; width:15%; height:10%; border-radius:22%;
+       background:var(--seg-off); transition:background .05s, box-shadow .05s; }
+  .dp.on{ background:var(--seg-on); box-shadow:0 0 .4cqw rgba(22,27,21,.55); }
 
   .meta{ display:flex; flex-direction:column; justify-content:flex-start; align-items:flex-end;
-         gap:.6cqw; width:14cqw; padding-top:1cqw; }
-  .meta .m1{ font-size:3.4cqw; font-weight:700; letter-spacing:.04em; color:#cfd3d8; }
+         gap:.6cqw; width:14cqw; padding-top:1cqw; position:relative; z-index:1; }
+  .meta .m1{ font-family:var(--disp); font-size:3.6cqw; font-weight:700; letter-spacing:.04em; color:#cfd3d8; }
   .meta .m2{ font-size:3cqw; color:#9aa0a7; letter-spacing:.05em; }
-  .meta .m2 b{ font-size:4.6cqw; color:#e9ecef; }
+  .meta .m2 b{ font-family:var(--disp); font-size:4.8cqw; color:#e9ecef; }
 
   .switches{ display:flex; justify-content:space-between; gap:3cqw; padding:0 1cqw 3.4cqw; }
   .sw{ flex:1; }
@@ -133,8 +156,8 @@
              transition:left .22s cubic-bezier(.3,1.3,.5,1); }
   .sw .labels{ display:flex; justify-content:space-between; }
   .sw .labels button{ flex:1; background:none; border:0; cursor:pointer; padding:0;
-             font:inherit; font-size:3cqw; font-weight:700; letter-spacing:.02em; color:#7f858d;
-             transition:color .15s; font-family:ui-monospace,Menlo,Consolas,monospace; }
+             font-family:var(--mono); font-size:3cqw; font-weight:700; letter-spacing:.02em; color:#7f858d;
+             transition:color .15s; }
   .sw .labels button.active{ color:var(--amber-edge); }
   .sw .labels button:hover{ color:#cfd3d8; }
 
@@ -147,42 +170,62 @@
           "bsp n1 n2 n3 plus minus"
           "clr n0 n00 dot plus eq"; }
   .key{ position:relative; border:0; cursor:pointer; border-radius:2.2cqw; color:#f4f5f7;
-        font-family:inherit; font-weight:700; font-size:6cqw; line-height:1;
+        font-family:var(--disp); font-weight:700; font-size:6.2cqw; line-height:1;
         display:flex; flex-direction:column; align-items:center; justify-content:center;
-        aspect-ratio:1.18 / 1; user-select:none;
+        aspect-ratio:1.18 / 1; user-select:none; touch-action:manipulation;
         box-shadow:0 2.4cqw 0 rgba(0,0,0,.32), 0 3cqw 4px rgba(0,0,0,.4),
                    0 1px 0 rgba(255,255,255,.10) inset;
-        transition:transform .06s, box-shadow .06s, filter .12s; }
+        transition:transform .035s, box-shadow .035s, filter .12s; }
   .key:hover{ filter:brightness(1.08); }
-  .key:active,.key.pressed{ transform:translateY(2cqw);
+  .key.pressed{ transform:translateY(2cqw);
         box-shadow:0 .4cqw 0 rgba(0,0,0,.32), 0 1cqw 2px rgba(0,0,0,.4),
-                   0 1px 0 rgba(255,255,255,.08) inset; }
+                   0 1px 0 rgba(255,255,255,.08) inset; filter:brightness(.94); }
   .key .sub{ font-size:2.7cqw; opacity:.7; margin-top:.4cqw; font-weight:600; }
   .key.num{ background:linear-gradient(180deg,var(--num-1),var(--num-2));
             box-shadow:0 2.4cqw 0 #403a33, 0 3cqw 4px rgba(0,0,0,.4), 0 1px 0 var(--num-edge) inset; }
-  .key.num:active,.key.num.pressed{ box-shadow:0 .4cqw 0 #403a33,0 1cqw 2px rgba(0,0,0,.4),0 1px 0 var(--num-edge) inset; }
-  .key.fn{ background:linear-gradient(180deg,var(--fn-1),var(--fn-2)); font-size:4.6cqw;
+  .key.num.pressed{ box-shadow:0 .4cqw 0 #403a33,0 1cqw 2px rgba(0,0,0,.4),0 1px 0 var(--num-edge) inset; }
+  .key.fn{ background:linear-gradient(180deg,var(--fn-1),var(--fn-2)); font-size:4.8cqw;
            box-shadow:0 2.4cqw 0 #0c0e10,0 3cqw 4px rgba(0,0,0,.4),0 1px 0 var(--fn-edge) inset; }
-  .key.fn:active,.key.fn.pressed{ box-shadow:0 .4cqw 0 #0c0e10,0 1cqw 2px rgba(0,0,0,.4),0 1px 0 var(--fn-edge) inset; }
-  .key.op{ background:linear-gradient(180deg,var(--op-1),var(--op-2)); font-size:6.4cqw;
+  .key.fn.pressed{ box-shadow:0 .4cqw 0 #0c0e10,0 1cqw 2px rgba(0,0,0,.4),0 1px 0 var(--fn-edge) inset; }
+  .key.op{ background:linear-gradient(180deg,var(--op-1),var(--op-2)); font-size:6.6cqw;
            box-shadow:0 2.4cqw 0 #08090a,0 3cqw 4px rgba(0,0,0,.4),0 1px 0 #3a3f46 inset; }
-  .key.op:active,.key.op.pressed{ box-shadow:0 .4cqw 0 #08090a,0 1cqw 2px rgba(0,0,0,.4),0 1px 0 #3a3f46 inset; }
+  .key.op.pressed{ box-shadow:0 .4cqw 0 #08090a,0 1cqw 2px rgba(0,0,0,.4),0 1px 0 #3a3f46 inset; }
   .key.clr{ background:linear-gradient(180deg,var(--amber-1),var(--amber-2)); color:#fff;
             box-shadow:0 2.4cqw 0 #6f3d08,0 3cqw 4px rgba(0,0,0,.4),0 1px 0 var(--amber-edge) inset; }
-  .key.clr:active,.key.clr.pressed{ box-shadow:0 .4cqw 0 #6f3d08,0 1cqw 2px rgba(0,0,0,.4),0 1px 0 var(--amber-edge) inset; }
-  .key[data-id="plus"]{ aspect-ratio:auto; font-size:7cqw; }
+  .key.clr.pressed{ box-shadow:0 .4cqw 0 #6f3d08,0 1cqw 2px rgba(0,0,0,.4),0 1px 0 var(--amber-edge) inset; }
+  .key[data-id="plus"]{ aspect-ratio:auto; font-size:7.2cqw; }
 
-  .caption{ text-align:center; max-width:min(420px,94vw); }
-  .caption .t{ font-size:13px; letter-spacing:.34em; text-transform:uppercase; color:#aab0b8; font-weight:700; }
-  .caption .s{ margin-top:7px; font-family:ui-monospace,Menlo,Consolas,monospace; font-size:11.5px;
-               color:#6b7178; letter-spacing:.04em; }
-  .caption .s b{ color:#c9873a; font-weight:600; }
+  .caption{ text-align:center; max-width:clamp(280px,92vw,440px); position:relative; z-index:1; }
+  .caption .t{ font-family:var(--disp); font-size:14px; letter-spacing:.36em; text-transform:uppercase; color:#aab0b8; font-weight:700; }
+  .caption .s{ margin-top:7px; font-family:var(--mono); font-size:11.5px;
+               color:#6b7178; letter-spacing:.04em; line-height:1.6; }
+  .caption .s b{ color:#c9873a; font-weight:700; }
 
-  .sound{ position:fixed; top:16px; right:16px; z-index:5; width:38px; height:38px; border-radius:50%;
+  .sound{ position:fixed; top:16px; right:16px; z-index:5; width:40px; height:40px; border-radius:50%;
           border:1px solid rgba(255,255,255,.14); background:rgba(20,22,26,.7); color:#cfd3d8;
           cursor:pointer; font-size:16px; backdrop-filter:blur(6px); transition:.2s; }
-  .sound:hover{ background:rgba(40,44,50,.85); }
+  .sound:hover{ background:rgba(40,44,50,.85); transform:scale(1.06); }
   .sound.off{ color:#5a6068; }
+
+  @media (min-width:780px){ .stage{ width:clamp(420px,40vw,500px); } }
+  @media (max-width:360px){
+    body{ padding:18px 8px; gap:14px; }
+    .caption .s{ font-size:10px; }
+    .sound{ width:34px; height:34px; top:10px; right:10px; }
+  }
+  @media (max-height:640px){
+    body{ padding:12px 10px; gap:12px; }
+    .stage{ width:min(360px,86vw); }
+    .calc{ transform:rotateX(2deg); }
+    .caption .s{ display:none; }
+  }
+  @media (max-height:480px) and (orientation:landscape){
+    body{ flex-direction:row; gap:18px; }
+    .stage{ width:min(46vh,420px); }
+  }
+  @media (prefers-reduced-motion:reduce){
+    *{ animation:none !important; transition:none !important; }
+  }
 </style>
 </head>
 <body>
@@ -196,7 +239,7 @@
       </div>
 
       <div class="bezel">
-        <div class="screen">
+        <div class="screen" id="screen">
           <div class="ind">
             <span data-ind="gt">GT</span>
             <span data-ind="m">M</span>
@@ -204,6 +247,7 @@
             <span data-ind="e" class="e">E</span>
           </div>
           <div class="digits" id="digits"></div>
+          <div class="screen-flash"></div>
         </div>
         <div class="meta">
           <div class="m1">DX-12B</div>
@@ -229,7 +273,7 @@
 
   <div class="caption">
     <div class="t">DX-12B Simulator</div>
-    <div class="s">129×175 mm · 12 位精度 · GT/M 寄存器 · 舍入/小数拨档<br>
+    <div class="s">129×175 mm · 12 位精度 · GT/M 寄存器 · 舍入/小数拨档 · 千分位标记<br>
       键盘：<b>0-9 . + - * /</b> 运算 · <b>Enter</b> = · <b>Backspace</b> 退格 · <b>Esc</b> AC · <b>%</b> 百分比</div>
   </div>
 
@@ -247,11 +291,10 @@ class Dec{
   sign(){ return this.m<0n?-1:(this.m>0n?1:0); }
   neg(){ return new Dec(-this.m,this.e); }
   abs(){ return new Dec(this.m<0n?-this.m:this.m,this.e); }
-  /* 对齐到较细（较小）的指数；缩放因子指数恒为非负，杜绝 BigInt 负幂 */
   static _align(a,b){
     if(a.e===b.e) return [a.m,b.m,a.e];
-    if(a.e<b.e) return [a.m, b.m*10n**BigInt(b.e-a.e), a.e];   // b 较粗，b 尾数放大
-    return [a.m*10n**BigInt(a.e-b.e), b.m, b.e];                // a 较粗，a 尾数放大
+    if(a.e<b.e) return [a.m, b.m*10n**BigInt(b.e-a.e), a.e];
+    return [a.m*10n**BigInt(a.e-b.e), b.m, b.e];
   }
   add(o){ const [am,bm,e]=Dec._align(this,o); return new Dec(am+bm,e); }
   sub(o){ const [am,bm,e]=Dec._align(this,o); return new Dec(am-bm,e); }
@@ -266,7 +309,7 @@ class Dec{
   cmp(o){ const [am,bm]=Dec._align(this,o); return am<bm?-1:(am>bm?1:0); }
   absCmp(o){ return this.abs().cmp(o.abs()); }
 }
-const OVERFLOW = Dec.fromInt(1000000000000); // 10^12
+const OVERFLOW = Dec.fromInt(1000000000000);
 const HUNDRED  = Dec.fromInt(100);
 const ONE      = Dec.fromInt(1);
 
@@ -511,20 +554,30 @@ function formatResult(v){
   if(dec>0 && dm==="F"){ fracStr=fracStr.replace(/0+$/,""); return intStr+(fracStr?"."+fracStr:""); }
   return dec>0 ? intStr+"."+fracStr : intStr;
 }
-/* 负号优先占用数码管最左空位（七段 '-'）；仅当 12 格被数字占满时才退用左侧指示灯 */
+/* 千分位标记：整数部分从右数第 3/6/9/12 位、且非最高位时点亮 */
 function mapToCells(str, minus){
+  const dot=str.indexOf('.');
+  const intPart = dot<0 ? str : str.slice(0,dot);
+  const intLen = intPart.length;
   const slots=[];
-  for(const c of str){
-    if(c==="."){ if(slots.length) slots[slots.length-1].dp=true; }
-    else slots.push({ch:c,dp:false});
+  let intIdx=0;
+  for(let i=0;i<str.length;i++){
+    const c=str[i];
+    if(c==='.'){ if(slots.length) slots[slots.length-1].dp=true; continue; }
+    let comma=false;
+    if(dot<0 || i<dot){
+      const fromRight = intLen - intIdx; intIdx++;
+      if(fromRight % 3 === 0 && fromRight !== intLen) comma=true;
+    }
+    slots.push({ch:c, dp:false, comma});
   }
   let indicatorMinus=false;
   if(minus){
-    if(slots.length < 12) slots.unshift({ch:'-',dp:false});   // 数码管内显示负号
-    else indicatorMinus=true;                                  // 占满 → 指示灯
+    if(slots.length < 12) slots.unshift({ch:'-',dp:false,comma:false});
+    else indicatorMinus=true;
   }
   const pad=Math.max(0,12-slots.length);
-  let cells=Array.from({length:pad},()=>({ch:"",dp:false})).concat(slots);
+  let cells=Array.from({length:pad},()=>({ch:'',dp:false,comma:false})).concat(slots);
   if(cells.length>12) cells=cells.slice(cells.length-12);
   return {cells, indicatorMinus};
 }
@@ -542,8 +595,8 @@ function computeDisplay(){
     else { str=f; rawMinus=S.current.sign()<0; }
   }
   const curVal = S.inputting ? signedInputValue() : S.current;
-  const minus = rawMinus && !curVal.isZero();     // -0 不显示负号
-  return mapToCells(str, minus);                  // {cells, indicatorMinus}
+  const minus = rawMinus && !curVal.isZero();
+  return mapToCells(str, minus);
 }
 
 /* ============================================================
@@ -555,10 +608,14 @@ const cellRefs=[];
   const wrap=document.getElementById("digits");
   for(let i=0;i<12;i++){
     const cell=document.createElement("div"); cell.className="cell";
+    const cRow=document.createElement("div"); cRow.className="comma-row";
+    const comma=document.createElement("div"); comma.className="comma"; cRow.appendChild(comma);
+    const dArea=document.createElement("div"); dArea.className="digit-area";
     const segs={};
-    for(const k of "abcdefg"){ const d=document.createElement("div"); d.className="seg "+k+(k==="a"||k==="d"||k==="g"?" h":" v"); cell.appendChild(d); segs[k]=d; }
-    const dp=document.createElement("div"); dp.className="dp"; cell.appendChild(dp);
-    wrap.appendChild(cell); cellRefs.push({segs,dp});
+    for(const k of "abcdefg"){ const d=document.createElement("div"); d.className="seg "+k+(k==="a"||k==="d"||k==="g"?" h":" v"); dArea.appendChild(d); segs[k]=d; }
+    const dp=document.createElement("div"); dp.className="dp"; dArea.appendChild(dp);
+    cell.appendChild(cRow); cell.appendChild(dArea);
+    wrap.appendChild(cell); cellRefs.push({segs,dp,comma});
   }
 })();
 
@@ -572,6 +629,10 @@ const META={
 const AREA={mu:"mu","m+":"mp","m-":"mm",mr:"mr",mc:"mc",gt:"gt",ac:"ac","7":"n7","8":"n8","9":"n9",pct:"pct",sqrt:"sqrt",sgn:"sgn","4":"n4","5":"n5","6":"n6",mul:"mul",div:"div",bsp:"bsp","1":"n1","2":"n2","3":"n3",plus:"plus",minus:"minus",clr:"clr","0":"n0","00":"n00",dot:"dot",eq:"eq"};
 const ORDER=["mu","m+","m-","mr","mc","gt","ac","7","8","9","pct","sqrt","sgn","4","5","6","mul","div","bsp","1","2","3","plus","minus","clr","0","00","dot","eq"];
 const btnEls={};
+const keyTimers={};
+function pressVisual(id){ const b=btnEls[id]; if(b) b.classList.add("pressed"); }
+function releaseVisual(id){ const b=btnEls[id]; if(b) b.classList.remove("pressed"); }
+function releaseAll(){ for(const id in btnEls) btnEls[id].classList.remove("pressed"); }
 (function buildPad(){
   const pad=document.getElementById("pad");
   for(const id of ORDER){
@@ -580,10 +641,19 @@ const btnEls={};
     b.className="key "+cls; b.style.gridArea=AREA[id]; b.dataset.id=id;
     b.innerHTML=label+(sub?`<span class="sub">${sub}</span>`:"");
     pad.appendChild(b); btnEls[id]=b;
-    const fire=(e)=>{ e.preventDefault(); tick(); flash(id); handle(id); };
-    b.addEventListener("pointerdown",fire);
+    b.addEventListener("pointerdown",e=>{
+      e.preventDefault();
+      releaseAll(); pressVisual(id);
+      try{ b.setPointerCapture(e.pointerId); }catch(_){}
+      tick(); handle(id);
+    });
+    const rel=()=>releaseVisual(id);
+    b.addEventListener("pointerup",rel);
+    b.addEventListener("pointercancel",rel);
   }
 })();
+window.addEventListener("pointerup",releaseAll);
+window.addEventListener("pointercancel",releaseAll);
 
 function buildSwitch(elId,labels,curIdx,onPick){
   const root=document.getElementById(elId);
@@ -605,6 +675,7 @@ function render(){
     const on=cells[i].ch?SEG[cells[i].ch]:"";
     for(const k of "abcdefg") cellRefs[i].segs[k].classList.toggle("on", on.includes(k));
     cellRefs[i].dp.classList.toggle("on", cells[i].dp);
+    cellRefs[i].comma.classList.toggle("on", cells[i].comma);
   }
   const ind=(n,v)=>document.querySelector(`[data-ind="${n}"]`).classList.toggle("on",v);
   ind("gt", !S.gt.isZero());
@@ -614,11 +685,17 @@ function render(){
   swRound.render(); swDec.render();
 }
 
+/* LCD 灭屏反馈 */
+const screenEl=document.getElementById("screen");
+screenEl.querySelector(".screen-flash").addEventListener("animationend",()=>screenEl.classList.remove("blink"));
+function lcdBlink(){ screenEl.classList.remove("blink"); void screenEl.offsetWidth; screenEl.classList.add("blink"); }
+
 /* ============================================================
    调度
    ============================================================ */
 function handle(id){
   if(S.error && id!=="ac") return;
+  lcdBlink();
   switch(id){
     case "0": case "00": case "1": case "2": case "3": case "4":
     case "5": case "6": case "7": case "8": case "9": pressDigit(id); break;
@@ -644,14 +721,24 @@ function handle(id){
   S.lastKey=id;
   render();
 }
-function flash(id){ const b=btnEls[id]; if(!b) return; b.classList.add("pressed"); setTimeout(()=>b.classList.remove("pressed"),110); }
 
+/* 键盘映射 */
 const KEYMAP={"0":"0","1":"1","2":"2","3":"3","4":"4","5":"5","6":"6","7":"7","8":"8","9":"9",
   ".":"dot","+":"plus","-":"minus","*":"mul","/":"div","Enter":"eq","=":"eq",
   "Backspace":"bsp","Escape":"ac","Delete":"clr","%":"pct"};
 window.addEventListener("keydown",e=>{
   let id=KEYMAP[e.key]; if(!id && (e.key==="c"||e.key==="C")) id="clr";
-  if(id){ e.preventDefault(); tick(); flash(id); handle(id); }
+  if(!id) return;
+  e.preventDefault();
+  pressVisual(id);
+  clearTimeout(keyTimers[id]);
+  keyTimers[id]=setTimeout(()=>releaseVisual(id),110);
+  tick(); handle(id);
+});
+window.addEventListener("keyup",e=>{
+  let id=KEYMAP[e.key]; if(!id && (e.key==="c"||e.key==="C")) id="clr";
+  if(!id) return;
+  clearTimeout(keyTimers[id]); releaseVisual(id);
 });
 
 /* ============================================================
@@ -676,9 +763,9 @@ soundBtn.addEventListener("click",()=>{ S.sound=!S.sound; soundBtn.classList.tog
    开机自检 + 初渲染
    ============================================================ */
 (function boot(){
-  for(let i=0;i<12;i++){ for(const k of "abcdefg") cellRefs[i].segs[k].classList.add("on"); cellRefs[i].dp.classList.add("on"); }
+  for(let i=0;i<12;i++){ for(const k of "abcdefg") cellRefs[i].segs[k].classList.add("on"); cellRefs[i].dp.classList.add("on"); cellRefs[i].comma.classList.add("on"); }
   swRound.render(); swDec.render();
-  setTimeout(render, 380);
+  setTimeout(render, 420);
 })();
 </script>
 </body>
