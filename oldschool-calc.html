@@ -90,7 +90,7 @@
     background:linear-gradient(180deg,var(--lcd-1),var(--lcd-2));
     box-shadow:0 2px 6px rgba(0,0,0,.45) inset, 0 0 0 1px rgba(0,0,0,.25) inset;
     display:flex; align-items:stretch; padding:1.8cqw 2.4cqw;
-    aspect-ratio:3.5 / 1;
+    aspect-ratio:4 / 1;
   }
   .screen::before{
     content:""; position:absolute; inset:0; pointer-events:none; opacity:.5; z-index:2;
@@ -110,31 +110,31 @@
   @keyframes lcdblink{ 0%{opacity:.86} 38%{opacity:.5} 100%{opacity:0} }
 
   .ind{ display:flex; flex-direction:column; justify-content:space-between; padding:1.4cqw 0; width:7cqw; position:relative; z-index:1; }
-  .ind span{ font-family:var(--mono); font-size:3.6cqw; font-weight:700; line-height:1; color:var(--seg-on);
+  .ind span{ font-family:var(--mono); font-size:4.5cqw; font-weight:700; line-height:1; color:var(--seg-on);
              opacity:.10; transition:opacity .12s; }
   .ind span.on{ opacity:1; }
   .ind .e{ color:#7a1414; }
 
-  .digits{ flex:1; display:flex; align-items:stretch; justify-content:flex-end; gap:.7cqw; position:relative; z-index:1; }
+  .digits{ flex:1; display:flex; align-items:stretch; justify-content:flex-end; gap:2cqw; position:relative; z-index:1; }
   .cell{ position:relative; flex:1 1 0; height:100%; }
   .comma-row{ position:absolute; left:0; right:0; top:0; height:11%; }
   .comma{ position:absolute; right:100%; top:8%; width:8%; height:80%;
           background:var(--seg-off); transform:skewX(-18deg);
           border-radius:42% 42% 52% 52%; transition:background .05s, box-shadow .05s; }
   .comma.on{ background:var(--seg-on); box-shadow:0 0 .35cqw var(--seg-on); }
-  .digit-area{ position:absolute; left:0; right:0; top:11%; bottom:0; }
+  .digit-area{ position:absolute; left:0; right:0; top:11%; bottom:0;transform:skewX(-4deg) }
 
-  .seg{ position:absolute; background:var(--seg-off); transition:background .05s, box-shadow .05s; }
+  .seg{ position:absolute; background:var(--seg-off); transition:background .05s, box-shadow .05s;}
   .seg.on{ background:var(--seg-on); box-shadow:0 0 .35cqw rgba(22,27,21,.5); }
   /* 横段细 (9%)、竖段挺 (12%)；纵向 3*9 + 2*36.5 = 100 自洽 */
   .seg.h{ left:15%; width:70%; height:9%;
           clip-path:polygon(16% 0,84% 0,100% 50%,84% 100%,16% 100%,0 50%); }
-  .seg.v{ width:28%; height:36.5%;
+  .seg.v{ width:32%; height:36.5%;
           clip-path:polygon(0 10%,50% 0,100% 10%,100% 90%,50% 100%,0 90%); }
-  .seg.a{ top:0%; } .seg.g{ top:42%; } .seg.d{ top:85.5%; }
-  .seg.f{ left:0%; top:7%; } .seg.b{ left:74%; top:7%; }
-  .seg.e{ left:0%; top:50%; } .seg.c{ left:74%; top:50%; }
-  .dp{ position:absolute; left:100%; top:89%; width:15%; height:10%; border-radius:22%;
+  .seg.a{ top:0%; } .seg.g{ top:42%; } .seg.d{ top:84%; }
+  .seg.f{ left:-5%; top:7%; } .seg.b{ left:74%; top:7%; }
+  .seg.e{ left:-5%; top:49%; } .seg.c{ left:74%; top:49%; }
+  .dp{ position:absolute; left:105%; top:89%; width:28%; height:8%; border-radius:100%;
        background:var(--seg-off); transition:background .05s, box-shadow .05s; }
   .dp.on{ background:var(--seg-on); box-shadow:0 0 .4cqw rgba(22,27,21,.55); }
 
@@ -248,7 +248,7 @@
           <div class="ind">
             <span data-ind="gt">GT</span>
             <span data-ind="m">M</span>
-            <span data-ind="minus">-</span>
+            <span data-ind="minus">▔</span>
             <span data-ind="e" class="e">E</span>
           </div>
           <div class="digits" id="digits"></div>
@@ -603,7 +603,7 @@ function computeDisplay(){
 /* ============================================================
    DOM 构建
    ============================================================ */
-const SEG={"0":"abcdef","1":"bc","2":"abdeg","3":"abcdg","4":"bcfg","5":"acdfg","6":"acdefg","7":"abc","8":"abcdefg","9":"abcdfg","-":"g"};
+const SEG={"0":"abcdef","1":"bc","2":"abdeg","3":"abcdg","4":"bcfg","5":"acdfg","6":"acdefg","7":"abcf","8":"abcdefg","9":"abcdfg","-":"g"};
 const cellRefs=[];
 (function buildDigits(){
   const wrap=document.getElementById("digits");
@@ -624,7 +624,7 @@ const META={
   mu:["MU","fn"], "m+":["M+","fn"], "m-":["M−","fn"], mr:["MR","fn"], mc:["MC","fn"], gt:["GT","fn"],
   ac:["AC","fn","ON"], "7":["7","num"], "8":["8","num"], "9":["9","num"], pct:["%","op"], sqrt:["√","op"],
   sgn:["+/−","op"], "4":["4","num"], "5":["5","num"], "6":["6","num"], mul:["×","op"], div:["÷","op"],
-  bsp:["◀","op"], "1":["1","num"], "2":["2","num"], "3":["3","num"], plus:["+","op"], minus:["−","op"],
+  bsp:["►","op"], "1":["1","num"], "2":["2","num"], "3":["3","num"], plus:["+","op"], minus:["−","op"],
   clr:["C","clr"], "0":["0","num"], "00":["00","num"], dot:["·","num"], eq:["=","op"],
 };
 const AREA={mu:"mu","m+":"mp","m-":"mm",mr:"mr",mc:"mc",gt:"gt",ac:"ac","7":"n7","8":"n8","9":"n9",pct:"pct",sqrt:"sqrt",sgn:"sgn","4":"n4","5":"n5","6":"n6",mul:"mul",div:"div",bsp:"bsp","1":"n1","2":"n2","3":"n3",plus:"plus",minus:"minus",clr:"clr","0":"n0","00":"n00",dot:"dot",eq:"eq"};
