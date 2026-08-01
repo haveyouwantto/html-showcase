@@ -766,7 +766,7 @@ function tick(){
     bp.frequency.value=2000+Math.random()*700; bp.Q.value=0.75;
     const ng=actx.createGain();
     ng.gain.setValueAtTime(0.0001,t);
-    ng.gain.exponentialRampToValueAtTime(0.14,t+0.0012);
+    ng.gain.exponentialRampToValueAtTime(0.56,t+0.0012);
     ng.gain.exponentialRampToValueAtTime(0.0001,t+dur);
     src.connect(bp); bp.connect(ng); ng.connect(actx.destination);
     src.start(t); src.stop(t+dur+0.005);
@@ -776,7 +776,7 @@ function tick(){
     o.frequency.exponentialRampToValueAtTime(115,t+0.024);
     const og=actx.createGain();
     og.gain.setValueAtTime(0.0001,t);
-    og.gain.exponentialRampToValueAtTime(0.055,t+0.002);
+    og.gain.exponentialRampToValueAtTime(0.22,t+0.002);
     og.gain.exponentialRampToValueAtTime(0.0001,t+0.06);
     o.connect(og); og.connect(actx.destination);
     o.start(t); o.stop(t+0.065);
