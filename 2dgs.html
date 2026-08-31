@@ -458,6 +458,20 @@
         return { cx, cy, sx, sy, theta };
       }
 
+      // ---- 2. 生成候选椭圆的辅助函数 ----
+      function randomEllipseFromAnchor(anchor) {
+        // 中心在锚点附近随机偏移（±20px）
+        const cx = Math.max(0, Math.min(W - 1, anchor.x + (Math.random() - 0.5) * 40));
+        const cy = Math.max(0, Math.min(H - 1, anchor.y + (Math.random() - 0.5) * 40));
+        // 尺度、角度仍使用原有随机策略（普通圆形倾向）
+        const scale = Math.exp(Math.random() * 3.3 - 0.3);
+        const aspect = Math.exp((Math.random() - 0.5) * 1.6);
+        const sx = Math.max(1.0, Math.min(80, scale * Math.sqrt(aspect)));
+        const sy = Math.max(1.0, Math.min(80, scale / Math.sqrt(aspect)));
+        const theta = Math.random() * Math.PI;
+        return { cx, cy, sx, sy, theta };
+      }
+
       function mutate(e, strength) {
         // 尺度变异更温和，避免轻易拉成极细
         const n = {
@@ -510,20 +524,6 @@
           return anchors;
         }
         const anchors = getAnchors(30);
-
-        // ---- 2. 生成候选椭圆的辅助函数 ----
-        function randomEllipseFromAnchor(anchor) {
-          // 中心在锚点附近随机偏移（±20px）
-          const cx = Math.max(0, Math.min(W - 1, anchor.x + (Math.random() - 0.5) * 40));
-          const cy = Math.max(0, Math.min(H - 1, anchor.y + (Math.random() - 0.5) * 40));
-          // 尺度、角度仍使用原有随机策略（普通圆形倾向）
-          const scale = Math.exp(Math.random() * 3.3 - 0.3);
-          const aspect = Math.exp((Math.random() - 0.5) * 1.6);
-          const sx = Math.max(1.0, Math.min(80, scale * Math.sqrt(aspect)));
-          const sy = Math.max(1.0, Math.min(80, scale / Math.sqrt(aspect)));
-          const theta = Math.random() * Math.PI;
-          return { cx, cy, sx, sy, theta };
-        }
 
         // ---- 3. 生成候选集（含细长） ----
         let best = null;
