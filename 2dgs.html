@@ -424,54 +424,55 @@
       const ASPECT_LAMBDA = 0.35; // 惩罚强度（适中，不过分压制细长）
 
       function aspectPenalty(sx, sy) {
-        const a = Math.max(sx, sy) / Math.max(1e-6, Math.min(sx, sy));
-        const excess = Math.max(0, Math.log(a) - Math.log(ASPECT_TAU));
-        return 1 + ASPECT_LAMBDA * excess * excess;
+        return 1; // 完全取消长宽比惩罚
       }
-
-      function randomEllipse(preferThin = false) {
+      function randomEllipse() {
+        // 位置：全图均匀随机
         const cx = Math.random() * W;
         const cy = Math.random() * H;
-        let sx, sy, theta;
 
-        // 细长候选概率大幅降低（约 8%）
-        if (preferThin || Math.random() < 0.08) {
-          // 允许细长，但不要极端到破坏画面
-          const length = Math.exp(Math.random() * 3.2 + 0.6);   // ~1.8 – 30
-          const thickness = Math.exp(Math.random() * 1.1 - 0.3); // ~0.7 – 2.5
-          if (Math.random() < 0.5) {
-            sx = Math.max(0.9, Math.min(70, length));
-            sy = Math.max(0.7, Math.min(6, thickness));
-          } else {
-            sx = Math.max(0.7, Math.min(6, thickness));
-            sy = Math.max(0.9, Math.min(70, length));
-          }
-          theta = Math.random() * Math.PI;
+        // 尺度：对数均匀采样，范围从 0.5 到 120 像素
+        const logScaleMin = Math.log(0.5);
+        const logScaleMax = Math.log(120);
+        const logScale = logScaleMin + Math.random() * (logScaleMax - logScaleMin);
+        const baseScale = Math.exp(logScale); // 几何平均尺度
+
+        // 长宽比：对数均匀采样，范围从 1:20 到 20:1 (即 0.05 ~ 20)
+        const logAspectMin = Math.log(0.05);
+        const logAspectMax = Math.log(20);
+        const logAspect = logAspectMin + Math.random() * (logAspectMax - logAspectMin);
+        const aspect = Math.exp(logAspect);
+
+        // 根据长宽比分配 sx 和 sy
+        let sx, sy;
+        if (Math.random() < 0.5) {
+          // 主轴在 x 方向
+          sx = baseScale * Math.sqrt(aspect);
+          sy = baseScale / Math.sqrt(aspect);
         } else {
-          // 普通：偏向接近圆形（aspect 多在 1–2.5）
-          const scale = Math.exp(Math.random() * 3.3 - 0.3); // ~0.7 – 25
-          const aspect = Math.exp((Math.random() - 0.5) * 1.6); // ~0.45 – 2.2
-          sx = Math.max(1.0, Math.min(80, scale * Math.sqrt(aspect)));
-          sy = Math.max(1.0, Math.min(80, scale / Math.sqrt(aspect)));
-          theta = Math.random() * Math.PI;
+          // 主轴在 y 方向
+          sx = baseScale / Math.sqrt(aspect);
+          sy = baseScale * Math.sqrt(aspect);
         }
-        return { cx, cy, sx, sy, theta };
-      }
 
-      // ---- 2. 生成候选椭圆的辅助函数 ----
-      function randomEllipseFromAnchor(anchor) {
-        // 中心在锚点附近随机偏移（±20px）
-        const cx = Math.max(0, Math.min(W - 1, anchor.x + (Math.random() - 0.5) * 40));
-        const cy = Math.max(0, Math.min(H - 1, anchor.y + (Math.random() - 0.5) * 40));
-        // 尺度、角度仍使用原有随机策略（普通圆形倾向）
-        const scale = Math.exp(Math.random() * 3.3 - 0.3);
-        const aspect = Math.exp((Math.random() - 0.5) * 1.6);
-        const sx = Math.max(1.0, Math.min(80, scale * Math.sqrt(aspect)));
-        const sy = Math.max(1.0, Math.min(80, scale / Math.sqrt(aspect)));
+        // 确保最小尺寸不低于 0.5 像素，最大不超过 120 像素（可根据需要调整）
+        sx = Math.max(0.5, Math.min(120, sx));
+        sy = Math.max(0.5, Math.min(120, sy));
+
+        // 角度：均匀 0 ~ π
         const theta = Math.random() * Math.PI;
+
         return { cx, cy, sx, sy, theta };
       }
 
+      function randomEllipseFromAnchor(anchor) {
+        // 中心在锚点附近随机偏移（±30px，范围可调）
+        const cx = Math.max(0, Math.min(W - 1, anchor.x + (Math.random() - 0.5) * 60));
+        const cy = Math.max(0, Math.min(H - 1, anchor.y + (Math.random() - 0.5) * 60));
+        // 尺度、长宽比、角度沿用新的大胆生成策略（但单独调用避免重复代码）
+        const base = randomEllipse(); // 生成形状参数，但中心用上面的
+        return { cx, cy, sx: base.sx, sy: base.sy, theta: base.theta };
+      }
       function mutate(e, strength) {
         // 尺度变异更温和，避免轻易拉成极细
         const n = {
@@ -528,37 +529,19 @@
         // ---- 3. 生成候选集（含细长） ----
         let best = null;
         const biasProb = 0.6; // 使用锚点的概率
-
-        const thinCount = Math.max(4, Math.floor(numCand * 0.10));
-        const normalCount = numCand - thinCount;
-
-        // 普通候选（偏向圆形）
-        for (let i = 0; i < normalCount; i++) {
+        for (let i = 0; i < numCand; i++) {
           let e;
           if (Math.random() < biasProb && anchors.length > 0) {
             const anchor = anchors[Math.floor(Math.random() * anchors.length)];
             e = randomEllipseFromAnchor(anchor);
           } else {
-            e = randomEllipse(false);
+            e = randomEllipse();
           }
           const scored = scoreEllipse(e);
           if (!best || scored.effective > best.effective) best = scored;
         }
 
-        // 细长候选（保持原有比例）
-        for (let i = 0; i < thinCount; i++) {
-          let e;
-          if (Math.random() < biasProb && anchors.length > 0) {
-            const anchor = anchors[Math.floor(Math.random() * anchors.length)];
-            e = randomEllipseFromAnchor(anchor);
-          } else {
-            e = randomEllipse(true);
-          }
-          const scored = scoreEllipse(e);
-          if (!best || scored.effective > best.effective) best = scored;
-        }
-
-        // ---- 4. 局部爬山（不变） ----
+        // 爬山（保留）
         let cur = best;
         for (let r = 0; r < numRefine; r++) {
           const strength = 1.0 - r / (numRefine + 1);
