@@ -536,7 +536,6 @@
         setProgress(0, '分解中…');
 
         const updateEvery = 1 //N > 300 ? 8 : (N > 100 ? 3 : 1);
-        const refineEvery = 64;
 
         for (let k = 0; k < N; k++) {
           const best = findBestEllipse(nCand, nRefine);
@@ -562,11 +561,9 @@
             document.getElementById('resInfo').textContent = '残差';
             await new Promise(r => setTimeout(r, 0));
           }
-          if ((k + 1) % refineEvery === 0) {
-            await refineShapes(3, 6);
-          }
           prevMSE = curMSE;
         }
+        await refineShapes(8, 12);
         ellipses.sort((a, b) => b.reduction - a.reduction);
         log(`完成 · ${ellipses.length} 个椭圆 · 最终 MSE ${mse().toFixed(2)}`);
         setProgress(100, `完成 · ${ellipses.length} 椭圆`);
