@@ -482,23 +482,83 @@
         const effective = col.reduction / penalty;
         return { ...e, color: col, reduction: col.reduction, effective };
       }
-
       function findBestEllipse(numCand, numRefine) {
+        // ---- 1. 从当前残差中提取“热点”锚点 ----
+        function getAnchors(numAnchors = 30) {
+          const sampleSize = Math.min(200, NPIX);
+          const indices = new Uint32Array(sampleSize);
+          for (let i = 0; i < sampleSize; i++) {
+            indices[i] = Math.floor(Math.random() * NPIX);
+          }
+          // 计算残差强度
+          const scores = new Float32Array(sampleSize);
+          for (let i = 0; i < sampleSize; i++) {
+            const idx = indices[i] * 3;
+            scores[i] = Math.abs(residual[idx]) + Math.abs(residual[idx + 1]) + Math.abs(residual[idx + 2]);
+          }
+          // 排序找到最大的 numAnchors 个
+          const sortedIndices = Array.from({ length: sampleSize }, (_, i) => i);
+          sortedIndices.sort((a, b) => scores[b] - scores[a]);
+          const anchors = [];
+          const count = Math.min(numAnchors, sampleSize);
+          for (let i = 0; i < count; i++) {
+            const idx = indices[sortedIndices[i]];
+            const x = idx % W;
+            const y = Math.floor(idx / W);
+            anchors.push({ x, y });
+          }
+          return anchors;
+        }
+        const anchors = getAnchors(30);
+
+        // ---- 2. 生成候选椭圆的辅助函数 ----
+        function randomEllipseFromAnchor(anchor) {
+          // 中心在锚点附近随机偏移（±20px）
+          const cx = Math.max(0, Math.min(W - 1, anchor.x + (Math.random() - 0.5) * 40));
+          const cy = Math.max(0, Math.min(H - 1, anchor.y + (Math.random() - 0.5) * 40));
+          // 尺度、角度仍使用原有随机策略（普通圆形倾向）
+          const scale = Math.exp(Math.random() * 3.3 - 0.3);
+          const aspect = Math.exp((Math.random() - 0.5) * 1.6);
+          const sx = Math.max(1.0, Math.min(80, scale * Math.sqrt(aspect)));
+          const sy = Math.max(1.0, Math.min(80, scale / Math.sqrt(aspect)));
+          const theta = Math.random() * Math.PI;
+          return { cx, cy, sx, sy, theta };
+        }
+
+        // ---- 3. 生成候选集（含细长） ----
         let best = null;
-        // 细长候选只占约 10%
+        const biasProb = 0.6; // 使用锚点的概率
+
         const thinCount = Math.max(4, Math.floor(numCand * 0.10));
         const normalCount = numCand - thinCount;
 
+        // 普通候选（偏向圆形）
         for (let i = 0; i < normalCount; i++) {
-          const e = scoreEllipse(randomEllipse(false));
-          if (!best || e.effective > best.effective) best = e;
-        }
-        for (let i = 0; i < thinCount; i++) {
-          const e = scoreEllipse(randomEllipse(true));
-          if (!best || e.effective > best.effective) best = e;
+          let e;
+          if (Math.random() < biasProb && anchors.length > 0) {
+            const anchor = anchors[Math.floor(Math.random() * anchors.length)];
+            e = randomEllipseFromAnchor(anchor);
+          } else {
+            e = randomEllipse(false);
+          }
+          const scored = scoreEllipse(e);
+          if (!best || scored.effective > best.effective) best = scored;
         }
 
-        // 爬山：同样用 effective 比较
+        // 细长候选（保持原有比例）
+        for (let i = 0; i < thinCount; i++) {
+          let e;
+          if (Math.random() < biasProb && anchors.length > 0) {
+            const anchor = anchors[Math.floor(Math.random() * anchors.length)];
+            e = randomEllipseFromAnchor(anchor);
+          } else {
+            e = randomEllipse(true);
+          }
+          const scored = scoreEllipse(e);
+          if (!best || scored.effective > best.effective) best = scored;
+        }
+
+        // ---- 4. 局部爬山（不变） ----
         let cur = best;
         for (let r = 0; r < numRefine; r++) {
           const strength = 1.0 - r / (numRefine + 1);
