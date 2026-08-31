@@ -1,0 +1,671 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>2D Gaussian Splat 启发式分解 · 512×512</title>
+<style>
+  :root {
+    --bg: #0c0e12;
+    --card: #161a22;
+    --border: #2a3140;
+    --accent: #5b8def;
+    --accent2: #3dd68c;
+    --text: #eef0f4;
+    --muted: #8b93a7;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    padding: 20px 24px 40px;
+    line-height: 1.5;
+  }
+  h1 { font-size: 1.35rem; font-weight: 600; margin-bottom: 4px; }
+  .subtitle { color: var(--muted); font-size: 0.88rem; margin-bottom: 18px; max-width: 900px; }
+  .controls {
+    display: flex; flex-wrap: wrap; gap: 10px; align-items: center;
+    margin-bottom: 16px; padding: 14px 16px;
+    background: var(--card); border: 1px solid var(--border); border-radius: 12px;
+  }
+  button, label.btn {
+    background: var(--accent); color: #fff; border: none;
+    padding: 8px 14px; border-radius: 8px; cursor: pointer;
+    font-size: 0.88rem; font-weight: 500; transition: filter 0.15s;
+  }
+  button:hover, label.btn:hover { filter: brightness(1.08); }
+  button:disabled { opacity: 0.4; cursor: not-allowed; filter: none; }
+  button.secondary { background: #2a3140; }
+  button.good { background: var(--accent2); color: #0c0e12; }
+  button.warn { background: #c47d2b; }
+  label.btn { display: inline-flex; align-items: center; }
+  input[type="file"] { display: none; }
+  .param {
+    display: flex; align-items: center; gap: 6px;
+    font-size: 0.82rem; color: var(--muted);
+  }
+  .param input[type="number"] {
+    width: 64px; padding: 5px 7px; border-radius: 6px;
+    border: 1px solid var(--border); background: #0f1218; color: var(--text);
+  }
+  .progress-wrap {
+    flex: 1; min-width: 160px; display: flex; flex-direction: column; gap: 3px;
+  }
+  .progress-label {
+    font-size: 0.78rem; color: var(--muted);
+    display: flex; justify-content: space-between;
+  }
+  progress {
+    width: 100%; height: 9px; border-radius: 5px; overflow: hidden; border: none;
+  }
+  progress::-webkit-progress-bar { background: #2a3140; border-radius: 5px; }
+  progress::-webkit-progress-value { background: var(--accent); border-radius: 5px; }
+  progress::-moz-progress-bar { background: var(--accent); }
+  .canvases {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 14px; margin-bottom: 14px;
+  }
+  .canvas-card {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 12px; padding: 10px; text-align: center;
+  }
+  .canvas-card h3 {
+    font-size: 0.8rem; font-weight: 500; color: var(--muted); margin-bottom: 6px;
+  }
+  canvas {
+    display: block; margin: 0 auto;
+    image-rendering: pixelated; border-radius: 4px; background: #000;
+    max-width: 100%; height: auto;
+  }
+  .info { font-size: 0.75rem; color: var(--muted); margin-top: 6px; }
+  .log {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 10px; padding: 10px 14px;
+    font-family: ui-monospace, "Cascadia Code", monospace;
+    font-size: 0.75rem; color: var(--muted);
+    max-height: 130px; overflow-y: auto; white-space: pre-wrap;
+  }
+  .hint {
+    margin-top: 10px; font-size: 0.8rem; color: var(--muted);
+    max-width: 900px;
+  }
+</style>
+</head>
+<body>
+  <h1>2D Gaussian Splat · 启发式搜索分解（512×512）</h1>
+  <p class="subtitle">
+    随机采样 + 局部爬山逐步添加各向异性高斯椭圆，颜色闭式最优。支持最多 5000 个椭圆，
+    结果可保存为量化二进制文件（.gs2d）并重新加载重建。
+  </p>
+
+  <div class="controls">
+    <label class="btn">上传图片<input type="file" id="fileInput" accept="image/*"></label>
+    <button id="btnSample" class="secondary">生成示例</button>
+    <button id="btnStart" disabled>开始分解</button>
+    <button id="btnAnimate" class="good" disabled>播放叠加动画</button>
+    <button id="btnSave" class="secondary" disabled>保存 .gs2d</button>
+    <label class="btn secondary">加载 .gs2d<input type="file" id="binInput" accept=".gs2d,application/octet-stream"></label>
+    <div class="param">椭圆数 <input type="number" id="numEllipses" value="256" min="5" max="5000" step="10"></div>
+    <div class="param">候选/步 <input type="number" id="numCandidates" value="60" min="10" max="300" step="10"></div>
+    <div class="param">爬山次数 <input type="number" id="numRefine" value="15" min="0" max="40" step="2"></div>
+    <div class="progress-wrap">
+      <div class="progress-label">
+        <span id="progressText">就绪</span>
+        <span id="progressPct">0%</span>
+      </div>
+      <progress id="progressBar" value="0" max="100"></progress>
+    </div>
+  </div>
+
+  <div class="canvases">
+    <div class="canvas-card">
+      <h3>目标图 (512×512)</h3>
+      <canvas id="srcCanvas" width="512" height="512"></canvas>
+      <div class="info" id="srcInfo">请上传或生成示例</div>
+    </div>
+    <div class="canvas-card">
+      <h3>当前重建</h3>
+      <canvas id="reconCanvas" width="512" height="512"></canvas>
+      <div class="info" id="reconInfo">—</div>
+    </div>
+    <div class="canvas-card">
+      <h3>残差 |Target − Recon|</h3>
+      <canvas id="resCanvas" width="512" height="512"></canvas>
+      <div class="info" id="resInfo">—</div>
+    </div>
+  </div>
+
+  <div class="log" id="log">等待操作…</div>
+  <p class="hint">
+    注意：512×512 + 高椭圆数会明显变慢。推荐先用 50–150 椭圆 + 40–80 候选验证效果。
+    二进制格式为量化 float（位置/尺度/角度/颜色），文件很小（约 32 字节/椭圆）。
+  </p>
+
+<script>
+(() => {
+  const W = 512, H = 512, NPIX = W * H;
+  const srcCanvas = document.getElementById('srcCanvas');
+  const reconCanvas = document.getElementById('reconCanvas');
+  const resCanvas = document.getElementById('resCanvas');
+  const srcCtx = srcCanvas.getContext('2d', { willReadFrequently: true });
+  const reconCtx = reconCanvas.getContext('2d');
+  const resCtx = resCanvas.getContext('2d');
+
+  const progressBar = document.getElementById('progressBar');
+  const progressText = document.getElementById('progressText');
+  const progressPct = document.getElementById('progressPct');
+  const logEl = document.getElementById('log');
+  const btnStart = document.getElementById('btnStart');
+  const btnAnimate = document.getElementById('btnAnimate');
+  const btnSave = document.getElementById('btnSave');
+
+  let target = null;       // Float32Array NPIX*3
+  let recon = null;
+  let residual = null;
+  let ellipses = [];
+  let animating = false;
+  let running = false;
+
+  function log(msg) {
+    const t = new Date().toLocaleTimeString();
+    logEl.textContent = `[${t}] ${msg}\n` + logEl.textContent.slice(0, 2000);
+  }
+
+  function setProgress(p, text) {
+    const v = Math.max(0, Math.min(100, p));
+    progressBar.value = v;
+    progressPct.textContent = Math.round(v) + '%';
+    if (text) progressText.textContent = text;
+  }
+
+  // ---------- 图像工具 ----------
+  function imageDataToFloatRGB(imgData) {
+    const d = imgData.data;
+    const out = new Float32Array(NPIX * 3);
+    for (let i = 0, j = 0; i < d.length; i += 4, j += 3) {
+      out[j] = d[i]; out[j+1] = d[i+1]; out[j+2] = d[i+2];
+    }
+    return out;
+  }
+
+  function floatRGBToImageData(rgb, imgData) {
+    const d = imgData.data;
+    for (let i = 0, j = 0; j < rgb.length; i += 4, j += 3) {
+      d[i]   = Math.max(0, Math.min(255, Math.round(rgb[j])));
+      d[i+1] = Math.max(0, Math.min(255, Math.round(rgb[j+1])));
+      d[i+2] = Math.max(0, Math.min(255, Math.round(rgb[j+2])));
+      d[i+3] = 255;
+    }
+  }
+
+  function computeResidual() {
+    for (let i = 0; i < residual.length; i++) residual[i] = target[i] - recon[i];
+  }
+
+  function mse() {
+    let s = 0;
+    for (let i = 0; i < residual.length; i++) s += residual[i] * residual[i];
+    return s / residual.length;
+  }
+
+  function drawResidual() {
+    const img = resCtx.createImageData(W, H);
+    const d = img.data;
+    let maxA = 1e-3;
+    for (let i = 0; i < residual.length; i += 3) {
+      const a = Math.abs(residual[i]) + Math.abs(residual[i+1]) + Math.abs(residual[i+2]);
+      if (a > maxA) maxA = a;
+    }
+    for (let p = 0, i = 0; p < NPIX; p++, i += 3) {
+      const v = (Math.abs(residual[i]) + Math.abs(residual[i+1]) + Math.abs(residual[i+2])) / maxA;
+      const g = Math.round(v * 255);
+      const o = p * 4;
+      d[o] = d[o+1] = d[o+2] = g; d[o+3] = 255;
+    }
+    resCtx.putImageData(img, 0, 0);
+  }
+
+  function drawRecon() {
+    const img = reconCtx.createImageData(W, H);
+    floatRGBToImageData(recon, img);
+    reconCtx.putImageData(img, 0, 0);
+  }
+
+  // ---------- 高斯评估 & 应用 ----------
+  function evalGaussian(cx, cy, sx, sy, theta) {
+    const cos = Math.cos(theta), sin = Math.sin(theta);
+    const invSx2 = 1 / (sx * sx), invSy2 = 1 / (sy * sy);
+    const rad = Math.ceil(3.1 * Math.max(sx, sy));
+    const x0 = Math.max(0, Math.floor(cx - rad));
+    const x1 = Math.min(W - 1, Math.ceil(cx + rad));
+    const y0 = Math.max(0, Math.floor(cy - rad));
+    const y1 = Math.min(H - 1, Math.ceil(cy + rad));
+
+    let sumG2 = 0, sumR = 0, sumG = 0, sumB = 0;
+
+    for (let y = y0; y <= y1; y++) {
+      for (let x = x0; x <= x1; x++) {
+        const dx = x - cx, dy = y - cy;
+        const rx =  dx * cos + dy * sin;
+        const ry = -dx * sin + dy * cos;
+        const g = Math.exp(-0.5 * (rx * rx * invSx2 + ry * ry * invSy2));
+        if (g < 0.01) continue;
+        const p = (y * W + x) * 3;
+        sumG2 += g * g;
+        sumR += residual[p]     * g;
+        sumG += residual[p + 1] * g;
+        sumB += residual[p + 2] * g;
+      }
+    }
+    return { sumG2, sumR, sumG, sumB };
+  }
+
+  function optimalColor(stats) {
+    if (stats.sumG2 < 1e-6) return { r: 0, g: 0, b: 0, reduction: 0 };
+    const r = stats.sumR / stats.sumG2;
+    const g = stats.sumG / stats.sumG2;
+    const b = stats.sumB / stats.sumG2;
+    const reduction = (stats.sumR * stats.sumR + stats.sumG * stats.sumG + stats.sumB * stats.sumB) / stats.sumG2;
+    return { r, g, b, reduction };
+  }
+
+  function applyGaussian(cx, cy, sx, sy, theta, color) {
+    const cos = Math.cos(theta), sin = Math.sin(theta);
+    const invSx2 = 1 / (sx * sx), invSy2 = 1 / (sy * sy);
+    const rad = Math.ceil(3.1 * Math.max(sx, sy));
+    const x0 = Math.max(0, Math.floor(cx - rad));
+    const x1 = Math.min(W - 1, Math.ceil(cx + rad));
+    const y0 = Math.max(0, Math.floor(cy - rad));
+    const y1 = Math.min(H - 1, Math.ceil(cy + rad));
+
+    for (let y = y0; y <= y1; y++) {
+      for (let x = x0; x <= x1; x++) {
+        const dx = x - cx, dy = y - cy;
+        const rx =  dx * cos + dy * sin;
+        const ry = -dx * sin + dy * cos;
+        const g = Math.exp(-0.5 * (rx * rx * invSx2 + ry * ry * invSy2));
+        if (g < 0.01) continue;
+        const p = (y * W + x) * 3;
+        const dr = color.r * g, dg = color.g * g, db = color.b * g;
+        recon[p]     += dr;
+        recon[p + 1] += dg;
+        recon[p + 2] += db;
+        residual[p]     -= dr;
+        residual[p + 1] -= dg;
+        residual[p + 2] -= db;
+      }
+    }
+  }
+
+  // ---------- 启发式搜索 ----------
+  function randomEllipse() {
+    const cx = Math.random() * W;
+    const cy = Math.random() * H;
+    const scale = Math.exp(Math.random() * 3.5 - 0.3); // ~0.7 – 30
+    const aspect = Math.exp((Math.random() - 0.5) * 1.9);
+    const sx = Math.max(1.5, Math.min(90, scale * Math.sqrt(aspect)));
+    const sy = Math.max(1.5, Math.min(90, scale / Math.sqrt(aspect)));
+    const theta = Math.random() * Math.PI;
+    return { cx, cy, sx, sy, theta };
+  }
+
+  function mutate(e, strength) {
+    const n = {
+      cx: e.cx + (Math.random() - 0.5) * 22 * strength,
+      cy: e.cy + (Math.random() - 0.5) * 22 * strength,
+      sx: e.sx * Math.exp((Math.random() - 0.5) * 0.55 * strength),
+      sy: e.sy * Math.exp((Math.random() - 0.5) * 0.55 * strength),
+      theta: e.theta + (Math.random() - 0.5) * 0.65 * strength
+    };
+    n.cx = Math.max(0, Math.min(W - 1, n.cx));
+    n.cy = Math.max(0, Math.min(H - 1, n.cy));
+    n.sx = Math.max(1.2, Math.min(100, n.sx));
+    n.sy = Math.max(1.2, Math.min(100, n.sy));
+    return n;
+  }
+
+  function scoreEllipse(e) {
+    const stats = evalGaussian(e.cx, e.cy, e.sx, e.sy, e.theta);
+    const col = optimalColor(stats);
+    return { ...e, color: col, reduction: col.reduction };
+  }
+
+  function findBestEllipse(numCand, numRefine) {
+    let best = null;
+    for (let i = 0; i < numCand; i++) {
+      const e = scoreEllipse(randomEllipse());
+      if (!best || e.reduction > best.reduction) best = e;
+    }
+    let cur = best;
+    for (let r = 0; r < numRefine; r++) {
+      const strength = 1.0 - r / (numRefine + 1);
+      for (let t = 0; t < 5; t++) {
+        const mut = scoreEllipse(mutate(cur, strength));
+        if (mut.reduction > cur.reduction) cur = mut;
+      }
+    }
+    return cur;
+  }
+
+  // ---------- 主分解 ----------
+  async function decompose() {
+    if (!target || running) return;
+    running = true;
+    btnStart.disabled = true;
+    btnAnimate.disabled = true;
+    btnSave.disabled = true;
+    animating = false;
+
+    const N = Math.max(5, Math.min(5000, +document.getElementById('numEllipses').value || 80));
+    const nCand = Math.max(10, Math.min(300, +document.getElementById('numCandidates').value || 60));
+    const nRefine = Math.max(0, Math.min(40, +document.getElementById('numRefine').value || 8));
+
+    recon = new Float32Array(NPIX * 3);
+    residual = new Float32Array(NPIX * 3);
+    computeResidual();
+    ellipses = [];
+
+    drawRecon();
+    drawResidual();
+
+    let prevMSE = mse();
+    log(`开始分解 · ${N} 椭圆 · ${nCand} 候选 + ${nRefine} 爬山 · 512×512`);
+    setProgress(0, '分解中…');
+
+    const updateEvery = 1 // N > 200 ? 5 : (N > 80 ? 2 : 1);
+
+    for (let k = 0; k < N; k++) {
+      const best = findBestEllipse(nCand, nRefine);
+      if (!best || best.reduction < 0.8) {
+        log(`第 ${k + 1} 步增益过小，提前停止`);
+        break;
+      }
+
+      applyGaussian(best.cx, best.cy, best.sx, best.sy, best.theta, best.color);
+      ellipses.push({
+        cx: best.cx, cy: best.cy, sx: best.sx, sy: best.sy, theta: best.theta,
+        r: best.color.r, g: best.color.g, b: best.color.b,
+        reduction: best.reduction
+      });
+
+      const curMSE = mse();
+      if ((k + 1) % updateEvery === 0 || k === N - 1) {
+        drawRecon();
+        drawResidual();
+        const pct = ((k + 1) / N) * 100;
+        setProgress(pct, `已添加 ${k + 1}/${N} · MSE ${curMSE.toFixed(1)}`);
+        document.getElementById('reconInfo').textContent = `椭圆 ${k + 1} · ↓${(prevMSE - curMSE).toFixed(1)}`;
+        document.getElementById('resInfo').textContent = '残差';
+        await new Promise(r => setTimeout(r, 0));
+      }
+      prevMSE = curMSE;
+    }
+
+    ellipses.sort((a, b) => b.reduction - a.reduction);
+    log(`完成 · ${ellipses.length} 个椭圆 · 最终 MSE ${mse().toFixed(2)}`);
+    setProgress(100, `完成 · ${ellipses.length} 椭圆`);
+    btnStart.disabled = false;
+    btnAnimate.disabled = ellipses.length === 0;
+    btnSave.disabled = ellipses.length === 0;
+    running = false;
+  }
+
+  // ---------- 动画 ----------
+  async function playAnimation() {
+    if (!ellipses.length || animating) return;
+    animating = true;
+    btnAnimate.disabled = true;
+    btnStart.disabled = true;
+
+    recon.fill(0);
+    if (target) computeResidual();
+
+    const reconData = reconCtx.createImageData(W, H);
+    for (let i = 3; i < reconData.data.length; i += 4) reconData.data[i] = 255;
+
+    log(`动画：按贡献叠加 ${ellipses.length} 个高斯`);
+    setProgress(0, '动画中…');
+
+    const step = ellipses.length > 500 ? 3 : (ellipses.length > 150 ? 2 : 1);
+    for (let k = 0; k < ellipses.length; k++) {
+      const e = ellipses[k];
+      applyGaussian(e.cx, e.cy, e.sx, e.sy, e.theta, { r: e.r, g: e.g, b: e.b });
+      if ((k + 1) % step === 0 || k === ellipses.length - 1) {
+        floatRGBToImageData(recon, reconData);
+        reconCtx.putImageData(reconData, 0, 0);
+        const pct = ((k + 1) / ellipses.length) * 100;
+        setProgress(pct, `叠加 ${k + 1}/${ellipses.length}`);
+        document.getElementById('reconInfo').textContent = `贡献第 ${k + 1} 大`;
+        const delay = ellipses.length > 300 ? 8 : (k < 15 ? 120 : 25);
+        await new Promise(r => setTimeout(r, delay));
+      }
+    }
+
+    if (target) {
+      computeResidual();
+      drawResidual();
+    }
+    setProgress(100, '动画完成');
+    log('叠加动画结束');
+    animating = false;
+    btnAnimate.disabled = false;
+    btnStart.disabled = false;
+  }
+
+  // ---------- 二进制保存 / 加载（量化） ----------
+  // 格式 (little-endian):
+  //   magic "GS2D" (4B)
+  //   version uint16 = 1
+  //   width  uint16
+  //   height uint16
+  //   count  uint32
+  //   每个椭圆 32 字节:
+  //     cx,cy,sx,sy,theta  : float32 ×5
+  //     r,g,b              : float32 ×3   （保留符号，支持负残差颜色）
+  // 总大小 ≈ 16 + 32*N 字节
+  function saveBinary() {
+    if (!ellipses.length) return;
+    const count = ellipses.length;
+    const buf = new ArrayBuffer(16 + 32 * count);
+    const view = new DataView(buf);
+    // magic
+    view.setUint8(0, 0x47); // G
+    view.setUint8(1, 0x53); // S
+    view.setUint8(2, 0x32); // 2
+    view.setUint8(3, 0x44); // D
+    view.setUint16(4, 1, true);      // version
+    view.setUint16(6, W, true);
+    view.setUint16(8, H, true);
+    view.setUint32(10, count, true);
+    // pad to 16
+    view.setUint16(14, 0, true);
+
+    let off = 16;
+    for (const e of ellipses) {
+      view.setFloat32(off, e.cx, true); off += 4;
+      view.setFloat32(off, e.cy, true); off += 4;
+      view.setFloat32(off, e.sx, true); off += 4;
+      view.setFloat32(off, e.sy, true); off += 4;
+      view.setFloat32(off, e.theta, true); off += 4;
+      view.setFloat32(off, e.r, true); off += 4;
+      view.setFloat32(off, e.g, true); off += 4;
+      view.setFloat32(off, e.b, true); off += 4;
+    }
+
+    const blob = new Blob([buf], { type: 'application/octet-stream' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `splats_${W}x${H}_${count}.gs2d`;
+    a.click();
+    URL.revokeObjectURL(url);
+    log(`已保存 ${count} 个椭圆 → .gs2d（${(buf.byteLength/1024).toFixed(1)} KB）`);
+  }
+
+  function loadBinary(file) {
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const buf = reader.result;
+        const view = new DataView(buf);
+        if (view.byteLength < 16) throw new Error('文件过短');
+        const magic = String.fromCharCode(view.getUint8(0), view.getUint8(1), view.getUint8(2), view.getUint8(3));
+        if (magic !== 'GS2D') throw new Error('不是有效的 GS2D 文件');
+        const ver = view.getUint16(4, true);
+        if (ver !== 1) throw new Error('不支持的版本 ' + ver);
+        const w = view.getUint16(6, true);
+        const h = view.getUint16(8, true);
+        const count = view.getUint32(10, true);
+        if (w !== W || h !== H) {
+          log(`警告：文件分辨率 ${w}×${h}，当前固定为 ${W}×${H}，仍尝试加载`);
+        }
+        if (16 + 32 * count > view.byteLength) throw new Error('数据长度不足');
+
+        const loaded = [];
+        let off = 16;
+        for (let i = 0; i < count; i++) {
+          const e = {
+            cx: view.getFloat32(off, true), cy: view.getFloat32(off + 4, true),
+            sx: view.getFloat32(off + 8, true), sy: view.getFloat32(off + 12, true),
+            theta: view.getFloat32(off + 16, true),
+            r: view.getFloat32(off + 20, true), g: view.getFloat32(off + 24, true),
+            b: view.getFloat32(off + 28, true),
+            reduction: 0
+          };
+          loaded.push(e);
+          off += 32;
+        }
+
+        ellipses = loaded;
+        // 重建图像
+        recon = new Float32Array(NPIX * 3);
+        residual = new Float32Array(NPIX * 3);
+        if (target) computeResidual();
+        else residual.fill(0);
+
+        for (const e of ellipses) {
+          applyGaussian(e.cx, e.cy, e.sx, e.sy, e.theta, { r: e.r, g: e.g, b: e.b });
+        }
+        drawRecon();
+        if (target) {
+          computeResidual();
+          drawResidual();
+        } else {
+          resCtx.fillStyle = '#000';
+          resCtx.fillRect(0, 0, W, H);
+        }
+
+        document.getElementById('reconInfo').textContent = `已加载 ${count} 个椭圆`;
+        document.getElementById('resInfo').textContent = target ? '残差' : '无目标图';
+        btnAnimate.disabled = false;
+        btnSave.disabled = false;
+        btnStart.disabled = !target;
+        setProgress(100, `已加载 ${count} 椭圆`);
+        log(`成功加载 ${count} 个高斯椭圆（${(buf.byteLength/1024).toFixed(1)} KB）`);
+      } catch (err) {
+        log('加载失败: ' + err.message);
+        alert('加载失败: ' + err.message);
+      }
+    };
+    reader.readAsArrayBuffer(file);
+  }
+
+  // ---------- 示例 & 上传 ----------
+  function generateSample() {
+    const img = srcCtx.createImageData(W, H);
+    const d = img.data;
+    for (let i = 0; i < d.length; i += 4) {
+      d[i] = 10; d[i+1] = 12; d[i+2] = 20; d[i+3] = 255;
+    }
+    // 更多一点的椭圆，适配 512
+    const blobs = [
+      { cx: 140, cy: 160, sx: 70, sy: 38, th: 0.4, r: 230, g: 65, b: 50 },
+      { cx: 350, cy: 130, sx: 50, sy: 78, th: -0.5, r: 45, g: 145, b: 230 },
+      { cx: 256, cy: 300, sx: 100, sy: 52, th: 0.9, r: 60, g: 205, b: 105 },
+      { cx: 100, cy: 380, sx: 36, sy: 36, th: 0, r: 245, g: 195, b: 45 },
+      { cx: 400, cy: 360, sx: 65, sy: 30, th: 1.1, r: 185, g: 75, b: 205 },
+      { cx: 280, cy: 200, sx: 28, sy: 48, th: -0.3, r: 255, g: 145, b: 85 },
+      { cx: 190, cy: 420, sx: 80, sy: 22, th: 0.15, r: 35, g: 175, b: 195 },
+      { cx: 420, cy: 220, sx: 40, sy: 55, th: 0.7, r: 220, g: 120, b: 60 },
+      { cx: 80, cy: 80, sx: 25, sy: 45, th: -0.8, r: 100, g: 80, b: 240 },
+    ];
+    for (const b of blobs) {
+      const cos = Math.cos(b.th), sin = Math.sin(b.th);
+      const invSx2 = 1 / (b.sx * b.sx), invSy2 = 1 / (b.sy * b.sy);
+      for (let y = 0; y < H; y++) {
+        for (let x = 0; x < W; x++) {
+          const dx = x - b.cx, dy = y - b.cy;
+          const rx = dx * cos + dy * sin;
+          const ry = -dx * sin + dy * cos;
+          const e = Math.exp(-0.5 * (rx * rx * invSx2 + ry * ry * invSy2));
+          if (e < 0.01) continue;
+          const i = (y * W + x) * 4;
+          d[i]   = Math.min(255, d[i]   + b.r * e);
+          d[i+1] = Math.min(255, d[i+1] + b.g * e);
+          d[i+2] = Math.min(255, d[i+2] + b.b * e);
+        }
+      }
+    }
+    srcCtx.putImageData(img, 0, 0);
+    target = imageDataToFloatRGB(img);
+    document.getElementById('srcInfo').textContent = '示例（合成高斯 · 512×512）';
+    resetState();
+    log('已生成 512×512 示例图');
+  }
+
+  function loadFile(file) {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      const size = Math.min(img.width, img.height);
+      const sx = (img.width - size) / 2, sy = (img.height - size) / 2;
+      srcCtx.drawImage(img, sx, sy, size, size, 0, 0, W, H);
+      const imgData = srcCtx.getImageData(0, 0, W, H);
+      target = imageDataToFloatRGB(imgData);
+      document.getElementById('srcInfo').textContent = file.name + ' → 512×512';
+      resetState();
+      log(`已加载并缩放到 512×512: ${file.name}`);
+      URL.revokeObjectURL(url);
+    };
+    img.src = url;
+  }
+
+  function resetState() {
+    recon = new Float32Array(NPIX * 3);
+    residual = new Float32Array(NPIX * 3);
+    if (target) computeResidual();
+    ellipses = [];
+    reconCtx.fillStyle = '#000';
+    reconCtx.fillRect(0, 0, W, H);
+    resCtx.fillStyle = '#000';
+    resCtx.fillRect(0, 0, W, H);
+    btnStart.disabled = !target;
+    btnAnimate.disabled = true;
+    btnSave.disabled = true;
+    setProgress(0, '就绪');
+    document.getElementById('reconInfo').textContent = '—';
+    document.getElementById('resInfo').textContent = '—';
+  }
+
+  // 事件
+  document.getElementById('fileInput').addEventListener('change', e => {
+    const f = e.target.files[0];
+    if (f) loadFile(f);
+  });
+  document.getElementById('binInput').addEventListener('change', e => {
+    const f = e.target.files[0];
+    if (f) loadBinary(f);
+  });
+  document.getElementById('btnSample').addEventListener('click', generateSample);
+  btnStart.addEventListener('click', () => decompose());
+  btnAnimate.addEventListener('click', () => playAnimation());
+  btnSave.addEventListener('click', () => saveBinary());
+
+  generateSample();
+})();
+</script>
+</body>
+</html>
