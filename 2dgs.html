@@ -536,6 +536,7 @@
         setProgress(0, '分解中…');
 
         const updateEvery = 1 //N > 300 ? 8 : (N > 100 ? 3 : 1);
+        const refineEvery = 64;
 
         for (let k = 0; k < N; k++) {
           const best = findBestEllipse(nCand, nRefine);
@@ -561,9 +562,11 @@
             document.getElementById('resInfo').textContent = '残差';
             await new Promise(r => setTimeout(r, 0));
           }
+          if ((k + 1) % refineEvery === 0) {
+            await refineShapes(3, 6);
+          }
           prevMSE = curMSE;
         }
-
         ellipses.sort((a, b) => b.reduction - a.reduction);
         log(`完成 · ${ellipses.length} 个椭圆 · 最终 MSE ${mse().toFixed(2)}`);
         setProgress(100, `完成 · ${ellipses.length} 椭圆`);
@@ -571,6 +574,102 @@
         btnAnimate.disabled = ellipses.length === 0;
         btnSave.disabled = ellipses.length === 0;
         running = false;
+      }
+      // ---------- 全局形状+颜色联合微调（局部扰动爬山） ----------
+      async function refineShapes(iterations = 3, perturbsPerEllipse = 6) {
+        if (ellipses.length === 0) return;
+        log(`开始形状+颜色联合微调 (${iterations} 轮，每轮每椭圆 ${perturbsPerEllipse} 次扰动)...`);
+
+        // 先把当前重建清掉并重算一遍，保证残差精确（防止浮点误差累积）
+        recon.fill(0);
+        for (const e of ellipses) {
+          applyGaussian(e.cx, e.cy, e.sx, e.sy, e.theta, { r: e.r, g: e.g, b: e.b });
+        }
+        computeResidual();
+
+        for (let iter = 0; iter < iterations; iter++) {
+          // 打乱处理顺序，避免固定的先后顺序影响结果
+          const indices = ellipses.map((_, i) => i);
+          for (let i = indices.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [indices[i], indices[j]] = [indices[j], indices[i]];
+          }
+
+          let acceptedCount = 0;
+          for (const idx of indices) {
+            const e = ellipses[idx];
+
+            // 1. 把当前椭圆从画面中移除（相当于把它的贡献加回残差）
+            applyGaussian(e.cx, e.cy, e.sx, e.sy, e.theta, { r: -e.r, g: -e.g, b: -e.b });
+
+            // 2. 评估“原始形状”在当前残差下的表现（作为基准线）
+            const oldStats = evalGaussian(e.cx, e.cy, e.sx, e.sy, e.theta);
+            const oldCol = optimalColor(oldStats);
+            const oldGain = oldCol.reduction;
+
+            // 3. 初始化最佳候选为原始形状
+            let bestCx = e.cx, bestCy = e.cy, bestSx = e.sx, bestSy = e.sy, bestTheta = e.theta;
+            let bestCol = oldCol;
+            let bestGain = oldGain;
+
+            // 4. 尝试若干次随机扰动（微动）
+            for (let p = 0; p < perturbsPerEllipse; p++) {
+              // 变异强度用 0.4，比搜索时更温柔，只做微调
+              const mutated = mutate(e, 0.4);
+              // 确保不超出边界（mutate 里已经有 clamp）
+              const stats = evalGaussian(mutated.cx, mutated.cy, mutated.sx, mutated.sy, mutated.theta);
+              const col = optimalColor(stats);
+
+              // 注意：这里要用带长宽比惩罚的有效增益（effective）比较，保持一致
+              const penalty = aspectPenalty(mutated.sx, mutated.sy);
+              const effective = col.reduction / penalty;
+
+              // 原形状也要算有效增益
+              const oldPenalty = aspectPenalty(e.sx, e.sy);
+              const oldEffective = oldGain / oldPenalty;
+
+              if (effective > oldEffective) {
+                // 只记录最佳扰动（实际微调幅度不会太大）
+                if (col.reduction > bestGain) {
+                  bestGain = col.reduction;
+                  bestCol = col;
+                  bestCx = mutated.cx;
+                  bestCy = mutated.cy;
+                  bestSx = mutated.sx;
+                  bestSy = mutated.sy;
+                  bestTheta = mutated.theta;
+                }
+              }
+            }
+
+            // 5. 如果找到了明显更好的形状（增益提升超过 2%），则接受微动
+            if (bestGain > oldGain * 1.02) {
+              // 用新形状和新颜色应用回去
+              applyGaussian(bestCx, bestCy, bestSx, bestSy, bestTheta, { r: bestCol.r, g: bestCol.g, b: bestCol.b });
+              // 更新存储的数据
+              e.cx = bestCx; e.cy = bestCy;
+              e.sx = bestSx; e.sy = bestSy;
+              e.theta = bestTheta;
+              e.r = bestCol.r; e.g = bestCol.g; e.b = bestCol.b;
+              e.reduction = bestCol.reduction;
+              acceptedCount++;
+            } else {
+              // 没有更好的扰动，就原封不动贴回去
+              applyGaussian(e.cx, e.cy, e.sx, e.sy, e.theta, { r: e.r, g: e.g, b: e.b });
+            }
+          }
+
+          // 每轮结束后刷新界面
+          drawRecon();
+          drawResidual();
+          const pct = 60 + ((iter + 1) / iterations) * 30;
+          setProgress(pct, `形状微调 ${iter + 1}/${iterations} · 接受 ${acceptedCount} 个改动 · MSE ${mse().toFixed(2)}`);
+          log(`微调第 ${iter + 1} 轮：${acceptedCount} 个椭圆发生了微动`);
+          await new Promise(r => setTimeout(r, 0));
+        }
+
+        // 最后按贡献重新排序（好看）
+        log(`形状微调结束 · 最终 MSE ${mse().toFixed(2)}`);
       }
 
       // ---------- 动画 ----------
