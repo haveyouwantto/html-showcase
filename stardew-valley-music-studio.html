@@ -1,0 +1,2056 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>星露谷物语音乐编辑器 · 木纹版</title>
+    <style>
+        :root {
+            --bg: #2b1e12;
+            --panel-bg: #3f2a1a;
+            --toolbar-bg: #4a3222;
+            --cell-empty: #e8d5b5;
+            --cell-empty-even: #d9c39a;
+            --cell-border: #b89a6a;
+            --cell-hover: #f0e2c8;
+            --flute-color: #8B5E3C;
+            --flute-text: #fff8e7;
+            --drum-color: #7a6a5a;
+            --drum-text: #ffffff;
+            --measure-border: #6b4f35;
+            --header-bg: #5a3e2b;
+            --header-text: #f5e6c8;
+            --playerbar-color: #ff6b6b;
+            --memory-color: #ffa500;
+            --track-name-bg: #4a3222;
+            --track-name-text: #f5e6c8;
+            --add-btn: #7a5a3a;
+            --selected-instr: #ff9800;
+            --piano-bg: #3f2e1e;
+            --piano-white: #f5e6c8;
+            --piano-black: #1a120a;
+            --piano-highlight: #ff6b6b;
+            --piano-playing: #ffd700;
+            --wood-dark: #2b1e12;
+            --wood-mid: #4a3222;
+            --wood-light: #8b6b4a;
+            --wood-border: #5a3e2b;
+            --wood-text: #f5e6c8;
+            --wood-shadow: rgba(0,0,0,0.4);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+        html, body {
+            height: 100%;
+            overflow: hidden;
+        }
+        body {
+            background: var(--bg);
+            font-family: 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+            color: #fff;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* 工具栏 */
+        .toolbar {
+            background: var(--toolbar-bg);
+            padding: 8px 14px;
+            display: flex;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 8px;
+            border-bottom: 3px solid var(--wood-dark);
+            box-shadow: 0 2px 6px var(--wood-shadow);
+            z-index: 100;
+            flex-shrink: 0;
+        }
+        .toolbar .group {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            flex-wrap: wrap;
+        }
+        .toolbar label {
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--wood-text);
+            white-space: nowrap;
+            text-shadow: 1px 1px 2px rgba(0,0,0,0.6);
+        }
+        .toolbar button {
+            background: var(--wood-light);
+            border: 1px solid var(--wood-border);
+            color: #fff;
+            padding: 5px 12px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 12px;
+            font-weight: 600;
+            transition: all 0.2s;
+            white-space: nowrap;
+            text-shadow: 1px 1px 2px rgba(0,0,0,0.6);
+            box-shadow: inset 0 1px 0 rgba(255,255,255,0.2), 0 2px 4px rgba(0,0,0,0.3);
+        }
+        .toolbar button:hover {
+            background: #a07a55;
+            border-color: #8b6b4a;
+            box-shadow: inset 0 1px 0 rgba(255,255,255,0.3), 0 2px 6px rgba(0,0,0,0.4);
+        }
+        .toolbar button:active {
+            transform: scale(0.96);
+            box-shadow: inset 0 2px 4px rgba(0,0,0,0.4);
+        }
+        .toolbar button.active {
+            background: var(--selected-instr);
+            border-color: #ffcc00;
+            color: #000;
+            text-shadow: none;
+            box-shadow: 0 0 12px rgba(255,152,0,0.6);
+        }
+        .toolbar button.play-btn {
+            background: #6a8a3a;
+            border-color: #4a6a2a;
+            font-size: 14px;
+            padding: 5px 16px;
+        }
+        .toolbar button.play-btn:hover {
+            background: #7a9a4a;
+        }
+        .toolbar button.stop-btn {
+            background: #a04040;
+            border-color: #6a2020;
+            font-size: 14px;
+            padding: 5px 16px;
+        }
+        .toolbar button.stop-btn:hover {
+            background: #b05050;
+        }
+        .bpm-input {
+            width: 55px;
+            background: #3a2a1a;
+            border: 1px solid var(--wood-border);
+            color: var(--wood-text);
+            padding: 4px 6px;
+            border-radius: 5px;
+            font-size: 13px;
+            font-weight: 600;
+            text-align: center;
+            box-shadow: inset 0 2px 4px rgba(0,0,0,0.3);
+        }
+        .bpm-input:focus {
+            outline: none;
+            border-color: #ff9800;
+        }
+
+        .instrument-toggle {
+            display: flex;
+            gap: 3px;
+            flex-wrap: wrap;
+        }
+        .instrument-toggle button {
+            font-size: 14px;
+            padding: 5px 8px;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            background: #5a3e2b;
+            border: 1px solid #6b4f35;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.2s;
+            text-shadow: none;
+        }
+        .instrument-toggle button:hover {
+            background: #7a5a3a;
+        }
+        .instrument-toggle button.active {
+            background: var(--selected-instr);
+            border-color: #ffcc00;
+            box-shadow: 0 0 12px rgba(255,152,0,0.5);
+        }
+        .instrument-toggle button .instr-label {
+            font-size: 10px;
+            font-weight: 600;
+            color: #ddd;
+        }
+        .instrument-toggle button.active .instr-label {
+            color: #000;
+        }
+
+        .add-track-btn {
+            background: #7a5a3a !important;
+            border-color: #5a3e2b !important;
+            font-size: 16px !important;
+            padding: 5px 14px !important;
+            font-weight: 700;
+            text-shadow: none;
+        }
+        .add-track-btn:hover {
+            background: #8b6b4a !important;
+            border-color: #6b4f35 !important;
+        }
+
+        /* 主内容 */
+        .main-content {
+            flex: 1;
+            overflow: auto;
+            position: relative;
+            background: var(--bg);
+            min-height: 0;
+        }
+        .main-content::-webkit-scrollbar {
+            width: 10px;
+            height: 10px;
+        }
+        .main-content::-webkit-scrollbar-track {
+            background: #1a120a;
+        }
+        .main-content::-webkit-scrollbar-thumb {
+            background: #5a3e2b;
+            border-radius: 5px;
+            border: 2px solid #2b1e12;
+        }
+        .main-content::-webkit-scrollbar-thumb:hover {
+            background: #8b6b4a;
+        }
+
+        .grid-content {
+            display: inline-block;
+            min-width: 100%;
+            padding: 6px;
+            position: relative;
+        }
+
+        .header-row {
+            display: flex;
+            position: sticky;
+            top: 0;
+            z-index: 50;
+            background: var(--header-bg);
+            border-radius: 8px 8px 0 0;
+            overflow: hidden;
+            cursor: pointer;
+            flex-shrink: 0;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.5);
+        }
+        .header-spacer {
+            width: 70px;
+            min-width: 70px;
+            background: var(--track-name-bg);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 11px;
+            font-weight: 700;
+            color: var(--wood-text);
+            border-right: 2px solid #2b1e12;
+            text-shadow: 1px 1px 2px rgba(0,0,0,0.6);
+        }
+        .header-measures {
+            display: flex;
+            flex: 1;
+        }
+        .header-measure {
+            display: flex;
+            flex-direction: column;
+            cursor: pointer;
+            border-right: 2px solid rgba(0,0,0,0.3);
+            transition: background 0.2s;
+            position: relative;
+        }
+        .header-measure:hover {
+            background: rgba(255,255,255,0.1);
+        }
+        .header-measure-number {
+            text-align: center;
+            font-size: 10px;
+            font-weight: 700;
+            padding: 2px 0;
+            background: #3a2a1a;
+            color: #ffcc00;
+            letter-spacing: 1px;
+            border-bottom: 1px solid #2b1e12;
+            text-shadow: 1px 1px 2px rgba(0,0,0,0.6);
+        }
+        .header-beats {
+            display: flex;
+        }
+        .header-beat {
+            width: 48px;
+            text-align: center;
+            font-size: 9px;
+            font-weight: 600;
+            padding: 2px 0;
+            color: #d9c39a;
+            border-right: 1px solid rgba(255,255,255,0.1);
+            cursor: pointer;
+            transition: background 0.15s;
+            position: relative;
+        }
+        .header-beat:hover {
+            background: rgba(255,255,255,0.15);
+        }
+        .header-beat.beat-start {
+            color: #fff;
+            font-weight: 700;
+            background: rgba(255,255,255,0.08);
+        }
+        .header-beat:last-child {
+            border-right: none;
+        }
+
+        .track-row {
+            display: flex;
+            align-items: stretch;
+            border-bottom: 2px solid #2b1e12;
+            position: relative;
+            flex-shrink: 0;
+            background: rgba(0,0,0,0.1);
+        }
+        .track-name {
+            width: 70px;
+            min-width: 70px;
+            background: var(--track-name-bg);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+            font-weight: 700;
+            color: var(--track-name-text);
+            padding: 3px;
+            text-align: center;
+            border-right: 2px solid #2b1e12;
+            word-break: break-all;
+            letter-spacing: 0.5px;
+            position: relative;
+            z-index: 10;
+            text-shadow: 1px 1px 2px rgba(0,0,0,0.6);
+        }
+        .track-name .track-index {
+            font-size: 9px;
+            color: #b89a6a;
+            display: block;
+            margin-top: 1px;
+        }
+        .track-name .track-delete-btn {
+            position: absolute;
+            top: 2px;
+            right: 2px;
+            width: 18px;
+            height: 18px;
+            background: #a04040;
+            border: 1px solid #6a2020;
+            border-radius: 50%;
+            color: #fff;
+            font-size: 12px;
+            line-height: 16px;
+            text-align: center;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 0;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.4);
+            transition: all 0.2s;
+        }
+        .track-name .track-delete-btn:hover {
+            background: #c05050;
+            transform: scale(1.1);
+        }
+        .track-cells {
+            display: flex;
+            flex: 1;
+            position: relative;
+        }
+        .measure-cells {
+            display: flex;
+            border-right: 2px solid var(--measure-border);
+            position: relative;
+        }
+        .measure-cells:last-child {
+            border-right: 2px solid var(--measure-border);
+        }
+        .cell {
+            width: 48px;
+            height: 38px;
+            background: var(--cell-empty);
+            border-right: 1px solid var(--cell-border);
+            border-bottom: 1px solid var(--cell-border);
+            cursor: pointer;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            transition: background 0.1s, box-shadow 0.1s;
+            overflow: hidden;
+            flex-shrink: 0;
+        }
+        .cell:hover {
+            background: var(--cell-hover);
+            box-shadow: inset 0 0 0 2px rgba(0,0,0,0.2);
+        }
+        .cell.even-cell {
+            background: var(--cell-empty-even);
+        }
+        .cell.flute-note {
+            background: var(--flute-color);
+            border-color: #6b4423;
+        }
+        .cell.flute-note:hover {
+            background: #a07040;
+            box-shadow: inset 0 0 0 2px rgba(255,255,255,0.3);
+        }
+        .cell.drum-note {
+            background: var(--drum-color);
+            border-color: #5a4a3a;
+        }
+        .cell.drum-note:hover {
+            background: #8a7a6a;
+            box-shadow: inset 0 0 0 2px rgba(255,255,255,0.3);
+        }
+        .cell .note-name {
+            font-size: 11px;
+            font-weight: 700;
+            color: var(--flute-text);
+            text-shadow: 1px 1px 2px rgba(0,0,0,0.4);
+            pointer-events: none;
+            line-height: 1;
+        }
+        .cell .note-clicks {
+            font-size: 7px;
+            font-weight: 600;
+            color: rgba(255,255,255,0.8);
+            pointer-events: none;
+            line-height: 1;
+            margin-top: 1px;
+        }
+        .cell .note-emoji {
+            font-size: 16px;
+            pointer-events: none;
+            line-height: 1;
+        }
+        .cell.playing-highlight {
+            box-shadow: inset 0 0 0 3px var(--playerbar-color), 0 0 12px rgba(255,107,107,0.6) !important;
+        }
+        .cell.selected {
+            box-shadow: inset 0 0 0 2px #4fc3f7 !important;
+            z-index: 2;
+        }
+        .cell.out-of-range {
+            box-shadow: inset 0 0 0 2px #ff3b3b !important;
+        }
+        .cell.selected.out-of-range {
+            box-shadow: inset 0 0 0 2px #ff3b3b, inset 0 0 0 4px #4fc3f7 !important;
+        }
+
+        .marquee-box {
+            position: absolute;
+            border: 2px solid #4fc3f7;
+            background: rgba(79,195,247,0.16);
+            pointer-events: none;
+            display: none;
+            z-index: 90;
+            box-shadow: 0 0 12px rgba(79,195,247,0.45);
+        }
+
+        .context-menu {
+            position: fixed;
+            z-index: 300;
+            min-width: 150px;
+            padding: 6px;
+            background: #4a3222;
+            border: 2px solid #6b4f35;
+            border-radius: 8px;
+            box-shadow: 0 8px 22px rgba(0,0,0,0.55);
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+        .context-menu button {
+            display: block;
+            width: 100%;
+            text-align: left;
+            background: #5a3e2b;
+            color: #f5e6c8;
+            border: 1px solid #6b4f35;
+            border-radius: 5px;
+            padding: 7px 10px;
+            cursor: pointer;
+            font-size: 12px;
+            font-weight: 600;
+            text-shadow: 1px 1px 2px rgba(0,0,0,0.45);
+        }
+        .context-menu button:hover {
+            background: #8b6b4a;
+            border-color: #b0895a;
+        }
+        .context-menu button:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+        }
+
+        .playerbar {
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            width: 3px;
+            background: var(--playerbar-color);
+            z-index: 80;
+            pointer-events: none;
+            box-shadow: 0 0 8px rgba(255,107,107,0.7);
+            transition: left 0.05s linear;
+        }
+        .playerbar.memory-mode {
+            background: var(--memory-color);
+            box-shadow: 0 0 8px rgba(255,165,0,0.7);
+        }
+        .playerbar-hit-area {
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            width: 16px;
+            transform: translateX(-8px);
+            z-index: 81;
+            pointer-events: auto;
+            cursor: pointer;
+        }
+
+        /* 底部钢琴面板 */
+        .piano-panel {
+            background: var(--piano-bg);
+            border-top: 3px solid #2b1e12;
+            padding: 6px 10px;
+            flex-shrink: 0;
+            z-index: 90;
+            display: flex;
+            align-items: flex-end;
+            gap: 8px;
+            min-height: 100px;
+            max-height: 130px;
+            overflow-x: auto;
+            overflow-y: hidden;
+            box-shadow: 0 -2px 8px rgba(0,0,0,0.5);
+        }
+        .piano-panel::-webkit-scrollbar {
+            height: 6px;
+        }
+        .piano-panel::-webkit-scrollbar-track {
+            background: #2b1e12;
+        }
+        .piano-panel::-webkit-scrollbar-thumb {
+            background: #5a3e2b;
+            border-radius: 3px;
+        }
+        .piano-label {
+            font-size: 10px;
+            font-weight: 700;
+            color: #b89a6a;
+            writing-mode: vertical-rl;
+            text-orientation: mixed;
+            letter-spacing: 2px;
+            align-self: center;
+            margin-right: 4px;
+            text-shadow: 1px 1px 2px rgba(0,0,0,0.6);
+        }
+        .piano-keyboard {
+            display: flex;
+            position: relative;
+            height: 90px;
+            flex-shrink: 0;
+            align-items: flex-end;
+        }
+        .white-key {
+            width: 26px;
+            height: 90px;
+            background: var(--piano-white);
+            border: 1px solid #a08060;
+            border-radius: 0 0 4px 4px;
+            cursor: pointer;
+            display: flex;
+            align-items: flex-end;
+            justify-content: center;
+            padding-bottom: 4px;
+            font-size: 7px;
+            font-weight: 700;
+            color: #4a3222;
+            transition: background 0.1s, box-shadow 0.1s;
+            position: relative;
+            z-index: 1;
+            box-shadow: inset -2px -2px 4px rgba(0,0,0,0.2);
+        }
+        .white-key:hover {
+            background: #ffe8c0;
+        }
+        .white-key.selected {
+            background: #ff9800;
+            color: #000;
+            border-color: #e65100;
+            box-shadow: 0 0 12px rgba(255,152,0,0.7);
+        }
+        .white-key.piano-playing {
+            background: var(--piano-playing) !important;
+            box-shadow: 0 0 18px rgba(255,215,0,0.9);
+        }
+        .black-key {
+            position: absolute;
+            width: 15px;
+            height: 55px;
+            background: var(--piano-black);
+            border: 1px solid #000;
+            border-radius: 0 0 3px 3px;
+            cursor: pointer;
+            z-index: 2;
+            top: 0;
+            transition: background 0.1s, box-shadow 0.1s;
+            display: flex;
+            align-items: flex-end;
+            justify-content: center;
+            padding-bottom: 2px;
+            font-size: 5px;
+            font-weight: 700;
+            color: #aaa;
+            box-shadow: inset -2px -2px 4px rgba(0,0,0,0.5);
+        }
+        .black-key:hover {
+            background: #333;
+        }
+        .black-key.selected {
+            background: #ff9800;
+            color: #000;
+            box-shadow: 0 0 10px rgba(255,152,0,0.7);
+        }
+        .black-key.piano-playing {
+            background: var(--piano-playing) !important;
+            box-shadow: 0 0 16px rgba(255,215,0,0.9);
+        }
+
+        /* 状态栏 */
+        .stats-bar {
+            background: var(--toolbar-bg);
+            padding: 3px 10px;
+            font-size: 10px;
+            color: var(--wood-text);
+            display: flex;
+            gap: 14px;
+            align-items: center;
+            flex-shrink: 0;
+            border-top: 2px solid #2b1e12;
+            box-shadow: 0 -1px 4px rgba(0,0,0,0.3);
+            text-shadow: 1px 1px 2px rgba(0,0,0,0.6);
+        }
+        .stats-bar .stat-value {
+            color: #ffcc00;
+            font-weight: 700;
+        }
+
+        /* 文件输入隐藏 */
+        #fileInput {
+            display: none;
+        }
+
+        @media (max-width: 768px) {
+            .cell {
+                width: 36px;
+                height: 32px;
+            }
+            .header-beat {
+                width: 36px;
+                font-size: 7px;
+            }
+            .track-name {
+                width: 50px;
+                min-width: 50px;
+                font-size: 9px;
+            }
+            .header-spacer {
+                width: 50px;
+                min-width: 50px;
+                font-size: 8px;
+            }
+            .white-key {
+                width: 18px;
+                height: 65px;
+                font-size: 5px;
+            }
+            .black-key {
+                width: 11px;
+                height: 40px;
+                font-size: 4px;
+            }
+            .piano-keyboard {
+                height: 65px;
+            }
+            .cell .note-name {
+                font-size: 9px;
+            }
+            .cell .note-emoji {
+                font-size: 12px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- 工具栏 -->
+    <div class="toolbar" id="toolbar">
+        <div class="group">
+            <button class="play-btn" id="btnPlay">▶ 播放</button>
+            <button class="stop-btn" id="btnStop">⏹ 停止</button>
+        </div>
+        <div class="group">
+            <label>BPM</label>
+            <input type="number" class="bpm-input" id="bpmInput" value="140" min="30" max="300" step="1">
+        </div>
+        <div class="group">
+            <label>乐器：</label>
+            <div class="instrument-toggle" id="instrToggle"></div>
+        </div>
+        <div class="group">
+            <button id="btnSave" title="保存到本地存储">💾 保存</button>
+            <button id="btnExport" title="导出JSON文件">📤 导出</button>
+            <button id="btnImport" title="导入JSON文件">📥 导入</button>
+            <input type="file" id="fileInput" accept=".json">
+        </div>
+        <div class="group">
+            <button class="add-track-btn" id="btnAddTrack">＋</button>
+        </div>
+    </div>
+
+    <!-- 主内容 -->
+    <div class="main-content" id="mainContent">
+        <div class="grid-content" id="gridContent"></div>
+    </div>
+
+    <!-- 底部钢琴面板 -->
+    <div class="piano-panel" id="pianoPanel">
+        <span class="piano-label">长笛音高</span>
+        <div class="piano-keyboard" id="pianoKeyboard"></div>
+    </div>
+
+    <!-- 状态栏 -->
+    <div class="stats-bar" id="statsBar">
+        <span class="stat">音轨：<span class="stat-value" id="statTracks">2</span></span>
+        <span class="stat">小节：<span class="stat-value" id="statMeasures">4</span></span>
+        <span class="stat">总音符：<span class="stat-value" id="statNotes">0</span></span>
+        <span class="stat">记忆位置：<span class="stat-value" id="statMemory">小节1 第1拍</span></span>
+        <span class="stat" id="saveIndicator"></span>
+    </div>
+
+    <script>
+        // ==================== 常量 ====================
+        const PITCH_NAMES = [
+            'C3', 'C♯3', 'D3', 'D♯3', 'E3', 'F3', 'F♯3', 'G3', 'G♯3', 'A3', 'A♯3', 'B3',
+            'C4', 'C♯4', 'D4', 'D♯4', 'E4', 'F4', 'F♯4', 'G4', 'G♯4', 'A4', 'A♯4', 'B4', 'C5'
+        ];
+        const PITCH_FREQS = PITCH_NAMES.map((_, i) => 130.81 * Math.pow(2, i / 12));
+        const VALID_PITCH_MIN = 0;
+        const VALID_PITCH_MAX = PITCH_NAMES.length - 1;
+        const PITCH_CLASS_NAMES = ['C', 'C♯', 'D', 'D♯', 'E', 'F', 'F♯', 'G', 'G♯', 'A', 'A♯', 'B'];
+
+        const INSTRUMENTS = {
+            flute: { label: '长笛', emoji: '🎵', isDrum: false, color: 'flute-note' },
+            tom3: { label: '嗵鼓3', emoji: '🪘', isDrum: true, color: 'drum-note' },
+            snare: { label: '军鼓', emoji: '🥁', isDrum: true, color: 'drum-note' },
+            closedHat: { label: '闭镲', emoji: '🪇', isDrum: true, color: 'drum-note' },
+            openHat: { label: '开镲', emoji: '🔔', isDrum: true, color: 'drum-note' },
+            kick: { label: '底鼓', emoji: '💥', isDrum: true, color: 'drum-note' },
+            tom: { label: '嗵鼓', emoji: '🪵', isDrum: true, color: 'drum-note' },
+            metronome: { label: '节拍器', emoji: '⏱️', isDrum: true, color: 'drum-note' },
+        };
+        const INSTRUMENT_EMOJI_MAP = Object.fromEntries(Object.entries(INSTRUMENTS).map(([k, v]) => [k, v.emoji]));
+
+        const BEATS_PER_MEASURE = 4;
+        const SUBDIVISIONS = 2;
+        const CELLS_PER_MEASURE = BEATS_PER_MEASURE * SUBDIVISIONS;
+        const CELL_WIDTH = 48;
+        const TRACK_NAME_WIDTH = 70;
+        const STORAGE_KEY = 'stardew_music_editor_data';
+
+        // ==================== 状态 ====================
+        const appState = {
+            bpm: 140,
+            tracks: [],
+            trackCounter: 0,
+            selectedInstrument: 'flute',
+            selectedPitch: 12,
+            memoryPosition: 0,
+            currentPlayPosition: 0,
+            isPlaying: false,
+            playInterval: null,
+            audioCtx: null,
+            isMouseDown: false,
+            mouseButton: -1,
+            pianoHighlightTimeout: null,
+            selectedNotes: new Set(),
+            selectionAnchor: null,
+            clipboard: null,
+            marquee: null,
+            batchMove: null,
+        };
+
+        // ==================== 数据操作 ====================
+        function createEmptyMeasure() { return new Array(CELLS_PER_MEASURE).fill(null); }
+
+        function getMaxMeasures() {
+            return appState.tracks.reduce((max, t) => Math.max(max, t.measures.length), 1);
+        }
+
+        function getAllTracksTotalCells() { return getMaxMeasures() * CELLS_PER_MEASURE; }
+
+        function getNoteAt(trackIdx, cellIdx) {
+            const track = appState.tracks[trackIdx];
+            if (!track) return null;
+            const m = Math.floor(cellIdx / CELLS_PER_MEASURE);
+            const s = cellIdx % CELLS_PER_MEASURE;
+            if (m >= track.measures.length) return null;
+            return track.measures[m][s] || null;
+        }
+
+        function setNoteAt(trackIdx, cellIdx, note) {
+            const track = appState.tracks[trackIdx];
+            if (!track) return;
+            const m = Math.floor(cellIdx / CELLS_PER_MEASURE);
+            const s = cellIdx % CELLS_PER_MEASURE;
+            while (track.measures.length <= m) track.measures.push(createEmptyMeasure());
+            track.measures[m][s] = note;
+        }
+
+        function deleteNoteAt(trackIdx, cellIdx) {
+            const track = appState.tracks[trackIdx];
+            if (!track) return;
+            const m = Math.floor(cellIdx / CELLS_PER_MEASURE);
+            const s = cellIdx % CELLS_PER_MEASURE;
+            if (m < track.measures.length) track.measures[m][s] = null;
+        }
+
+        function countTotalNotes() {
+            let count = 0;
+            appState.tracks.forEach(t => t.measures.forEach(m => m.forEach(n => { if (n) count++; })));
+            return count;
+        }
+
+        function hasNotesInLastMeasure() {
+            const m = getMaxMeasures() - 1;
+            return appState.tracks.some(t => m < t.measures.length && t.measures[m].some(n => n !== null));
+        }
+
+        function autoExpandIfNeeded() {
+            if (hasNotesInLastMeasure()) {
+                appState.tracks.forEach(t => t.measures.push(createEmptyMeasure()));
+            }
+        }
+
+        function normalizeTrackMeasureLengths() {
+            const max = Math.max(1, getMaxMeasures());
+            appState.tracks.forEach(t => {
+                while (t.measures.length < max) t.measures.push(createEmptyMeasure());
+                while (t.measures.length > max) t.measures.pop();
+            });
+        }
+
+        function anyNotesInMeasure(measureIdx) {
+            return appState.tracks.some(t => measureIdx < t.measures.length && t.measures[measureIdx].some(n => n !== null));
+        }
+
+        function cleanupTrailingEmptyMeasures() {
+            normalizeTrackMeasureLengths();
+            let max = getMaxMeasures();
+            while (max > 1) {
+                const lastEmpty = !anyNotesInMeasure(max - 1);
+                const secondLastEmpty = !anyNotesInMeasure(max - 2);
+                if (lastEmpty && secondLastEmpty) {
+                    appState.tracks.forEach(t => {
+                        while (t.measures.length > max - 1) t.measures.pop();
+                    });
+                    max--;
+                } else {
+                    break;
+                }
+            }
+            normalizeTrackMeasureLengths();
+            const totalCells = getAllTracksTotalCells();
+            if (appState.memoryPosition >= totalCells) {
+                appState.memoryPosition = Math.max(0, totalCells - 1);
+                appState.currentPlayPosition = appState.memoryPosition;
+            }
+        }
+
+        function ensureGlobalMeasuresForCell(cellIdx) {
+            const needed = Math.floor(cellIdx / CELLS_PER_MEASURE) + 1;
+            appState.tracks.forEach(t => {
+                while (t.measures.length < needed) t.measures.push(createEmptyMeasure());
+            });
+            normalizeTrackMeasureLengths();
+        }
+
+        function cloneNote(note) {
+            return { instrument: note.instrument, pitch: note.pitch };
+        }
+
+        function getPitchDisplayName(pitchIndex) {
+            const octave = 3 + Math.floor(pitchIndex / 12);
+            const pitchClass = ((pitchIndex % 12) + 12) % 12;
+            return `${PITCH_CLASS_NAMES[pitchClass]}${octave}`;
+        }
+
+        function isPitchInValidRange(pitchIndex) {
+            return pitchIndex >= VALID_PITCH_MIN && pitchIndex <= VALID_PITCH_MAX;
+        }
+
+        function getPitchOffsetLabel(pitchIndex) {
+            if (pitchIndex < VALID_PITCH_MIN) return '-' + String(VALID_PITCH_MIN - pitchIndex).padStart(2, '0');
+            if (pitchIndex > VALID_PITCH_MAX) return '+' + String(pitchIndex - VALID_PITCH_MAX).padStart(2, '0');
+            return '';
+        }
+
+        function noteKey(trackIdx, cellIdx) {
+            return `${trackIdx}:${cellIdx}`;
+        }
+
+        function parseNoteKey(key) {
+            const parts = key.split(':');
+            return { trackIdx: parseInt(parts[0], 10), cellIdx: parseInt(parts[1], 10) };
+        }
+
+        function isSelected(trackIdx, cellIdx) {
+            return appState.selectedNotes.has(noteKey(trackIdx, cellIdx));
+        }
+
+        function clearSelection() {
+            appState.selectedNotes.clear();
+            appState.selectionAnchor = null;
+        }
+
+        function getAllNoteEntries() {
+            const entries = [];
+            appState.tracks.forEach((track, trackIdx) => {
+                track.measures.forEach((measure, measureIdx) => {
+                    measure.forEach((note, slotIdx) => {
+                        if (note) {
+                            entries.push({
+                                trackIdx,
+                                cellIdx: measureIdx * CELLS_PER_MEASURE + slotIdx,
+                                note,
+                            });
+                        }
+                    });
+                });
+            });
+            return entries;
+        }
+
+        function getSortedSelectedNotes() {
+            const entries = [];
+            appState.selectedNotes.forEach(key => {
+                const pos = parseNoteKey(key);
+                const note = getNoteAt(pos.trackIdx, pos.cellIdx);
+                if (note) entries.push({ trackIdx: pos.trackIdx, cellIdx: pos.cellIdx, note });
+            });
+            entries.sort((a, b) => a.cellIdx - b.cellIdx || a.trackIdx - b.trackIdx);
+            return entries;
+        }
+
+        function replaceSelection(entries) {
+            appState.selectedNotes.clear();
+            entries.forEach(entry => appState.selectedNotes.add(noteKey(entry.trackIdx, entry.cellIdx)));
+            const first = entries.slice().sort((a, b) => a.cellIdx - b.cellIdx || a.trackIdx - b.trackIdx)[0];
+            appState.selectionAnchor = first ? { trackIdx: first.trackIdx, cellIdx: first.cellIdx } : null;
+        }
+
+        function getSelectionBounds(entries) {
+            let minTrack = Infinity;
+            let maxTrack = -Infinity;
+            let minCell = Infinity;
+            let maxCell = -Infinity;
+            entries.forEach(entry => {
+                minTrack = Math.min(minTrack, entry.trackIdx);
+                maxTrack = Math.max(maxTrack, entry.trackIdx);
+                minCell = Math.min(minCell, entry.cellIdx);
+                maxCell = Math.max(maxCell, entry.cellIdx);
+            });
+            return { minTrack, maxTrack, minCell, maxCell };
+        }
+
+        function selectNotesInRect(minTrack, maxTrack, minCell, maxCell) {
+            const entries = getAllNoteEntries().filter(entry =>
+                entry.trackIdx >= minTrack &&
+                entry.trackIdx <= maxTrack &&
+                entry.cellIdx >= minCell &&
+                entry.cellIdx <= maxCell
+            );
+            replaceSelection(entries);
+        }
+
+        function commitDataChange() {
+            renderGrid();
+            updateStats();
+            saveToLocalStorage();
+        }
+
+        function initTracks(count = 2, measures = 4) {
+            appState.tracks = [];
+            for (let i = 0; i < count; i++) {
+                appState.trackCounter++;
+                const track = { id: appState.trackCounter, name: `音轨${i+1}`, measures: [] };
+                for (let m = 0; m < measures; m++) track.measures.push(createEmptyMeasure());
+                appState.tracks.push(track);
+            }
+            appState.memoryPosition = 0;
+            appState.currentPlayPosition = 0;
+        }
+
+        // 删除音轨
+        function deleteTrack(trackIdx) {
+            if (appState.tracks.length <= 1) {
+                alert('至少需要保留一个音轨');
+                return;
+            }
+            clearSelection();
+            if (!confirm(`确定删除音轨 "${appState.tracks[trackIdx].name}" 吗？`)) return;
+            appState.tracks.splice(trackIdx, 1);
+            // 调整最大小节数，删除多余空小节
+            const maxMeasures = getMaxMeasures();
+            appState.tracks.forEach(t => {
+                while (t.measures.length > maxMeasures) {
+                    t.measures.pop();
+                }
+            });
+            // 如果记忆位置超出范围，调整
+            const totalCells = getAllTracksTotalCells();
+            if (appState.memoryPosition >= totalCells) {
+                appState.memoryPosition = totalCells - 1;
+                appState.currentPlayPosition = appState.memoryPosition;
+            }
+            renderGrid();
+            updateStats();
+            saveToLocalStorage();
+        }
+
+        // ==================== 持久化 ====================
+        function serializeState() {
+            return JSON.stringify({
+                bpm: appState.bpm,
+                tracks: appState.tracks,
+                trackCounter: appState.trackCounter,
+                selectedInstrument: appState.selectedInstrument,
+                selectedPitch: appState.selectedPitch,
+                memoryPosition: appState.memoryPosition,
+                version: 1,
+            });
+        }
+
+        function deserializeState(data) {
+            if (!data) return false;
+            try {
+                const parsed = typeof data === 'string' ? JSON.parse(data) : data;
+                if (parsed.bpm) appState.bpm = parsed.bpm;
+                if (parsed.tracks && Array.isArray(parsed.tracks)) {
+                    appState.tracks = parsed.tracks;
+                }
+                if (parsed.trackCounter) appState.trackCounter = parsed.trackCounter;
+                if (parsed.selectedInstrument) appState.selectedInstrument = parsed.selectedInstrument;
+                if (parsed.selectedPitch !== undefined) appState.selectedPitch = parsed.selectedPitch;
+                if (parsed.memoryPosition !== undefined) appState.memoryPosition = parsed.memoryPosition;
+                appState.currentPlayPosition = appState.memoryPosition;
+                clearSelection();
+                appState.clipboard = null;
+                if (appState.tracks.length === 0) {
+                    initTracks(1, 2);
+                }
+                return true;
+            } catch (e) {
+                console.error('解析数据失败', e);
+                return false;
+            }
+        }
+
+        function saveToLocalStorage() {
+            try {
+                localStorage.setItem(STORAGE_KEY, serializeState());
+                showSaveIndicator('已保存');
+            } catch (e) {
+                console.error('保存失败', e);
+                showSaveIndicator('保存失败');
+            }
+        }
+
+        function loadFromLocalStorage() {
+            try {
+                const data = localStorage.getItem(STORAGE_KEY);
+                if (data) {
+                    if (deserializeState(data)) {
+                        return true;
+                    }
+                }
+            } catch (e) {
+                console.error('读取失败', e);
+            }
+            return false;
+        }
+
+        function showSaveIndicator(msg) {
+            const el = document.getElementById('saveIndicator');
+            if (el) {
+                el.textContent = msg;
+                clearTimeout(appState.pianoHighlightTimeout);
+                appState.pianoHighlightTimeout = setTimeout(() => {
+                    el.textContent = '';
+                }, 1500);
+            }
+        }
+
+        function exportToFile() {
+            const data = serializeState();
+            const blob = new Blob([data], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `星露谷音乐_${new Date().toISOString().slice(0,19).replace(/[:T]/g, '-')}.json`;
+            a.click();
+            URL.revokeObjectURL(url);
+            showSaveIndicator('已导出');
+        }
+
+        function importFromFile(file) {
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                if (deserializeState(e.target.result)) {
+                    renderGrid();
+                    updateStats();
+                    updateInstrumentUI();
+                    updatePianoSelection();
+                    saveToLocalStorage();
+                    showSaveIndicator('导入成功');
+                } else {
+                    alert('文件格式无效');
+                }
+            };
+            reader.readAsText(file);
+        }
+
+        // ==================== 音频引擎 ====================
+        function getAudioContext() {
+            if (!appState.audioCtx) {
+                appState.audioCtx = new(window.AudioContext || window.webkitAudioContext)();
+            }
+            return appState.audioCtx;
+        }
+
+        function getStepDuration() { return 60 / appState.bpm / SUBDIVISIONS; }
+
+        function playNoteSound(note, time) {
+            const ctx = getAudioContext();
+            if (!ctx) return;
+            const now = time || ctx.currentTime;
+            const stepDuration = getStepDuration();
+
+            if (note.instrument === 'flute') {
+                const freq = Number.isFinite(note.pitch) ? 130.81 * Math.pow(2, note.pitch / 12) : 261.63;
+                const osc = ctx.createOscillator();
+                const gain = ctx.createGain();
+                osc.type = 'triangle';
+                osc.frequency.setValueAtTime(freq, now);
+                gain.gain.setValueAtTime(0, now);
+                gain.gain.linearRampToValueAtTime(0.15, now + 0.02);
+                gain.gain.exponentialRampToValueAtTime(0.001, now + stepDuration*4);
+                osc.connect(gain);
+                gain.connect(ctx.destination);
+                osc.start(now);
+                osc.stop(now + stepDuration + 0.05);
+
+                const osc2 = ctx.createOscillator();
+                const gain2 = ctx.createGain();
+                osc2.type = 'triangle';
+                osc2.frequency.setValueAtTime(freq * 2, now);
+                gain2.gain.setValueAtTime(0, now);
+                gain2.gain.linearRampToValueAtTime(0.1, now + 0.015);
+                gain2.gain.exponentialRampToValueAtTime(0.001, now + stepDuration);
+                osc2.connect(gain2);
+                gain2.connect(ctx.destination);
+                osc2.start(now);
+                osc2.stop(now + stepDuration + 0.05);
+
+                highlightPianoKey(note.pitch);
+            } else {
+                const duration = 0.2;
+                const bufferSize = Math.floor(ctx.sampleRate * duration);
+                const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+                const data = buffer.getChannelData(0);
+                const instr = note.instrument;
+                for (let i = 0; i < bufferSize; i++) {
+                    const t = i / ctx.sampleRate;
+                    const decay = Math.exp(-t * 20);
+                    if (instr === 'kick') {
+                        data[i] = Math.sin(2 * Math.PI * 80 * t) * decay * 0.8;
+                    } else if (instr === 'snare') {
+                        const noise = Math.random() * 0.8 + 0.2;
+                        data[i] = Math.sin(2 * Math.PI * 180 * t) * decay * 0.5 + noise * decay * 0.4;
+                    } else if (instr === 'tom3' || instr === 'tom') {
+                        const baseFreq = instr === 'tom3' ? 120 : 100;
+                        const noise = Math.random() * 0.5 + 0.5;
+                        data[i] = Math.sin(2 * Math.PI * baseFreq * t) * decay * 0.6 + noise * decay * 0.2;
+                    } else if (instr === 'closedHat' || instr === 'openHat') {
+                        const noise = Math.random() * 2 - 1;
+                        const hatDecay = instr === 'closedHat' ? Math.exp(-t * 60) : Math.exp(-t * 25);
+                        data[i] = noise * hatDecay * 0.5;
+                    } else if (instr === 'metronome') {
+                        data[i] = Math.sin(2 * Math.PI * 1000 * t) * Math.exp(-t * 40) * 0.6;
+                    } else {
+                        data[i] = (Math.random() * 2 - 1) * decay * 0.4;
+                    }
+                }
+                const source = ctx.createBufferSource();
+                source.buffer = buffer;
+                const gain = ctx.createGain();
+                gain.gain.setValueAtTime(0.5, now);
+                source.connect(gain);
+                gain.connect(ctx.destination);
+                source.start(now);
+            }
+        }
+
+        function highlightPianoKey(pitchIndex) {
+            document.querySelectorAll('.white-key, .black-key').forEach(el => {
+                el.classList.remove('piano-playing');
+            });
+            const key = document.querySelector(`.white-key[data-pitch="${pitchIndex}"], .black-key[data-pitch="${pitchIndex}"]`);
+            if (key) {
+                key.classList.add('piano-playing');
+                clearTimeout(appState.pianoHighlightTimeout);
+                const duration = getStepDuration() * 1000;
+                appState.pianoHighlightTimeout = setTimeout(() => {
+                    key.classList.remove('piano-playing');
+                }, duration);
+            }
+        }
+
+        // ==================== 底部钢琴键盘 ====================
+        function buildPianoKeyboard() {
+            const container = document.getElementById('pianoKeyboard');
+            container.innerHTML = '';
+            container.style.height = '90px';
+
+            const whiteKeys = [];
+            const blackKeys = [];
+
+            for (let i = 0; i < PITCH_NAMES.length; i++) {
+                const name = PITCH_NAMES[i];
+                if (name.includes('♯')) continue;
+                const key = document.createElement('div');
+                key.className = 'white-key';
+                key.dataset.pitch = i;
+                key.title = `${name} (点击${i}次)`;
+                key.textContent = name;
+                key.addEventListener('mousedown', (e) => {
+                    e.stopPropagation();
+                    selectPitch(i, true);
+                });
+                container.appendChild(key);
+                whiteKeys.push({ pitchIndex: i, element: key });
+            }
+
+            for (let i = 0; i < PITCH_NAMES.length; i++) {
+                const name = PITCH_NAMES[i];
+                if (!name.includes('♯')) continue;
+                const prevPitch = i - 1;
+                const prevWhite = whiteKeys.find(w => w.pitchIndex === prevPitch);
+                if (!prevWhite) continue;
+                const blackKey = document.createElement('div');
+                blackKey.className = 'black-key';
+                blackKey.dataset.pitch = i;
+                blackKey.title = `${name} (点击${i}次)`;
+                blackKey.textContent = name.replace('♯', '#');
+                blackKey.addEventListener('mousedown', (e) => {
+                    e.stopPropagation();
+                    selectPitch(i, true);
+                });
+                container.appendChild(blackKey);
+                blackKeys.push({ pitchIndex: i, element: blackKey, prevWhiteElement: prevWhite.element });
+            }
+
+            requestAnimationFrame(() => {
+                blackKeys.forEach(bk => {
+                    const prevLeft = bk.prevWhiteElement.offsetLeft;
+                    const prevWidth = bk.prevWhiteElement.offsetWidth;
+                    bk.element.style.left = (prevLeft + prevWidth - 7.5) + 'px';
+                });
+                updatePianoSelection();
+            });
+
+            updatePianoSelection();
+        }
+
+        function selectPitch(pitchIndex, preview = true) {
+            closeContextMenu();
+            appState.selectedPitch = pitchIndex;
+            updatePianoSelection();
+            if (preview) {
+                playNoteSound({ instrument: 'flute', pitch: pitchIndex });
+            }
+        }
+
+        function updatePianoSelection() {
+            document.querySelectorAll('.white-key, .black-key').forEach(el => {
+                const pitch = parseInt(el.dataset.pitch);
+                el.classList.toggle('selected', pitch === appState.selectedPitch);
+            });
+        }
+
+        // ==================== 渲染网格 ====================
+        function renderGrid() {
+            const content = document.getElementById('gridContent');
+            const maxMeasures = getMaxMeasures();
+
+            let html = '';
+            html += '<div class="header-row">';
+            html += '<div class="header-spacer">节拍</div><div class="header-measures">';
+            for (let m = 0; m < maxMeasures; m++) {
+                html += `<div class="header-measure" data-measure="${m}">`;
+                html += `<div class="header-measure-number">小节 ${m+1}</div><div class="header-beats">`;
+                for (let b = 0; b < BEATS_PER_MEASURE; b++) {
+                    for (let s = 0; s < SUBDIVISIONS; s++) {
+                        const cellIdx = m * CELLS_PER_MEASURE + b * SUBDIVISIONS + s;
+                        const label = s === 0 ? (b + 1) : '&';
+                        const extra = s === 0 ? 'beat-start' : '';
+                        html += `<div class="header-beat ${extra}" data-cell="${cellIdx}">${label}</div>`;
+                    }
+                }
+                html += '</div></div>';
+            }
+            html += '</div></div>';
+
+            appState.tracks.forEach((track, trackIdx) => {
+                html += `<div class="track-row" data-track="${trackIdx}">`;
+                html += `<div class="track-name">${track.name}<span class="track-index">#${trackIdx+1}</span>`;
+                // 删除按钮
+                html += `<button class="track-delete-btn" data-track="${trackIdx}" title="删除此音轨">×</button>`;
+                html += `</div>`;
+                html += '<div class="track-cells">';
+                for (let m = 0; m < maxMeasures; m++) {
+                    html += `<div class="measure-cells" data-measure="${m}">`;
+                    for (let s = 0; s < CELLS_PER_MEASURE; s++) {
+                        const cellIdx = m * CELLS_PER_MEASURE + s;
+                        const note = (m < track.measures.length) ? track.measures[m][s] : null;
+                        let cellClass = 'cell';
+                        if (cellIdx % 2 === 0) cellClass += ' even-cell';
+                        let inner = '';
+                        if (note) {
+                            cellClass += ' ' + INSTRUMENTS[note.instrument].color;
+                            if (note.instrument === 'flute') {
+                                const pitchName = getPitchDisplayName(note.pitch);
+                                const offsetLabel = getPitchOffsetLabel(note.pitch);
+                                const lowerLabel = offsetLabel || `${note.pitch}次`;
+                                inner = `<span class="note-name">${pitchName}</span><span class="note-clicks">${lowerLabel}</span>`;
+                                if (!isPitchInValidRange(note.pitch)) cellClass += ' out-of-range';
+                            } else {
+                                const emoji = INSTRUMENT_EMOJI_MAP[note.instrument] || '🥁';
+                                inner = `<span class="note-emoji" title="${INSTRUMENTS[note.instrument].label}">${emoji}</span>`;
+                            }
+                        }
+                        if (appState.selectedNotes.has(noteKey(trackIdx, cellIdx))) cellClass += ' selected';
+                        html += `<div class="${cellClass}" data-track="${trackIdx}" data-cell="${cellIdx}" data-measure="${m}" data-slot="${s}">${inner}</div>`;
+                    }
+                    html += '</div>';
+                }
+                html += '</div></div>';
+            });
+
+            content.innerHTML = html;
+            content.insertAdjacentHTML('beforeend', '<div class="marquee-box" id="marqueeBox"></div><div class="playerbar" id="playerbar"><div class="playerbar-hit-area" id="playerbarHitArea"></div></div>');
+            updatePlayerbarPosition(false);
+            updateStats();
+        }
+
+        function updatePlayerbarPosition(animated = true) {
+            const playerbar = document.getElementById('playerbar');
+            if (!playerbar) return;
+            const spacer = document.querySelector('.header-spacer');
+            const spacerWidth = spacer ? spacer.offsetWidth : TRACK_NAME_WIDTH;
+            playerbar.style.left = (spacerWidth + appState.currentPlayPosition * CELL_WIDTH) + 'px';
+            if (animated) playerbar.style.transition = 'left 0.05s linear';
+            else playerbar.style.transition = 'none';
+            if (!appState.isPlaying && appState.currentPlayPosition === appState.memoryPosition) {
+                playerbar.classList.add('memory-mode');
+            } else {
+                playerbar.classList.remove('memory-mode');
+            }
+        }
+
+        function updateStats() {
+            document.getElementById('statTracks').textContent = appState.tracks.length;
+            document.getElementById('statMeasures').textContent = getMaxMeasures();
+            document.getElementById('statNotes').textContent = countTotalNotes();
+            const memMeasure = Math.floor(appState.memoryPosition / CELLS_PER_MEASURE) + 1;
+            const memSlot = appState.memoryPosition % CELLS_PER_MEASURE;
+            const memBeat = Math.floor(memSlot / SUBDIVISIONS) + 1;
+            const memSub = memSlot % SUBDIVISIONS === 1 ? '后半拍' : '';
+            document.getElementById('statMemory').textContent = `小节${memMeasure} 第${memBeat}拍${memSub}`;
+        }
+
+        // ==================== 事件处理 ====================
+        function getCellElement(trackIdx, cellIdx) {
+            return document.querySelector(`.cell[data-track="${trackIdx}"][data-cell="${cellIdx}"]`);
+        }
+
+        function getCellFromPoint(x, y) {
+            const el = document.elementFromPoint(x, y);
+            return el ? el.closest('.cell') : null;
+        }
+
+        function updateMarqueeBox() {
+            const marquee = appState.marquee;
+            const box = document.getElementById('marqueeBox');
+            if (!box) return;
+            if (!marquee || !marquee.active) {
+                box.style.display = 'none';
+                return;
+            }
+
+            const minTrack = Math.min(marquee.startTrack, marquee.currentTrack);
+            const maxTrack = Math.max(marquee.startTrack, marquee.currentTrack);
+            const minCell = Math.min(marquee.startCell, marquee.currentCell);
+            const maxCell = Math.max(marquee.startCell, marquee.currentCell);
+            const topLeft = getCellElement(minTrack, minCell);
+            const bottomRight = getCellElement(maxTrack, maxCell);
+            if (!topLeft || !bottomRight) return;
+
+            const grid = document.getElementById('gridContent');
+            const gridRect = grid.getBoundingClientRect();
+            const topLeftRect = topLeft.getBoundingClientRect();
+            const bottomRightRect = bottomRight.getBoundingClientRect();
+            const left = topLeftRect.left - gridRect.left;
+            const top = topLeftRect.top - gridRect.top;
+            const right = bottomRightRect.right - gridRect.left;
+            const bottom = bottomRightRect.bottom - gridRect.top;
+
+            box.style.display = 'block';
+            box.style.left = left + 'px';
+            box.style.top = top + 'px';
+            box.style.width = (right - left) + 'px';
+            box.style.height = (bottom - top) + 'px';
+        }
+
+        function hideMarqueeBox() {
+            const box = document.getElementById('marqueeBox');
+            if (box) box.style.display = 'none';
+        }
+
+        function startMarquee(trackIdx, cellIdx, e) {
+            clearSelection();
+            renderGrid();
+            appState.marquee = {
+                active: true,
+                startTrack: trackIdx,
+                startCell: cellIdx,
+                currentTrack: trackIdx,
+                currentCell: cellIdx,
+                moved: false,
+                startX: e.clientX,
+                startY: e.clientY,
+            };
+            updateMarqueeBox();
+        }
+
+        function updateMarqueeFromEvent(e) {
+            const marquee = appState.marquee;
+            if (!marquee || !marquee.active) return;
+            const cell = getCellFromPoint(e.clientX, e.clientY);
+            if (!cell) return;
+            if (Math.abs(e.clientX - marquee.startX) + Math.abs(e.clientY - marquee.startY) > 4) {
+                marquee.moved = true;
+            }
+            marquee.currentTrack = parseInt(cell.dataset.track, 10);
+            marquee.currentCell = parseInt(cell.dataset.cell, 10);
+            updateMarqueeBox();
+        }
+
+        function finishMarquee() {
+            const marquee = appState.marquee;
+            if (!marquee || !marquee.active) return;
+            marquee.active = false;
+            hideMarqueeBox();
+
+            if (!marquee.moved) {
+                const trackIdx = marquee.startTrack;
+                const cellIdx = marquee.startCell;
+                appState.marquee = null;
+                handleLeftClick(trackIdx, cellIdx);
+                return;
+            }
+
+            const minTrack = Math.min(marquee.startTrack, marquee.currentTrack);
+            const maxTrack = Math.max(marquee.startTrack, marquee.currentTrack);
+            const minCell = Math.min(marquee.startCell, marquee.currentCell);
+            const maxCell = Math.max(marquee.startCell, marquee.currentCell);
+            appState.marquee = null;
+            selectNotesInRect(minTrack, maxTrack, minCell, maxCell);
+            renderGrid();
+            updateStats();
+        }
+
+        function startBatchMove(trackIdx, cellIdx) {
+            const entries = getSortedSelectedNotes();
+            if (!entries.some(entry => entry.trackIdx === trackIdx && entry.cellIdx === cellIdx)) {
+                return false;
+            }
+            appState.batchMove = {
+                active: true,
+                startTrack: trackIdx,
+                startCell: cellIdx,
+                sourceEntries: entries,
+                currentEntries: entries,
+                didMove: false,
+                lastDeltaTrack: null,
+                lastDeltaCell: null,
+            };
+            return true;
+        }
+
+        function applyBatchMoveTo(currentTrack, currentCell) {
+            const move = appState.batchMove;
+            if (!move || !move.active) return;
+
+            const bounds = getSelectionBounds(move.sourceEntries);
+            const maxTrack = appState.tracks.length - 1;
+            const maxCells = getAllTracksTotalCells() - 1;
+            let deltaTrack = currentTrack - move.startTrack;
+            let deltaCell = currentCell - move.startCell;
+
+            deltaTrack = Math.max(-bounds.minTrack, Math.min(deltaTrack, maxTrack - bounds.maxTrack));
+            deltaCell = Math.max(-bounds.minCell, Math.min(deltaCell, maxCells - bounds.maxCell));
+            if (deltaTrack === move.lastDeltaTrack && deltaCell === move.lastDeltaCell) return;
+            move.lastDeltaTrack = deltaTrack;
+            move.lastDeltaCell = deltaCell;
+            if (deltaTrack !== 0 || deltaCell !== 0) {
+                move.didMove = true;
+            }
+
+            move.currentEntries.forEach(entry => deleteNoteAt(entry.trackIdx, entry.cellIdx));
+            const newEntries = move.sourceEntries.map(entry => ({
+                trackIdx: entry.trackIdx + deltaTrack,
+                cellIdx: entry.cellIdx + deltaCell,
+                note: entry.note,
+            }));
+            newEntries.forEach(entry => setNoteAt(entry.trackIdx, entry.cellIdx, entry.note));
+            move.currentEntries = newEntries;
+            replaceSelection(newEntries);
+            renderGrid();
+            updateStats();
+        }
+
+        function finishBatchMove() {
+            if (!appState.batchMove || !appState.batchMove.active) return;
+            const didMove = appState.batchMove.didMove;
+            appState.batchMove.active = false;
+            appState.batchMove = null;
+            if (didMove) cleanupTrailingEmptyMeasures();
+            saveToLocalStorage();
+            renderGrid();
+            updateStats();
+        }
+
+        function copySelectionToClipboard() {
+            const entries = getSortedSelectedNotes();
+            if (entries.length === 0) return false;
+            const anchor = entries[0];
+            appState.clipboard = {
+                anchorTrack: anchor.trackIdx,
+                anchorCell: anchor.cellIdx,
+                entries: entries.map(entry => ({
+                    trackOffset: entry.trackIdx - anchor.trackIdx,
+                    cellOffset: entry.cellIdx - anchor.cellIdx,
+                    note: cloneNote(entry.note),
+                })),
+            };
+            return true;
+        }
+
+        function cutSelection() {
+            if (!copySelectionToClipboard()) return;
+            getSortedSelectedNotes().forEach(entry => deleteNoteAt(entry.trackIdx, entry.cellIdx));
+            clearSelection();
+            cleanupTrailingEmptyMeasures();
+            commitDataChange();
+        }
+
+        function pasteClipboard() {
+            const clip = appState.clipboard;
+            if (!clip) return;
+
+            const currentSelection = getSortedSelectedNotes();
+            let anchorTrack = clip.anchorTrack;
+            let anchorCell = clip.anchorCell;
+            if (currentSelection.length > 0) {
+                anchorTrack = currentSelection[0].trackIdx;
+                anchorCell = currentSelection[0].cellIdx;
+            }
+
+            const placed = [];
+            clip.entries.forEach(item => {
+                const targetTrack = anchorTrack + item.trackOffset;
+                const targetCell = anchorCell + item.cellOffset;
+                if (targetTrack < 0 || targetTrack >= appState.tracks.length) return;
+                if (targetCell < 0) return;
+                setNoteAt(targetTrack, targetCell, cloneNote(item.note));
+                placed.push({ trackIdx: targetTrack, cellIdx: targetCell });
+            });
+
+            if (placed.length > 0) {
+                const maxCell = placed.reduce((max, entry) => Math.max(max, entry.cellIdx), 0);
+                ensureGlobalMeasuresForCell(maxCell);
+            }
+            if (placed.length > 0) {
+                replaceSelection(placed);
+                commitDataChange();
+            }
+        }
+
+        function invertSelection() {
+            const selected = new Set(appState.selectedNotes);
+            const inverted = getAllNoteEntries().filter(entry => !selected.has(noteKey(entry.trackIdx, entry.cellIdx)));
+            replaceSelection(inverted);
+            commitDataChange();
+        }
+
+        function transposeSelected(semitones) {
+            const entries = getSortedSelectedNotes().filter(entry => entry.note.instrument === 'flute');
+            if (entries.length === 0) return;
+            entries.forEach(entry => {
+                entry.note.pitch += semitones;
+            });
+            commitDataChange();
+        }
+
+        function closeContextMenu() {
+            const menu = document.getElementById('batchContextMenu');
+            if (menu) menu.remove();
+        }
+
+        function showContextMenu(e, trackIdx, cellIdx) {
+            closeContextMenu();
+            const menu = document.createElement('div');
+            menu.id = 'batchContextMenu';
+            menu.className = 'context-menu';
+            menu.dataset.track = trackIdx;
+            menu.dataset.cell = cellIdx;
+
+            const actions = [
+                { id: 'cut', label: '剪切' },
+                { id: 'copy', label: '复制' },
+                { id: 'paste', label: '粘贴' },
+                { id: 'invert', label: '反选' },
+                { id: 'semiUp', label: '升半音' },
+                { id: 'semiDown', label: '降半音' },
+                { id: 'octaveUp', label: '升八度' },
+                { id: 'octaveDown', label: '降八度' },
+            ];
+
+            actions.forEach(action => {
+                const btn = document.createElement('button');
+                btn.type = 'button';
+                btn.dataset.action = action.id;
+                btn.textContent = action.label;
+                if (action.id === 'paste' && !appState.clipboard) btn.disabled = true;
+                btn.addEventListener('click', () => runContextAction(action.id));
+                menu.appendChild(btn);
+            });
+
+            document.body.appendChild(menu);
+            const rect = menu.getBoundingClientRect();
+            let x = e.clientX;
+            let y = e.clientY;
+            if (x + rect.width > window.innerWidth - 8) x = Math.max(8, window.innerWidth - rect.width - 8);
+            if (y + rect.height > window.innerHeight - 8) y = Math.max(8, window.innerHeight - rect.height - 8);
+            menu.style.left = x + 'px';
+            menu.style.top = y + 'px';
+        }
+
+        function runContextAction(action) {
+            closeContextMenu();
+            switch (action) {
+                case 'cut':
+                    cutSelection();
+                    break;
+                case 'copy':
+                    copySelectionToClipboard();
+                    break;
+                case 'paste':
+                    pasteClipboard();
+                    break;
+                case 'invert':
+                    invertSelection();
+                    break;
+                case 'semiUp':
+                    transposeSelected(1);
+                    break;
+                case 'semiDown':
+                    transposeSelected(-1);
+                    break;
+                case 'octaveUp':
+                    transposeSelected(12);
+                    break;
+                case 'octaveDown':
+                    transposeSelected(-12);
+                    break;
+            }
+        }
+
+        function bindGlobalEvents() {
+            const grid = document.getElementById('gridContent');
+            if (!grid._bound) {
+                grid._bound = true;
+
+                grid.addEventListener('mousedown', (e) => {
+                    const hitArea = e.target.closest('#playerbarHitArea');
+                    if (hitArea) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        closeContextMenu();
+                        const spacer = document.querySelector('.header-spacer');
+                        const spacerWidth = spacer ? spacer.offsetWidth : TRACK_NAME_WIDTH;
+                        const rect = document.getElementById('gridContent').getBoundingClientRect();
+                        const clickX = e.clientX - rect.left - spacerWidth;
+                        const cellIdx = Math.max(0, Math.round(clickX / CELL_WIDTH));
+                        setMemoryPosition(cellIdx);
+                        return;
+                    }
+
+                    if (e.target.classList.contains('track-delete-btn')) {
+                        e.stopPropagation();
+                        closeContextMenu();
+                        const trackIdx = parseInt(e.target.dataset.track, 10);
+                        deleteTrack(trackIdx);
+                        return;
+                    }
+
+                    const cell = e.target.closest('.cell');
+                    if (!cell) return;
+                    e.preventDefault();
+                    const trackIdx = parseInt(cell.dataset.track, 10);
+                    const cellIdx = parseInt(cell.dataset.cell, 10);
+
+                    if (e.button === 0) {
+                        appState.isMouseDown = true;
+                        appState.mouseButton = 0;
+                        if (appState.selectedNotes.size > 0 && isSelected(trackIdx, cellIdx)) {
+                            startBatchMove(trackIdx, cellIdx);
+                        } else if (getNoteAt(trackIdx, cellIdx)) {
+                            clearSelection();
+                            renderGrid();
+                            handleLeftClick(trackIdx, cellIdx);
+                        } else {
+                            startMarquee(trackIdx, cellIdx, e);
+                        }
+                    } else if (e.button === 2) {
+                        e.preventDefault();
+                        if (appState.selectedNotes.size > 0 && isSelected(trackIdx, cellIdx)) {
+                            showContextMenu(e, trackIdx, cellIdx);
+                            e.stopPropagation();
+                        } else {
+                            clearSelection();
+                            renderGrid();
+                            appState.isMouseDown = true;
+                            appState.mouseButton = 2;
+                            handleRightClick(trackIdx, cellIdx);
+                        }
+                    }
+                });
+
+                document.addEventListener('mousemove', (e) => {
+                    if (appState.marquee && appState.marquee.active) {
+                        updateMarqueeFromEvent(e);
+                        return;
+                    }
+
+                    if (appState.batchMove && appState.batchMove.active) {
+                        const cell = getCellFromPoint(e.clientX, e.clientY);
+                        if (cell) {
+                            applyBatchMoveTo(parseInt(cell.dataset.track, 10), parseInt(cell.dataset.cell, 10));
+                        }
+                        return;
+                    }
+
+                    if (appState.isMouseDown && appState.mouseButton === 2) {
+                        const cell = getCellFromPoint(e.clientX, e.clientY);
+                        if (cell) {
+                            handleRightClick(parseInt(cell.dataset.track, 10), parseInt(cell.dataset.cell, 10));
+                        }
+                        return;
+                    }
+
+                    if (appState.isMouseDown && appState.mouseButton === 0) {
+                        const cell = getCellFromPoint(e.clientX, e.clientY);
+                        if (cell) {
+                            handleLeftClick(parseInt(cell.dataset.track, 10), parseInt(cell.dataset.cell, 10));
+                        }
+                    }
+                });
+
+                document.addEventListener('mouseup', () => {
+                    if (appState.marquee && appState.marquee.active) {
+                        finishMarquee();
+                    }
+                    if (appState.batchMove && appState.batchMove.active) {
+                        finishBatchMove();
+                    }
+                    appState.isMouseDown = false;
+                    appState.mouseButton = -1;
+                });
+
+                grid.addEventListener('click', (e) => {
+                    if (e.target.classList.contains('track-delete-btn')) {
+                        e.stopPropagation();
+                        return;
+                    }
+                    const headerBeat = e.target.closest('.header-beat');
+                    if (headerBeat) {
+                        setMemoryPosition(parseInt(headerBeat.dataset.cell, 10));
+                        return;
+                    }
+                    const headerMeasure = e.target.closest('.header-measure-number');
+                    if (headerMeasure) {
+                        setMemoryPosition(parseInt(headerMeasure.dataset.measure, 10) * CELLS_PER_MEASURE);
+                        return;
+                    }
+                });
+
+                grid.addEventListener('contextmenu', (e) => e.preventDefault());
+
+                document.addEventListener('mousedown', (e) => {
+                    const menu = document.getElementById('batchContextMenu');
+                    if (menu && !menu.contains(e.target)) {
+                        closeContextMenu();
+                    }
+                });
+
+                document.addEventListener('scroll', closeContextMenu, true);
+            }
+        }
+
+        function handleLeftClick(trackIdx, cellIdx) {
+            const noteData = appState.selectedInstrument === 'flute' ?
+                { instrument: 'flute', pitch: appState.selectedPitch } :
+                { instrument: appState.selectedInstrument, pitch: null };
+
+            const existing = getNoteAt(trackIdx, cellIdx);
+            if (existing &&
+                existing.instrument === noteData.instrument &&
+                (noteData.instrument !== 'flute' || existing.pitch === noteData.pitch)) {
+                return;
+            }
+
+            setNoteAt(trackIdx, cellIdx, noteData);
+            playNoteSound(noteData);
+
+            const maxMeasures = getMaxMeasures();
+            const measureIdx = Math.floor(cellIdx / CELLS_PER_MEASURE);
+            if (measureIdx >= maxMeasures - 1 && hasNotesInLastMeasure()) {
+                autoExpandIfNeeded();
+            }
+            renderGrid();
+            updateStats();
+            saveToLocalStorage();
+        }
+
+        function handleRightClick(trackIdx, cellIdx) {
+            const hadNote = !!getNoteAt(trackIdx, cellIdx);
+            deleteNoteAt(trackIdx, cellIdx);
+            if (hadNote) cleanupTrailingEmptyMeasures();
+            renderGrid();
+            updateStats();
+            saveToLocalStorage();
+        }
+
+        function setMemoryPosition(cellIdx) {
+            const maxCells = getAllTracksTotalCells();
+            appState.memoryPosition = Math.max(0, Math.min(cellIdx, maxCells - 1));
+            appState.currentPlayPosition = appState.memoryPosition;
+            updatePlayerbarPosition(false);
+            updateStats();
+        }
+
+        // ==================== 播放控制 ====================
+        function startPlayback() {
+            if (appState.isPlaying) return;
+            const ctx = getAudioContext();
+            if (ctx && ctx.state === 'suspended') ctx.resume();
+            appState.isPlaying = true;
+            appState.currentPlayPosition = appState.memoryPosition;
+            updatePlayerbarPosition(false);
+            document.getElementById('btnPlay').textContent = '⏸ 播放中';
+            document.getElementById('btnPlay').classList.add('active');
+            const stepDuration = getStepDuration();
+            const totalCells = getAllTracksTotalCells();
+
+            function playStep() {
+                if (!appState.isPlaying) return;
+                appState.tracks.forEach(track => {
+                    const m = Math.floor(appState.currentPlayPosition / CELLS_PER_MEASURE);
+                    const s = appState.currentPlayPosition % CELLS_PER_MEASURE;
+                    if (m < track.measures.length) {
+                        const note = track.measures[m][s];
+                        if (note) playNoteSound(note);
+                    }
+                });
+                clearPlayingHighlight();
+                document.querySelectorAll(`.cell[data-cell="${appState.currentPlayPosition}"]`).forEach(cell =>
+                    cell.classList.add('playing-highlight'));
+                appState.currentPlayPosition++;
+                if (appState.currentPlayPosition >= totalCells) {
+                    appState.currentPlayPosition = appState.memoryPosition;
+                }
+                updatePlayerbarPosition(true);
+                appState.playInterval = setTimeout(playStep, stepDuration * 1000);
+            }
+            playStep();
+        }
+
+        function stopPlayback() {
+            if (!appState.isPlaying) return;
+            appState.isPlaying = false;
+            if (appState.playInterval) {
+                clearTimeout(appState.playInterval);
+                appState.playInterval = null;
+            }
+            appState.currentPlayPosition = appState.memoryPosition;
+            updatePlayerbarPosition(false);
+            clearPlayingHighlight();
+            document.getElementById('btnPlay').textContent = '▶ 播放';
+            document.getElementById('btnPlay').classList.remove('active');
+        }
+
+        function clearPlayingHighlight() {
+            document.querySelectorAll('.cell.playing-highlight').forEach(el => el.classList.remove('playing-highlight'));
+        }
+
+        // ==================== 乐器UI ====================
+        function buildInstrumentToggle() {
+            const container = document.getElementById('instrToggle');
+            container.innerHTML = '';
+            Object.entries(INSTRUMENTS).forEach(([id, info]) => {
+                const btn = document.createElement('button');
+                btn.dataset.instr = id;
+                btn.innerHTML = `<span>${info.emoji}</span><span class="instr-label">${info.label}</span>`;
+                btn.title = info.label;
+                btn.addEventListener('click', () => {
+                    appState.selectedInstrument = id;
+                    updateInstrumentUI();
+                    if (id === 'flute') {
+                        playNoteSound({ instrument: 'flute', pitch: appState.selectedPitch });
+                    } else {
+                        playNoteSound({ instrument: id, pitch: null });
+                    }
+                });
+                container.appendChild(btn);
+            });
+            updateInstrumentUI();
+        }
+
+        function updateInstrumentUI() {
+            document.querySelectorAll('#instrToggle button').forEach(btn => {
+                btn.classList.toggle('active', btn.dataset.instr === appState.selectedInstrument);
+            });
+            const pianoPanel = document.getElementById('pianoPanel');
+            if (INSTRUMENTS[appState.selectedInstrument].isDrum) {
+                pianoPanel.style.opacity = '0.3';
+                pianoPanel.style.pointerEvents = 'none';
+            } else {
+                pianoPanel.style.opacity = '1';
+                pianoPanel.style.pointerEvents = 'auto';
+            }
+        }
+
+        function addTrack() {
+            appState.trackCounter++;
+            const maxMeasures = getMaxMeasures();
+            const track = { id: appState.trackCounter, name: `音轨${appState.trackCounter}`, measures: [] };
+            for (let m = 0; m < maxMeasures; m++) track.measures.push(createEmptyMeasure());
+            appState.tracks.push(track);
+            renderGrid();
+            updateStats();
+            saveToLocalStorage();
+        }
+
+        // ==================== 初始化 ====================
+        function init() {
+            // 尝试从本地存储恢复
+            if (!loadFromLocalStorage()) {
+                initTracks(2, 4);
+            }
+
+            buildPianoKeyboard();
+            buildInstrumentToggle();
+            renderGrid();
+            bindGlobalEvents();
+            updateStats();
+            updateInstrumentUI();
+            updatePianoSelection();
+
+            document.getElementById('btnPlay').addEventListener('click', () => {
+                if (appState.isPlaying) stopPlayback();
+                else startPlayback();
+            });
+            document.getElementById('btnStop').addEventListener('click', stopPlayback);
+            document.getElementById('bpmInput').addEventListener('change', (e) => {
+                let val = parseInt(e.target.value);
+                if (isNaN(val) || val < 30) val = 30;
+                if (val > 300) val = 300;
+                appState.bpm = val;
+                e.target.value = val;
+                if (appState.isPlaying) { stopPlayback(); startPlayback(); }
+                saveToLocalStorage();
+            });
+            document.getElementById('btnAddTrack').addEventListener('click', addTrack);
+            document.getElementById('btnSave').addEventListener('click', saveToLocalStorage);
+            document.getElementById('btnExport').addEventListener('click', exportToFile);
+            document.getElementById('btnImport').addEventListener('click', () => {
+                document.getElementById('fileInput').click();
+            });
+            document.getElementById('fileInput').addEventListener('change', (e) => {
+                const file = e.target.files[0];
+                if (file) importFromFile(file);
+                e.target.value = '';
+            });
+
+            document.addEventListener('keydown', (e) => {
+                if (e.target.tagName === 'INPUT') return;
+                closeContextMenu();
+                if (e.code === 'Escape') {
+                    return;
+                } else if (e.code === 'Space') {
+                    e.preventDefault();
+                    if (appState.isPlaying) stopPlayback();
+                    else startPlayback();
+                } else if (e.code === 'KeyS') {
+                    e.preventDefault();
+                    stopPlayback();
+                    saveToLocalStorage();
+                } else if (e.code === 'KeyA') {
+                    e.preventDefault();
+                    addTrack();
+                }
+            });
+
+            // 窗口关闭前自动保存
+            window.addEventListener('beforeunload', saveToLocalStorage);
+
+            // 定期自动保存
+            setInterval(saveToLocalStorage, 30000);
+        }
+
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', init);
+        } else {
+            init();
+        }
+    </script>
+</body>
+</html>
