@@ -1815,7 +1815,7 @@
                         setMemoryPosition(parseInt(headerBeat.dataset.cell, 10));
                         return;
                     }
-                    const headerMeasure = e.target.closest('.header-measure-number');
+                    const headerMeasure = e.target.closest('.header-measure');
                     if (headerMeasure) {
                         setMemoryPosition(parseInt(headerMeasure.dataset.measure, 10) * CELLS_PER_MEASURE);
                         return;
