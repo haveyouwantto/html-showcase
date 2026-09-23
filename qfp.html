@@ -413,6 +413,13 @@
                         <input type="number" id="v3-qp" min="0" max="63" value="32">
                     </div>
                     <div class="settings-item">
+                        <label>格式版本</label>
+                        <select id="v3-subversion">
+                            <option value="1" selected>3.1 (多符号量化 + 帧类型)</option>
+                            <option value="0">3.0 (旧格式)</option>
+                        </select>
+                    </div>
+                    <div class="settings-item">
                         <label>窗大小 (WS)</label>
                         <select id="v3-winsize">
                             <option value="512">512</option>
@@ -438,13 +445,16 @@
                     <div class="settings-item">
                         <label>强制单声道 <input type="checkbox" id="v3-force-mono"></label>
                     </div>
+                    <div class="settings-item">
+                        <label>自适应量化方案 (quantplan change) <input type="checkbox" id="v3-adaptive-plan" checked></label>
+                    </div>
                 </div>
                 <div class="expert-only">
                     <table class="settings-table" id="v3-band-table">
                         <thead>
                             <tr>
                                 <th>频段 (Hz)</th>
-                                <th>量化级别 (0-9)</th>
+                                <th>量化级别 (0-12)</th>
                                 <th>保留率 (0-1)</th>
                             </tr>
                         </thead>
@@ -456,6 +466,7 @@
             </div>
 
             <button id="encode" style="margin-top: 15px;">开始编码</button>
+            <div id="encode-info"></div>
             <div class="status">
                 <div id="encode-progress" class="progress">
                     <div id="encode-progress-inner" class="progress-inner"></div>
@@ -568,6 +579,26 @@
                 <p>如果说 QFP v2 是一次验证想法可行性的实验，那么 QFP v3 则是一次系统性的工程化整理。从浮点数量化、可变精度体系，到分组能量控制、帧封装与容错机制，这一版本已具备可长期使用的基本框架。
                 </p>
                 <p>它或许仍不算成熟，但至少不再只是一个概念，而是一个值得认真对待、可持续演进的音频编码方案。</p>
+            </div>
+        </details>
+
+        <hr>
+        <details>
+            <summary>V3.1心得</summary>
+            <div class="gray">
+                <h1 id="qfp-v31-">QFP v3.1：多符号量化与带类型的帧</h1>
+                <h2 id="-">多符号量化：把电平当进制用</h2>
+                <p>v3 的高频段用 FP4 / 2bit 整数桶来压低比特。但分组系数已经归一化到 [-1, 1]，FP4 的指数位其实有一半是浪费的：±2、±3 这些档位永远用不到，实际可用电平只剩 5 个，却依然要花 4 bit。
+                </p>
+                <p>于是 v3.1 加了 MultiSymbolQuantizer：把符号表直接当成“进制”来打包。mode9 用 0,±0.25,…,±1 九个电平，五位九进制是 9^5=59049，正好塞进 16 bit；mode5 用五个电平、十位五进制 5^10=9765625，对齐到 24 bit；mode3 只有 0,±1，五位三进制 3^5=243，正好一个字节。等效下来分别是 3.2 / 2.4 / 1.6 bit 一个符号，比同为“粗略量化”的浮点桶省 20%~60% 的比特。</p>
+                <h2 id="-">每帧一个帧类型</h2>
+                <p>v3 的帧里只有音频数据。v3.1 在每帧开头加了 1 字节帧类型，目前有三种：data（音频）、meta（中途更新标签）、quantplan change（中途更换量化方案）。帧内容变成 [type][CRC16][payload]，外面依然是 v3 的 0x7E 起始符 + 0x7D 转义封装，所以字节同步能力保持不变。</p>
+                <p>quantplan change 让编码器可以在中途换 band→量化级别 的映射。目前用在 L-R 声道上：当立体声能量很窄时，把侧声道整体再降 1~2 档，每 32 帧（约 3 秒）检查一次并带滞回，避免频繁切换。人声素材上大约几秒发一帧，开销可以忽略。</p>
+                <h2 id="-">码流更紧凑</h2>
+                <p>除了新的量化方案，v3.1 还把帧内结构做了瘦身：用 1 字节桶描述位图替代每个桶两个长度前缀；零游程位置改成差分编码（只记 gap 与“超出阈值多少”）；整桶全 0 或整通道无数据时直接省略；scale/loss 按频段做差分，让 zlib 更容易压。</p>
+                <p>在同一 QP 下对比 v3.0：中高质量大约小 3%，高 QP（qp=56）能小 13%~15%，而 SNR / 分段 SNR 基本一致。</p>
+                <h2 id="-">总结</h2>
+                <p>v3.1 是一次“加料不加价”的升级：用更适合归一化系数的量化方案换掉高比特的开销，再顺手把帧结构做成可扩展的（帧类型留给以后放更多东西，比如响度、无缝切换窗长）。解码器则保持向后兼容，同一个解码器既能读 v3.0 也能读 v3.1。</p>
             </div>
         </details>
     </div>
@@ -894,8 +925,20 @@
                             const x = i * xStep;
                             visualizerCtx.fillRect(x, 0, 1, 1);
 
-                            const quantLevel = player.qfp.dualChPlans[0];
-                            spectrumCtx.fillText(quantLevel[i], x + xStep * 0.5, spectrumCanvas.height - 5);
+                            // 当前生效的量化方案 (会随 quantplan change 帧实时变化)
+                            const q = player.qfp;
+                            const planLPR = q.dualChPlans[0];
+                            const planLMR = q.dualChPlans[1];
+                            const initLPR = q.initialPlans ? q.initialPlans[0] : planLPR;
+                            const initLMR = q.initialPlans ? q.initialPlans[1] : planLMR;
+                            const cx = x + xStep * 0.5;
+                            // 第一行: L+R (Mid) 方案; 第二行: L-R (Side) 方案
+                            // 被中途变更过的频段用橙色标出
+                            spectrumCtx.fillStyle = planLPR[i] !== initLPR[i] ? '#ff9f43' : '#8ab4f8';
+                            spectrumCtx.fillText(planLPR[i], cx, spectrumCanvas.height - 6);
+                            spectrumCtx.fillStyle = planLMR[i] !== initLMR[i] ? '#ff9f43' : '#7bdcb5';
+                            spectrumCtx.fillText(planLMR[i], cx, spectrumCanvas.height - 21);
+                            spectrumCtx.fillStyle = '#8ab4f8';
                         }
                         break;
                 }
@@ -1433,6 +1476,23 @@
 
         const START_STOP = 0x7E;
         const ESCAPE = 0x7D;
+
+        /**
+         * v3.1 帧内容封装: [type(1B)][CRC16(2B LE)][payload]
+         * CRC 覆盖 type + payload (跳过 CRC 字段本身)
+         */
+        function packTypedFrame(frameType, payload) {
+            const body = new Uint8Array(payload.length + 1);
+            body[0] = frameType;
+            body.set(payload, 1);
+            const crc = crc16(body);
+            const out = new Uint8Array(payload.length + 3);
+            out[0] = frameType;
+            out[1] = crc & 0xff;
+            out[2] = (crc >> 8) & 0xff;
+            out.set(payload, 3);
+            return out;
+        }
 
         /**
          * 封装帧：添加起始符并处理转义
@@ -2045,6 +2105,104 @@
         }
 
         /**
+         * 多符号(多进制)量化器 —— QFPv3.1 新增
+         *
+         * 符号表为 -1..1 之间的等间隔电平(含 0)，量化取最近符号；
+         * 编码时把连续 K 个符号看成一个 K 位 R 进制整数，再对齐成整字节：
+         *   mode 3: 符号 {0,-1,+1}              R=3, K=5  -> 3^5  = 243     -> 8 bit  (1.6 bit/符号)
+         *   mode 5: 符号 {0,-0.5,-1,+0.5,+1}    R=5, K=10 -> 5^10 = 9765625 -> 24 bit (2.4 bit/符号)
+         *   mode 9: 符号 {0,±0.25,±0.5,±0.75,±1} R=9, K=5 -> 9^5  = 59049   -> 16 bit (3.2 bit/符号)
+         */
+        const MULTI_SYMBOL_MODES = {
+            3: { levels: [0, -1, 1], group: 5, groupBytes: 1 },
+            5: { levels: [0, -0.5, -1, 0.5, 1], group: 10, groupBytes: 3 },
+            9: { levels: [0, -0.25, -0.5, -0.75, -1, 0.25, 0.5, 0.75, 1], group: 5, groupBytes: 2 }
+        };
+
+        class MultiSymbolQuantizer {
+            constructor(mode) {
+                const cfg = MULTI_SYMBOL_MODES[mode];
+                if (!cfg) throw new Error("Unsupported multi-symbol mode: " + mode);
+                this.mode = mode;
+                this.levels = new Float32Array(cfg.levels);
+                this.radix = this.levels.length;
+                this.group = cfg.group;
+                this.groupBytes = cfg.groupBytes;
+                this.half = (this.radix - 1) / 2;
+                this.bits = this.groupBytes * 8;
+                this.effectiveBits = this.bits / this.group;
+            }
+
+            /**
+             * 最近符号量化（输入已归一化到 [-1,1]）
+             * 索引顺序: 0 -> 0; 1..half -> 负电平; half+1..2*half -> 正电平
+             */
+            quantize(x) {
+                const out = new Uint8Array(x.length);
+                const half = this.half;
+                for (let i = 0; i < x.length; i++) {
+                    let k = Math.round(x[i] * half);
+                    if (k > half) k = half;
+                    if (k < -half) k = -half;
+                    out[i] = k > 0 ? k + half : (k < 0 ? -k : 0);
+                }
+                return out;
+            }
+
+            dequantize(q) {
+                const out = new Float32Array(q.length);
+                const levels = this.levels;
+                for (let i = 0; i < q.length; i++) {
+                    const idx = q[i] < 0 ? 0 : (q[i] >= levels.length ? levels.length - 1 : q[i]);
+                    out[i] = levels[idx];
+                }
+                return out;
+            }
+
+            /** 符号索引 -> 字节流（末尾不足一组用符号 0 补齐） */
+            pack(symbols) {
+                const K = this.group, R = this.radix, B = this.groupBytes;
+                const n = symbols.length;
+                if (n === 0) return new Uint8Array(0);
+                const groups = Math.ceil(n / K);
+                const out = new Uint8Array(groups * B);
+                for (let g = 0; g < groups; g++) {
+                    let acc = 0;
+                    // 第 0 个符号是最低位，与 unpack 对称
+                    for (let j = K - 1; j >= 0; j--) {
+                        const s = g * K + j < n ? symbols[g * K + j] : 0;
+                        acc = acc * R + s;
+                    }
+                    for (let b = 0; b < B; b++) {
+                        out[g * B + b] = (acc >>> (8 * (B - 1 - b))) & 0xFF;
+                    }
+                }
+                return out;
+            }
+
+            /** 字节流 -> 符号索引序列 */
+            unpack(data, count = -1) {
+                const K = this.group, R = this.radix, B = this.groupBytes;
+                const groups = Math.floor(data.length / B);
+                const total = count >= 0 ? count : groups * K;
+                const out = new Uint8Array(total);
+                for (let g = 0; g < groups; g++) {
+                    let acc = 0;
+                    for (let b = 0; b < B; b++) {
+                        acc = acc * 256 + data[g * B + b];
+                    }
+                    for (let j = 0; j < K; j++) {
+                        const idx = g * K + j;
+                        if (idx >= total) break;
+                        out[idx] = acc % R;
+                        acc = Math.floor(acc / R);
+                    }
+                }
+                return out;
+            }
+        }
+
+        /**
          * 将量化整数序列打包为字节流
          */
         function floatPack(bits, qArray) {
@@ -2195,7 +2353,218 @@
             7: { 'bits': 4, 'plan': new FloatQuantizer(new FloatQuantizePlan(4, 2, 1)) },
             8: { 'bits': 4, 'plan': new FloatQuantizer(new FloatQuantizePlan(4, 1, 2)) },
             9: { 'bits': 2, 'plan': new Int2BitSpecialQuantizer() },  // 最低精度
+            // --- QFPv3.1 新增多符号量化 (bucket 为比特桶 key, bits 为每符号等效比特数) ---
+            10: { 'bits': 3.2, 'plan': new MultiSymbolQuantizer(9) },  // 9 电平 / 3.2bit
+            11: { 'bits': 2.4, 'plan': new MultiSymbolQuantizer(5) },  // 5 电平 / 2.4bit
+            12: { 'bits': 1.6, 'plan': new MultiSymbolQuantizer(3) },  // 3 电平 / 1.6bit
             15: { 'bits': 0, 'plan': null }  // 跳过频段(不编码)
+        }
+
+        // ------------------------------------------------------------------
+        // QFPv3.1: 帧类型 / 比特桶 / 方案降级
+        // ------------------------------------------------------------------
+
+        const FRAME_DATA = 0x01;       // 音频数据帧
+        const FRAME_META = 0x02;       // 元数据帧
+        const FRAME_QUANTPLAN = 0x03;  // 量化方案变更帧
+
+        // 质量阶梯: 按每符号有效比特数从高到低, 用于把一个量化级别降 n 档
+        // (编码端不再使用 level 9: 实测比 mode3 更贵且精度更差; 解码端仍保留以兼容旧文件)
+        const QUALITY_LADDER = [0, 1, 2, 3, 4, 5, 6, 7, 8, 10, 11, 12];
+
+        // 比特桶列表: 桶 key 就是该桶"家族代表量化级别"(0/3/6/9 是浮点/整数桶,
+        // 10/11/12 是多符号桶)。顺序即 v3.1 帧内"桶描述位图"的比特下标, 编解码必须一致。
+        const QUANTIZE_BUCKETS = [0, 3, 6, 9, 10, 11, 12];
+        const BUCKET_INDEX = {};
+        QUANTIZE_BUCKETS.forEach((k, i) => BUCKET_INDEX[k] = i);
+
+        /**
+         * 量化级别 -> 比特桶 key
+         * 桶按"家族代表级别"编号: 0-2 -> 0 (FP8), 3-5 -> 3 (FP6), 6-8 -> 6 (FP4),
+         * 9 -> 9 (Int2), 10/11/12 -> 自己 (多符号)。15 不参与编码。
+         */
+        function levelBucket(qLvl) {
+            const lvl = qLvl | 0;
+            return lvl < 9 ? 3 * Math.floor(lvl / 3) : lvl;
+        }
+
+        /** 在质量阶梯上把量化级别降低 notches 档 (15 = 跳过, 保持不变) */
+        function degradeLevel(level, notches) {
+            if (notches <= 0 || level === 15) return level;
+            const i = QUALITY_LADDER.indexOf(level);
+            if (i < 0) return level;
+            return QUALITY_LADDER[Math.min(i + notches, QUALITY_LADDER.length - 1)];
+        }
+
+        function bucketEffectiveBits(key) {
+            return QUANT_LEVELS[key].bits;
+        }
+
+        /** 位置编码的零游程阈值 (编解码必须一致: 差分位置编码依赖它) */
+        function bucketMinZeroRun(key) {
+            return Math.max(2, Math.round(3 * 8 / bucketEffectiveBits(key)));
+        }
+
+        /**
+         * 符号索引数组 -> 字节流
+         * 桶 key 就是代表级别, 所以直接问这个级别的 plan 会不会自己打包:
+         * 多符号量化器有 pack() 方法, 浮点/整数桶则按级别位宽走 floatPack。
+         */
+        function bucketPack(key, symbols) {
+            const lv = QUANT_LEVELS[key];
+            if (lv.plan && typeof lv.plan.pack === 'function') return lv.plan.pack(symbols);
+            const align = ({ 8: 1, 6: 4, 4: 2, 2: 4 })[lv.bits] || 1;
+            const stripped = Array.from(symbols);
+            while (stripped.length % align !== 0) stripped.push(0);
+            return floatPack(lv.bits, stripped);
+        }
+
+        /** 字节流 -> 符号索引数组 */
+        function bucketUnpack(key, data, count = -1) {
+            const lv = QUANT_LEVELS[key];
+            if (lv.plan && typeof lv.plan.unpack === 'function') return lv.plan.unpack(data, count);
+            const n = Math.floor(data.length * 8 / lv.bits);
+            return floatUnpack(lv.bits, data, count >= 0 ? Math.min(n, count) : n);
+        }
+
+        /** MSB 优先的位图打包 (v3.1 与 Python 实现一致: band0 = 首字节最高位) */
+        function packBitsMSB(bitArray) {
+            const out = new Uint8Array(Math.ceil(bitArray.length / 8));
+            for (let i = 0; i < bitArray.length; i++) {
+                if (bitArray[i]) out[Math.floor(i / 8)] |= 0x80 >> (i % 8);
+            }
+            return out;
+        }
+
+        function unpackBitsMSB(bytes, count) {
+            const out = new Uint8Array(count);
+            for (let i = 0; i < count; i++) {
+                out[i] = (bytes[Math.floor(i / 8)] >> (7 - (i % 8))) & 1;
+            }
+            return out;
+        }
+
+        /** v3.1 差分位置编码: [gap][length - minLength]，gap 相对上一条零游程末尾 */
+        function encodePosArrDelta(pos, minLength) {
+            const writer = new BufferWriter();
+            let prevEnd = 0;
+            for (let i = 0; i < pos.length; i++) {
+                const start = pos[i][0], length = pos[i][1];
+                writer.write(prefixEncode(Math.max(0, start - prevEnd)));
+                writer.write(prefixEncode(Math.max(0, length - minLength)));
+                prevEnd = start + length;
+            }
+            return writer.getBuffer();
+        }
+
+        function decodePosArrDelta(reader, minLength) {
+            const pos = [];
+            let prevEnd = 0;
+            while (true) {
+                let gap, len;
+                try {
+                    gap = prefixDecode(reader);
+                    len = prefixDecode(reader);
+                } catch (e) {
+                    break;
+                }
+                const start = prevEnd + gap;
+                const length = len + minLength;
+                pos.push([start, length]);
+                prevEnd = start + length;
+            }
+            return pos;
+        }
+
+        // ------------------------------------------------------------------
+        // QFPv3.1 编码策略: 目标 SNR 驱动的量化方案分配 (只影响编码端)
+        // 频段计划给出"比特上限", 分配器按本帧数据只在便宜方向换级别; 级别随内容
+        // 变化时用已有的 quantplan change 帧通知解码器, 解码端不需要任何改动。
+        // ------------------------------------------------------------------
+
+        // 候选级别按每符号比特数从便宜到贵 (不含 level 9: 比 mode3 更贵且精度更差)
+        const LEVEL_COST_ORDER = [12, 11, 10, 6, 7, 8, 3, 4, 5, 0, 1, 2];
+
+        // 目标 SNR 轮廓: 用各量化级别实测能达到的精度当锚点
+        const SNR_TARGET_POINTS = [[4000, 32.0], [8000, 24.0], [12000, 10.0], [16000, 5.0], [20000, 1.5]];
+        const SNR_QP_SLOPE = 0.40;   // QP 每 +1, 目标 SNR 整体下移 0.4 dB
+        const SNR_QP_REF = 32;
+
+        /** 该频段的目标 SNR (dB) */
+        function snrTarget(maxFreq, qp) {
+            const pts = SNR_TARGET_POINTS;
+            let base;
+            if (maxFreq <= pts[0][0]) {
+                base = pts[0][1];
+            } else if (maxFreq >= pts[pts.length - 1][0]) {
+                base = pts[pts.length - 1][1];
+            } else {
+                base = pts[0][1];
+                for (let i = 0; i + 1 < pts.length; i++) {
+                    const f0 = pts[i][0], s0 = pts[i][1];
+                    const f1 = pts[i + 1][0], s1 = pts[i + 1][1];
+                    if (maxFreq <= f1) {
+                        base = s0 + (s1 - s0) * (maxFreq - f0) / (f1 - f0);
+                        break;
+                    }
+                }
+            }
+            return base - SNR_QP_SLOPE * (qp - SNR_QP_REF);
+        }
+
+        /**
+         * 按目标 SNR 分配每个频段的量化级别。
+         * @param {Float32Array} coeffs 该通道的 MDCT 系数
+         * @param {Uint8Array} plan 频段计划 (作为比特上限, 只降不升)
+         */
+        function allocateLevels(coeffs, plan, bandMaxFreq, numBands, bandSize, qp) {
+            const levels = new Uint8Array(plan);
+            for (let b = 0; b < numBands; b++) {
+                const planLvl = plan[b];
+                if (planLvl === 15) continue;
+
+                const start = b * bandSize;
+                let scale = 0;
+                for (let i = 0; i < bandSize; i++) {
+                    const v = Math.abs(coeffs[start + i]);
+                    if (v > scale) scale = v;
+                }
+                if (scale <= 1e-20) {
+                    levels[b] = 15;
+                    continue;
+                }
+
+                const norm = new Float32Array(bandSize);
+                let energy = 0;
+                for (let i = 0; i < bandSize; i++) {
+                    norm[i] = coeffs[start + i] / scale;
+                    energy += norm[i] * norm[i];
+                }
+                const budget = energy * Math.pow(10, -snrTarget(bandMaxFreq[b], qp) / 10);
+                const ceiling = QUANT_LEVELS[planLvl]['bits'];
+
+                for (const lvl of LEVEL_COST_ORDER) {
+                    if (QUANT_LEVELS[lvl]['bits'] >= ceiling) continue;   // 只降不升
+                    const q = QUANT_LEVELS[lvl]['plan'];
+                    const restored = q.dequantize(q.quantize(norm));
+                    let err = 0;
+                    for (let i = 0; i < bandSize; i++) {
+                        const d = norm[i] - restored[i];
+                        err += d * d;
+                    }
+                    if (err <= budget) {
+                        levels[b] = lvl;
+                        break;
+                    }
+                }
+            }
+            return levels;
+        }
+
+        function samePlan(a, b) {
+            if (a.length !== b.length) return false;
+            for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
+            return true;
         }
 
         class QFPEncoder {
@@ -2519,6 +2888,13 @@
                 this.audioBuffer = audioBuffer;
                 this.settings = settings;
                 this.qp = settings.qp ?? 32;
+                // 子版本: 0 = v3.0 旧格式, 1 = v3.1 新格式(多符号量化 + 帧类型)
+                this.subversion = settings.subversion ?? 0;
+                this.adaptivePlan = settings.adaptivePlan !== false;
+                // quantplan change / 差分元数据状态
+                this.msSmooth = null;
+                this.curExtra = 0;
+                this.planCheckInterval = 32;
                 this.targetBitRate = this.getTargetBitrate(this.qp);
                 this.winSize = settings.winSize ?? 2048;
                 this.hopSize = this.winSize / 2;
@@ -2532,8 +2908,29 @@
 
             }
 
-            static getBandPlan(minFreq, maxFreq) {
+            /**
+             * 频段规划
+             * @param {number} minFreq 频段下限
+             * @param {number} maxFreq 频段上限
+             * @param {boolean} v31 v3.1: 高频段改用多符号量化 (mode9/mode5/mode3)
+             */
+            static getBandPlan(minFreq, maxFreq, v31 = false) {
                 let quantizerLevel, krBase;
+                if (v31) {
+                    // v3.1: 频段计划=量化级别的"比特上限", 实际级别由 SNR 分配器按内容下调;
+                    // 不再使用 level 9 (实测比 mode3 更贵且精度更差)
+                    // (与 Python 一致: 按频段的"上边界"判档)
+                    if (maxFreq < 4000) return { quantizerLevel: 0, krBase: 1.0 };
+                    if (maxFreq < 6000) return { quantizerLevel: 3, krBase: 0.7 };
+                    if (maxFreq < 8000) return { quantizerLevel: 5, krBase: 0.5 };
+                    if (maxFreq < 10000) return { quantizerLevel: 6, krBase: 0.25 };
+                    if (maxFreq < 12000) return { quantizerLevel: 10, krBase: 0.25 };
+                    if (maxFreq < 14000) return { quantizerLevel: 10, krBase: 1 / 6 };
+                    if (maxFreq < 16000) return { quantizerLevel: 11, krBase: 1 / 6 };
+                    if (maxFreq < 18000) return { quantizerLevel: 12, krBase: 0.125 };
+                    if (maxFreq > 20000) return { quantizerLevel: 15, krBase: 0.0 };
+                    return { quantizerLevel: 12, krBase: 0.1 };
+                }
                 if (minFreq < 1500) {
                     quantizerLevel = 0;
                     krBase = 1.0;
@@ -2556,22 +2953,22 @@
                     quantizerLevel = 6;
                     krBase = 0.4;
                 } else if (minFreq < 12000) {
-                    quantizerLevel = 7;
+                    quantizerLevel = v31 ? 10 : 7;   // FP4 -> mode9
                     krBase = 0.36;
                 } else if (minFreq < 13500) {
-                    quantizerLevel = 8;
+                    quantizerLevel = v31 ? 10 : 8;   // FP4 -> mode9
                     krBase = 0.32;
                 } else if (minFreq < 15000) {
-                    quantizerLevel = 9;
+                    quantizerLevel = v31 ? 11 : 9;   // Int2 -> mode5
                     krBase = 0.28;
                 } else if (minFreq < 18000) {
-                    quantizerLevel = 9;
+                    quantizerLevel = v31 ? 12 : 9;   // Int2 -> mode3
                     krBase = 0.24;
                 } else if (minFreq >= 20000) {
                     quantizerLevel = 15;
                     krBase = 0.0;
                 } else {
-                    quantizerLevel = 9;
+                    quantizerLevel = v31 ? 12 : 9;
                     krBase = 0.2;
                 }
                 return { quantizerLevel, krBase };
@@ -2584,7 +2981,7 @@
                 header.writeUint8(0x50); // 文件标识符
                 header.writeUint8(0x41); // 文件标识符
                 header.writeUint8(3);
-                header.writeUint8(0); // V3.0
+                header.writeUint8(this.subversion); // 0 = V3.0, 1 = V3.1
 
 
                 // 基础信息
@@ -2614,49 +3011,31 @@
                     for (let i = 0; i < this.hopSize; i += this.bandSize) {
                         const minFreq = Math.floor(i * this.nyquist / this.hopSize);
                         const maxFreq = Math.floor((i + this.bandSize) * this.nyquist / this.hopSize);
-                        let { quantizerLevel, krBase } = QFP3Encoder.getBandPlan(minFreq, maxFreq);
+                        let { quantizerLevel, krBase } = QFP3Encoder.getBandPlan(minFreq, maxFreq, this.subversion === 1);
                         this.bandPlan.push({ minFreq, maxFreq, quantizerLevel, krBase });
                     }
-                    if (this.qp >= 52) {
-                        const cutoff = this.qp >= 56 ? 8000 : 12000;
-                        for (let b = 0; b < this.bandPlan.length; b++) {
-                            if (this.bandPlan[b].maxFreq > cutoff) {
-                                this.bandPlan[b].quantizerLevel = 15;
-                            }
-                        }
-                    }
-                    this.bandPlan[0].krBase = 1.5; // 提升最低频段的保留率
                 }
 
                 // 构造双通道静态量化方案
                 this.quantLevelsCache = [];
-                let offset;
-                if (this.settings.manual) {
-                    offset = 0;               // 手动模式下不施加任何偏移
-                } else {
-                    // 原有的自动 offset 计算
-                    if (this.qp >= 56) {
-                        offset = 6;
-                    } else if (this.qp >= 48) {
-                        offset = 3;
-                    }
-                    else if (this.qp > 16 && this.qp <= 24) {
-                        offset = -3;
-                    } else if (this.qp <= 16) {
-                        offset = -6;
-                    } else {
-                        offset = 0;
-                    }
-                }
-                let lmrOffset = this.qp >= 56 ? 1:3;
+                // 与 Python 编码器一致: 高 QP 整体降 3 档; L-R 再降 3 档
+                const offset = (!this.settings.manual && this.qp >= 48) ? 3 : 0;
+                const lmrOffset = 3;
                 const lprPlanArr = new Uint8Array(this.bandPlan.length);
                 const lmrPlanArr = new Uint8Array(this.bandPlan.length);
+                const v31 = this.subversion === 1;
                 for (let i = 0; i < this.bandPlan.length; i++) {
                     const quantizerLevel = this.bandPlan[i].quantizerLevel;
                     if (quantizerLevel === 15) {
                         lprPlanArr[i] = 15;
                         lmrPlanArr[i] = 15;
                         continue;
+                    } else if (v31) {
+                        // v3.1: 沿质量阶梯降级, 支持多符号量化级别 (10/11/12)
+                        lprPlanArr[i] = degradeLevel(quantizerLevel, offset);
+                        lmrPlanArr[i] = this.settings.forceMono
+                            ? 15
+                            : degradeLevel(quantizerLevel, offset + lmrOffset);
                     } else {
                         lprPlanArr[i] = clamp(quantizerLevel + offset, 0, 9);
                         // 强制 LMR (侧声道) 为 15 (单声道模式)
@@ -2679,6 +3058,15 @@
 
                 header.write(floatPack(4, lprPlanArr));
                 header.write(floatPack(4, lmrPlanArr));
+
+                // v3.1 状态: 自适应方案 + 频段元数据差分
+                this.lprPlanArr = lprPlanArr;
+                // 分配器用: 频段上限频率 + 频段计划作为比特上限
+                this.bandMaxFreq = new Int32Array(this.bandPlan.map(b => b.maxFreq));
+                this.basePlans = [lprPlanArr.slice(), lmrPlanArr.slice()];
+                this.scalePrev = [new Int32Array(this.numBands), new Int32Array(this.numBands)];
+                this.lossPrev = [new Int32Array(this.numBands), new Int32Array(this.numBands)];
+                this.frameStats = { data: 0, quantplan: 0, silent: 0 };
 
                 return header.getBuffer().buffer;
             }
@@ -2725,23 +3113,58 @@
                 const LPR = L.map((val, idx) => (val + R[idx]) * this.window[idx]); // L+R 数据
                 const LMR = L.map((val, idx) => (val - R[idx]) * this.window[idx]); // L-R 数据
 
+                // 双通道 MDCT (方案分配与逐频段编码复用同一份结果)
+                const coeffs = [LPR, LMR].map(block => {
+                    const c = mdct(block);
+                    for (let i = 0; i < c.length; i++) c[i] /= this.winSize;
+                    return c;
+                });
+
                 const energyLPR = LPR.reduce((a, b) => Math.abs(a) + Math.abs(b), 0);
                 const energyLMR = LMR.reduce((a, b) => Math.abs(a) + Math.abs(b), 0);
-
+            
                 const msRatio = energyLMR / (energyLPR + 1e-6);
 
+                const v31 = this.subversion === 1;
+
+                if (this.msSmooth === null) this.msSmooth = msRatio;
+                else this.msSmooth = 0.75 * this.msSmooth + 0.25 * msRatio;
+
                 let silent = true;
-                const quantizeBits = [8, 6, 4, 2];
+                let flags = 0;   // v3.1: bit0 = L+R 有数据, bit1 = L-R 有数据
+                // v3.0 只有前 4 个桶 (FP8/FP6/FP4/Int2), 线上顺序与 v3.1 一致
+                const quantizeBits = v31 ? QUANTIZE_BUCKETS : QUANTIZE_BUCKETS.slice(0, 4);
                 const frameBuffer = new BufferWriter();
                 const outBuffer = new BufferWriter();
+                const chBuffers = [];
+
+                // --- v3.1: 目标 SNR 驱动的量化方案分配 (quantplan change 帧) ---
+                // 每 planCheckInterval 帧按当前内容重算一次方案, 只有真的变了才发变更帧
+                if (v31 && this.adaptivePlan && this.i % this.planCheckInterval === 0) {
+                    const newPlans = [0, 1].map(ch => allocateLevels(
+                        coeffs[ch], this.basePlans[ch], this.bandMaxFreq,
+                        this.numBands, this.bandSize, this.qp));
+                    let chMask = 0;
+                    for (let ch = 0; ch < 2; ch++) {
+                        if (!samePlan(newPlans[ch], this.quantLevelsCache[ch])) chMask |= 1 << ch;
+                    }
+                    if (chMask) {
+                        const qpWriter = new BufferWriter();
+                        qpWriter.writeUint8(chMask);
+                        for (let ch = 0; ch < 2; ch++) {
+                            if (chMask >> ch & 1) {
+                                qpWriter.write(floatPack(4, newPlans[ch]));
+                                this.quantLevelsCache[ch] = newPlans[ch];   // 编码端同步生效
+                            }
+                        }
+                        outBuffer.write(encapsulateFrame(packTypedFrame(FRAME_QUANTPLAN, qpWriter.getBuffer())));
+                        this.frameStats.quantplan++;
+                    }
+                }
 
                 for (let ch = 0; ch < 2; ch++) {
                     const block = ch ? LMR : LPR;
-                    const mdctCoeffs = mdct(block);
-
-                    for (let i = 0; i < mdctCoeffs.length; i++) {
-                        mdctCoeffs[i] /= this.winSize;
-                    }
+                    const mdctCoeffs = coeffs[ch];   // 复用帧开头的 MDCT 结果
 
                     const absCoeffs = mdctCoeffs.map(Math.abs);
                     const weights = new Float32Array(this.hopSize);
@@ -2761,42 +3184,31 @@
 
                     const weightedCoeffs = absCoeffs.map((val, idx) => val * weights[idx]);
 
-                    // 基于目标比特率的预测剔除逻辑 ---
-                    // 计算单声道每帧的目标 Bit 数量
-                    let targetBitsPerChannel = (this.targetBitRate * this.hopSize / this.audioBuffer.sampleRate / 2);
-                    if (this.settings.forceMono) targetBitsPerChannel *= 1.5;
+                    // --- 全局阈值剪枝 (与 Python 编码器一致) ---
+                    // 保留率决定"总量": warp_steep(QP) 曲线; L-R 通道按 ms_ratio 再打折
+                    const channelBonus = ch === 0
+                        ? 1
+                        : Math.min(0.5, Math.max(0.1, msRatio * 1.5));
+                    const keepRatio = Math.min(0.99,
+                        Math.max(0, warpSteep(1.0 - this.qp / 63, 2) * channelBonus));
 
-                    let coeffStats = [];
-                    for (let i = 0; i < weightedCoeffs.length; i++) {
-                        if (weightedCoeffs[i] > 0) {
-                            const bIdx = Math.floor(i / this.bandSize);
-                            const qLvl = this.quantLevelsCache[ch][bIdx];
-                            if (qLvl === 15) continue; // 跳过被完全丢弃的频段
-
-                            const qBits = QUANT_LEVELS[qLvl]['bits'];
-                            coeffStats.push({ weight: weightedCoeffs[i], bits: qBits });
+                    // 有效频段的加权幅度 → 百分位阈值 (只保留最"重要"的那部分)
+                    const validWeighted = [];
+                    for (let bIdx = 0; bIdx < this.numBands; bIdx++) {
+                        if (this.quantLevelsCache[ch][bIdx] === 15) continue;  // 跳过的频段不参与
+                        const start = bIdx * this.bandSize;
+                        for (let i = 0; i < this.bandSize; i++) {
+                            validWeighted.push(weightedCoeffs[start + i]);
                         }
                     }
-
-                    // 按照权重(重要性)从大到小排序
-                    coeffStats.sort((a, b) => b.weight - a.weight);
-
-                    let currentBits = 0;
-                    let threshold = 0;
-
-                    // 贪心累加预测体积，直到超过目标预算
-                    for (let i = 0; i < coeffStats.length; i++) {
-                        currentBits += coeffStats[i].bits;
-                        if (currentBits > targetBitsPerChannel) {
-                            threshold = coeffStats[i].weight;
-                            break;
-                        }
-                    }
-                    // ------------------------------------------
+                    const threshold = validWeighted.length
+                        ? percentile(validWeighted, 1 - keepRatio)
+                        : 0;
 
                     const bandsData = [];
                     const bandBitmap = new Uint8Array(this.numBands);
-                    const mdctBuckets = { 8: [], 6: [], 4: [], 2: [] };
+                    const mdctBuckets = {};
+                    for (const k of quantizeBits) mdctBuckets[k] = [];
 
                     for (let bIdx = 0; bIdx < this.numBands; bIdx++) {
                         const start = bIdx * this.bandSize;
@@ -2810,12 +3222,9 @@
 
                         const blockData = mdctCoeffs.slice(start, end);
 
-                        const energy = blockData.reduce((sum, val) => sum + Math.abs(val), 0);
-                        if (energy < 0.000001) {
-                            continue;
-                        }
-
                         const prunedData = blockData.map((val, idx) => weightedCoeffs[start + idx] >= threshold ? val : 0);
+                        // 注意: 即使整段都被剪掉, 也仍然要激活该频段并把损失写进元数据,
+                        // 否则解码端拿不到能量信息, 这个频段会变成"沉默的洞"而不是噪声填充。
                         let scale = prunedData.map(e => Math.abs(e)).reduce((a, b) => a > b ? a : b, 0);
                         if (scale === 0) {
                             scale = 1;
@@ -2824,9 +3233,9 @@
                             prunedData[i] /= scale;
                         }
 
-                        // 检查谱平坦度
-                        let sfm = calculateSFM(blockData);
-                        if (sfm > 0.5) {
+                        // 检查谱平坦度 (与 Python 一致: 在归一化后的数据上判断)
+                        let sfm = calculateSFM(prunedData);
+                        if (sfm > 0.37) {
                             // 直接填充0
                             prunedData.fill(0);
                         }
@@ -2845,47 +3254,91 @@
                         const ampLoss = Math.max(0, (sumAbsBlock / scale) - sumAbsRestored) * scale;
 
 
-                        const lossByte = encodeScale(ampLoss);
+                        const scaleCode = encodeScale(scale);
+                        const lossCode = encodeScale(ampLoss);
                         bandBitmap[bIdx] = 1;
                         silent = false;
                         bandsData.push({
                             scale,
-                            lossByte,
-                            ampLoss
+                            ampLoss,
+                            // v3.1: scale/loss 用"与上一帧同频段差分"编码
+                            scaleByte: v31 ? ((scaleCode - this.scalePrev[ch][bIdx]) & 0xFF) : scaleCode,
+                            lossByte: v31 ? ((lossCode - this.lossPrev[ch][bIdx]) & 0xFF) : lossCode
                         });
-                        mdctBuckets[qBits].push(...quantizedData);
+                        if (v31) {
+                            this.scalePrev[ch][bIdx] = scaleCode;
+                            this.lossPrev[ch][bIdx] = lossCode;
+                        }
+                        mdctBuckets[levelBucket(qLvl)].push(...quantizedData);
 
                     }
 
-                    frameBuffer.write(packBits(bandBitmap));
+                    const chBuffer = new BufferWriter();
+
+                    if (v31) {
+                        // 整个通道没有活跃频段 -> 省略 (解码端补零)
+                        if (!bandBitmap.some(v => v !== 0)) {
+                            continue;
+                        }
+                        flags |= 1 << ch;
+                        chBuffer.write(packBitsMSB(bandBitmap));   // MSB 优先 (与 Python 一致)
+                    } else {
+                        chBuffer.write(packBits(bandBitmap));
+                    }
+
                     for (let i = 0; i < bandsData.length; i++) {
                         const bandData = bandsData[i];
-                        frameBuffer.writeUint8(encodeScale(bandData.scale));
-                        frameBuffer.writeUint8(bandData.lossByte);
+                        chBuffer.writeUint8(bandData.scaleByte);
+                        chBuffer.writeUint8(bandData.lossByte);
                     }
 
-                    for (const bits of quantizeBits) {
-                        const bucket = mdctBuckets[bits];
-                        const posInfo = posEncode(bucket, Math.floor(3 * 8 / bits));
-                        const posBytes = encodePosArr(posInfo['pos']);
-                        const stripped = posInfo['stripped'];
-                        const align = ({ 8: 1, 6: 4, 4: 2, 2: 4, 1: 8 })[bits] || 1;
-                        if (stripped.length % align !== 0) {
-                            for (let _ = 0; _ < align - (stripped.length % align); _++) {
-                                stripped.push(0);
-                            }
+                    if (v31) {
+                        // 桶描述位图 + 桶数据 (空桶 / 全零桶不占字节, 位置用差分编码)
+                        const blobs = [];
+                        let bucketDesc = 0;
+                        for (const bits of quantizeBits) {
+                            const bucket = mdctBuckets[bits];
+                            if (bucket.length === 0 || !bucket.some(v => v !== 0)) continue;
+
+                            const minRun = bucketMinZeroRun(bits);
+                            const posInfo = posEncode(bucket, minRun);
+                            const posBytes = encodePosArrDelta(posInfo['pos'], minRun);
+                            const result = bucketPack(bits, posInfo['stripped']);
+                            bucketDesc |= 1 << BUCKET_INDEX[bits];
+                            blobs.push(prefixEncode(posBytes.length), posBytes,
+                                prefixEncode(result.length), result);
                         }
-                        const result = floatPack(bits, stripped);
-                        frameBuffer.write(prefixEncode(posBytes.length));
-                        frameBuffer.write(posBytes);
-                        frameBuffer.write(prefixEncode(result.length));
-                        frameBuffer.write(result);
+                        chBuffer.writeUint8(bucketDesc);
+                        for (const blob of blobs) chBuffer.write(blob);
+                    } else {
+                        for (const bits of quantizeBits) {
+                            const bucket = mdctBuckets[bits];
+                            const posInfo = posEncode(bucket, bucketMinZeroRun(bits));
+                            const posBytes = encodePosArr(posInfo['pos']);
+                            const result = bucketPack(bits, posInfo['stripped']);
+                            chBuffer.write(prefixEncode(posBytes.length));
+                            chBuffer.write(posBytes);
+                            chBuffer.write(prefixEncode(result.length));
+                            chBuffer.write(result);
+                        }
                     }
+
+                    chBuffers.push(chBuffer.getBuffer());
 
                 }
-                if (silent) {
+                if (v31) {
+                    // v3.1: [type][CRC16][payload] 再套 0x7E 字节填充封装
+                    // 静音帧(flags=0)也要写, 解码端靠它推进音频帧计数
+                    const payload = new BufferWriter();
+                    payload.writeUint8(flags);
+                    for (const cb of chBuffers) payload.write(cb);
+                    if (flags === 0) this.frameStats.silent++;
+                    this.frameStats.data++;
+                    outBuffer.write(encapsulateFrame(packTypedFrame(FRAME_DATA, payload.getBuffer())));
+                } else if (silent) {
                     outBuffer.write(encapsulateFrame(new Uint8Array(0)));
                 } else {
+                    for (const cb of chBuffers) frameBuffer.write(cb); // v3.0: 两通道顺序拼接
                     const frame = frameBuffer.getBuffer();
                     const crc = crc16(frame);
                     const finalFrame = new Uint8Array(frame.length + 2);
@@ -3325,6 +3778,14 @@
                 let lprPlan = floatUnpack(4, this.reader.read(planBytesLen), this.numBands);
                 let lmrPlan = floatUnpack(4, this.reader.read(planBytesLen), this.numBands);
                 this.dualChPlans = [lprPlan, lmrPlan];
+                this.planBytesLen = planBytesLen;
+                // 文件头里的初始方案 + 子版本标记 (供 seek 回退与显示当前方案用)
+                this.initialPlans = [lprPlan.slice(), lmrPlan.slice()];
+                this.isV31 = this.subVersion >= 1;
+
+                // v3.1: 频段元数据差分的还原状态 (按通道/频段)
+                this.scalePrev = [new Int32Array(this.numBands), new Int32Array(this.numBands)];
+                this.lossPrev = [new Int32Array(this.numBands), new Int32Array(this.numBands)];
 
                 console.log("LPR Plan: ", lprPlan);
                 console.log("LMR Plan: ", lmrPlan);
@@ -3334,39 +3795,110 @@
             readFrame() {
                 if (this.read >= this.numWindows) throw new Error("No more frames to read"); // 检查是否还有帧可读
 
-
                 this.L.fill(0);
                 this.R.fill(0);
 
-                const frame = decapsulateFrame(this.decompressedReader);
-                this.read++;
-                if (frame.length == 0) {
-                    return [this.L, this.R, 1]; // 左声道，右声道，帧长
-                }
+                // v3.1 = 子版本 1 (帧带类型/差分元数据/差分位置), v3.0 = 子版本 0
+                const v31 = this.subVersion >= 1;
+                let frame = null;
+                let frameReader = null;
+                let flags = 0b11;   // v3.0 没有通道 flags, 两个通道总是存在
 
-                const frameReader = new BufferReader(frame);
+                while (true) {
+                    frame = decapsulateFrame(this.decompressedReader);
+                    if (frame === null) {
+                        // 流提前结束: 当静音帧处理
+                        return [this.L, this.R, 0];
+                    }
 
-                const crcStored = frameReader.readUint16();
-                const crcComputed = crc16(new Uint8Array(frame.subarray(2)));
-                if (crcStored !== crcComputed) {
-                    console.warn("CRC check failed for frame " + this.read);
-                    // 对于校验失败的帧，直接返回静音帧防止破音
-                    return [this.L, this.R, frame.length]; // 左声道，右声道，帧长
+                    if (frame.length == 0) {
+                        // 静音帧: 两通道补零, 但仍要推进 OLA 缓冲区
+                        this.read++;
+                        flags = 0;
+                        frameReader = new BufferReader(new Uint8Array(0));
+                        break;
+                    }
+
+                    if (!v31) {
+                        frameReader = new BufferReader(frame);
+                        const crcStored = frameReader.readUint16();
+                        const crcComputed = crc16(new Uint8Array(frame.subarray(2)));
+                        if (crcStored !== crcComputed) {
+                            console.warn("CRC check failed for frame " + this.read);
+                            this.read++;
+                            return [this.L, this.R, frame.length]; // 校验失败 -> 静音
+                        }
+                        this.read++;
+                        break;
+                    }
+
+                    // ---- v3.1: 帧内容 = [type][CRC16][payload] ----
+                    if (frame.length < 3) {
+                        this.read++;
+                        break;
+                    }
+                    const frameType = frame[0];
+                    const crcStored = frame[1] | (frame[2] << 8);
+                    const crcBody = new Uint8Array(frame.length - 2);
+                    crcBody[0] = frame[0];
+                    crcBody.set(frame.subarray(3), 1);
+                    if (crc16(crcBody) !== crcStored) {
+                        console.warn("CRC check failed for frame " + this.read);
+                        this.read++;
+                        return [this.L, this.R, frame.length];
+                    }
+                    // 注意: BufferReader 取的是 .buffer, 这里必须拷贝出独立缓冲
+                    const payload = new Uint8Array(frame.subarray(3));
+
+                    if (frameType === FRAME_QUANTPLAN) {
+                        // 中途变更量化方案 (L+R / L-R)
+                        this.applyPlanPayload(payload);
+                        continue;
+                    } else if (frameType === FRAME_META) {
+                        const pr = new BufferReader(payload);
+                        const mType = pr.readUint8();
+                        const mLen = prefixDecode(pr);
+                        this.metadata[mType] = pr.read(mLen);
+                        continue;
+                    } else if (frameType !== FRAME_DATA) {
+                        console.warn("Unknown frame type: " + frameType);
+                        continue;
+                    }
+
+                    // DATA 帧
+                    frameReader = new BufferReader(payload);
+                    flags = frameReader.readUint8();
+                    this.read++;
+                    break;
                 }
 
                 for (let ch = 0; ch < 2; ch++) {
+                    if (!(flags >> ch & 1)) continue;   // 该通道整通道静音
+
                     const mdctCoeffs = new Float32Array(this.hopSize);
 
                     const bitmapSize = Math.ceil(this.numBands / 8);
                     const bitmapData = frameReader.read(bitmapSize);
 
-                    const bitmap = unpackBits(bitmapData, this.numBands);
+                    const bitmap = v31
+                        ? unpackBitsMSB(bitmapData, this.numBands)
+                        : unpackBits(bitmapData, this.numBands);
 
                     const bandMeta = [];
                     for (let bIdx = 0; bIdx < this.numBands; bIdx++) {
                         if (bitmap[bIdx]) {
-                            const scale = decodeScale(frameReader.readUint8());
-                            const lossByte = frameReader.readUint8();
+                            let scaleByte, lossByte;
+                            if (v31) {
+                                // 差分还原: 当前值 = 上一帧同频段值 + 差分
+                                scaleByte = (this.scalePrev[ch][bIdx] + frameReader.readUint8()) & 0xFF;
+                                lossByte = (this.lossPrev[ch][bIdx] + frameReader.readUint8()) & 0xFF;
+                                this.scalePrev[ch][bIdx] = scaleByte;
+                                this.lossPrev[ch][bIdx] = lossByte;
+                            } else {
+                                scaleByte = frameReader.readUint8();
+                                lossByte = frameReader.readUint8();
+                            }
+                            const scale = decodeScale(scaleByte);
                             const lossVal = scale == 0 ? 0 : decodeScale(lossByte) / scale;
                             bandMeta.push({
                                 scale: scale,
@@ -3375,15 +3907,36 @@
                         }
                     }
 
-                    const mdctBucket = {
-                        8: [], 6: [], 4: [], 2: []
+                    const mdctBucket = {};
+                    const frameBuckets = [];
+                    if (v31) {
+                        // v3.1: 先读 1 字节桶描述位图, 只读存在的桶
+                        const bucketDesc = frameReader.readUint8();
+                        for (let i = 0; i < QUANTIZE_BUCKETS.length; i++) {
+                            const key = QUANTIZE_BUCKETS[i];
+                            mdctBucket[key] = [];
+                            if (bucketDesc >> i & 1) frameBuckets.push(key);
+                        }
+                    } else {
+                        // v3.0 固定 4 个桶 (FP8/FP6/FP4/Int2), 线上顺序与 QUANTIZE_BUCKETS 前 4 个一致
+                        for (const key of QUANTIZE_BUCKETS.slice(0, 4)) {
+                            mdctBucket[key] = [];
+                            frameBuckets.push(key);
+                        }
                     }
 
-                    for (let bits of [8, 6, 4, 2]) {
-                        const posLen = prefixDecode(frameReader);
-                        const posData = frameReader.read(posLen);
-                        const posReader = new BufferReader(new Uint8Array(posData).buffer);
-                        const pos = decodePosArr(posReader);
+                    for (const bits of frameBuckets) {
+                        let pos;
+                        if (v31) {
+                            const minRun = bucketMinZeroRun(bits);
+                            const posLen = prefixDecode(frameReader);
+                            const posReader = new BufferReader(new Uint8Array(frameReader.read(posLen)).buffer);
+                            pos = decodePosArrDelta(posReader, minRun);
+                        } else {
+                            const posLen = prefixDecode(frameReader);
+                            const posReader = new BufferReader(new Uint8Array(frameReader.read(posLen)).buffer);
+                            pos = decodePosArr(posReader);
+                        }
 
                         const mdctDataLen = prefixDecode(frameReader);
                         const mdctData = frameReader.read(mdctDataLen);
@@ -3392,25 +3945,26 @@
 
                         let activeBands = 0;
                         for (let bIdx = 0; bIdx < this.numBands; bIdx++) {
-                            if (bitmap[bIdx] && QUANT_LEVELS[this.dualChPlans[ch][bIdx]]['bits'] === bits) {
+                            if (bitmap[bIdx] && levelBucket(this.dualChPlans[ch][bIdx]) === bits) {
                                 activeBands++;
                             }
                         }
 
-                        const stripped = floatUnpack(bits, mdctData, Math.ceil(mdctData.length * 8 / bits));
+                        const stripped = bucketUnpack(bits, mdctData);
                         const fullBucket = posDecode(pos, stripped, activeBands * this.bandSize);
                         mdctBucket[bits] = fullBucket;
 
                     }
 
                     let metaPtr = 0;
-                    const bucketPtrs = { 8: 0, 6: 0, 4: 0, 2: 0 };
+                    const bucketPtrs = {};
+                    for (const key of Object.keys(mdctBucket)) bucketPtrs[key] = 0;
                     const ampLosses = new Float32Array(this.numBands);
 
                     for (let bIdx = 0; bIdx < this.numBands; bIdx++) {
                         if (bitmap[bIdx] == 0) continue;
 
-                        const qBits = QUANT_LEVELS[this.dualChPlans[ch][bIdx]]['bits'];
+                        const qBits = levelBucket(this.dualChPlans[ch][bIdx]);
                         const scale = bandMeta[metaPtr].scale;
                         const lossNorm = bandMeta[metaPtr].loss;
                         metaPtr++;
@@ -3522,23 +4076,159 @@
             }
 
             generatePos() {
+                /**
+                 * 预扫描整个帧流：
+                 *  1) 记录每个 "数据帧" 的字节位置 (framePositions)，供 seek 直接跳转；
+                 *     v3.1 里 meta / quantplan change 帧不算音频帧，这里会跳过它们。
+                 *  2) 记录所有 quantplan change / meta 事件，并在每个事件处保存一份
+                 *     解码状态快照 (方案 + 频段元数据差分状态)，这样 seek 之后能立刻
+                 *     恢复成"读到该处"应有的状态，而不是继续用旧方案解码。
+                 */
                 this.framePositions = new Uint32Array(this.numWindows);
-                // 保存当前指针位置以便恢复
-                const initialPos = this.decompressedReader.pos;
-                this.decompressedReader.seek(0);
+                this.stateSnapshots = [];
+                this.metaEvents = [];
 
-                for (let i = 0; i < this.numWindows; i++) {
-                    // 记录当前帧在解压流中的绝对位置
-                    this.framePositions[i] = this.decompressedReader.pos;
+                const reader = this.decompressedReader;
+                const initialPos = reader.pos;
+                reader.seek(0);
 
-                    // 使用 decapsulateFrame 快速跳过数据，不进行逻辑处理
-                    // 这一步会根据帧头定义的长度移动 decompressedReader.pos
-                    decapsulateFrame(this.decompressedReader);
+                // 直接用真实的状态字段做扫描，扫描完再恢复成"从头开始"的初始状态
+                const savedPlans = [this.dualChPlans[0].slice(), this.dualChPlans[1].slice()];
+                this.dualChPlans = [this.initialPlans[0].slice(), this.initialPlans[1].slice()];
+                this.scalePrev = [new Int32Array(this.numBands), new Int32Array(this.numBands)];
+                this.lossPrev = [new Int32Array(this.numBands), new Int32Array(this.numBands)];
+                this.stateSnapshots.push(this.snapshotState(0, 0));
+
+                let dataIndex = 0;
+                while (dataIndex < this.numWindows) {
+                    const framePos = reader.pos;
+                    const frame = decapsulateFrame(reader);
+                    if (frame === null) break;
+
+                    if (frame.length === 0 || !this.isV31) {
+                        // v3.0 / 静音空帧：都算一个音频帧
+                        this.framePositions[dataIndex] = framePos;
+                        dataIndex++;
+                        continue;
+                    }
+
+                    const frameType = frame[0];
+                    if (frameType === FRAME_DATA) {
+                        this.framePositions[dataIndex] = framePos;
+                        this.accumulateMetaPayload(new Uint8Array(frame.subarray(3)));
+                        dataIndex++;
+                    } else if (frameType === FRAME_QUANTPLAN) {
+                        this.applyPlanPayload(new Uint8Array(frame.subarray(3)));
+                        // 快照: 从"下一帧"开始生效, 位置是该变更帧之后
+                        this.stateSnapshots.push(this.snapshotState(dataIndex, reader.pos));
+                    } else if (frameType === FRAME_META) {
+                        const pr = new BufferReader(new Uint8Array(frame.subarray(3)));
+                        const mType = pr.readUint8();
+                        const mLen = prefixDecode(pr);
+                        this.metaEvents.push({ dataIndex: dataIndex, type: mType, data: pr.read(mLen) });
+                    }
                 }
 
-                // 扫描完成后恢复指针
-                this.decompressedReader.seek(initialPos);
-                console.log(`Scan complete: indexing ${this.numWindows} frames.`);
+                reader.seek(initialPos);
+                // 恢复初始状态（预扫描不应该影响正常播放的起点）
+                this.dualChPlans = savedPlans;
+                this.scalePrev = [new Int32Array(this.numBands), new Int32Array(this.numBands)];
+                this.lossPrev = [new Int32Array(this.numBands), new Int32Array(this.numBands)];
+                console.log(`Scan complete: ${dataIndex} audio frames, ` +
+                    `${this.stateSnapshots.length - 1} quantplan change, ${this.metaEvents.length} meta events.`);
+            }
+
+            /** quantplan change 帧 payload -> 写入当前方案 */
+            applyPlanPayload(payload) {
+                const pr = new BufferReader(payload);
+                const chMask = pr.readUint8();
+                for (let c = 0; c < 2; c++) {
+                    if (chMask >> c & 1) {
+                        this.dualChPlans[c] = floatUnpack(4, pr.read(this.planBytesLen), this.numBands);
+                    }
+                }
+            }
+
+            /**
+             * 数据帧 payload -> 只吃掉 bitmap 与频段元数据，累积 scale/loss 差分状态
+             * (跳过桶数据，不重建音频)。注意通道顺序是"每通道 bitmap+meta+桶数据"，
+             * 所以读完一个通道的元数据后必须把它自己的桶数据整段跳过。
+             */
+            accumulateMetaPayload(payload) {
+                const fr = new BufferReader(payload);
+                const flags = fr.readUint8();
+                for (let ch = 0; ch < 2; ch++) {
+                    if (!(flags >> ch & 1)) continue;
+                    const bitmap = unpackBitsMSB(fr.read(Math.ceil(this.numBands / 8)), this.numBands);
+                    for (let b = 0; b < this.numBands; b++) {
+                        if (!bitmap[b]) continue;
+                        const scaleByte = fr.readUint8();
+                        const lossByte = fr.readUint8();
+                        if (this.isV31) {
+                            this.scalePrev[ch][b] = (this.scalePrev[ch][b] + scaleByte) & 0xFF;
+                            this.lossPrev[ch][b] = (this.lossPrev[ch][b] + lossByte) & 0xFF;
+                        }
+                    }
+                    if (this.isV31) {
+                        // 跳过该通道的桶数据: [桶描述位图][每桶: 位置长度+位置, 值长度+值]
+                        const desc = fr.readUint8();
+                        for (let i = 0; i < QUANTIZE_BUCKETS.length; i++) {
+                            if (!(desc >> i & 1)) continue;
+                            const posLen = prefixDecode(fr);
+                            fr.read(posLen);
+                            const valLen = prefixDecode(fr);
+                            fr.read(valLen);
+                        }
+                    }
+                }
+            }
+
+            snapshotState(dataIndex, pos) {
+                return {
+                    dataIndex: dataIndex,
+                    pos: pos,
+                    plans: [this.dualChPlans[0].slice(), this.dualChPlans[1].slice()],
+                    scalePrev: [this.scalePrev[0].slice(), this.scalePrev[1].slice()],
+                    lossPrev: [this.lossPrev[0].slice(), this.lossPrev[1].slice()],
+                };
+            }
+
+            /**
+             * 把解码状态回退到第 targetFrame 个音频帧"刚开始解码"时的样子：
+             * 先恢复到最近一次 quantplan change 的快照，再只解析 bitmap/元数据
+             * 把差分状态推进到目标帧。
+             */
+            rewindTo(targetFrame) {
+                let snap = this.stateSnapshots[0];
+                for (const s of this.stateSnapshots) {
+                    if (s.dataIndex <= targetFrame) snap = s; else break;
+                }
+                this.dualChPlans = [snap.plans[0].slice(), snap.plans[1].slice()];
+                this.scalePrev = [snap.scalePrev[0].slice(), snap.scalePrev[1].slice()];
+                this.lossPrev = [snap.lossPrev[0].slice(), snap.lossPrev[1].slice()];
+
+                for (const ev of this.metaEvents) {
+                    if (ev.dataIndex <= targetFrame) this.metadata[ev.type] = ev.data; else break;
+                }
+
+                const reader = this.decompressedReader;
+                const save = reader.pos;
+                reader.seek(snap.pos);
+                let idx = snap.dataIndex;
+                while (idx < targetFrame) {
+                    const frame = decapsulateFrame(reader);
+                    if (frame === null) break;
+                    if (frame.length === 0 || !this.isV31) { idx++; continue; }
+                    const frameType = frame[0];
+                    if (frameType === FRAME_QUANTPLAN) {
+                        this.applyPlanPayload(new Uint8Array(frame.subarray(3)));
+                        continue;
+                    }
+                    if (frameType !== FRAME_DATA) continue;
+                    this.accumulateMetaPayload(new Uint8Array(frame.subarray(3)));
+                    idx++;
+                }
+                reader.seek(save);
             }
 
             frameLength() {
@@ -3549,12 +4239,15 @@
                 if (frameIndex < 0) frameIndex = 0;
                 if (frameIndex >= this.numWindows) frameIndex = this.numWindows - 1;
 
-                // 1. 跳转解码器指针
+                // 1. 先把解码状态回退到目标帧 (量化方案 + 频段元数据差分)
+                this.rewindTo(frameIndex);
+
+                // 2. 跳转解码器指针
                 const targetPos = this.framePositions[frameIndex];
                 this.decompressedReader.seek(targetPos);
                 this.read = frameIndex;
 
-                // 2. 关键：重置 OLA 缓冲区
+                // 3. 关键：重置 OLA 缓冲区
                 // 如果不重置，seek 后的第一帧会和 seek 前的内容重叠相加，产生爆音或杂音
                 for (let ch = 0; ch < 2; ch++) {
                     this.constructBuffer[ch].fill(0);
@@ -3713,7 +4406,8 @@
             const bandSize = parseInt(document.getElementById('v3-groupsize').value);
             const sampleRate = ctx.sampleRate;
             const nyquist = sampleRate / 2;
-            const numBands = Math.floor(hopSize / bandSize);
+                const numBands = Math.floor(hopSize / bandSize);
+            const v31 = parseInt(document.getElementById('v3-subversion').value) === 1;
 
             // If we already have a plan and it matches the size, don't overwrite user changes
             if (tableBody.children.length === numBands) return;
@@ -3724,7 +4418,7 @@
                 const maxFreq = Math.floor((i + 1) * nyquist / numBands);
 
                 // Default logic (logic copied from QFP3Encoder.encodeHeader for consistency)
-                let { quantizerLevel, krBase } = QFP3Encoder.getBandPlan(minFreq, maxFreq);
+                let { quantizerLevel, krBase } = QFP3Encoder.getBandPlan(minFreq, maxFreq, v31);
 
                 const tr = document.createElement('tr');
                 tr.innerHTML = `
@@ -3750,6 +4444,13 @@
             }
         });
 
+        document.getElementById('v3-subversion').addEventListener('change', () => {
+            document.querySelector('#v3-band-table tbody').innerHTML = '';
+            if (document.getElementById('v3-settings').classList.contains('manual-mode')) {
+                updateV3BandTable();
+            }
+        });
+
         function getV3Settings() {
             const isManual = document.getElementById('v3-settings').classList.contains('manual-mode');
             const settings = {
@@ -3757,6 +4458,8 @@
                 winSize: parseInt(document.getElementById('v3-winsize').value),
                 groupSize: parseInt(document.getElementById('v3-groupsize').value),
                 forceMono: document.getElementById('v3-force-mono').checked,
+                subversion: parseInt(document.getElementById('v3-subversion').value),
+                adaptivePlan: document.getElementById('v3-adaptive-plan').checked,
                 manual: isManual
             };
             if (isManual) {
@@ -4073,6 +4776,18 @@
 
                         // 使用 pako 压缩数据
                         const compressedData = pako.deflate(combinedChunks);
+
+                        // 编码结果摘要 (含 v3.1 帧类型统计)
+                        const totalSize = new Uint8Array(header).length + compressedData.length;
+                        const kbps = totalSize * 8 / duration / 1000;
+                        let summary = `v3.${encoder.subversion ?? 0} | 输出 ${(totalSize / 1024).toFixed(1)} KB`;
+                        summary += ` | 码率 ${kbps.toFixed(1)} kbps | 压缩比 ${(file.size / totalSize).toFixed(2)}x`;
+                        summary += ` | 原始 ${(file.size / 1024).toFixed(1)} KB`;
+                        if (encoder.frameStats) {
+                            const fs = encoder.frameStats;
+                            summary += `<br>帧类型: data=${fs.data} quantplan=${fs.quantplan} silent=${fs.silent}`;
+                        }
+                        document.getElementById('encode-info').innerHTML = summary;
 
                         // 创建 Blob 并生成下载链接
                         const blob = new Blob([header, compressedData], { type: "application/octet-stream" });
