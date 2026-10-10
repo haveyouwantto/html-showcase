@@ -875,7 +875,9 @@
                             let currI = clamp(i[j], -2, 2);
                             let currQ = clamp(q[j], -2, 2);
 
-                            this.out[0] = new Complex(currI, currQ);
+                            // Derotate with the current carrier-phase estimate BEFORE the timing detector,
+                            // so its hard decisions are made on an aligned constellation.
+                            this.out[0] = new Complex(currI, currQ).mul(new Complex(Math.cos(this.phase), -Math.sin(this.phase)));
                             this.outRail[0] = new Complex(this.out[0].real > 0 ? 1 : -1, 0);
 
                             let x = this.outRail[0].sub(this.outRail[2]).mul(this.out[1].conj()).real;
@@ -903,7 +905,7 @@
 
                             // Costas Loop
                             let costas = new Complex(Math.cos(this.phase), -Math.sin(this.phase));
-                            let out = gained.mul(costas);
+                            let out = gained; // already derotated above
                             let error = out.real * out.imag;
                             this.freq += clamp(this.beta * error, -0.01, 0.01);
 
@@ -974,7 +976,9 @@
                             let currI = clamp(i[j], -2, 2);
                             let currQ = clamp(q[j], -2, 2);
 
-                            this.out[0] = new Complex(currI, currQ);
+                            // Derotate with the current carrier-phase estimate BEFORE the timing detector,
+                            // so its hard decisions are made on an aligned constellation.
+                            this.out[0] = new Complex(currI, currQ).mul(new Complex(Math.cos(this.phase), -Math.sin(this.phase)));
                             this.outRail[0] = new Complex(this.out[0].real > 0 ? 1 : -1, this.out[0].imag > 0 ? 1 : -1);
 
                             let x = this.outRail[0].sub(this.outRail[2]).mul(this.out[1].conj()).real;
@@ -1002,7 +1006,7 @@
 
                             // Costas Loop
                             let costas = new Complex(Math.cos(this.phase), -Math.sin(this.phase));
-                            let out = gained.mul(costas);
+                            let out = gained; // already derotated above
                             let error = this.errorFunc(out); // errorFunc 需要根据实际情况进行修改
                             this.freq += clamp(this.beta * error, -0.01, 0.01);
 
@@ -1083,7 +1087,7 @@
 
                 phaseDetector8(sample) {
                     const nearestSymbol = this.nearest8psk(sample);
-                    const error = sample.real * nearestSymbol.imag - sample.imag * nearestSymbol.real;
+                    const error = sample.imag * nearestSymbol.real - sample.real * nearestSymbol.imag;
                     return error;
                 }
 
@@ -1099,7 +1103,9 @@
                             let currI = clamp(i[j], -2, 2);
                             let currQ = clamp(q[j], -2, 2);
 
-                            this.out[0] = new Complex(currI, currQ);
+                            // Derotate with the current carrier-phase estimate BEFORE the timing detector,
+                            // so its hard decisions are made on an aligned constellation.
+                            this.out[0] = new Complex(currI, currQ).mul(new Complex(Math.cos(this.phase), -Math.sin(this.phase)));
                             this.outRail[0] = this.nearest8psk(this.out[0]);
 
                             let x = this.outRail[0].sub(this.outRail[2]).mul(this.out[1].conj()).real;
@@ -1127,7 +1133,7 @@
 
                             // Costas Loop
                             let costas = new Complex(Math.cos(this.phase), -Math.sin(this.phase));
-                            let out = gained.mul(costas);
+                            let out = gained; // already derotated above
                             let error = this.phaseDetector8(out);
                             this.freq += clamp(this.beta * error, -0.01, 0.01);
 
@@ -2838,8 +2844,7 @@
                 let angle = Math.atan2(q, i);
                 // 转换为 0 - 360° 范围（以度数计算）
                 angle = (angle * 180 / Math.PI + 360) % 360;
-                // 平移 22.5° 以匹配 8PSK 的中心
-                angle = (angle + 22.5) % 360;
+                // 星座点位于 k*45°，判决边界位于 22.5° 处（无需平移）
                 // 通过角度计算 8PSK 相位索引
                 return Math.round(angle / 45) % 8; // 将角度转换为 0-7 之间的索引
             }
@@ -2853,14 +2858,14 @@
 
             get decidePoints() {
                 return [
-                    { "i": 0.9239, "q": 0.3827, "label": "000" },
-                    { "i": 0.3827, "q": 0.9239, "label": "001" },
-                    { "i": -0.3827, "q": 0.9239, "label": "011" },
-                    { "i": -0.9239, "q": 0.3827, "label": "010" },
-                    { "i": -0.9239, "q": -0.3827, "label": "110" },
-                    { "i": -0.3827, "q": -0.9239, "label": "111" },
-                    { "i": 0.3827, "q": -0.9239, "label": "101" },
-                    { "i": 0.9239, "q": -0.3827, "label": "100" }
+                    { "i": 1, "q": 0, "label": "000" },
+                    { "i": 0.7071, "q": 0.7071, "label": "001" },
+                    { "i": 0, "q": 1, "label": "011" },
+                    { "i": -0.7071, "q": 0.7071, "label": "010" },
+                    { "i": -1, "q": 0, "label": "110" },
+                    { "i": -0.7071, "q": -0.7071, "label": "111" },
+                    { "i": 0, "q": -1, "label": "101" },
+                    { "i": 0.7071, "q": -0.7071, "label": "100" }
                 ]
             }
         }
