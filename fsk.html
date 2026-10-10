@@ -398,6 +398,7 @@
         <div>
             <div class="title-text">接收</div>
             <textarea id="received" rows="25" cols="80" disabled placeholder="接收到的内容"></textarea>
+            <div id="fecStats" style="color: var(--text-secondary); font-size: 0.85rem; min-height: 1.3em;"></div>
 
             <div class="btn-container">
                 <button id='start'>接收</button>
@@ -459,6 +460,17 @@
                 <option value="2400">2400</option>
             </select>
             <!-- <input type="number" id="baudrateInput" value="50" min="30" max="4800"> -->
+            <label>纠错：</label>
+            <select id="fec">
+                <option value="0">关</option>
+                <option value="13" selected>实时·强 (卷积 1/2)</option>
+                <option value="12">实时·中 (卷积 2/3)</option>
+                <option value="11">实时·轻 (卷积 3/4)</option>
+                <option value="1">分组·轻 (RS+8)</option>
+                <option value="2">分组·中 (RS+16)</option>
+                <option value="3">分组·强 (RS+32)</option>
+                <option value="4">分组·最强 (RS+64)</option>
+            </select>
         </div>
         <details id="decodeInfo">
             <summary>解码详情</summary>
@@ -512,7 +524,8 @@
             const settings = {
                 mode: document.getElementById('mode').value,
                 baudRate: document.getElementById('baudrateInput').value,
-                channel: document.getElementById('channel').value
+                channel: document.getElementById('channel').value,
+                fec: document.getElementById('fec').value
             };
             localStorage.setItem('fsk_settings', JSON.stringify(settings));
         }
@@ -529,6 +542,9 @@
                     if (settings.baudRate) {
                         document.getElementById('baudrateInput').value = settings.baudRate;
                         setBaudRate(parseInt(settings.baudRate));
+                    }
+                    if (settings.fec !== undefined) {
+                        document.getElementById('fec').value = settings.fec;
                     }
                     if (settings.channel) {
                         document.getElementById('channel').value = settings.channel;
@@ -1466,6 +1482,733 @@
             }
 
             return result;
+        }
+
+        // ===== FEC BEGIN =====
+        // 前向纠错层：RS(GF(256)) + CRC-16 + 字节交织 + 带同步字的成帧
+        // 位置：夹在“符号编码(斐波那契/原始字节)”与“调制器”之间，上层解码器无需改动。
+        //
+        // 帧结构（空中比特流）：
+        //   SYNC(32bit, 0x1ACFFC1D) | HDR(3份×16bit, 位多数表决) | BODY(ncw个码字，按字节交织)
+        //   HDR = [档位<<4 | (ncw-1)] [c]      c = 每码字载荷字节数
+        //   码字 = RS( [seq][nbits_hi][nbits_lo][c字节数据][crc16_hi][crc16_lo] ) + P字节校验
+        const FEC_PROFILES = {
+            1: { parity: 8, name: '轻' },     // 可纠 4 字节/码字
+            2: { parity: 16, name: '中' },    // 可纠 8 字节/码字
+            3: { parity: 32, name: '强' },    // 可纠 16 字节/码字
+            4: { parity: 64, name: '最强' }   // 可纠 32 字节/码字
+        };
+        const FEC_MAX_PAYLOAD = 61;   // 每码字最大载荷字节
+        const FEC_MAX_DEPTH = 8;      // 每帧交织的码字数
+        const FEC_SYNC_WORD = 0x1ACFFC1D;
+
+        const GF_EXP = new Uint8Array(512);
+        const GF_LOG = new Uint8Array(256);
+        (function () {
+            let x = 1;
+            for (let i = 0; i < 255; i++) {
+                GF_EXP[i] = x;
+                GF_LOG[x] = i;
+                x <<= 1;
+                if (x & 0x100) x ^= 0x11d;
+            }
+            for (let i = 255; i < 512; i++) GF_EXP[i] = GF_EXP[i - 255];
+        })();
+
+        function gfMul(a, b) {
+            return (a === 0 || b === 0) ? 0 : GF_EXP[GF_LOG[a] + GF_LOG[b]];
+        }
+
+        function gfDiv(a, b) {
+            if (a === 0) return 0;
+            return GF_EXP[(GF_LOG[a] + 255 - GF_LOG[b]) % 255];
+        }
+
+        function fecPopcount(x) {
+            x = x - ((x >>> 1) & 0x55555555);
+            x = (x & 0x33333333) + ((x >>> 2) & 0x33333333);
+            return (((x + (x >>> 4)) & 0x0F0F0F0F) * 0x01010101) >>> 24;
+        }
+
+        function fecCrc16(bytes, len) {
+            let crc = 0xFFFF;
+            for (let i = 0; i < len; i++) {
+                crc ^= bytes[i] << 8;
+                for (let k = 0; k < 8; k++) {
+                    crc = (crc & 0x8000) ? (((crc << 1) ^ 0x1021) & 0xFFFF) : ((crc << 1) & 0xFFFF);
+                }
+            }
+            return crc;
+        }
+
+        class ReedSolomon {
+            constructor(parity) {
+                this.P = parity;
+                // 生成多项式 g(x) = ∏(x - α^i), i = 0..P-1，高次在前
+                let g = [1];
+                for (let i = 0; i < parity; i++) {
+                    const next = new Array(g.length + 1).fill(0);
+                    for (let j = 0; j < g.length; j++) {
+                        next[j] ^= g[j];
+                        next[j + 1] ^= gfMul(g[j], GF_EXP[i]);
+                    }
+                    g = next;
+                }
+                this.gen = g;
+            }
+
+            // 返回 P 字节校验
+            encode(msg) {
+                const P = this.P, gen = this.gen;
+                const par = new Array(P).fill(0);
+                for (let i = 0; i < msg.length; i++) {
+                    const fb = msg[i] ^ par[0];
+                    par.shift();
+                    par.push(0);
+                    if (fb !== 0) {
+                        for (let j = 0; j < P; j++) par[j] ^= gfMul(gen[j + 1], fb);
+                    }
+                }
+                return par;
+            }
+
+            // cw = 数据 + 校验。返回 { ok, errors, data }
+            decode(cw) {
+                const P = this.P, n = cw.length;
+                if (n <= P || n > 255) return { ok: false, errors: 0, data: null };
+                const r = cw.slice();
+
+                const S = new Array(P);
+                let clean = true;
+                for (let j = 0; j < P; j++) {
+                    let s = 0;
+                    const a = GF_EXP[j];
+                    for (let i = 0; i < n; i++) s = gfMul(s, a) ^ r[i];
+                    S[j] = s;
+                    if (s) clean = false;
+                }
+                if (clean) return { ok: true, errors: 0, data: r.slice(0, n - P) };
+
+                // Berlekamp-Massey：求错误位置多项式 lam（低次在前）
+                let lam = [1], prev = [1], L = 0, m = 1, b = 1;
+                for (let k = 0; k < P; k++) {
+                    let d = S[k];
+                    for (let i = 1; i <= L; i++) d ^= gfMul(lam[i] || 0, S[k - i]);
+                    if (d === 0) {
+                        m++;
+                    } else {
+                        const t = lam.slice();
+                        const coef = gfDiv(d, b);
+                        while (lam.length < prev.length + m) lam.push(0);
+                        for (let i = 0; i < prev.length; i++) lam[i + m] ^= gfMul(coef, prev[i]);
+                        if (2 * L <= k) {
+                            L = k + 1 - L;
+                            prev = t;
+                            b = d;
+                            m = 1;
+                        } else {
+                            m++;
+                        }
+                    }
+                }
+                if (L === 0 || L > (P >> 1)) return { ok: false, errors: 0, data: null };
+                for (let i = L + 1; i < lam.length; i++) if (lam[i]) return { ok: false, errors: 0, data: null };
+
+                // Chien 搜索
+                const errDeg = [];
+                for (let i = 0; i < n; i++) {
+                    const xinv = GF_EXP[(255 - i) % 255];
+                    let v = 0, xp = 1;
+                    for (let j = 0; j <= L; j++) {
+                        v ^= gfMul(lam[j], xp);
+                        xp = gfMul(xp, xinv);
+                    }
+                    if (v === 0) errDeg.push(i);
+                }
+                if (errDeg.length !== L) return { ok: false, errors: 0, data: null };
+
+                // 误差值多项式 Ω(x) = S(x)Λ(x) mod x^P
+                const omega = new Array(P).fill(0);
+                for (let i = 0; i < P; i++) {
+                    let v = 0;
+                    for (let j = 0; j <= Math.min(i, L); j++) v ^= gfMul(lam[j], S[i - j]);
+                    omega[i] = v;
+                }
+
+                // Forney
+                for (const i of errDeg) {
+                    const X = GF_EXP[i];
+                    const xinv = GF_EXP[(255 - i) % 255];
+                    let om = 0, xp = 1;
+                    for (let j = 0; j < P; j++) {
+                        om ^= gfMul(omega[j], xp);
+                        xp = gfMul(xp, xinv);
+                    }
+                    let dv = 0;
+                    const xinv2 = gfMul(xinv, xinv);
+                    xp = 1; // xinv^(j-1) 对奇数 j，从 j=1 开始 => xinv^0
+                    for (let j = 1; j <= L; j += 2) {
+                        dv ^= gfMul(lam[j], xp);
+                        xp = gfMul(xp, xinv2);
+                    }
+                    if (dv === 0) return { ok: false, errors: 0, data: null };
+                    const e = gfMul(X, gfDiv(om, dv));
+                    r[n - 1 - i] ^= e;
+                }
+
+                // 复验校正子
+                for (let j = 0; j < P; j++) {
+                    let s = 0;
+                    const a = GF_EXP[j];
+                    for (let i = 0; i < n; i++) s = gfMul(s, a) ^ r[i];
+                    if (s) return { ok: false, errors: 0, data: null };
+                }
+                return { ok: true, errors: L, data: r.slice(0, n - P) };
+            }
+        }
+
+        const fecRsCache = {};
+        function fecGetRs(parity) {
+            return fecRsCache[parity] || (fecRsCache[parity] = new ReedSolomon(parity));
+        }
+
+        // 把比特流编码成带纠错的比特流。profileId: 1..4
+        function fecEncodeBits(bits, profileId) {
+            const prof = FEC_PROFILES[profileId];
+            if (!prof || bits.length === 0) return bits.slice();
+            const rs = fecGetRs(prof.parity);
+            const nBytes = Math.ceil(bits.length / 8);
+            const bytes = new Uint8Array(nBytes);
+            for (let i = 0; i < bits.length; i++) if (bits[i]) bytes[i >> 3] |= 0x80 >> (i & 7);
+            const padBits = nBytes * 8 - bits.length;
+
+            const out = [];
+            const pushByte = v => { for (let i = 7; i >= 0; i--) out.push((v >> i) & 1); };
+            let pos = 0, seq = 0;
+            while (pos < nBytes) {
+                const remaining = nBytes - pos;
+                const ncw = Math.min(FEC_MAX_DEPTH, Math.ceil(remaining / FEC_MAX_PAYLOAD));
+                const frameBytes = Math.min(remaining, ncw * FEC_MAX_PAYLOAD);
+                const c = Math.ceil(frameBytes / ncw);
+
+                const cws = [];
+                for (let j = 0; j < ncw; j++) {
+                    const a = pos + j * c;
+                    const b = Math.min(pos + frameBytes, a + c);
+                    const have = Math.max(0, b - a);
+                    let nbits = have * 8;
+                    if (b === nBytes) nbits -= padBits;
+                    const msg = new Array(3 + c + 2).fill(0);
+                    msg[0] = seq & 255;
+                    msg[1] = (nbits >> 8) & 255;
+                    msg[2] = nbits & 255;
+                    for (let i = 0; i < have; i++) msg[3 + i] = bytes[a + i];
+                    const crc = fecCrc16(msg, 3 + c);
+                    msg[3 + c] = crc >> 8;
+                    msg[4 + c] = crc & 255;
+                    cws.push(msg.concat(rs.encode(msg)));
+                    seq++;
+                }
+
+                const n = cws[0].length;
+                for (let i = 31; i >= 0; i--) out.push((FEC_SYNC_WORD >>> i) & 1);
+                const h0 = (profileId << 4) | (ncw - 1), h1 = c;
+                for (let rep = 0; rep < 3; rep++) { pushByte(h0); pushByte(h1); }
+                for (let t = 0; t < n; t++) {
+                    for (let j = 0; j < ncw; j++) pushByte(cws[j][t]);
+                }
+                pos += frameBytes;
+            }
+            return out;
+        }
+
+        // 接收端：逐比特喂入，找同步字 → 解帧头 → 收帧体 → RS 解码 → 输出纠正后的比特
+        class FecDeframer {
+            constructor(opts = {}) {
+                this.onBits = opts.onBits || function () { };
+                this.onLoss = opts.onLoss || function () { };
+                this.onStats = opts.onStats || function () { };
+                this.syncMaxErrors = 3;
+                this.hdrMaxDisagree = 6;
+                this.resetStats();
+                this.reset();
+            }
+
+            resetStats() {
+                this.stats = { frames: 0, cwOk: 0, cwFail: 0, corrected: 0 };
+            }
+
+            reset() {
+                this.state = 0;
+                this.reg = 0;
+                this.regCount = 0;
+                this.acc = [];
+                this.syncRx = 0;
+                this.hdr = null;
+                this.expectSeq = -1;
+                this.q = [];
+                this.qi = 0;
+                this.busy = false;
+            }
+
+            feed(bit) {
+                this.q.push(bit);
+                if (this.busy) return;
+                this.busy = true;
+                while (this.qi < this.q.length) {
+                    this._step(this.q[this.qi++]);
+                    if (this.qi > 65536) { this.q = this.q.slice(this.qi); this.qi = 0; }
+                }
+                this.q = [];
+                this.qi = 0;
+                this.busy = false;
+            }
+
+            _step(bit) {
+                if (this.state === 0) {
+                    this.reg = ((this.reg << 1) | bit) >>> 0;
+                    if (this.regCount < 32) this.regCount++;
+                    if (this.regCount >= 32 &&
+                        fecPopcount((this.reg ^ FEC_SYNC_WORD) >>> 0) <= this.syncMaxErrors) {
+                        this.syncRx = this.reg;
+                        this.state = 1;
+                        this.acc = [];
+                    }
+                } else if (this.state === 1) {
+                    this.acc.push(bit);
+                    if (this.acc.length === 48) {
+                        this.hdr = this._parseHeader(this.acc);
+                        if (!this.hdr) this._rewind(true);
+                        else this.state = 2;
+                    }
+                } else {
+                    this.acc.push(bit);
+                    if (this.acc.length === 48 + this.hdr.ncw * this.hdr.n * 8) this._finishBody();
+                }
+            }
+
+            _parseHeader(b) {
+                const w = [0, 0, 0];
+                for (let r = 0; r < 3; r++) {
+                    let v = 0;
+                    for (let i = 0; i < 16; i++) v = (v << 1) | b[r * 16 + i];
+                    w[r] = v;
+                }
+                const m = (w[0] & w[1]) | (w[0] & w[2]) | (w[1] & w[2]);
+                const dis = fecPopcount(w[0] ^ m) + fecPopcount(w[1] ^ m) + fecPopcount(w[2] ^ m);
+                if (dis > this.hdrMaxDisagree) return null;
+                const h0 = m >> 8, h1 = m & 255;
+                const prof = FEC_PROFILES[h0 >> 4];
+                if (!prof) return null;
+                const ncw = (h0 & 15) + 1;
+                if (ncw > FEC_MAX_DEPTH) return null;
+                if (h1 < 1 || h1 > FEC_MAX_PAYLOAD) return null;
+                return { P: prof.parity, ncw: ncw, c: h1, n: h1 + 5 + prof.parity };
+            }
+
+            // 回到搜索状态，并把已收的比特（同步字去掉首位 + headerToo? 帧体）重新送去找同步字
+            _rewind(includeHeader) {
+                const syncBits = [];
+                for (let i = 30; i >= 0; i--) syncBits.push((this.syncRx >>> i) & 1); // 同步字去掉第 1 位
+                const rest = includeHeader ? this.acc : this.acc.slice(48);
+                const replay = includeHeader ? syncBits.concat(rest) : rest;
+                this.state = 0;
+                this.reg = 0;
+                this.regCount = 0;
+                this.acc = [];
+                this.hdr = null;
+                // 重放比特放到队列最前面
+                this.q = replay.concat(this.q.slice(this.qi));
+                this.qi = 0;
+            }
+
+            _finishBody() {
+                const h = this.hdr, rs = fecGetRs(h.P);
+                const body = this.acc.slice(48);
+                const nBytes = h.ncw * h.n;
+                const bytes = new Array(nBytes);
+                for (let i = 0; i < nBytes; i++) {
+                    let v = 0;
+                    for (let k = 0; k < 8; k++) v = (v << 1) | body[i * 8 + k];
+                    bytes[i] = v;
+                }
+                let anyFail = false;
+                this.stats.frames++;
+                for (let j = 0; j < h.ncw; j++) {
+                    const cw = new Array(h.n);
+                    for (let t = 0; t < h.n; t++) cw[t] = bytes[t * h.ncw + j];
+                    const res = rs.decode(cw);
+                    let valid = false;
+                    if (res.ok) {
+                        const d = res.data;
+                        const crc = fecCrc16(d, 3 + h.c);
+                        const nbits = (d[1] << 8) | d[2];
+                        valid = ((crc >> 8) === d[3 + h.c]) && ((crc & 255) === d[4 + h.c]) && nbits <= h.c * 8;
+                        if (valid) {
+                            const seq = d[0];
+                            if (this.expectSeq >= 0 && seq !== this.expectSeq && seq !== 0) {
+                                this.stats.cwFail += (seq - this.expectSeq + 256) & 255;
+                                this.onLoss((seq - this.expectSeq + 256) & 255);
+                            } else if (this.expectSeq >= 0 && seq === 0 && this.expectSeq !== 0) {
+                                this.onLoss(0); // 新消息开始：仅复位上层解码器
+                            }
+                            this.expectSeq = (seq + 1) & 255;
+                            const out = [];
+                            for (let i = 0; i < nbits; i++) out.push((d[3 + (i >> 3)] >> (7 - (i & 7))) & 1);
+                            this.stats.cwOk++;
+                            this.stats.corrected += res.errors;
+                            this.onBits(out);
+                        }
+                    }
+                    if (!valid) {
+                        anyFail = true;
+                        this.stats.cwFail++;
+                        this.expectSeq = -1;
+                        this.onLoss(1);
+                    }
+                }
+                this.onStats(this.stats);
+                if (anyFail) {
+                    this._rewind(false);   // 有码字失败：把整个帧体重新扫描一遍找同步字
+                } else {
+                    // 全部成功：仍把帧体最后 31 比特送回同步搜索，
+                    // 这样即使发生丢/插比特，下一帧同步字被“吃掉”的前几位也能找回
+                    const tail = body.slice(-31);
+                    this.state = 0;
+                    this.reg = 0;
+                    this.regCount = 0;
+                    this.acc = [];
+                    this.hdr = null;
+                    this.q = tail.concat(this.q.slice(this.qi));
+                    this.qi = 0;
+                }
+            }
+        }
+        // ===== FEC END =====
+
+        // ===== CC BEGIN =====
+        // 实时卷积码：K=7, 生成多项式 (171,133)八进制, 基础码率1/2, 可打孔到 2/3、3/4
+        // 解码：流式 Viterbi（固定回溯深度，延迟仅几十个比特），无需等待整帧。
+        //
+        // 空中比特流：
+        //   ASM(32) | HDR(3×8，档位，位多数表决) | 段0 | MARK(16) | 段1 | MARK(16) | ... | 末段 | END(64)
+        //   每段 = CC_SEG_STEPS 个信息比特对应的编码比特；MARK 用于丢/插比特后重新对齐；
+        //   信息比特末尾补 6 个 0 使编码器回到全零状态，END 让接收端立即冲刷出最后的比特。
+        const CC_PROFILES = {
+            1: { name: '3/4', P1: [1, 1, 0], P2: [1, 0, 1], depth: 64 },
+            2: { name: '2/3', P1: [1, 1], P2: [1, 0], depth: 56 },
+            3: { name: '1/2', P1: [1], P2: [1], depth: 48 }
+        };
+        const CC_G1 = 0x79;   // 0o171 = 1111001
+        const CC_G2 = 0x5B;   // 0o133 = 1011011
+        const CC_SEG_STEPS = 96;
+        const CC_ASM = 0xE53003E2;       // 与分组RS的同步字(0x1ACFFC1D)互为反码，便于区分
+        const CC_END = 0x1ACFFC1D;       // 结束字，连发两次共 64 比特
+        const CC_MARK = 0xEB90;          // 16 比特段标记
+
+        const CC_OUT = new Uint8Array(128);   // reg(7bit) -> (c1<<1)|c2
+        (function () {
+            const par = x => { x ^= x >> 4; x ^= x >> 2; x ^= x >> 1; return x & 1; };
+            for (let reg = 0; reg < 128; reg++) {
+                CC_OUT[reg] = (par(reg & CC_G1) << 1) | par(reg & CC_G2);
+            }
+        })();
+
+        function ccPopcount(x) {
+            x = x - ((x >>> 1) & 0x55555555);
+            x = (x & 0x33333333) + ((x >>> 2) & 0x33333333);
+            return (((x + (x >>> 4)) & 0x0F0F0F0F) * 0x01010101) >>> 24;
+        }
+
+        function ccWordBits(word, n) {
+            const out = [];
+            for (let i = n - 1; i >= 0; i--) out.push((word >>> i) & 1);
+            return out;
+        }
+
+        // 把信息比特编码成可直接发射的比特流。profileId: 1(3/4) 2(2/3) 3(1/2)
+        function ccEncodeBits(bits, profileId) {
+            const prof = CC_PROFILES[profileId];
+            if (!prof || bits.length === 0) return bits.slice();
+            const P1 = prof.P1, P2 = prof.P2, period = P1.length;
+            const out = [];
+            out.push(...ccWordBits(CC_ASM, 32));
+            for (let rep = 0; rep < 3; rep++) out.push(...ccWordBits(profileId, 8));
+            const info = bits.concat([0, 0, 0, 0, 0, 0]);
+            let state = 0, segSteps = 0;
+            for (let i = 0; i < info.length; i++) {
+                const reg = (info[i] << 6) | state;
+                state = reg >> 1;
+                const o = CC_OUT[reg];
+                const idx = i % period;
+                if (P1[idx]) out.push(o >> 1);
+                if (P2[idx]) out.push(o & 1);
+                segSteps++;
+                if (segSteps === CC_SEG_STEPS && i < info.length - 1) {
+                    out.push(...ccWordBits(CC_MARK, 16));
+                    segSteps = 0;
+                }
+            }
+            out.push(...ccWordBits(CC_END, 32), ...ccWordBits(CC_END, 32));
+            return out;
+        }
+
+        // 流式 Viterbi 解码器（硬判决，支持删余产生的“擦除”）
+        class ViterbiDecoder {
+            constructor(depth) {
+                this.depth = depth;
+                this.L = 256;
+                this.pm = new Int32Array(64).fill(1 << 20);
+                this.pm[0] = 0;
+                this.npm = new Int32Array(64);
+                this.surv = new Uint8Array(this.L * 64);
+                this.n = 0; // 已处理的网格步数
+            }
+
+            // r1, r2 取 0/1，2 表示该位被删余(擦除)
+            step(r1, r2) {
+                const pm = this.pm, npm = this.npm, surv = this.surv;
+                const base = (this.n % this.L) * 64;
+                let min = 1 << 30;
+                for (let ns = 0; ns < 64; ns++) {
+                    const b = ns >> 5;
+                    const s0 = (ns & 31) << 1, s1 = s0 | 1;
+                    const o0 = CC_OUT[(b << 6) | s0], o1 = CC_OUT[(b << 6) | s1];
+                    let m0 = pm[s0], m1 = pm[s1];
+                    if (r1 !== 2) { m0 += (r1 !== (o0 >> 1)) ? 1 : 0; m1 += (r1 !== (o1 >> 1)) ? 1 : 0; }
+                    if (r2 !== 2) { m0 += (r2 !== (o0 & 1)) ? 1 : 0; m1 += (r2 !== (o1 & 1)) ? 1 : 0; }
+                    if (m1 < m0) { npm[ns] = m1; surv[base + ns] = 1; if (m1 < min) min = m1; }
+                    else { npm[ns] = m0; surv[base + ns] = 0; if (m0 < min) min = m0; }
+                }
+                for (let s = 0; s < 64; s++) npm[s] -= min;
+                this.pm = npm;
+                this.npm = pm;
+                this.n++;
+            }
+
+            bestState() {
+                let best = 0, bm = this.pm[0];
+                for (let s = 1; s < 64; s++) if (this.pm[s] < bm) { bm = this.pm[s]; best = s; }
+                return best;
+            }
+
+            // 从当前最优状态回溯 depth 步，得到第 (n-depth) 步的输入比特
+            bitAt(depth) {
+                let st = this.bestState();
+                for (let k = 0; k < depth; k++) {
+                    const x = this.surv[((this.n - 1 - k) % this.L) * 64 + st];
+                    st = ((st & 31) << 1) | x;
+                }
+                return st >> 5;
+            }
+
+            // 已知第 tEnd 步结束时编码器处于全零状态：从那里回溯，取出第 from..to 步(含)的输入比特
+            flushRange(tEnd, from, to) {
+                const res = [];
+                let st = 0;
+                for (let k = tEnd; k >= from; k--) {
+                    if (k <= to) res.push(st >> 5);
+                    const x = this.surv[((k - 1) % this.L) * 64 + st];
+                    st = ((st & 31) << 1) | x;
+                }
+                return res.reverse();
+            }
+        }
+
+        // 接收端：逐比特喂入 → 找同步字 → 读档位 → 流式解码 → 输出信息比特
+        class ConvDeframer {
+            constructor(opts = {}) {
+                this.onBits = opts.onBits || function () { };
+                this.onLoss = opts.onLoss || function () { };
+                this.onEnd = opts.onEnd || function () { };
+                this.onStats = opts.onStats || function () { };
+                this.asmMaxErrors = 4;
+                this.resetStats();
+                this.reset();
+            }
+
+            resetStats() { this.stats = { messages: 0, markersOk: 0, markersMissed: 0, resyncs: 0, lost: 0 }; }
+
+            reset() {
+                this.state = 0;
+                this.lo = 0; this.hi = 0; this.count = 0;
+                this.hdr = [];
+                this.vit = null;
+            }
+
+            _roll(bit) {
+                this.hi = ((this.hi << 1) | (this.lo >>> 31)) >>> 0;
+                this.lo = ((this.lo << 1) | bit) >>> 0;
+                if (this.count < 1e9) this.count++;
+            }
+
+            feed(bit) {
+                this._roll(bit);
+                if (this.state === 0) {
+                    if (this.count >= 32 && ccPopcount((this.lo ^ CC_ASM) >>> 0) <= this.asmMaxErrors) {
+                        this.state = 1;
+                        this.hdr = [];
+                    }
+                } else if (this.state === 1) {
+                    this.hdr.push(bit);
+                    if (this.hdr.length === 24) this._startRun();
+                } else {
+                    this._run(bit);
+                }
+            }
+
+            _startRun() {
+                const h = this.hdr;
+                const w = [0, 0, 0];
+                for (let r = 0; r < 3; r++) { let v = 0; for (let i = 0; i < 8; i++) v = (v << 1) | h[r * 8 + i]; w[r] = v; }
+                const m = (w[0] & w[1]) | (w[0] & w[2]) | (w[1] & w[2]);
+                const dis = ccPopcount(w[0] ^ m) + ccPopcount(w[1] ^ m) + ccPopcount(w[2] ^ m);
+                const prof = CC_PROFILES[m];
+                if (!prof || dis > 3) { this.state = 0; this.count = 0; return; }
+                this.prof = prof;
+                this.vit = new ViterbiDecoder(prof.depth);
+                this.state = 2;
+                this.mode = 0;            // 0=数据 1=等待段标记
+                this.idx = 0;             // 删余周期内的位置
+                this.pend = [];
+                this.segSteps = 0;
+                this.stepsTotal = 0;
+                this.arr = 0;
+                this.stepHist = new Int32Array(128);
+                this.hist3 = [];
+                this.mbuf = [];
+                this.misses = 0;
+                this.count = 0;
+            }
+
+            _run(bit) {
+                this.stepHist[this.arr & 127] = this.stepsTotal;
+                this.arr++;
+                // 结束字：64 比特，容许 6 个错误
+                if (this.arr >= 64) {
+                    const d = ccPopcount((this.hi ^ CC_END) >>> 0) + ccPopcount((this.lo ^ CC_END) >>> 0);
+                    if (d <= 6) { this._finish(this.stepHist[(this.arr - 64) & 127]); return; }
+                }
+                // 新消息的同步字（严格匹配，避免误触发）
+                if (this.arr >= 32 && this.count >= 32 && ccPopcount((this.lo ^ CC_ASM) >>> 0) <= 1) {
+                    this.stats.lost++;
+                    this.onLoss();
+                    this.state = 1; this.hdr = []; this.vit = null;
+                    return;
+                }
+                if (this.mode === 0) {
+                    this._data(bit);
+                } else {
+                    this.mbuf.push(bit);
+                    if (this.mbuf.length >= 19) this._marker();
+                }
+            }
+
+            _data(bit, arrIdx) {
+                const prof = this.prof, P1 = prof.P1, P2 = prof.P2;
+                // 在段标记后才被提交的比特：把它们的“到达时已完成步数”订正为真实值
+                if (arrIdx !== undefined) this.stepHist[arrIdx & 127] = this.stepsTotal;
+                this.hist3.push(bit);
+                if (this.hist3.length > 3) this.hist3.shift();
+                this.pend.push(bit);
+                const idx = this.idx;
+                const need = P1[idx] + P2[idx];
+                if (this.pend.length < need) return;
+                const r1 = P1[idx] ? this.pend[0] : 2;
+                const r2 = P2[idx] ? this.pend[P1[idx] ? 1 : 0] : 2;
+                this.pend = [];
+                this.idx = (idx + 1) % P1.length;
+                this.vit.step(r1, r2);
+                this.stepsTotal++;
+                this.segSteps++;
+                if (this.vit.n > prof.depth) this.onBits([this.vit.bitAt(prof.depth)]);
+                if (this.segSteps === CC_SEG_STEPS) { this.mode = 1; this.mbuf = []; }
+            }
+
+            _marker() {
+                const seq = this.hist3.concat(this.mbuf);       // 最近 3 个数据比特 + 19 个新比特
+                while (seq.length < 22) seq.unshift(0);
+                let best = -1, bestD = 99;
+                for (const delta of [0, 1, -1, 2, -2, 3, -3]) {
+                    let d = 0;
+                    for (let i = 0; i < 16; i++) d += seq[3 + delta + i] ^ ((CC_MARK >>> (15 - i)) & 1);
+                    if (d < bestD) { bestD = d; best = delta; }
+                }
+                let startNext;
+                if (bestD <= 4) {
+                    startNext = 3 + best + 16;
+                    this.misses = 0;
+                    this.stats.markersOk++;
+                    if (best !== 0) this.stats.resyncs++;
+                } else {
+                    startNext = 19;
+                    this.misses++;
+                    this.stats.markersMissed++;
+                    if (this.misses >= 3) { this._lost(); return; }
+                }
+                const leftover = seq.slice(startNext);
+                const arrBase = this.arr - 22 + startNext;   // leftover[0] 的到达序号
+                this.mode = 0;
+                this.segSteps = 0;
+                this.idx = 0;
+                this.pend = [];
+                this.mbuf = [];
+                for (let i = 0; i < leftover.length; i++) this._data(leftover[i], arrBase + i);
+            }
+
+            _lost() {
+                this.stats.lost++;
+                this.onLoss();
+                this.state = 0;
+                this.count = 0;
+                this.vit = null;
+                this.onStats(this.stats);
+            }
+
+            _finish(tEnd) {
+                const prof = this.prof, vit = this.vit;
+                const emitted = Math.max(0, vit.n - prof.depth);
+                const last = tEnd - 6;                          // 去掉 6 个冲刷用的 0
+                if (last > emitted && vit.n >= tEnd) {
+                    const rest = vit.flushRange(tEnd, emitted + 1, last);
+                    if (rest.length) this.onBits(rest);
+                }
+                this.stats.messages++;
+                this.state = 0;
+                this.count = 0;
+                this.vit = null;
+                this.onEnd();
+                this.onStats(this.stats);
+            }
+        }
+        // ===== CC END =====
+
+        function fecProfileId() {
+            const el = document.getElementById('fec');
+            return el ? (parseInt(el.value) || 0) : 0;
+        }
+
+        let fecRx = null; // 当前接收端的分组RS解帧器
+        let ccRx = null;  // 当前接收端的实时卷积解帧器
+
+        // 分组RS自带CRC，不再需要逐符号奇偶校验；卷积码没有CRC，保留奇偶校验作为残余错误检测
+        function fecNeedsParity() {
+            const p = fecProfileId();
+            return baudRate >= 200 && !(p >= 1 && p <= 4);
+        }
+
+        function showCcStats(st) {
+            const el = document.getElementById('fecStats');
+            if (!el) return;
+            if (!st) { el.textContent = ''; return; }
+            el.textContent = `实时卷积：消息 ${st.messages} ｜ 段标记 正常 ${st.markersOk} / 缺失 ${st.markersMissed} ｜ 重新对齐 ${st.resyncs} ｜ 失锁 ${st.lost}`;
+        }
+
+        function showFecStats(st) {
+            const el = document.getElementById('fecStats');
+            if (!el) return;
+            if (!st || st.frames === 0) { el.textContent = ''; return; }
+            el.textContent = `纠错：帧 ${st.frames} ｜ 码字 正常 ${st.cwOk} / 失败 ${st.cwFail} ｜ 已纠正 ${st.corrected} 字节`;
         }
 
         class FibonacciDecoder {
@@ -3505,7 +4248,7 @@
             )
 
             const decoder = new FibonacciDecoder(result => {
-                const dec = baudRate >= 200 ? decodeAndVerify(result) : result;//decodeAndVerify(result)
+                const dec = fecNeedsParity() ? decodeAndVerify(result) : result;//decodeAndVerify(result)
                 // console.log("解码结果:", dec);
                 if (dec > 0) {
                     if (dec >= 2000000 && dec <= 2001000) { // Control tokens
@@ -3581,11 +4324,38 @@
             demodulator = new selectedMode.demodulate();
             demodulator.setBaudRate(baudRate);
             demodulator.setCarrierFreq(carrierFreq);
+            fecRx = new FecDeframer({
+                onBits: bits => {
+                    for (let bit of bits)
+                        rxRawMode ? rawDecoder.feed(bit) : decoder.feed(bit)
+                },
+                onLoss: () => {
+                    // 丢了码字或新消息开始：清掉斐波那契解码器里残留的半个符号
+                    // （原始字节解码器按字节对齐，丢整字节不影响对齐，所以不动它）
+                    if (!rxRawMode) decoder.bitBuffer = [];
+                },
+                onStats: showFecStats
+            });
+            ccRx = new ConvDeframer({
+                onBits: bits => {
+                    for (let bit of bits)
+                        rxRawMode ? rawDecoder.feed(bit) : decoder.feed(bit)
+                },
+                onLoss: () => { if (!rxRawMode) decoder.bitBuffer = []; },
+                onEnd: () => { if (!rxRawMode) decoder.bitBuffer = []; },
+                onStats: showCcStats
+            });
+            showFecStats(null);
             demodulator.setOnSample(data => {
                 // console.log(data)
                 constellation.addSample(data.sample[0], data.sample[1]);
-                for (let bit of data.bits)
-                    rxRawMode ? rawDecoder.feed(bit) : decoder.feed(bit)
+                if (fecProfileId()) {
+                    // 两种纠错方案的同步字不同，同时监听，谁锁定谁输出
+                    for (let bit of data.bits) { fecRx.feed(bit); ccRx.feed(bit); }
+                } else {
+                    for (let bit of data.bits)
+                        rxRawMode ? rawDecoder.feed(bit) : decoder.feed(bit)
+                }
             })
             demodulator.receive(source)
 
@@ -3673,6 +4443,8 @@
         function stopRx() {
             if (drawHandle) cancelAnimationFrame(drawHandle);
             if (demodulator) demodulator.stop();
+            fecRx = null;
+            ccRx = null;
             rxBtn.textContent = '开始';
             constellation.clear();
         }
@@ -3687,7 +4459,7 @@
                 const mod = new AudioWorkletNode(audioCtx, 'mod')
                 ordArray.unshift(2000002); // Start message token
                 ordArray.push(2000003); // End message token
-                const preparedArray = baudRate >= 200 ? ordArray.map(e => encodeWithParity(e)) : ordArray;
+                const preparedArray = fecNeedsParity() ? ordArray.map(e => encodeWithParity(e)) : ordArray;
                 const sync = [2, 2];
 
                 preparedArray.unshift(...sync);
@@ -3718,6 +4490,9 @@
                     progressBar.style.display = 'none';
                     progressDiv.style.width = '0%';
                 })
+                const fecProfile = fecProfileId();
+                if (fecProfile >= 10) bits = ccEncodeBits(bits, fecProfile - 10);   // 实时卷积码
+                else if (fecProfile) bits = fecEncodeBits(bits, fecProfile);        // 分组RS
                 modulator.transmit(audioCtx, bits);
 
                 const currentTime = audioCtx.currentTime;
@@ -3788,6 +4563,13 @@
             document.getElementById('copyRx').addEventListener('click', () => {
                 const text = received.value;
                 navigator.clipboard.writeText(text);
+            })
+
+            document.getElementById('fec').addEventListener('change', () => {
+                saveSettings();
+                if (fecRx) { fecRx.reset(); fecRx.resetStats(); }
+                if (ccRx) { ccRx.reset(); ccRx.resetStats(); }
+                showFecStats(null);
             })
 
             document.getElementById('mode').addEventListener('change', () => {
