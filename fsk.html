@@ -5208,26 +5208,38 @@
 
         let rxBuffer = [];
         let rxRawMode = false;
+        let rxFlushTimer = null;
+
+        function appendReceivedText(str) {
+            let isBottom = Math.abs(received.scrollHeight - received.clientHeight - received.scrollTop) < 48;
+            received.appendChild(document.createTextNode(str));
+            if (isBottom) {
+                received.scrollTo(0, received.scrollHeight)
+            }
+        }
+
+        // 把缓冲区里剩下的字符写进接收框。
+        // 以前高波特率下要攒满 baudRate/16 个字符才写入，不满的尾巴会一直卡在缓冲区里；
+        // 现在消息结束、停止接收、或者 150ms 没有新字符时都会冲刷。
+        function flushRxBuffer() {
+            clearTimeout(rxFlushTimer);
+            rxFlushTimer = null;
+            if (!rxBuffer.length) return;
+            const str = rxBuffer.join('');
+            rxBuffer = [];
+            appendReceivedText(str);
+        }
 
         function receivedChar(c) {
             if (baudRate < 200) {
-                let textNode = document.createTextNode(c)
-
-                let isBottom = Math.abs(received.scrollHeight - received.clientHeight - received.scrollTop) < 48;
-                received.appendChild(textNode);
-                if (isBottom) {
-                    received.scrollTo(0, received.scrollHeight)
-                }
+                appendReceivedText(c);
             } else {
                 rxBuffer.push(c);
                 if (rxBuffer.length >= baudRate / 16) {
-                    let str = rxBuffer.join('');
-                    let isBottom = Math.abs(received.scrollHeight - received.clientHeight - received.scrollTop) < 48;
-                    received.appendChild(document.createTextNode(str));
-                    if (isBottom) {
-                        received.scrollTo(0, received.scrollHeight)
-                    }
-                    rxBuffer = [];
+                    flushRxBuffer();
+                } else {
+                    clearTimeout(rxFlushTimer);
+                    rxFlushTimer = setTimeout(flushRxBuffer, 150);
                 }
             }
         }
@@ -5274,8 +5286,11 @@
                                 console.log("开始新消息");
                                 break;
                             case 2000003: // End message
+                                flushRxBuffer();
                                 rxMessage = null;
                                 updateMessageList();
+                                break;
+                            case 2000010: // 同步令牌（无奇偶校验时使用，不显示）
                                 break;
 
                             default:
@@ -5446,6 +5461,7 @@
         function stopRx() {
             if (drawHandle) cancelAnimationFrame(drawHandle);
             if (demodulator) demodulator.stop();
+            flushRxBuffer();
             fecRx = null;
             ccRx = null;
             rxBtn.textContent = '开始';
@@ -5463,7 +5479,7 @@
                 ordArray.unshift(2000002); // Start message token
                 ordArray.push(2000003); // End message token
                 const preparedArray = fecNeedsParity() ? ordArray.map(e => encodeWithParity(e)) : ordArray;
-                const sync = [2, 2];
+                const sync = fecNeedsParity() ? [2, 2] : [2000010, 2000010];
 
                 preparedArray.unshift(...sync);
                 preparedArray.push(...sync);
