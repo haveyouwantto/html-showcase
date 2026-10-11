@@ -399,6 +399,7 @@
             <div class="title-text">接收</div>
             <textarea id="received" rows="25" cols="80" disabled placeholder="接收到的内容"></textarea>
             <div id="fecStats" style="color: var(--text-secondary); font-size: 0.85rem; min-height: 1.3em;"></div>
+            <div id="ofdmStats" style="color: var(--text-secondary); font-size: 0.85rem; min-height: 1.3em;"></div>
 
             <div class="btn-container">
                 <button id='start'>接收</button>
@@ -435,6 +436,7 @@
                 <option value="bpsk" selected>BPSK</option>
                 <option value="qpsk">QPSK</option>
                 <option value="psk8">8PSK</option>
+                <option value="ofdm">OFDM（慢速）</option>
             </select>
             <label>选择频道：</label>
             <input type="number" id="channel" value="120" min="-16" max="180">
@@ -1177,6 +1179,31 @@
             registerProcessor('bpsk-demod', bpskDemod)
             registerProcessor('qpsk-demod', qpskDemod)
             registerProcessor('8psk-demod', psk8Demod)
+
+            // OFDM：只负责把麦克风原始采样成块转发给主线程（FFT 在主线程做）
+            class OfdmCapture extends AudioWorkletProcessor {
+                constructor() {
+                    super();
+                    this.size = 2048;
+                    this.buf = new Float32Array(this.size);
+                    this.n = 0;
+                }
+                process(inputs) {
+                    const ch = inputs[0] && inputs[0][0];
+                    if (ch) {
+                        for (let k = 0; k < ch.length; k++) {
+                            this.buf[this.n++] = ch[k];
+                            if (this.n === this.size) {
+                                this.port.postMessage(this.buf, [this.buf.buffer]);
+                                this.buf = new Float32Array(this.size);
+                                this.n = 0;
+                            }
+                        }
+                    }
+                    return true;
+                }
+            }
+            registerProcessor('ofdm-capture', OfdmCapture)
         }
 
         function arrayBufferToBase64(buffer) {
@@ -2183,6 +2210,646 @@
         }
         // ===== CC END =====
 
+        // ===== OFDM BEGIN =====
+        // 慢速 OFDM：每个符号 N=16384 点 (48kHz 下有用部分 341ms)，循环前缀 N/4 (85ms)，
+        // 足以覆盖房间的早期反射。直接在通带上做实数 OFDM（子载波落在 k·fs/N），无需混频。
+        //
+        // 帧结构：  [Chirp 0.5s] [梳状符号] [训练符号×2] [帧头符号] [数据符号 × nSym]
+        //   Chirp   ：线性调频，匹配滤波定时（抗多径、抗低信噪比）
+        //   梳状符号：只占每 4 号子载波(k%4==0)，时域以 N/4 为周期 → 粗测频偏(可达 ±366ppm@16kHz)
+        //   训练符号：两个完全相同的已知 QPSK 符号 → 信道估计 + 精测采样时钟比
+        //   帧头符号：BPSK 重复编码，携带本帧比特数 + CRC8
+        //   数据符号：QPSK，每 8 个子载波一个导频（逐符号跟踪相位与定时）
+        class OfdmFFT {
+            constructor(n) {
+                this.n = n;
+                this.cos = new Float64Array(n >> 1);
+                this.sin = new Float64Array(n >> 1);
+                for (let i = 0; i < (n >> 1); i++) {
+                    this.cos[i] = Math.cos(2 * Math.PI * i / n);
+                    this.sin[i] = Math.sin(2 * Math.PI * i / n);
+                }
+                this.rev = new Uint32Array(n);
+                let bits = 0; while ((1 << bits) < n) bits++;
+                for (let i = 0; i < n; i++) {
+                    let r = 0;
+                    for (let b = 0; b < bits; b++) if (i & (1 << b)) r |= 1 << (bits - 1 - b);
+                    this.rev[i] = r;
+                }
+            }
+
+            // 原地变换；inverse=true 为反变换（不做 1/N 缩放）
+            transform(re, im, inverse) {
+                const n = this.n, rev = this.rev, cs = this.cos, sn = this.sin;
+                for (let i = 0; i < n; i++) {
+                    const j = rev[i];
+                    if (j > i) {
+                        let t = re[i]; re[i] = re[j]; re[j] = t;
+                        t = im[i]; im[i] = im[j]; im[j] = t;
+                    }
+                }
+                const sgn = inverse ? 1 : -1;
+                for (let size = 2; size <= n; size <<= 1) {
+                    const half = size >> 1, step = n / size;
+                    for (let i = 0; i < n; i += size) {
+                        for (let j = 0, k = 0; j < half; j++, k += step) {
+                            const c = cs[k], s = sgn * sn[k];
+                            const a = i + j, b = a + half;
+                            const tr = re[b] * c - im[b] * s;
+                            const ti = re[b] * s + im[b] * c;
+                            re[b] = re[a] - tr; im[b] = im[a] - ti;
+                            re[a] += tr; im[a] += ti;
+                        }
+                    }
+                }
+            }
+        }
+
+        function ofdmLfsr(seed, n) {         // x^23 + x^18 + 1
+            let s = (seed & 0x7fffff) || 1;
+            const out = new Uint8Array(n);
+            for (let i = 0; i < n; i++) {
+                const b = ((s >> 22) ^ (s >> 17)) & 1;
+                s = ((s << 1) | b) & 0x7fffff;
+                out[i] = b;
+            }
+            return out;
+        }
+
+        function ofdmCrc8(bits) {
+            let crc = 0;
+            for (let i = 0; i < bits.length; i++) {
+                const fb = ((crc >> 7) & 1) ^ bits[i];
+                crc = (crc << 1) & 0xFF;
+                if (fb) crc ^= 0x07;
+            }
+            return crc;
+        }
+
+        const OFDM_MAX_SYM = 64;      // 每帧最多数据符号数
+
+        function ofdmConfig(fs, fc, bw) {
+            const N = 1 << Math.round(Math.log2(0.3413 * fs));
+            const cp = N >> 2, symLen = N + cp, df = fs / N;
+            bw = Math.max(bw, 600);
+            let lo = Math.max(fc - bw / 2, 200), hi = Math.min(fc + bw / 2, fs / 2 - 400);
+            if (hi - lo < 600) { lo = Math.max(200, hi - 600); }
+            const kLo = Math.ceil(lo / df), kHi = Math.floor(hi / df);
+            const nCar = kHi - kLo + 1;
+            const pilotIdx = [], dataIdx = [];
+            for (let i = 0; i < nCar; i++) (i % 8 === 0 ? pilotIdx : dataIdx).push(i);
+            const nData = dataIdx.length;
+            // 频域交织：让相邻编码比特落在相距很远的子载波上
+            let S = Math.max(3, Math.round(nData * 0.6180339887));
+            const gcd = (a, b) => b ? gcd(b, a % b) : a;
+            while (gcd(S, nData) !== 1) S++;
+            const perm = new Int32Array(nData);
+            for (let j = 0; j < nData; j++) perm[j] = (j * S) % nData;
+            return {
+                fs, fc, bw, N, cp, symLen, df, kLo, kHi, nCar, pilotIdx, dataIdx, nData, perm,
+                kc: kLo + (nCar - 1) / 2,
+                margin: Math.round(0.18 * cp),
+                Lc: Math.round(0.5 * fs),
+                corrN: 1 << Math.ceil(Math.log2(Math.round(0.5 * fs) * 2.7)),
+                bitsPerSym: 2 * nData
+            };
+        }
+
+        function ofdmChirp(cfg) {
+            const L = cfg.Lc, f0 = cfg.kLo * cfg.df, f1 = cfg.kHi * cfg.df, T = L / cfg.fs;
+            const x = new Float64Array(L), taper = Math.round(0.12 * L);
+            for (let n = 0; n < L; n++) {
+                const t = n / cfg.fs;
+                let w = 1;
+                if (n < taper) w = 0.5 - 0.5 * Math.cos(Math.PI * n / taper);
+                else if (n >= L - taper) w = 0.5 - 0.5 * Math.cos(Math.PI * (L - 1 - n) / taper);
+                x[n] = w * Math.cos(2 * Math.PI * (f0 * t + (f1 - f0) * t * t / (2 * T)));
+            }
+            return x;
+        }
+
+        // 已知序列
+        function ofdmKnown(cfg) {
+            const q = ofdmLfsr(0x1234567, 2 * cfg.nCar);
+            const tr = new Float64Array(cfg.nCar), ti = new Float64Array(cfg.nCar);
+            for (let i = 0; i < cfg.nCar; i++) { tr[i] = (1 - 2 * q[2 * i]) * Math.SQRT1_2; ti[i] = (1 - 2 * q[2 * i + 1]) * Math.SQRT1_2; }
+            const pb = ofdmLfsr(0x2468ACE, (OFDM_MAX_SYM + 6) * cfg.pilotIdx.length);
+            const hs = ofdmLfsr(0x3C3C3C, cfg.nData);
+            // 梳状符号：绝对子载波号为 4 的倍数的位置，幅度 ×2 以保持功率
+            const cq = ofdmLfsr(0x0F1E2D3, 2 * cfg.nCar);
+            const cr = new Float64Array(cfg.nCar), ci = new Float64Array(cfg.nCar);
+            for (let i = 0; i < cfg.nCar; i++) {
+                if ((cfg.kLo + i) % 4 === 0) { cr[i] = 2 * (1 - 2 * cq[2 * i]) * Math.SQRT1_2; ci[i] = 2 * (1 - 2 * cq[2 * i + 1]) * Math.SQRT1_2; }
+            }
+            return { tr, ti, pb, hs, cr, ci };
+        }
+
+        function ofdmPilotVal(cfg, known, m, p) { return 1 - 2 * known.pb[m * cfg.pilotIdx.length + p]; }
+
+        // 一个 OFDM 符号 → 时域（含循环前缀），载波值 Xr/Xi 长度 nCar
+        function ofdmSymbolTime(cfg, fft, Xr, Xi, re, im, out, off) {
+            const N = cfg.N;
+            re.fill(0); im.fill(0);
+            for (let i = 0; i < cfg.nCar; i++) {
+                const k = cfg.kLo + i;
+                re[k] = Xr[i]; im[k] = Xi[i];
+                re[N - k] = Xr[i]; im[N - k] = -Xi[i];
+            }
+            fft.transform(re, im, true);
+            const cp = cfg.cp;
+            for (let n = 0; n < cp; n++) out[off + n] = re[N - cp + n];
+            for (let n = 0; n < N; n++) out[off + cp + n] = re[n];
+        }
+
+        // 把比特流变成可播放的波形。返回 { samples:Float32Array, seconds, nSym }
+        function ofdmModulate(bits, cfg) {
+            const known = ofdmKnown(cfg), fft = new OfdmFFT(cfg.N);
+            const re = new Float64Array(cfg.N), im = new Float64Array(cfg.N);
+            const chirp = ofdmChirp(cfg);
+            const cap = cfg.bitsPerSym;
+            const pieces = [];
+            let total = 0, nSymTotal = 0;
+            let pos = 0;
+            const Xr = new Float64Array(cfg.nCar), Xi = new Float64Array(cfg.nCar);
+            const symbolBuf = () => new Float64Array(cfg.symLen);
+            // 先把 chirp 缩放到与 OFDM 符号相近的均方根（OFDM 符号 rms 在下面统一归一化时处理）
+            while (pos < bits.length) {
+                const fbits = Math.min(bits.length - pos, OFDM_MAX_SYM * cap);
+                const nSym = Math.ceil(fbits / cap);
+                pieces.push(chirp.slice()); total += chirp.length;
+                // 梳状符号
+                {
+                    const s = symbolBuf(); ofdmSymbolTime(cfg, fft, known.cr, known.ci, re, im, s, 0);
+                    pieces.push(s); total += s.length;
+                }
+                // 训练符号 ×2
+                for (let r = 0; r < 2; r++) {
+                    for (let i = 0; i < cfg.nCar; i++) { Xr[i] = known.tr[i]; Xi[i] = known.ti[i]; }
+                    const s = symbolBuf(); ofdmSymbolTime(cfg, fft, Xr, Xi, re, im, s, 0);
+                    pieces.push(s); total += s.length;
+                }
+                // 帧头
+                const hb = new Uint8Array(32);
+                for (let i = 0; i < 24; i++) hb[i] = (fbits >> (23 - i)) & 1;
+                const crc = ofdmCrc8(hb.subarray(0, 24));
+                for (let i = 0; i < 8; i++) hb[24 + i] = (crc >> (7 - i)) & 1;
+                Xr.fill(0); Xi.fill(0);
+                for (let p = 0; p < cfg.pilotIdx.length; p++) Xr[cfg.pilotIdx[p]] = ofdmPilotVal(cfg, known, 3, p);
+                for (let c = 0; c < cfg.nData; c++) {
+                    const sgn = 1 - 2 * known.hs[c];
+                    Xr[cfg.dataIdx[c]] = sgn * (1 - 2 * hb[c % 32]);
+                }
+                { const s = symbolBuf(); ofdmSymbolTime(cfg, fft, Xr, Xi, re, im, s, 0); pieces.push(s); total += s.length; }
+                // 数据符号
+                const scr = ofdmLfsr(0x55AA55, nSym * cap);
+                for (let d = 0; d < nSym; d++) {
+                    Xr.fill(0); Xi.fill(0);
+                    for (let p = 0; p < cfg.pilotIdx.length; p++) Xr[cfg.pilotIdx[p]] = ofdmPilotVal(cfg, known, 4 + (d % OFDM_MAX_SYM), p);
+                    for (let u = 0; u < cfg.nData; u++) {
+                        const q = d * cap + 2 * u;
+                        const b0 = ((q < fbits ? bits[pos + q] : 0) ^ scr[q]);
+                        const b1 = ((q + 1 < fbits ? bits[pos + q + 1] : 0) ^ scr[q + 1]);
+                        const ci = cfg.dataIdx[cfg.perm[u]];
+                        Xr[ci] = (1 - 2 * b0) * Math.SQRT1_2;
+                        Xi[ci] = (1 - 2 * b1) * Math.SQRT1_2;
+                    }
+                    const s = symbolBuf(); ofdmSymbolTime(cfg, fft, Xr, Xi, re, im, s, 0);
+                    pieces.push(s); total += s.length;
+                }
+                nSymTotal += nSym;
+                pos += fbits;
+            }
+            // 归一化：以 OFDM 符号的均方根为基准，chirp 与之相同；3.2σ 软限幅后峰值 0.9
+            let e = 0, cnt = 0;
+            for (const p of pieces) if (p.length === cfg.symLen) { for (let i = 0; i < p.length; i += 7) { e += p[i] * p[i]; cnt++; } }
+            const rms = Math.sqrt(e / Math.max(1, cnt));
+            let ce = 0; for (let i = 0; i < chirp.length; i++) ce += chirp[i] * chirp[i];
+            const chirpGain = rms / Math.sqrt(ce / chirp.length);
+            const lead = Math.round(0.15 * cfg.fs), tail = Math.round(0.15 * cfg.fs);
+            const out = new Float32Array(lead + total + tail);
+            const clip = 3.2 * rms, g = 0.9 / clip;
+            let o = lead;
+            for (const p of pieces) {
+                const gain = (p.length === cfg.Lc) ? chirpGain : 1;
+                for (let i = 0; i < p.length; i++) {
+                    let v = p[i] * gain;
+                    if (v > clip) v = clip; else if (v < -clip) v = -clip;
+                    out[o++] = v * g;
+                }
+            }
+            return { samples: out, seconds: out.length / cfg.fs, nSym: nSymTotal };
+        }
+
+        // 接收端：逐块喂入音频采样，输出比特
+        class OfdmReceiver {
+            constructor(cfg, cb) {
+                this.cfg = cfg;
+                this.cb = cb || {};
+                this.known = ofdmKnown(cfg);
+                this.fft = new OfdmFFT(cfg.N);
+                this.fftC = new OfdmFFT(cfg.corrN);
+                this.re = new Float64Array(cfg.N);
+                this.im = new Float64Array(cfg.N);
+                // 匹配滤波模板的频谱
+                const ch = ofdmChirp(cfg), W = cfg.corrN;
+                const tr = new Float64Array(W), ti = new Float64Array(W);
+                let et = 0; for (let i = 0; i < ch.length; i++) { tr[i] = ch[i]; et += ch[i] * ch[i]; }
+                this.fftC.transform(tr, ti, false);
+                this.Tr = tr; this.Ti = ti; this.Et = et;
+                // 带通掩模（只保留信号频带，抑制带外噪声对归一化的影响）
+                const mask = new Float64Array(W), df = cfg.fs / W;
+                const fl = cfg.kLo * cfg.df - 300, fh = cfg.kHi * cfg.df + 300;
+                for (let i = 0; i < W; i++) { const f = Math.min(i, W - i) * df; mask[i] = (f >= fl && f <= fh) ? 1 : 0; }
+                this.mask = mask;
+                this.cr = new Float64Array(W); this.ci = new Float64Array(W);
+                // 8 点加窗 sinc 插值表（512 个小数相位）
+                this.PH = 512;
+                this.itab = new Float64Array(this.PH * 8);
+                for (let p = 0; p < this.PH; p++) {
+                    const f = p / this.PH;
+                    let sum = 0;
+                    for (let t = 0; t < 8; t++) {
+                        const x = t - 3 - f;
+                        const sinc = Math.abs(x) < 1e-9 ? 1 : Math.sin(Math.PI * x) / (Math.PI * x);
+                        const w = 0.5 + 0.5 * Math.cos(Math.PI * x / 4.5);
+                        this.itab[p * 8 + t] = sinc * w; sum += sinc * w;
+                    }
+                    for (let t = 0; t < 8; t++) this.itab[p * 8 + t] /= sum;
+                }
+                this.buf = new Float32Array(1 << 20);
+                this.start = 0;          // buf[0] 对应的绝对采样序号
+                this.len = 0;
+                this.searchPos = 0;
+                this.state = 'hunt';
+                this.stats = { frames: 0, headerFail: 0, detections: 0 };
+            }
+
+            push(chunk) {
+                if (this.len + chunk.length > this.buf.length) {
+                    // 先丢弃已无用的旧数据
+                    const keep = Math.max(this.start, Math.floor(this._keepFrom()));
+                    const drop = keep - this.start;
+                    if (drop > 0) { this.buf.copyWithin(0, drop, this.len); this.start += drop; this.len -= drop; }
+                    if (this.len + chunk.length > this.buf.length) {
+                        const nb = new Float32Array(Math.max(this.buf.length * 2, this.len + chunk.length));
+                        nb.set(this.buf.subarray(0, this.len)); this.buf = nb;
+                    }
+                }
+                this.buf.set(chunk, this.len);
+                this.len += chunk.length;
+                this._process();
+            }
+
+            _keepFrom() {
+                if (this.state === 'hunt') return this.searchPos - 16;
+                return this.fr.t0 - 16;
+            }
+
+            _process() {
+                for (; ;) {
+                    if (this.state === 'hunt') { if (!this._hunt()) return; }
+                    else { if (!this._frameStep()) return; }
+                }
+            }
+
+            _hunt() {
+                const cfg = this.cfg, W = cfg.corrN, Lc = cfg.Lc;
+                if (this.searchPos < this.start) this.searchPos = this.start;
+                const pos = this.searchPos;
+                if (this.start + this.len < pos + W) return false;
+                const xr = this.cr, xi = this.ci;
+                const off = pos - this.start;
+                for (let i = 0; i < W; i++) { xr[i] = this.buf[off + i]; xi[i] = 0; }
+                this.fftC.transform(xr, xi, false);
+                // z = IFFT( X·mask  +  j · X·conj(T) )：实部=带通后信号，虚部=相关
+                const zr = new Float64Array(W), zi = new Float64Array(W);
+                for (let i = 0; i < W; i++) {
+                    const m = this.mask[i];
+                    const cr = xr[i] * this.Tr[i] + xi[i] * this.Ti[i];
+                    const ci = xi[i] * this.Tr[i] - xr[i] * this.Ti[i];
+                    // (X·mask) + j·(C)
+                    zr[i] = xr[i] * m - ci;
+                    zi[i] = xi[i] * m + cr;
+                }
+                this.fftC.transform(zr, zi, true);
+                const sc = 1 / W;
+                const nl = W - Lc + 1;
+                // 前缀能量（带通后信号）
+                let acc = 0;
+                const xb = new Float64Array(W);
+                for (let i = 0; i < W; i++) xb[i] = zr[i] * sc;
+                const pe = new Float64Array(W + 1);
+                for (let i = 0; i < W; i++) { acc += xb[i] * xb[i]; pe[i + 1] = acc; }
+                const rho = new Float64Array(nl);
+                let best = 0, bl = 0;
+                for (let l = 0; l < nl; l++) {
+                    const e = pe[l + Lc] - pe[l];
+                    const r = (zi[l] * sc) / Math.sqrt(this.Et * e + 1e-12);
+                    rho[l] = r;
+                    const a = Math.abs(r);
+                    if (a > best) { best = a; bl = l; }
+                }
+                // 噪声基底
+                let s2 = 0, c2 = 0;
+                for (let l = 0; l < nl; l += 3) { if (Math.abs(l - bl) > 3000) { s2 += rho[l] * rho[l]; c2++; } }
+                const sigma = Math.sqrt(s2 / Math.max(1, c2));
+                const thr = Math.max(0.10, 6 * sigma);
+                if (best < thr) { this.searchPos = pos + nl; return true; }
+                if (bl > nl - 400) { this.searchPos = pos + Math.max(1, bl - 800); return true; }  // 峰靠近块尾：下一块重新完整观察
+                // 前沿：取峰前 75ms 内第一个超过 0.35×峰 的位置，再爬到局部最大
+                let f = bl;
+                const back = Math.max(0, bl - 3600);
+                for (let l = back; l <= bl; l++) { if (Math.abs(rho[l]) >= 0.35 * best) { f = l; break; } }
+                let l1 = f, mv = Math.abs(rho[f]);
+                for (let l = f; l <= Math.min(nl - 1, f + 60); l++) { if (Math.abs(rho[l]) > mv) { mv = Math.abs(rho[l]); l1 = l; } }
+                const t0 = pos + l1;
+                this.stats.detections++;
+                this.state = 'frame';
+                this.fr = {
+                    t0, m: 0, delta: 0, tau: t0 + Lc, nSym: 0, nbits: 0, scr: null,
+                    peak: best, trainRaw: [], H: null, snr: 0, adj: 0, symIdx: 0, bitsDone: 0
+                };
+                if (this.cb.onDetect) this.cb.onDetect({ t0, rho: best, lead: l1 - bl });
+                return true;
+            }
+
+            // 从缓冲区按（可能带小数的）位置和步长取出 N 个点，做 FFT，返回载波频域值
+            _window(wstart, spacing) {
+                const cfg = this.cfg, N = cfg.N, re = this.re, im = this.im;
+                const base = wstart - this.start;
+                if (Math.abs(spacing - 1) < 1e-9 && Math.abs(base - Math.round(base)) < 1e-9) {
+                    const b0 = Math.round(base);
+                    for (let n = 0; n < N; n++) { re[n] = this.buf[b0 + n]; im[n] = 0; }
+                } else {
+                    const itab = this.itab, PH = this.PH, buf = this.buf;
+                    for (let n = 0; n < N; n++) {
+                        const p = base + n * spacing;
+                        const i0 = Math.floor(p);
+                        const fr = p - i0;
+                        const ph = Math.min(PH - 1, Math.round(fr * PH) % PH);
+                        const carry = Math.round(fr * PH) >= PH ? 1 : 0;
+                        const o = (i0 + carry - 3), t = ph * 8;
+                        re[n] = buf[o] * itab[t] + buf[o + 1] * itab[t + 1] + buf[o + 2] * itab[t + 2] + buf[o + 3] * itab[t + 3] +
+                            buf[o + 4] * itab[t + 4] + buf[o + 5] * itab[t + 5] + buf[o + 6] * itab[t + 6] + buf[o + 7] * itab[t + 7];
+                        im[n] = 0;
+                    }
+                }
+                this.fft.transform(re, im, false);
+                const Yr = new Float64Array(cfg.nCar), Yi = new Float64Array(cfg.nCar);
+                for (let i = 0; i < cfg.nCar; i++) { Yr[i] = re[cfg.kLo + i]; Yi[i] = im[cfg.kLo + i]; }
+                return { Yr, Yi };
+            }
+
+            _winStart(tau, delta) {   // 符号“CP 起点”位置 → FFT 窗起点
+                const cfg = this.cfg;
+                return tau + (cfg.cp - cfg.margin) * (1 + delta);
+            }
+
+            _need(tau, delta) {       // 取这个窗需要缓冲区里到哪个绝对位置
+                return Math.ceil(this._winStart(tau, delta) + this.cfg.N * (1 + delta)) + 8;
+            }
+
+            _frameStep() {
+                const cfg = this.cfg, fr = this.fr, known = this.known;
+                const symAdv = cfg.symLen;
+                if (fr.m === 0) {
+                    // 梳状符号 + 两个训练符号：收齐后一次性估计
+                    const tau0 = fr.t0 + cfg.Lc;
+                    if (this.start + this.len < this._need(tau0 + 2 * symAdv, 0.0004) + 64) return false;
+                    this._trainEstimate(tau0);
+                    return true;
+                }
+                if (this.start + this.len < this._need(fr.tau, fr.delta) + 64) return false;
+                const win = this._window(this._winStart(fr.tau, fr.delta), 1 + fr.delta);
+                const eq = this._equalize(win, fr.m);
+                if (fr.m === 3) {
+                    this._header(eq);
+                } else {
+                    this._data(eq);
+                }
+                return true;
+            }
+
+            // 粗测：梳状符号在时域以 P=N/4 为周期；频偏使相邻周期相差 θ = -2π·fc·δ·P/fs
+            _coarseDelta(wsA) {
+                const cfg = this.cfg, N = cfg.N, P = N >> 2;
+                const re = this.re, im = this.im, base = Math.round(wsA - this.start);
+                for (let n = 0; n < N; n++) { re[n] = this.buf[base + n]; im[n] = 0; }
+                this.fft.transform(re, im, false);
+                // 解析信号：只保留正频率
+                for (let k = 0; k < N; k++) {
+                    if (k === 0 || k >= (N >> 1)) { re[k] = 0; im[k] = 0; }
+                }
+                this.fft.transform(re, im, true);
+                let sr = 0, si = 0;
+                for (let n = 0; n < N - P; n++) {
+                    sr += re[n + P] * re[n] + im[n + P] * im[n];
+                    si += im[n + P] * re[n] - re[n + P] * im[n];
+                }
+                const theta = Math.atan2(si, sr);
+                const fcen = (cfg.kLo + cfg.kHi) / 2 * cfg.df;
+                return -theta * cfg.fs / (2 * Math.PI * fcen * P);
+            }
+
+            _trainEstimate(tau0) {
+                const cfg = this.cfg, fr = this.fr, nC = cfg.nCar;
+                // 1) 粗测 δ
+                let delta = this._coarseDelta(this._winStart(tau0, 0));
+                delta = Math.max(-4e-4, Math.min(4e-4, delta));
+                fr.deltaCoarse = delta;
+                // 2) 用粗测的 δ 取两个训练窗；两窗的公共相位差 = 剩余频偏在一个符号内转过的角度
+                //    （1ppm@16kHz 每符号转 0.043rad，远比跨载波的相位斜率灵敏）
+                let sp = 1 + delta;
+                let tauB = tau0 + cfg.symLen * sp, tauC = tauB + cfg.symLen * sp;
+                let wb = this._window(this._winStart(tauB, delta), sp);
+                let wc = this._window(this._winStart(tauC, delta), sp);
+                let pr = 0, pi_ = 0;
+                for (let k = 0; k < nC; k++) {
+                    pr += wc.Yr[k] * wb.Yr[k] + wc.Yi[k] * wb.Yi[k];
+                    pi_ += wc.Yi[k] * wb.Yr[k] - wc.Yr[k] * wb.Yi[k];
+                }
+                const kcAbs = cfg.kLo + (nC - 1) / 2;
+                delta -= Math.atan2(pi_, pr) * cfg.N / (2 * Math.PI * kcAbs * cfg.symLen);
+                delta = Math.max(-4e-4, Math.min(4e-4, delta));
+                fr.delta = delta;
+                // 3) 用最终 δ 重新取窗，平均得到信道估计
+                sp = 1 + delta;
+                tauB = tau0 + cfg.symLen * sp; tauC = tauB + cfg.symLen * sp;
+                wb = this._window(this._winStart(tauB, delta), sp);
+                wc = this._window(this._winStart(tauC, delta), sp);
+                let cr = 0, ci = 0;
+                for (let k = 0; k < nC; k++) {
+                    cr += wc.Yr[k] * wb.Yr[k] + wc.Yi[k] * wb.Yi[k];
+                    ci += wc.Yi[k] * wb.Yr[k] - wc.Yr[k] * wb.Yi[k];
+                }
+                const dphi = Math.atan2(ci, cr);
+                const cd = Math.cos(dphi), sd = Math.sin(dphi);
+                const Hr = new Float64Array(nC), Hi = new Float64Array(nC);
+                for (let k = 0; k < nC; k++) {
+                    const ar = wb.Yr[k] * cd - wb.Yi[k] * sd;      // 把 B 窗旋转到 C 窗相位再平均
+                    const ai = wb.Yr[k] * sd + wb.Yi[k] * cd;
+                    const yr = 0.5 * (ar + wc.Yr[k]), yi = 0.5 * (ai + wc.Yi[k]);
+                    const xr = this.known.tr[k], xi = this.known.ti[k];
+                    Hr[k] = yr * xr + yi * xi;
+                    Hi[k] = yi * xr - yr * xi;
+                }
+                fr.H = { Hr, Hi };
+                let p = 0; for (let k = 0; k < nC; k++) p += Hr[k] * Hr[k] + Hi[k] * Hi[k];
+                fr.hPow = p / nC;
+                fr.eps = 1e-3 * fr.hPow;
+                fr.m = 3;
+                fr.tau = tauC + cfg.symLen * sp;
+                fr.aPrev = 0;          // 训练符号 C 作为相位参考
+                fr.lastShift = 0;
+            }
+
+            // 均衡 + 导频相位/斜率估计与校正。返回每载波均衡后的值与诊断
+            _equalize(win, m) {
+                const cfg = this.cfg, fr = this.fr, nC = cfg.nCar, H = fr.H;
+                const Xr = new Float64Array(nC), Xi = new Float64Array(nC), Wt = new Float64Array(nC);
+                for (let k = 0; k < nC; k++) {
+                    const hr = H.Hr[k], hi = H.Hi[k];
+                    const h2 = hr * hr + hi * hi;
+                    const d = h2 + fr.eps;
+                    Xr[k] = (win.Yr[k] * hr + win.Yi[k] * hi) / d;
+                    Xi[k] = (win.Yi[k] * hr - win.Yr[k] * hi) / d;
+                    Wt[k] = h2;
+                }
+                // 导频：z_p = X̂_p · conj(pilot)
+                const pil = cfg.pilotIdx, nP = pil.length;
+                const zr = new Float64Array(nP), zi = new Float64Array(nP), w = new Float64Array(nP);
+                for (let p = 0; p < nP; p++) {
+                    const k = pil[p], pv = ofdmPilotVal(cfg, this.known, m, p);
+                    zr[p] = Xr[k] * pv; zi[p] = Xi[k] * pv;
+                    w[p] = Wt[k] * Math.hypot(zr[p], zi[p]);
+                }
+                // 斜率：相邻导频的相位差
+                let sr = 0, si = 0;
+                for (let p = 1; p < nP; p++) {
+                    const ar = zr[p] * zr[p - 1] + zi[p] * zi[p - 1];
+                    const ai = zi[p] * zr[p - 1] - zr[p] * zi[p - 1];
+                    const ww = w[p] * w[p - 1];
+                    const mag = Math.hypot(ar, ai) + 1e-30;
+                    sr += ww * ar / mag; si += ww * ai / mag;
+                }
+                const bMeas = Math.atan2(si, sr) / 8;              // 本符号测得的斜率 rad / 载波（噪声大）
+                // 真实斜率变化很慢（窗口位置由环路稳住），所以做平滑；平滑值才用于校正，
+                // 否则带边缘的相位误差 = 噪声斜率 × 300 个载波，会毁掉整个符号
+                if (fr.bS === undefined) fr.bS = 0;
+                fr.bS += 0.12 * (bMeas - fr.bS);
+                const b = fr.bS;
+                // 公共相位：去掉斜率后的平均相位
+                let ar_ = 0, ai_ = 0;
+                for (let p = 0; p < nP; p++) {
+                    const ph = -b * (pil[p] - (nC - 1) / 2);
+                    const c = Math.cos(ph), s = Math.sin(ph);
+                    ar_ += w[p] * (zr[p] * c - zi[p] * s);
+                    ai_ += w[p] * (zr[p] * s + zi[p] * c);
+                }
+                const a = Math.atan2(ai_, ar_);
+                // 校正所有载波，并统计导频 EVM
+                const mid = (nC - 1) / 2;
+                let evm = 0, evw = 0;
+                for (let k = 0; k < nC; k++) {
+                    const ph = -(a + b * (k - mid));
+                    const c = Math.cos(ph), s = Math.sin(ph);
+                    const r = Xr[k] * c - Xi[k] * s, i2 = Xr[k] * s + Xi[k] * c;
+                    Xr[k] = r; Xi[k] = i2;
+                }
+                for (let p = 0; p < nP; p++) {
+                    const k = pil[p];
+                    const pv = ofdmPilotVal(cfg, this.known, m, p);
+                    const er = Xr[k] * pv - 1, ei = Xi[k] * pv;
+                    evm += Wt[k] * (er * er + ei * ei); evw += Wt[k];
+                }
+                evm = evm / Math.max(evw, 1e-30);
+                const snr = -10 * Math.log10(Math.max(evm, 1e-6));
+                // 定时环路：b>0 表示窗口偏晚 s 个采样
+                const sSamp = b * cfg.N / (2 * Math.PI);
+                return { Xr, Xi, Wt, a, b, sSamp, snr };
+            }
+
+            _advance(eq) {
+                const cfg = this.cfg, fr = this.fr;
+                const kcAbs = cfg.kLo + (cfg.nCar - 1) / 2;
+                const TWO_PI = 2 * Math.PI;
+                // 公共相位的符号间变化 = 2π·kc/N·[symLen·(δ_est-δ_true) + 本次刻意移动的窗口位移]
+                let dA = eq.a - fr.aPrev;
+                dA = dA - TWO_PI * Math.round(dA / TWO_PI);
+                const errPerSym = (dA * cfg.N / (TWO_PI * kcAbs) - fr.lastShift) / cfg.symLen;   // = δ_est - δ_true
+                const gFreq = 0.5, kp = 0.12;
+                fr.delta -= gFreq * errPerSym;
+                fr.delta = Math.max(-4e-4, Math.min(4e-4, fr.delta));
+                // 定时：斜率 b>0 表示窗口偏晚 s 个采样 → 往前拉
+                const shift = -kp * eq.sSamp;
+                fr.tau += cfg.symLen * (1 + fr.delta) + shift;
+                fr.aPrev = eq.a;
+                fr.lastShift = shift;
+                fr.bS += TWO_PI * shift / cfg.N;
+                fr.snr = 0.8 * fr.snr + 0.2 * eq.snr;
+                fr.m++;
+            }
+
+            _header(eq) {
+                const cfg = this.cfg, fr = this.fr;
+                const acc = new Float64Array(32);
+                for (let c = 0; c < cfg.nData; c++) {
+                    const k = cfg.dataIdx[c];
+                    const sgn = 1 - 2 * this.known.hs[c];
+                    acc[c % 32] += eq.Xr[k] * sgn * eq.Wt[k];
+                }
+                const hb = new Uint8Array(32);
+                for (let i = 0; i < 32; i++) hb[i] = acc[i] < 0 ? 1 : 0;
+                let nb = 0; for (let i = 0; i < 24; i++) nb = nb * 2 + hb[i];
+                let crc = 0; for (let i = 0; i < 8; i++) crc = crc * 2 + hb[24 + i];
+                fr.snr = eq.snr;
+                if (crc !== ofdmCrc8(hb.subarray(0, 24)) || nb < 1 || nb > OFDM_MAX_SYM * cfg.bitsPerSym) {
+                    this.stats.headerFail++;
+                    if (this.cb.onFrameFail) this.cb.onFrameFail({ crc: crc === ofdmCrc8(hb.subarray(0, 24)), nb });
+                    this.searchPos = fr.t0 + cfg.Lc;
+                    this.state = 'hunt';
+                    return;
+                }
+                fr.nbits = nb;
+                fr.nSym = Math.ceil(nb / cfg.bitsPerSym);
+                fr.scr = ofdmLfsr(0x55AA55, fr.nSym * cfg.bitsPerSym);
+                fr.symIdx = 0;
+                this._advance(eq);       // m 变为 3
+            }
+
+            _data(eq) {
+                const cfg = this.cfg, fr = this.fr, cap = cfg.bitsPerSym;
+                const d = fr.symIdx;
+                const bits = [];
+                const valid = Math.min(cap, fr.nbits - d * cap);
+                const pts = [];
+                for (let u = 0; u < cfg.nData; u++) {
+                    const k = cfg.dataIdx[cfg.perm[u]];
+                    const q = d * cap + 2 * u;
+                    const b0 = (eq.Xr[k] < 0 ? 1 : 0) ^ fr.scr[q];
+                    const b1 = (eq.Xi[k] < 0 ? 1 : 0) ^ fr.scr[q + 1];
+                    if (2 * u < valid) bits.push(b0);
+                    if (2 * u + 1 < valid) bits.push(b1);
+                    if ((u & 3) === 0) pts.push([eq.Xr[k], eq.Xi[k]]);
+                }
+                let hm = 0; for (let k = 0; k < cfg.nCar; k++) hm += Math.sqrt(eq.Wt[k]);
+                if (this.cb.onSymbol) this.cb.onSymbol({
+                    points: pts, snr: eq.snr, timing: fr.tau - (fr.t0 + cfg.Lc), ppm: fr.delta * 1e6,
+                    gain: hm / cfg.nCar, symIdx: d, shift: fr.lastShift
+                });
+                if (this.cb.onBits) this.cb.onBits(bits);
+                fr.symIdx++;
+                this._advance(eq);
+                if (fr.symIdx >= fr.nSym) {
+                    this.stats.frames++;
+                    this.searchPos = Math.floor(fr.tau - cfg.symLen * 0.5 - 4000);
+                    if (this.cb.onFrame) this.cb.onFrame({ nbits: fr.nbits, nSym: fr.nSym, snr: fr.snr, ppm: fr.delta * 1e6 });
+                    this.state = 'hunt';
+                }
+            }
+        }
+        // ===== OFDM END =====
+
         function fecProfileId() {
             const el = document.getElementById('fec');
             return el ? (parseInt(el.value) || 0) : 0;
@@ -2780,6 +3447,11 @@
 
             get totalBits() {
                 return this.bits;
+            }
+
+            // 实际平均比特率（OFDM 这类非“符号速率×每符号比特”的模式使用；null 表示用默认公式）
+            get bitRate() {
+                return null;
             }
         }
 
@@ -4150,6 +4822,92 @@
 
         let drawHandle = null;
 
+        // OFDM 的“符号速率”选项被当作带宽选择：带宽 = 符号速率 × 1.5（与单载波 PSK 占用的带宽一致），最小 600Hz
+        class OFDMModulator extends Modulator {
+            transmit(audioCtx, bitArray) {
+                const cfg = ofdmConfig(sampleRate, this.carrierFreq, this.baudRate * 1.5);
+                const wave = ofdmModulate(bitArray, cfg);
+                this.bits = bitArray.length;
+                this.duration = wave.seconds;
+                const buffer = audioCtx.createBuffer(1, wave.samples.length, sampleRate);
+                buffer.copyToChannel(wave.samples, 0);
+                const src = audioCtx.createBufferSource();
+                src.buffer = buffer;
+                src.connect(audioCtx.destination);
+                src.onended = () => { if (this.onStop) this.onStop(); };
+                this.startTime = audioCtx.currentTime;
+                src.start();
+                this.src = src;
+                return src;
+            }
+
+            stop() {
+                super.stop();
+                if (this.src) { try { this.src.stop(); } catch (e) { } }
+            }
+
+            get bitRate() {
+                return this.duration ? this.bits / this.duration : null;
+            }
+        }
+
+        class OFDMDemodulator extends Demodulator {
+            _build() {
+                if (!this.source) return;
+                const cfg = ofdmConfig(sampleRate, this.carrierFreq, this.baudRate * 1.5);
+                this.frames = 0; this.fails = 0; this.snr = 0;
+                this.rx = new OfdmReceiver(cfg, {
+                    onDetect: () => this._status('检测到帧头…'),
+                    onSymbol: s => {
+                        this.snr = s.snr;
+                        if (!this.onSample) return;
+                        for (const p of s.points) { this.last = p; this.onSample({ sample: p, bits: [] }); }
+                        gainWaves.addData(20 * Math.log10(Math.max(s.gain, 1e-3)));
+                        offsetWaves.addData(s.shift || 0);
+                        freqWaves.addData(s.ppm * 1e-6 * cfg.fc);
+                        snrWaves.addData(Math.min(Math.max(s.snr, -20), 120));
+                        this._status(`接收中… 符号 ${s.symIdx + 1}  SNR ${s.snr.toFixed(1)} dB  时钟偏差 ${s.ppm.toFixed(0)} ppm`);
+                    },
+                    onBits: bits => {
+                        if (this.onSample && bits.length) this.onSample({ sample: this.last || [0, 0], bits: bits });
+                    },
+                    onFrame: f => { this.frames++; this._status(`完成 ${this.frames} 帧（失败 ${this.fails}） 最近: ${f.nSym} 符号 SNR ${f.snr.toFixed(1)} dB`); },
+                    onFrameFail: () => { this.fails++; this._status(`帧头校验失败 ${this.fails} 次（完成 ${this.frames} 帧）`); }
+                });
+            }
+
+            _status(t) {
+                const el = document.getElementById('ofdmStats');
+                if (el) el.textContent = 'OFDM：' + t;
+            }
+
+            setBaudRate(baudRate) { this.baudRate = baudRate; this._build(); }
+            setCarrierFreq(carrierFreq) { this.carrierFreq = carrierFreq; this._build(); }
+
+            receive(source) {
+                super.receive(source);
+                this.node = new AudioWorkletNode(audioCtx, 'ofdm-capture');
+                source.connect(this.node);
+                this._build();
+                this.node.port.onmessage = e => { if (this.rx) this.rx.push(e.data); };
+            }
+
+            stop() {
+                super.stop();
+                if (this.node) this.node.disconnect();
+                this.rx = null;
+                this._status('已停止');
+            }
+
+            get decidePoints() {
+                const a = Math.SQRT1_2;
+                return [
+                    { "i": a, "q": a, "label": "00" }, { "i": -a, "q": a, "label": "10" },
+                    { "i": -a, "q": -a, "label": "11" }, { "i": a, "q": -a, "label": "01" }
+                ];
+            }
+        }
+
         const MODES = {
             gfsk: {
                 name: 'GFSK',
@@ -4175,6 +4933,11 @@
                 name: '8PSK',
                 modulate: PSK8Modulator,
                 demodulate: PSK8Demodulator
+            },
+            ofdm: {
+                name: 'OFDM（慢速）',
+                modulate: OFDMModulator,
+                demodulate: OFDMDemodulator
             }
         }
         let selectedMode = MODES['bpsk'];
@@ -4241,7 +5004,8 @@
                         sampleRate: audioCtx.sampleRate,
                         deviceId: audioInput.value,
                         echoCancellation: false,
-                        noiseSuppression: false
+                        noiseSuppression: false,
+                        autoGainControl: selectedMode !== MODES.ofdm
                     },
                     video: false
                 }
@@ -4497,8 +5261,10 @@
 
                 const currentTime = audioCtx.currentTime;
                 const interval = setInterval(() => {
-                    const sent = (audioCtx.currentTime - currentTime) * baudRate * modulator.bitsPerSymbol;
-                    const remainingSeconds = (modulator.totalBits - sent) / (baudRate * modulator.bitsPerSymbol);
+                    const rate = modulator.bitRate || (baudRate * modulator.bitsPerSymbol);
+                    const elapsed = Math.max(0, audioCtx.currentTime - (modulator.startTime !== undefined ? modulator.startTime : currentTime));
+                    const sent = Math.min(modulator.totalBits, elapsed * rate);
+                    const remainingSeconds = (modulator.totalBits - sent) / rate;
                     bitDisplay.textContent = `发送进度: ${toSI(sent / 8, true)}B / ${toSI(modulator.totalBits / 8, true)}B (剩余 ${secondsToHms(remainingSeconds)})`;
                     progressDiv.style.width = `${Math.min(100, (sent / modulator.totalBits) * 100)}%`;
                 }, 100);
