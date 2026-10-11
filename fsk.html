@@ -433,13 +433,13 @@
             <select id="mode">
                 <option value="gfsk">GFSK</option>
                 <option value="fsk4">4FSK</option>
-                <option value="bpsk" selected>BPSK</option>
+                <option value="bpsk">BPSK</option>
                 <option value="qpsk">QPSK</option>
                 <option value="psk8">8PSK</option>
-                <option value="ofdm">OFDM（慢速）</option>
+                <option value="ofdm" selected>OFDM</option>
             </select>
             <label>选择频道：</label>
-            <input type="number" id="channel" value="120" min="-16" max="180">
+            <input type="number" id="channel" value="11" min="-16" max="180">
             <span id="freq"></span>
             <label>范围：1~21，120~180</label>
             <label>符号速率：</label>
@@ -448,7 +448,7 @@
                 <option value="4">4</option>
                 <option value="8">8</option>
                 <option value="16">16</option>
-                <option value="32" selected>32</option>
+                <option value="32">32</option>
                 <option value="50">50</option>
                 <option value="80">80</option>
                 <option value="100">100</option>
@@ -457,7 +457,7 @@
                 <option value="500">500</option>
                 <option value="800">800</option>
                 <option value="1000">1000</option>
-                <option value="1200">1200</option>
+                <option value="1200" selected>1200</option>
                 <option value="1600">1600</option>
                 <option value="2400">2400</option>
             </select>
@@ -465,13 +465,13 @@
             <label>纠错：</label>
             <select id="fec">
                 <option value="0">关</option>
-                <option value="13" selected>实时·强 (卷积 1/2)</option>
+                <option value="13">实时·强 (卷积 1/2)</option>
                 <option value="12">实时·中 (卷积 2/3)</option>
                 <option value="11">实时·轻 (卷积 3/4)</option>
                 <option value="1">分组·轻 (RS+8)</option>
                 <option value="2">分组·中 (RS+16)</option>
                 <option value="3">分组·强 (RS+32)</option>
-                <option value="4">分组·最强 (RS+64)</option>
+                <option value="4" selected>分组·最强 (RS+64)</option>
             </select>
             <label id="ofdmModLabel" style="display:none">OFDM调制：</label>
             <select id="ofdmMod" style="display:none">
