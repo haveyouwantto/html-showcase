@@ -358,6 +358,286 @@
                 width: 90%;
             }
         }
+            /* ===== 聊天覆盖层 ===== */
+        #chatFab {
+            position: fixed;
+            right: 0;
+            top: 50%;
+            transform: translateY(-50%);
+            z-index: 900;
+            width: 46px;
+            height: 58px;
+            padding: 0;
+            border: var(--border-width) solid var(--neon-cyan);
+            border-right: none;
+            border-radius: 14px 0 0 14px;
+            background: rgba(13, 17, 23, 0.92);
+            color: var(--neon-cyan);
+            font-size: 1.45rem;
+            cursor: pointer;
+            box-shadow: var(--glow) rgba(0, 243, 255, 0.25);
+        }
+
+        #chatFab:hover {
+            background: rgba(0, 243, 255, 0.14);
+        }
+
+        #chatBadge {
+            position: absolute;
+            top: 3px;
+            left: 3px;
+            min-width: 18px;
+            height: 18px;
+            padding: 0 4px;
+            box-sizing: border-box;
+            border-radius: 9px;
+            background: var(--neon-purple);
+            color: #fff;
+            font-size: 0.7rem;
+            line-height: 18px;
+            text-align: center;
+        }
+
+        #chatLayer {
+            position: fixed;
+            inset: 0;
+            z-index: 1000;
+            height: 100vh;
+            height: 100dvh;
+            background: var(--bg-gradient);
+            padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+            box-sizing: border-box;
+        }
+
+        #chatLayer[hidden] {
+            display: none;
+        }
+
+        .chat-inner {
+            display: flex;
+            flex-direction: column;
+            height: 100%;
+            max-width: 780px;
+            margin: 0 auto;
+            width: 100%;
+        }
+
+        .chat-header {
+            display: flex;
+            align-items: center;
+            gap: 0.6rem;
+            padding: 0.7rem 0.9rem;
+            border-bottom: var(--border-width) solid #2d3746;
+            background: rgba(13, 17, 23, 0.85);
+        }
+
+        .chat-header .chat-title {
+            font-size: 1.15rem;
+            font-weight: 600;
+            background: linear-gradient(135deg, var(--neon-cyan), var(--neon-purple));
+            background-clip: text;
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .chat-header .chat-name {
+            display: flex;
+            align-items: center;
+            gap: 0.4rem;
+            margin-left: auto;
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+        }
+
+        .chat-layer input,
+        .chat-layer button {
+            font: inherit;
+        }
+
+        #chatName {
+            width: 8.5em;
+            padding: 0.3rem 0.5rem;
+            background: var(--dark-bg);
+            border: 1px solid #2d3746;
+            border-radius: var(--border-radius);
+            color: var(--text-primary);
+        }
+
+        #chatName:focus,
+        #chatInput:focus {
+            outline: none;
+            border-color: var(--neon-cyan);
+            box-shadow: 0 0 10px rgba(0, 243, 255, 0.2);
+        }
+
+        .chat-layer .chat-btn {
+            padding: 0.35rem 0.8rem;
+            border: 1px solid #2d3746;
+            border-radius: var(--border-radius);
+            background: var(--dark-bg);
+            color: var(--text-primary);
+            cursor: pointer;
+            white-space: nowrap;
+        }
+
+        .chat-layer .chat-btn:hover:not(:disabled) {
+            border-color: var(--neon-cyan);
+        }
+
+        .chat-layer .chat-btn:disabled {
+            opacity: 0.45;
+            cursor: not-allowed;
+        }
+
+        .chat-statusbar {
+            display: flex;
+            align-items: center;
+            gap: 0.6rem;
+            padding: 0.35rem 0.9rem;
+            font-size: 0.82rem;
+            color: var(--text-secondary);
+            border-bottom: 1px solid #1f2733;
+        }
+
+        .chat-chip {
+            padding: 0.05rem 0.55rem;
+            border-radius: 999px;
+            border: 1px solid #2d3746;
+            color: var(--text-secondary);
+        }
+
+        .chat-chip.tx {
+            border-color: var(--neon-purple);
+            color: var(--neon-purple);
+        }
+
+        .chat-chip.rx {
+            border-color: var(--neon-cyan);
+            color: var(--neon-cyan);
+        }
+
+        .chat-chip.listen {
+            border-color: #3fb950;
+            color: #3fb950;
+        }
+
+        .chat-messages {
+            flex: 1;
+            overflow-y: auto;
+            padding: 1rem 0.9rem;
+            display: flex;
+            flex-direction: column;
+            gap: 0.7rem;
+            overscroll-behavior: contain;
+        }
+
+        .chat-empty {
+            margin: auto;
+            max-width: 22em;
+            text-align: center;
+            color: var(--text-secondary);
+            font-size: 0.92rem;
+            line-height: 1.7;
+        }
+
+        .chat-msg {
+            display: flex;
+            flex-direction: column;
+            max-width: 78%;
+        }
+
+        .chat-msg.own {
+            align-self: flex-end;
+            align-items: flex-end;
+        }
+
+        .chat-msg.other {
+            align-self: flex-start;
+            align-items: flex-start;
+        }
+
+        .chat-sender {
+            margin: 0 0.4rem 0.15rem;
+            font-size: 0.78rem;
+            color: var(--text-secondary);
+        }
+
+        .chat-bubble {
+            padding: 0.55rem 0.85rem;
+            border-radius: 16px;
+            line-height: 1.5;
+            white-space: pre-wrap;
+            word-break: break-word;
+            overflow-wrap: anywhere;
+        }
+
+        .chat-msg.own .chat-bubble {
+            border-bottom-right-radius: 4px;
+            background: linear-gradient(135deg, rgba(0, 243, 255, 0.26), rgba(189, 0, 255, 0.26));
+            border: 1px solid rgba(0, 243, 255, 0.45);
+        }
+
+        .chat-msg.other .chat-bubble {
+            border-bottom-left-radius: 4px;
+            background: #161b22;
+            border: 1px solid #2d3746;
+        }
+
+        .chat-meta {
+            margin: 0.15rem 0.4rem 0;
+            font-size: 0.72rem;
+            color: var(--text-secondary);
+            opacity: 0.85;
+        }
+
+        .chat-meta.bad {
+            color: #ff7b72;
+        }
+
+        .chat-composer {
+            padding: 0.5rem 0.9rem 0.8rem;
+            border-top: var(--border-width) solid #2d3746;
+            background: rgba(13, 17, 23, 0.85);
+        }
+
+        .chat-hint {
+            min-height: 1.2em;
+            margin-bottom: 0.35rem;
+            font-size: 0.8rem;
+            color: #e3b341;
+        }
+
+        .chat-composer .chat-compose-row {
+            display: flex;
+            gap: 0.6rem;
+        }
+
+        #chatInput {
+            flex: 1;
+            min-width: 0;
+            padding: 0.6rem 0.8rem;
+            background: var(--dark-bg);
+            border: var(--border-width) solid #2d3746;
+            border-radius: 999px;
+            color: var(--text-primary);
+        }
+
+        #chatSend {
+            padding: 0.55rem 1.3rem;
+            border-radius: 999px;
+            border: var(--border-width) solid var(--neon-cyan);
+            background: rgba(0, 243, 255, 0.12);
+            color: var(--neon-cyan);
+            cursor: pointer;
+        }
+
+        #chatSend:disabled {
+            border-color: #2d3746;
+            background: var(--dark-bg);
+            color: var(--text-secondary);
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
     </style>
 </head>
 
@@ -526,7 +806,30 @@
         <button id="close-message">关闭</button>
     </dialog>
 
-    <script>
+        <!-- CHAT HTML BEGIN -->
+    <button id="chatFab" type="button" title="聊天" aria-label="打开聊天">💬<span id="chatBadge" hidden>0</span></button>
+    <div id="chatLayer" hidden>
+        <div class="chat-inner">
+            <div class="chat-header">
+                <button id="chatClose" type="button" class="chat-btn" aria-label="返回">← 返回</button>
+                <span class="chat-title">聊天</span>
+                <label class="chat-name"><span>昵称</span><input id="chatName" maxlength="16" autocomplete="off" spellcheck="false"></label>
+                <button id="chatRxBtn" type="button" class="chat-btn">开始接收</button>
+            </div>
+            <div class="chat-statusbar"><span id="chatChip" class="chat-chip">未监听</span><span id="chatStatus"></span></div>
+            <div id="chatMessages" class="chat-messages"></div>
+            <div class="chat-composer">
+                <div id="chatHint" class="chat-hint"></div>
+                <div class="chat-compose-row">
+                    <input id="chatInput" maxlength="200" autocomplete="off" placeholder="输入消息，回车发送…">
+                    <button id="chatSend" type="button" disabled>发送</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <!-- CHAT HTML END -->
+
+<script>
 
         let baudRate = 1200; // 波特率
         const sampleRate = 48000; // 采样率
@@ -5024,6 +5327,278 @@
 
         let drawHandle = null;
 
+        // ===== CHAT BEGIN =====
+        // 聊天模式：右侧悬浮按钮打开一个盖住原页面的覆盖层，界面像即时通讯。
+        // 复用当前的调制解调器设置（模式 / 波特率 / 频道 / 纠错）收发。
+        //
+        // 一条聊天消息在空中是：
+        //   [开始 2000002] [聊天令牌 2000004] [昵称…] [分隔令牌 2000005] [正文…] [结束 2000003]
+        // 即普通消息的外壳 + 头部里的“聊天令牌 + 昵称”，所以它走现有的全部路径（奇偶校验、同步、纠错、OFDM……）。
+        const CHAT_TOKEN = 2000004;
+        const CHAT_SEP = 2000005;
+        const CHAT_NAME_KEY = 'fskChatName';
+        const CHAT_MAX_NAME = 16;
+        const CHAT_MAX_TEXT = 200;
+
+        let rxChat = null;           // 正在接收的聊天消息 { name, body, phase(0=昵称 1=正文), date }
+        let rxBusyUntil = 0;         // 在这个时刻之前，认为“正在接收一条消息”
+        const chatLog = [];          // { id, own, name, text, time, status, incomplete, echoed }
+        let chatSeq = 0;
+        let chatSendingId = null;
+        let chatUnread = 0;
+        let chatUi = {};
+
+        // ---- 文本清洗：去掉控制字符，合并空白，按码点截断 ----
+        function chatSanitize(s, max) {
+            let out = '', n = 0;
+            for (const ch of String(s)) {
+                const c = ch.codePointAt(0);
+                out += (c < 32 || c === 127 || c === 0x2028 || c === 0x2029) ? ' ' : ch;
+                if (++n >= max * 2) break;     // 先粗截断，防止超长输入
+            }
+            out = out.replace(/\s+/g, ' ').trim();
+            return Array.from(out).slice(0, max).join('');
+        }
+
+        // ---- 昵称：保存在 localStorage ----
+        function chatDefaultName() { return '用户' + (1000 + Math.floor(Math.random() * 9000)); }
+
+        function chatGetName() {
+            let v = '';
+            try { v = chatSanitize(localStorage.getItem(CHAT_NAME_KEY) || '', CHAT_MAX_NAME); } catch (e) { }
+            if (!v) {
+                v = chatDefaultName();
+                try { localStorage.setItem(CHAT_NAME_KEY, v); } catch (e) { }
+            }
+            return v;
+        }
+
+        function chatSetName(raw) {
+            let v = chatSanitize(raw, CHAT_MAX_NAME);
+            if (!v) v = chatDefaultName();
+            try { localStorage.setItem(CHAT_NAME_KEY, v); } catch (e) { }
+            return v;
+        }
+
+        // 发送用的令牌：聊天令牌 + 昵称 + 分隔令牌 + 正文（外层的开始/结束令牌由 transmitOrdArray 添加）
+        function chatBuildTokens(name, text) {
+            return [CHAT_TOKEN, ...stringToOrdArray(name), CHAT_SEP, ...stringToOrdArray(text)];
+        }
+
+        // ---- 接收：忙碌判断 ----
+        function rxStaleMs() { return 4000 + 60000 / Math.max(1, baudRate); }   // 慢速时一个字符就要好几秒
+
+        function chatTouchRx(ms) { rxBusyUntil = Math.max(rxBusyUntil, Date.now() + ms); }
+
+        // 正在接收一条消息（或图片）。结束令牌会清零；丢了结束令牌则超时后自动恢复，不会永远卡住。
+        function rxBusy() { return !!isRxImage || Date.now() < rxBusyUntil; }
+
+        // 解码出一个令牌后先过这里。返回 true 表示已被聊天逻辑处理，不再走原有的显示逻辑。
+        function chatRxToken(dec) {
+            if (!(dec > 0)) return false;
+            if (dec === 2000002) {                       // 新消息开始
+                if (rxChat) { const rc = rxChat; rxChat = null; chatDeliver(rc, true); }   // 上一条聊天没收完
+                chatTouchRx(rxStaleMs());
+                return false;
+            }
+            if (dec === 2000003) {                       // 消息结束
+                if (rxChat) { const rc = rxChat; rxChat = null; chatDeliver(rc, false); }
+                rxBusyUntil = 0;
+                return false;                            // 原有逻辑照常收尾（冲刷缓冲、清 rxMessage）
+            }
+            if (dec === CHAT_TOKEN) {                    // 这是一条聊天：把刚创建的普通消息撤掉，改走聊天
+                if (rxMessage) {
+                    const i = messages.indexOf(rxMessage);
+                    if (i >= 0) messages.splice(i, 1);
+                    rxMessage = null;
+                    updateMessageList();
+                }
+                rxChat = { name: '', body: '', phase: 0, date: new Date() };
+                chatTouchRx(rxStaleMs());
+                return true;
+            }
+            if (dec === CHAT_SEP) {
+                if (rxChat) rxChat.phase = 1;
+                return true;
+            }
+            if (dec >= 2000000 && dec <= 2001000) return false;   // 其他控制令牌
+            if (rxChat && !isRxImage) {
+                let ch = '';
+                try { ch = (dec >= 1 && dec <= 128) ? VARICODE[dec - 1] : String.fromCodePoint(dec - 1); } catch (e) { return true; }
+                if (rxChat.phase === 0) { if (rxChat.name.length < 40) rxChat.name += ch; }
+                else if (rxChat.body.length < CHAT_MAX_TEXT * 3) rxChat.body += ch;
+                chatTouchRx(rxStaleMs());
+                return true;
+            }
+            if (rxMessage) chatTouchRx(rxStaleMs());
+            return false;
+        }
+
+        // 收到一条完整（或被截断的）聊天消息
+        function chatDeliver(rc, incomplete) {
+            const name = chatSanitize(rc.name, CHAT_MAX_NAME) || '未知';
+            const text = chatSanitize(rc.body, CHAT_MAX_TEXT * 2);
+            if (!text) return;
+            // 回声：本机麦克风听到了自己刚发出去的消息，不当作新消息显示
+            const now = Date.now();
+            const own = chatLog.find(m => m.own && !m.echoed && m.name === name &&
+                (m.text === text || (incomplete && m.text.startsWith(text))) && now - m.time.getTime() < 600000);
+            if (own) { own.echoed = true; return; }
+            chatLog.push({ id: ++chatSeq, own: false, name, text, time: rc.date || new Date(), incomplete: !!incomplete });
+            if (chatLog.length > 300) chatLog.splice(0, chatLog.length - 300);
+            if (chatUi.layer && chatUi.layer.hidden) { chatUnread++; chatUpdateBadge(); }
+            chatRender(true);
+        }
+
+        // ---- 渲染 ----
+        function chatMk(tag, cls, text) {
+            const e = document.createElement(tag);
+            if (cls) e.className = cls;
+            if (text !== undefined) e.textContent = text;          // 一律 textContent：对方发来的内容不当作 HTML
+            return e;
+        }
+
+        function chatTime(d) {
+            const p = n => String(n).padStart(2, '0');
+            return p(d.getHours()) + ':' + p(d.getMinutes());
+        }
+
+        function chatBubble(m) {
+            const row = chatMk('div', 'chat-msg ' + (m.own ? 'own' : 'other'));
+            if (!m.own) row.appendChild(chatMk('div', 'chat-sender', m.name));
+            row.appendChild(chatMk('div', 'chat-bubble', m.text));
+            let meta = chatTime(m.time);
+            if (m.own) meta += ' · ' + ({ sending: '发送中…', sent: '已发送', failed: '发送失败' }[m.status] || '');
+            else if (m.incomplete) meta += ' · 不完整（接收中断）';
+            row.appendChild(chatMk('div', 'chat-meta' + (m.status === 'failed' ? ' bad' : ''), meta));
+            return row;
+        }
+
+        function chatRender(forceBottom) {
+            const box = chatUi.messages;
+            if (!box) return;
+            const nearBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 80;
+            box.textContent = '';
+            if (!chatLog.length) {
+                box.appendChild(chatMk('div', 'chat-empty',
+                    '还没有消息。\n聊天使用主页面当前的调制解调器设置收发。\n要收到对方的消息，请先点右上角“开始接收”。'));
+                box.firstChild.style.whiteSpace = 'pre-line';
+                return;
+            }
+            const frag = document.createDocumentFragment();
+            for (const m of chatLog) frag.appendChild(chatBubble(m));
+            box.appendChild(frag);
+            if (forceBottom || nearBottom) box.scrollTop = box.scrollHeight;
+        }
+
+        function chatUpdateBadge() {
+            if (!chatUi.badge) return;
+            chatUi.badge.hidden = chatUnread <= 0;
+            chatUi.badge.textContent = chatUnread > 99 ? '99+' : String(chatUnread);
+        }
+
+        // ---- 状态：发送按钮的可用性 ----
+        // 发送中（TX）或正在接收一条消息（RX）时，“发送”按钮禁用
+        function chatUpdateState() {
+            if (!chatUi.send) return;
+            // 上一条发送完成？
+            if (chatSendingId !== null && !txStart) {
+                const m = chatLog.find(x => x.id === chatSendingId);
+                if (m && m.status === 'sending') { m.status = 'sent'; chatRender(); }
+                chatSendingId = null;
+            }
+            // 接收到一半断了（丢了结束令牌）：超时后把已收到的部分作为“不完整”消息交出去
+            if (rxChat && !rxBusy()) { const rc = rxChat; rxChat = null; chatDeliver(rc, true); }
+
+            const tx = !!txStart, rx = rxBusy();
+            const empty = !chatUi.input.value.trim();
+            const ready = typeof window.__chatTransmit === 'function';
+            chatUi.send.disabled = tx || rx || empty || !ready;
+
+            let hint = '';
+            if (tx) hint = '正在发送，发送期间不能再发消息…';
+            else if (rx) hint = '正在接收消息，收完后才能发送…';
+            else if (!ready) hint = '音频系统还没准备好，请稍候…';
+            else if (!rxStart) hint = '接收未开启：你收不到对方的消息，请点右上角“开始接收”。';
+            chatUi.hint.textContent = hint;
+
+            const chip = chatUi.chip;
+            chip.textContent = tx ? '发送中' : rx ? '接收中' : rxStart ? '监听中' : '未监听';
+            chip.className = 'chat-chip' + (tx ? ' tx' : rx ? ' rx' : rxStart ? ' listen' : '');
+            chatUi.rxBtn.textContent = rxStart ? '停止接收' : '开始接收';
+
+            const fecSel = document.getElementById('fec');
+            const fecText = fecSel && fecSel.selectedIndex >= 0 ? fecSel.options[fecSel.selectedIndex].text : '';
+            const modeName = (typeof selectedMode !== 'undefined' && selectedMode && selectedMode.name) || '';
+            chatUi.status.textContent = `${modeName} ｜ ${baudRate} 波特 ｜ 纠错：${fecText}`;
+        }
+
+        // ---- 发送 ----
+        function chatSend() {
+            chatUpdateState();
+            if (chatUi.send.disabled) return;
+            const text = chatSanitize(chatUi.input.value, CHAT_MAX_TEXT);
+            if (!text) return;
+            const name = chatSetName(chatUi.name.value);
+            chatUi.name.value = name;
+            const m = { id: ++chatSeq, own: true, name, text, time: new Date(), status: 'sending', echoed: false };
+            chatLog.push(m);
+            chatSendingId = m.id;
+            chatUi.input.value = '';
+            try {
+                window.__chatTransmit(chatBuildTokens(name, text));   // 复用 transmitOrdArray：当前模式/波特率/纠错
+            } catch (e) {
+                console.error('聊天发送失败:', e);
+                m.status = 'failed';
+                chatSendingId = null;
+            }
+            chatRender(true);
+            chatUpdateState();
+        }
+
+        // ---- 打开 / 关闭 ----
+        function chatOpen() {
+            chatUi.layer.hidden = false;
+            document.body.style.overflow = 'hidden';
+            chatUnread = 0;
+            chatUpdateBadge();
+            chatUi.name.value = chatGetName();
+            chatRender(true);
+            chatUpdateState();
+            chatUi.input.focus();
+        }
+
+        function chatClose() {
+            chatUi.layer.hidden = true;
+            document.body.style.overflow = '';
+        }
+
+        function chatInit() {
+            const $ = id => document.getElementById(id);
+            chatUi = {
+                fab: $('chatFab'), badge: $('chatBadge'), layer: $('chatLayer'), close: $('chatClose'),
+                name: $('chatName'), rxBtn: $('chatRxBtn'), chip: $('chatChip'), status: $('chatStatus'),
+                messages: $('chatMessages'), input: $('chatInput'), send: $('chatSend'), hint: $('chatHint')
+            };
+            if (!chatUi.layer) return;
+            chatUi.name.value = chatGetName();
+            chatUi.fab.addEventListener('click', chatOpen);
+            chatUi.close.addEventListener('click', chatClose);
+            chatUi.name.addEventListener('change', () => { chatUi.name.value = chatSetName(chatUi.name.value); });
+            chatUi.rxBtn.addEventListener('click', () => { rxBtn.click(); chatUpdateState(); });   // 与主页面的“开始/停止”是同一个开关
+            chatUi.send.addEventListener('click', chatSend);
+            chatUi.input.addEventListener('input', chatUpdateState);
+            chatUi.input.addEventListener('keydown', e => {
+                if (e.key === 'Enter' && !e.isComposing) { e.preventDefault(); chatSend(); }   // 输入法选字时的回车不发送
+            });
+            document.addEventListener('keydown', e => { if (e.key === 'Escape' && !chatUi.layer.hidden) chatClose(); });
+            setInterval(chatUpdateState, 500);
+            chatRender();
+        }
+
+        chatInit();
+        // ===== CHAT END =====
+
         // OFDM 的“符号速率”选项被当作带宽选择：带宽 = 符号速率 × 1.5（与单载波 PSK 占用的带宽一致），最小 600Hz
         class OFDMModulator extends Modulator {
             transmit(audioCtx, bitArray) {
@@ -5062,9 +5637,10 @@
                 this.frames = 0; this.fails = 0; this.snr = 0;
                 this.curMod = parseInt(document.getElementById('ofdmMod').value) || 1;
                 this.rx = new OfdmReceiver(cfg, {
-                    onDetect: () => this._status('检测到帧头…'),
+                    onDetect: () => { chatTouchRx(4000); this._status('检测到帧头…'); },
                     onMeta: m => this._autoTune(m),
                     onSymbol: s => {
+                        chatTouchRx(2500);
                         this.snr = s.snr;
                         if (!this.onSample) return;
                         for (const p of s.points) { this.last = p; this.onSample({ sample: p, bits: [] }); }
@@ -5264,6 +5840,7 @@
 
             const decoder = new FibonacciDecoder(result => {
                 const dec = fecNeedsParity() ? decodeAndVerify(result) : result;//decodeAndVerify(result)
+                if (chatRxToken(dec)) return;      // 聊天消息由聊天层处理，不进主页面接收框
                 // console.log("解码结果:", dec);
                 if (dec > 0) {
                     if (dec >= 2000000 && dec <= 2001000) { // Control tokens
@@ -5491,6 +6068,8 @@
                 transmitBitArray(bits, baudRate);
             }
 
+            window.__chatTransmit = tokens => transmitOrdArray(tokens);
+
             function transmitBitArray(bits, baudRate) {
                 modulator = new selectedMode.modulate();
                 modulator.setBaudRate(baudRate);
@@ -5508,6 +6087,7 @@
                     txStart = false;
                     progressBar.style.display = 'none';
                     progressDiv.style.width = '0%';
+                    chatUpdateState();
                 })
                 const fecProfile = fecProfileId();
                 if (fecProfile >= 10) bits = ccEncodeBits(bits, fecProfile - 10);   // 实时卷积码
@@ -5529,6 +6109,7 @@
                 txImageBtn.disabled = true;
                 txBtn.textContent = '中止';
                 progressBar.style.display = 'block';
+                chatUpdateState();
             }
 
             function transmitRawPacket(bytes) {
