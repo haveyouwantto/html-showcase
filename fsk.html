@@ -358,7 +358,8 @@
                 width: 90%;
             }
         }
-            /* ===== 聊天覆盖层 ===== */
+
+        /* ===== 聊天覆盖层 ===== */
         #chatFab {
             position: fixed;
             right: 0;
@@ -638,6 +639,74 @@
             opacity: 0.5;
             cursor: not-allowed;
         }
+
+        #fileRecvList {
+            display: flex;
+            flex-direction: column;
+            gap: 0.6rem;
+        }
+
+        .ftn-file {
+            position: relative;
+            border: 1px solid #2d3746;
+            border-radius: 8px;
+            padding: 0.5rem 2rem 0.5rem 0.75rem;
+        }
+
+        .ftn-file .ftn-close {
+            position: absolute;
+            top: 4px;
+            right: 6px;
+            margin: 0;
+            border: none;
+            background: transparent;
+            color: var(--text-secondary);
+            font-size: 1.05rem;
+            line-height: 1;
+            padding: 0.1rem 0.3rem;
+            cursor: pointer;
+        }
+
+        .ftn-file .ftn-close:hover {
+            color: #e53e3e;
+        }
+
+        .ftn-name {
+            font-size: 0.9rem;
+            color: var(--text-primary);
+            word-break: break-all;
+        }
+
+        .ftn-bar {
+            height: 8px;
+            background: #1a2029;
+            border-radius: 4px;
+            margin: 0.35rem 0;
+            overflow: hidden;
+        }
+
+        .ftn-fill {
+            height: 100%;
+            width: 0%;
+            background: var(--neon-cyan);
+            transition: width 0.3s;
+        }
+
+        .ftn-stat {
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+        }
+
+        .ftn-file button {
+            margin-top: 0.35rem;
+            font-size: 0.8rem;
+            padding: 0.2rem 0.8rem;
+            border-radius: 999px;
+            border: 1px solid var(--neon-cyan);
+            background: rgba(0, 243, 255, 0.12);
+            color: var(--neon-cyan);
+            cursor: pointer;
+        }
     </style>
 </head>
 
@@ -666,6 +735,8 @@
                 <summary>文件发送</summary>
                 <div>
                     <input type="file" id="txFile">
+                    <label>冗余倍数：<input type="number" id="txFileRed" min="1" step="0.5" style="width:5em"
+                            placeholder="留空一直发"></label>
                     <button id="txFileBtn">发送</button>
                 </div>
             </details>
@@ -680,6 +751,7 @@
             <textarea id="received" rows="25" cols="80" disabled placeholder="接收到的内容"></textarea>
             <div id="fecStats" style="color: var(--text-secondary); font-size: 0.85rem; min-height: 1.3em;"></div>
             <div id="ofdmStats" style="color: var(--text-secondary); font-size: 0.85rem; min-height: 1.3em;"></div>
+            <div id="ftnStatus" style="color: var(--neon-cyan); font-size: 0.85rem; min-height: 1.3em;"></div>
 
             <div class="btn-container">
                 <button id='start'>接收</button>
@@ -693,6 +765,12 @@
                     <pre id="status"></pre>
                     <button id="downloadImg">下载图片</button>
                     <button id="cancelImage">取消图片</button>
+                </div>
+            </details>
+            <details id="fileRecvDiv">
+                <summary>文件接收</summary>
+                <div>
+                    <div id="fileRecvList"></div>
                 </div>
             </details>
             <details>
@@ -806,17 +884,19 @@
         <button id="close-message">关闭</button>
     </dialog>
 
-        <!-- CHAT HTML BEGIN -->
+    <!-- CHAT HTML BEGIN -->
     <button id="chatFab" type="button" title="聊天" aria-label="打开聊天">💬<span id="chatBadge" hidden>0</span></button>
     <div id="chatLayer" hidden>
         <div class="chat-inner">
             <div class="chat-header">
                 <button id="chatClose" type="button" class="chat-btn" aria-label="返回">← 返回</button>
                 <span class="chat-title">聊天</span>
-                <label class="chat-name"><span>昵称</span><input id="chatName" maxlength="16" autocomplete="off" spellcheck="false"></label>
+                <label class="chat-name"><span>昵称</span><input id="chatName" maxlength="16" autocomplete="off"
+                        spellcheck="false"></label>
                 <button id="chatRxBtn" type="button" class="chat-btn">开始接收</button>
             </div>
-            <div class="chat-statusbar"><span id="chatChip" class="chat-chip">未监听</span><span id="chatStatus"></span></div>
+            <div class="chat-statusbar"><span id="chatChip" class="chat-chip">未监听</span><span id="chatStatus"></span>
+            </div>
             <div id="chatMessages" class="chat-messages"></div>
             <div class="chat-composer">
                 <div id="chatHint" class="chat-hint"></div>
@@ -829,7 +909,7 @@
     </div>
     <!-- CHAT HTML END -->
 
-<script>
+    <script>
 
         let baudRate = 1200; // 波特率
         const sampleRate = 48000; // 采样率
@@ -977,63 +1057,124 @@
                 else return v;
             }
 
+            // 符号源：主线程不断 append 符号块，这里按波特率逐个吐出；队列水位定期回报，所以可以一直发下去
             const mod = class extends AudioWorkletProcessor {
                 constructor() {
                     super();
                     this.sampleRate = sampleRate;
 
-                    this.symbols = [];       // 待发送的比特流
-                    this.ptr = 0;         // 当前比特索引
-                    this.samplesElapsed = 0; // 当前符号已生成的样本数
+                    this.chunks = [];           // 待发送的符号块队列
+                    this.cur = null;            // 正在发送的块
+                    this.curPtr = 0;
+                    this.queued = 0;            // 队列里还没发出去的符号数
+                    this.played = 0;            // 已经发出去的符号数
+                    this.samplesElapsed = 0;    // 当前符号已生成的样本数
                     this.symbolMap = {
                         0: [-1, 0],
                         1: [1, 0]
                     }
-                    this.started = false;
+                    this.started = false;      // 收到过数据
+                    this.finished = false;     // 主线程宣布不会再有数据
+                    this.tail = 0;             // 结束后继续输出的静音符号数（让成形滤波器的拖尾播完）
+                    this.tailLeft = -1;
+                    this.filler = null;        // 欠载时补发的填充符号
+                    this.fillerPtr = 0;
+                    this.starved = false;
+                    this.underruns = 0;
+                    this.done = false;
+                    this.reportEvery = Math.round(sampleRate * 0.05);   // 每 50ms 回报一次水位
+                    this.sinceReport = 0;
 
                     this.port.onmessage = (event) => {
-                        switch (event.data.type) {
+                        const d = event.data;
+                        switch (d.type) {
                             case "baudRate":
-                                this.setBaudRate(event.data.baudRate);
+                                this.setBaudRate(d.baudRate);
                                 break;
-                            case "data":
-                                this.setData(event.data.data);
+                            case "data":            // 旧接口：一次性设置全部数据，播完即结束
+                                this.setData(d.data);
+                                break;
+                            case "append":          // 流式：追加一块符号
+                                this.chunks.push(d.data);
+                                this.queued += d.data.length;
+                                this.started = true;
+                                break;
+                            case "finish":          // 流式：不会再有数据，播完后再静音 tail 个符号就结束
+                                this.finished = true;
+                                this.tail = d.tail || 0;
+                                break;
+                            case "filler":
+                                this.filler = d.symbols;
+                                break;
+                            case "abort":
+                                this.done = true;
                                 break;
                             case "symbolMap":
-                                this.symbolMap = event.data.symbolMap;
+                                this.symbolMap = d.symbolMap;
                         }
                     };
                 }
 
+                // 取下一个符号；没有就返回 null（静音）
+                nextSymbol() {
+                    while (this.cur === null || this.curPtr >= this.cur.length) {
+                        if (!this.chunks.length) { this.cur = null; break; }
+                        this.cur = this.chunks.shift();
+                        this.curPtr = 0;
+                    }
+                    if (this.cur !== null) {
+                        this.queued--;
+                        this.played++;
+                        this.starved = false;
+                        return this.cur[this.curPtr++];
+                    }
+                    if (!this.started) return null;
+                    if (this.finished) {
+                        if (this.tailLeft < 0) this.tailLeft = this.tail;
+                        if (this.tailLeft > 0) { this.tailLeft--; return null; }
+                        this.done = true;
+                        return null;
+                    }
+                    // 还没结束但队列空了：欠载。有填充符号就补发，保持接收端的环路锁定
+                    if (!this.starved) {
+                        this.starved = true;
+                        this.underruns++;
+                        this.port.postMessage({ type: "underrun", n: this.underruns });
+                    }
+                    if (this.filler && this.filler.length) return this.filler[this.fillerPtr++ % this.filler.length];
+                    return null;
+                }
+
                 process(inputs, outputs) {
                     const output = outputs[0];
-                    if (!output) return true;
-
-                    if (this.ptr >= this.symbols.length && this.started) {
-                        this.port.postMessage({ type: "stop" })
-                        return false;
-                    }
+                    if (!output || !output[0]) return !this.done;
 
                     for (let i = 0; i < output[0].length; i++) {
-
-                        // 符号周期结束，更新比特
+                        // 符号周期结束，取下一个符号
                         if (this.samplesElapsed >= this.samplesPerSymbol) {
                             this.samplesElapsed = 0;
-                            if (this.symbols.length > 0) {
-                                const currentBit = this.symbols[this.ptr];
-                                if (currentBit == null || this.symbolMap[currentBit] == null) {
-                                    continue;
+                            const sym = this.nextSymbol();
+                            if (sym !== null && sym !== undefined) {
+                                const point = this.symbolMap[sym];
+                                if (point) {
+                                    output[0][i] = point[0];
+                                    if (output[1]) output[1][i] = point[1];
                                 }
-                                this.ptr++;
-                                if (output[0]) output[0][i] = this.symbolMap[currentBit][0];
-                                if (output[1]) output[1][i] = this.symbolMap[currentBit][1]
                             }
                         }
-
-                        // 输出当前比特对应的电平（整个周期内持续）
                         this.samplesElapsed++;
                     }
 
+                    this.sinceReport += output[0].length;
+                    if (this.sinceReport >= this.reportEvery) {
+                        this.sinceReport = 0;
+                        this.port.postMessage({ type: "level", queued: this.queued, played: this.played });
+                    }
+
+                    if (this.done) {
+                        this.port.postMessage({ type: "stop" })
+                        return false;
+                    }
                     return true;
                 }
 
@@ -1044,10 +1185,14 @@
                 }
 
                 setData(data) {
-                    this.symbols = data;
-                    this.ptr = 0; // 重置指针
+                    this.chunks = [data];
+                    this.cur = null; this.curPtr = 0;
+                    this.queued = data.length;
                     this.samplesElapsed = 0; // 开始新数据
                     this.started = true;
+                    this.finished = true;
+                    this.tail = 0;
+                    this.tailLeft = -1;
                 }
             };
 
@@ -2020,10 +2165,9 @@
             return fecRsCache[parity] || (fecRsCache[parity] = new ReedSolomon(parity));
         }
 
-        // 把比特流编码成带纠错的比特流。profileId: 1..4
-        function fecEncodeBits(bits, profileId) {
+        // 编码一段比特：返回 { out, seq }，seq 是接下来的码字序号（流式编码跨块延续）
+        function fecEncodeChunk(bits, profileId, seq0) {
             const prof = FEC_PROFILES[profileId];
-            if (!prof || bits.length === 0) return bits.slice();
             const rs = fecGetRs(prof.parity);
             const nBytes = Math.ceil(bits.length / 8);
             const bytes = new Uint8Array(nBytes);
@@ -2032,7 +2176,7 @@
 
             const out = [];
             const pushByte = v => { for (let i = 7; i >= 0; i--) out.push((v >> i) & 1); };
-            let pos = 0, seq = 0;
+            let pos = 0, seq = seq0 || 0;
             while (pos < nBytes) {
                 const remaining = nBytes - pos;
                 const ncw = Math.min(FEC_MAX_DEPTH, Math.ceil(remaining / FEC_MAX_PAYLOAD));
@@ -2067,7 +2211,41 @@
                 }
                 pos += frameBytes;
             }
-            return out;
+            return { out, seq };
+        }
+
+        // 把整条比特流编码成带纠错的比特流。profileId: 1..4
+        function fecEncodeBits(bits, profileId) {
+            if (!FEC_PROFILES[profileId] || bits.length === 0) return bits.slice();
+            return fecEncodeChunk(bits, profileId, 0).out;
+        }
+
+        // 流式 RS 编码器：攒满一整帧（8 个码字 = 488 字节）就编码输出；end() 把不足一帧的尾巴编码掉。
+        class RsStreamEncoder {
+            constructor(profileId) {
+                this.profileId = profileId;
+                this.buf = []; this.seq = 0;
+                this.frameBits = FEC_MAX_DEPTH * FEC_MAX_PAYLOAD * 8;
+            }
+
+            push(bits) {
+                const out = [];
+                if (!FEC_PROFILES[this.profileId]) return out;
+                for (let i = 0; i < bits.length; i++) this.buf.push(bits[i]);
+                while (this.buf.length >= this.frameBits) {
+                    const r = fecEncodeChunk(this.buf.splice(0, this.frameBits), this.profileId, this.seq);
+                    this.seq = r.seq;
+                    for (const b of r.out) out.push(b);
+                }
+                return out;
+            }
+
+            end() {
+                if (!this.buf.length || !FEC_PROFILES[this.profileId]) return [];
+                const r = fecEncodeChunk(this.buf, this.profileId, this.seq);
+                this.buf = [];
+                return r.out;
+            }
         }
 
         // 接收端：逐比特喂入，找同步字 → 解帧头 → 收帧体 → RS 解码 → 输出纠正后的比特
@@ -2274,30 +2452,56 @@
             return out;
         }
 
-        // 把信息比特编码成可直接发射的比特流。profileId: 1(3/4) 2(2/3) 3(1/2)
-        function ccEncodeBits(bits, profileId) {
-            const prof = CC_PROFILES[profileId];
-            if (!prof || bits.length === 0) return bits.slice();
-            const P1 = prof.P1, P2 = prof.P2, period = P1.length;
-            const out = [];
-            out.push(...ccWordBits(CC_ASM, 32));
-            for (let rep = 0; rep < 3; rep++) out.push(...ccWordBits(profileId, 8));
-            const info = bits.concat([0, 0, 0, 0, 0, 0]);
-            let state = 0, segSteps = 0;
-            for (let i = 0; i < info.length; i++) {
-                const reg = (info[i] << 6) | state;
-                state = reg >> 1;
+        // 流式卷积编码器：比特一块一块地送进来，编码后的比特一块一块地送出去。
+        // 第一次 push 先输出 同步字+档位；每 CC_SEG_STEPS 步（在下一步之前）插入一个段标记；end() 补 6 个 0 并输出结束字。
+        // 把整条消息一次性送进去，输出与旧的“整条编码”逐比特相同。
+        class CcStreamEncoder {
+            constructor(profileId) {
+                this.profileId = profileId;
+                this.prof = CC_PROFILES[profileId];
+                this.state = 0; this.segSteps = 0; this.count = 0;
+                this.started = false; this.ended = false;
+            }
+
+            _step(u, out) {
+                if (this.segSteps === CC_SEG_STEPS) { for (const b of ccWordBits(CC_MARK, 16)) out.push(b); this.segSteps = 0; }
+                const P1 = this.prof.P1, P2 = this.prof.P2, idx = this.count % P1.length;
+                const reg = (u << 6) | this.state;
+                this.state = reg >> 1;
                 const o = CC_OUT[reg];
-                const idx = i % period;
                 if (P1[idx]) out.push(o >> 1);
                 if (P2[idx]) out.push(o & 1);
-                segSteps++;
-                if (segSteps === CC_SEG_STEPS && i < info.length - 1) {
-                    out.push(...ccWordBits(CC_MARK, 16));
-                    segSteps = 0;
-                }
+                this.segSteps++; this.count++;
             }
-            out.push(...ccWordBits(CC_END, 32), ...ccWordBits(CC_END, 32));
+
+            push(bits) {
+                const out = [];
+                if (!this.prof || this.ended || !bits.length) return out;
+                if (!this.started) {
+                    this.started = true;
+                    for (const b of ccWordBits(CC_ASM, 32)) out.push(b);
+                    for (let rep = 0; rep < 3; rep++) for (const b of ccWordBits(this.profileId, 8)) out.push(b);
+                }
+                for (let i = 0; i < bits.length; i++) this._step(bits[i], out);
+                return out;
+            }
+
+            end() {
+                const out = [];
+                if (!this.started || this.ended) return out;
+                this.ended = true;
+                for (let i = 0; i < 6; i++) this._step(0, out);
+                for (let r = 0; r < 2; r++) for (const b of ccWordBits(CC_END, 32)) out.push(b);
+                return out;
+            }
+        }
+
+        // 把整条信息比特一次性编码成可直接发射的比特流。profileId: 1(3/4) 2(2/3) 3(1/2)
+        function ccEncodeBits(bits, profileId) {
+            if (!CC_PROFILES[profileId] || bits.length === 0) return bits.slice();
+            const e = new CcStreamEncoder(profileId);
+            const out = e.push(bits);
+            for (const b of e.end()) out.push(b);
             return out;
         }
 
@@ -3921,406 +4125,932 @@
             }
         }
 
+        // ===== FOUNTAIN BEGIN =====
+        // 喷泉码文件传输（LT 码）。发送端把文件切成 k 个块，之后可以无限地生成“水滴”（若干块的异或）；
+        // 接收端从任意时刻开始收，收到略多于 k 个完好的水滴就能还原文件。
+        // 水滴包自带同步字 + CRC32：坏包直接丢弃（喷泉码本来就是“擦除信道”的码），所以不需要重传。
+        //
+        // 包格式（字节）：
+        //   SYNC(4) | 类型/版本(1) | 文件号 FID(2) | 文件大小(4) | 块大小 L(1) | 序号 SEQ(4) | 载荷(L) | CRC32(4)
+        //   类型：0=数据水滴，1=文件信息（载荷 = CRC32(文件)(4) + 文件名长度(1) + 文件名 UTF-8）
+        const FTN_SYNC = 0xD391A7C5;
+        const FTN_VER = 1;
+        const FTN_HDR = 12;             // 类型(1) FID(2) 大小(4) L(1) SEQ(4)
+        const FTN_TYPE_DATA = 0, FTN_TYPE_INFO = 1;
+        const FTN_DENSE_MAX = 64;       // k 不超过这个值时用“稠密随机组合”（几乎只需 k+2 个包）
+        const FTN_GE_LIMIT = 1400;      // 高斯消元的最大未知块数
+
+        const FTN_CRC_TABLE = (function () {
+            const t = new Uint32Array(256);
+            for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1); t[n] = c >>> 0; }
+            return t;
+        })();
+
+        function ftnCrc32(b, s, e) {
+            let c = 0xFFFFFFFF;
+            for (let i = s; i < e; i++) c = FTN_CRC_TABLE[(c ^ b[i]) & 0xFF] ^ (c >>> 8);
+            return (c ^ 0xFFFFFFFF) >>> 0;
+        }
+
+        // 确定性伪随机数：发送端、接收端必须得到完全相同的序列
+        function ftnRng(seed) {
+            let a = seed >>> 0;
+            return function () {
+                a = (a + 0x6D2B79F5) >>> 0;
+                let t = Math.imul(a ^ (a >>> 15), 1 | a);
+                t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+                return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+            };
+        }
+
+        function ftnHash(fid, seq) {
+            let h = Math.imul((fid ^ 0x9E3779B1) >>> 0, 0x85EBCA6B) ^ Math.imul((seq + 0x7F4A7C15) >>> 0, 0xC2B2AE35);
+            h ^= h >>> 15; h = Math.imul(h, 0x2C1B3C6D); h ^= h >>> 12; h = Math.imul(h, 0x297A2D39); h ^= h >>> 15;
+            return h >>> 0;
+        }
+
+        // 鲁棒孤子分布的累积分布（k 大时用）
+        const ftnCdfCache = new Map();
+        function ftnCdf(k) {
+            let cdf = ftnCdfCache.get(k);
+            if (cdf) return cdf;
+            const c = 0.03, delta = 0.1;
+            const S = Math.max(1, c * Math.log(k / delta) * Math.sqrt(k));
+            const pivot = Math.max(1, Math.min(k, Math.round(k / S)));
+            const mu = new Float64Array(k + 1);
+            let beta = 0;
+            for (let i = 1; i <= k; i++) {
+                const rho = i === 1 ? 1 / k : 1 / (i * (i - 1));
+                let tau = 0;
+                if (i < pivot) tau = S / (k * i);
+                else if (i === pivot) tau = S * Math.log(S / delta) / k;
+                mu[i] = rho + Math.max(0, tau);
+                beta += mu[i];
+            }
+            cdf = new Float64Array(k + 1);
+            let acc = 0;
+            for (let i = 1; i <= k; i++) { acc += mu[i] / beta; cdf[i] = acc; }
+            cdf[k] = 1;
+            ftnCdfCache.set(k, cdf);
+            return cdf;
+        }
+
+        // 第 seq 个水滴由哪些块异或而成
+        function ftnNeighbors(fid, seq, k) {
+            const r = ftnRng(ftnHash(fid, seq));
+            if (k <= FTN_DENSE_MAX) {                        // 稠密：每块以 1/2 概率参与
+                const nb = [];
+                for (let j = 0; j < k; j++) if (r() < 0.5) nb.push(j);
+                if (!nb.length) nb.push(Math.floor(r() * k));
+                return nb;
+            }
+            const cdf = ftnCdf(k), u = r();
+            let lo = 1, hi = k;
+            while (lo < hi) { const mid = (lo + hi) >> 1; if (cdf[mid] >= u) hi = mid; else lo = mid + 1; }
+            const d = lo;
+            const chosen = new Set(), out = [];             // Floyd 算法：均匀取 d 个不同的块
+            for (let j = k - d; j < k; j++) {
+                let t = Math.floor(r() * (j + 1));
+                if (chosen.has(t)) t = j;
+                chosen.add(t); out.push(t);
+            }
+            return out;
+        }
+
+        function ftnXor(dst, src) { for (let i = 0; i < dst.length; i++) dst[i] ^= src[i]; }
+
+        // ---- 编码 ----
+        class FountainEncoder {
+            constructor(bytes, L, fid) {
+                this.bytes = bytes;
+                this.L = L;
+                this.size = bytes.length;
+                this.k = Math.max(1, Math.ceil(this.size / L));
+                this.fid = fid & 0xFFFF;
+            }
+
+            block(j) {
+                const b = new Uint8Array(this.L);
+                const s = j * this.L;
+                b.set(this.bytes.subarray(s, Math.min(this.size, s + this.L)));
+                return b;
+            }
+
+            droplet(seq) {
+                const nb = ftnNeighbors(this.fid, seq, this.k);
+                const out = this.block(nb[0]);
+                for (let i = 1; i < nb.length; i++) ftnXor(out, this.block(nb[i]));
+                return out;
+            }
+        }
+
+        // ---- 解码 ----
+        class FountainDecoder {
+            constructor(fid, k, L, size) {
+                this.fid = fid; this.k = k; this.L = L; this.size = size;
+                this.known = new Array(k).fill(null);
+                this.nKnown = 0;
+                this.seen = new Set();
+                this.received = 0;
+                this.adj = Array.from({ length: k }, () => []);
+                this.eqs = [];
+                this.done = false;
+                this.lastGE = 0;
+            }
+
+            add(seq, payload) {
+                if (this.done || this.seen.has(seq)) return false;
+                this.seen.add(seq);
+                this.received++;
+                const val = payload.slice(0, this.L);
+                const live = [];
+                for (const j of ftnNeighbors(this.fid, seq, this.k)) {
+                    const kb = this.known[j];
+                    if (kb) ftnXor(val, kb); else live.push(j);
+                }
+                if (live.length === 1) this._resolve(live[0], val);
+                else if (live.length > 1) {
+                    const eq = { live, val, dead: false };
+                    this.eqs.push(eq);
+                    for (const j of live) this.adj[j].push(eq);
+                }
+                if (!this.done) this._maybeGE();
+                return true;
+            }
+
+            _resolve(j0, v0) {                              // 剥皮：一个块解出来后，连锁解出更多
+                const stack = [[j0, v0]];
+                while (stack.length) {
+                    const [b, v] = stack.pop();
+                    if (this.known[b]) continue;
+                    this.known[b] = v; this.nKnown++;
+                    for (const eq of this.adj[b]) {
+                        if (eq.dead) continue;
+                        const idx = eq.live.indexOf(b);
+                        if (idx < 0) continue;
+                        eq.live[idx] = eq.live[eq.live.length - 1]; eq.live.pop();
+                        ftnXor(eq.val, v);
+                        if (eq.live.length === 1) { eq.dead = true; stack.push([eq.live[0], eq.val]); }
+                        else if (eq.live.length === 0) eq.dead = true;
+                    }
+                    this.adj[b] = [];
+                }
+                if (this.nKnown >= this.k) this.done = true;
+            }
+
+            // 剥皮卡住时，对剩余未知块做 GF(2) 高斯消元
+            _maybeGE() {
+                const u = this.k - this.nKnown;
+                if (u <= 0 || u > FTN_GE_LIMIT) return;
+                const rows = this.eqs.filter(e => !e.dead);
+                if (rows.length < u) return;
+                if (rows.length < this.lastGE + Math.max(1, Math.floor(u * 0.03)) && this.k > FTN_DENSE_MAX) return;
+                this.lastGE = rows.length;
+                const col = new Map(); let c = 0;
+                for (let j = 0; j < this.k; j++) if (!this.known[j]) col.set(j, c++);
+                const W = (u + 31) >>> 5, m = rows.length;
+                const bits = rows.map(e => { const w = new Uint32Array(W); for (const j of e.live) { const cc = col.get(j); w[cc >>> 5] |= 1 << (cc & 31); } return w; });
+                const vals = rows.map(e => e.val.slice());
+                let rank = 0;
+                const pivotRow = new Int32Array(u).fill(-1);
+                for (let cc = 0; cc < u; cc++) {
+                    const wi = cc >>> 5, mask = 1 << (cc & 31);
+                    let p = -1;
+                    for (let r = rank; r < m; r++) if (bits[r][wi] & mask) { p = r; break; }
+                    if (p < 0) return;                       // 秩不够，等更多包
+                    if (p !== rank) { [bits[p], bits[rank]] = [bits[rank], bits[p]];[vals[p], vals[rank]] = [vals[rank], vals[p]]; }
+                    for (let r = 0; r < m; r++) {
+                        if (r !== rank && (bits[r][wi] & mask)) {
+                            const br = bits[r], bp = bits[rank];
+                            for (let w = wi; w < W; w++) br[w] ^= bp[w];
+                            ftnXor(vals[r], vals[rank]);
+                        }
+                    }
+                    pivotRow[cc] = rank++;
+                }
+                for (const [j, cc] of col) { this.known[j] = vals[pivotRow[cc]]; this.nKnown++; }
+                this.done = true;
+            }
+
+            result() {
+                if (!this.done) return null;
+                const out = new Uint8Array(this.k * this.L);
+                for (let j = 0; j < this.k; j++) out.set(this.known[j], j * this.L);
+                return out.subarray(0, this.size);
+            }
+        }
+
+        // ---- 包 ----
+        function ftnPacket(type, fid, size, L, seq, payload) {
+            const n = 4 + FTN_HDR + L + 4;
+            const p = new Uint8Array(n);
+            p[0] = FTN_SYNC >>> 24; p[1] = (FTN_SYNC >>> 16) & 255; p[2] = (FTN_SYNC >>> 8) & 255; p[3] = FTN_SYNC & 255;
+            p[4] = (FTN_VER << 4) | type;
+            p[5] = fid >>> 8; p[6] = fid & 255;
+            p[7] = size >>> 24; p[8] = (size >>> 16) & 255; p[9] = (size >>> 8) & 255; p[10] = size & 255;
+            p[11] = L;
+            p[12] = seq >>> 24; p[13] = (seq >>> 16) & 255; p[14] = (seq >>> 8) & 255; p[15] = seq & 255;
+            p.set(payload.subarray(0, L), 16);
+            const crc = ftnCrc32(p, 4, 16 + L);
+            p[16 + L] = crc >>> 24; p[17 + L] = (crc >>> 16) & 255; p[18 + L] = (crc >>> 8) & 255; p[19 + L] = crc & 255;
+            return p;
+        }
+
+        function ftnInfoPayload(L, crc, name) {
+            const out = new Uint8Array(L);
+            out[0] = crc >>> 24; out[1] = (crc >>> 16) & 255; out[2] = (crc >>> 8) & 255; out[3] = crc & 255;
+            const nb = new TextEncoder().encode(name || '');
+            let n = Math.min(nb.length, L - 5, 120);
+            while (n > 0 && (nb[n] & 0xC0) === 0x80 && n < nb.length) n--;        // 不要截断在 UTF-8 字符中间
+            out[4] = n; out.set(nb.subarray(0, n), 5);
+            return out;
+        }
+
+        // 发送端的包来源：先发一个文件信息包，之后是水滴，每隔 infoEvery 个再插一个信息包
+        class FountainPacketSource {
+            constructor(bytes, name, opts) {
+                opts = opts || {};
+                this.L = opts.L || 64;
+                this.fid = opts.fid !== undefined ? opts.fid : Math.floor(Math.random() * 65536);
+                this.enc = new FountainEncoder(bytes, this.L, this.fid);
+                this.k = this.enc.k;
+                this.size = bytes.length;
+                this.name = name || '';
+                this.crc = ftnCrc32(bytes, 0, bytes.length);
+                this.infoEvery = opts.infoEvery || 16;
+                this.maxData = opts.redundancy ? Math.ceil(this.k * opts.redundancy) + 2 : Infinity;
+                this.seq = 0; this.infoSent = 0; this.sinceInfo = 0; this.packets = 0;
+                this.packetBytes = 4 + FTN_HDR + this.L + 4;
+            }
+
+            get total() { return this.maxData === Infinity ? Infinity : this.maxData + Math.ceil(this.maxData / this.infoEvery) + 1; }
+
+            next() {
+                if (this.infoSent === 0 || this.sinceInfo >= this.infoEvery) {
+                    this.sinceInfo = 0; this.infoSent++; this.packets++;
+                    return ftnPacket(FTN_TYPE_INFO, this.fid, this.size, this.L, this.infoSent, ftnInfoPayload(this.L, this.crc, this.name));
+                }
+                if (this.seq >= this.maxData) return null;
+                const seq = this.seq++;
+                this.sinceInfo++; this.packets++;
+                return ftnPacket(FTN_TYPE_DATA, this.fid, this.size, this.L, seq, this.enc.droplet(seq));
+            }
+        }
+
+        // 接收端：在（纠错后的）比特流里找同步字，收完一个包，CRC32 对了才交出去
+        function ftnPop32(x) {
+            x = x - ((x >>> 1) & 0x55555555); x = (x & 0x33333333) + ((x >>> 2) & 0x33333333);
+            return (((x + (x >>> 4)) & 0x0F0F0F0F) * 0x01010101) >>> 24;
+        }
+
+        class FountainDeframer {
+            constructor(onPacket) {
+                this.onPacket = onPacket;
+                this.syncMaxErrors = 2;
+                this.stats = { syncs: 0, ok: 0, crcFail: 0, badHeader: 0 };
+                this.lockedL = 0;
+                this.lockedAt = 0;
+                this.hotUntil = 0;
+                this.reset();
+            }
+
+            reset() {
+                this.state = 0; this.reg = 0; this.count = 0; this.acc = []; this.need = 0; this.hdr = null;
+                this.q = []; this.qi = 0; this.busy = false;
+            }
+
+            // 正在收（或刚收到）文件包：外部据此暂停文字解码，避免把文件数据当乱码打印出来
+            get active() { return this.state !== 0 || Date.now() < this.hotUntil; }
+
+            feed(bit) {
+                this.q.push(bit);
+                if (this.busy) return;
+                this.busy = true;
+                while (this.qi < this.q.length) {
+                    this._step(this.q[this.qi++]);
+                    if (this.qi > 65536) { this.q = this.q.slice(this.qi); this.qi = 0; }
+                }
+                this.q = []; this.qi = 0; this.busy = false;
+            }
+
+            _step(bit) {
+                if (this.state === 0) {
+                    this.reg = ((this.reg << 1) | bit) >>> 0;
+                    if (this.count < 32) this.count++;
+                    if (this.count >= 32 && ftnPop32((this.reg ^ FTN_SYNC) >>> 0) <= this.syncMaxErrors) {
+                        this.syncRx = this.reg; this.state = 1; this.acc = []; this.stats.syncs++;
+                        this.hotUntil = Math.max(this.hotUntil, Date.now() + 1500);
+                    }
+                    return;
+                }
+                this.acc.push(bit);
+                if (this.state === 1) {
+                    if (this.acc.length === FTN_HDR * 8) {
+                        const h = this._bytes(this.acc, 0, FTN_HDR);
+                        const type = h[0] & 15, ver = h[0] >> 4, L = h[7];
+                        const size = ((h[3] << 24) | (h[4] << 16) | (h[5] << 8) | h[6]) >>> 0;
+                        const okLen = this.lockedL && Date.now() - this.lockedAt < 60000 ? L === this.lockedL : true;
+                        if (ver !== FTN_VER || type > 1 || L < 8 || size > 0x4000000 || !okLen) { this.stats.badHeader++; this._rewind(true); return; }
+                        this.hdr = { type, L, size };
+                        this.state = 2;
+                        this.need = (FTN_HDR + L + 4) * 8;
+                    }
+                } else if (this.acc.length === this.need) {
+                    const b = this._bytes(this.acc, 0, this.need / 8);
+                    const L = this.hdr.L, end = FTN_HDR + L;
+                    const got = ((b[end] << 24) | (b[end + 1] << 16) | (b[end + 2] << 8) | b[end + 3]) >>> 0;
+                    if (ftnCrc32(b, 0, end) !== got) { this.stats.crcFail++; this._rewind(false); return; }
+                    this.stats.ok++;
+                    this.lockedL = L; this.lockedAt = Date.now();
+                    this.hotUntil = Date.now() + 4000;
+                    this.state = 0; this.reg = 0; this.count = 0; this.acc = [];
+                    this.onPacket({
+                        type: b[0] & 15, fid: (b[1] << 8) | b[2], size: this.hdr.size, L,
+                        seq: ((b[8] << 24) | (b[9] << 16) | (b[10] << 8) | b[11]) >>> 0,
+                        payload: b.subarray(FTN_HDR, end)
+                    });
+                }
+            }
+
+            _bytes(bits, from, n) {
+                const out = new Uint8Array(n);
+                for (let i = 0; i < n; i++) { let v = 0; for (let k = 0; k < 8; k++) v = (v << 1) | bits[from * 8 + i * 8 + k]; out[i] = v; }
+                return out;
+            }
+
+            // 假同步 / 坏包：从同步字的第 2 位起重新扫描，错过的下一个真同步字也能找回
+            _rewind(headerToo) {
+                const syncBits = [];
+                for (let i = 30; i >= 0; i--) syncBits.push((this.syncRx >>> i) & 1);
+                const replay = syncBits.concat(this.acc);
+                this.state = 0; this.reg = 0; this.count = 0; this.acc = []; this.hdr = null;
+                this.q = replay.concat(this.q.slice(this.qi)); this.qi = 0;
+            }
+        }
+
+        // 多文件接收：按 FID 管理解码器，回调进度 / 完成
+        class FountainReceiver {
+            constructor(cb) {
+                this.cb = cb || {};
+                this.files = new Map();
+            }
+
+            onPacket(p) {
+                let f = this.files.get(p.fid);
+                if (!f || f.size !== p.size || f.L !== p.L) {
+                    if (f && f.done) { /* 同一个 FID 换了内容：当作新文件 */ }
+                    const k = Math.max(1, Math.ceil(p.size / p.L));
+                    f = {
+                        fid: p.fid, size: p.size, L: p.L, k, name: null, crc: null, crcOk: null,
+                        decoder: new FountainDecoder(p.fid, k, p.L, p.size), packets: 0, startedAt: Date.now(),
+                        done: false, bytes: null, id: ++FountainReceiver._seq
+                    };
+                    this.files.set(p.fid, f);
+                    if (this.files.size > 6) this.files.delete(this.files.keys().next().value);
+                    if (this.cb.onStart) this.cb.onStart(f);
+                }
+                if (f.done) return;
+                f.packets++;
+                if (p.type === FTN_TYPE_INFO) {
+                    const pl = p.payload;
+                    f.crc = ((pl[0] << 24) | (pl[1] << 16) | (pl[2] << 8) | pl[3]) >>> 0;
+                    const n = Math.min(pl[4], pl.length - 5);
+                    try { f.name = new TextDecoder('utf-8').decode(pl.subarray(5, 5 + n)) || null; } catch (e) { f.name = null; }
+                    if (this.cb.onInfo) this.cb.onInfo(f);
+                } else {
+                    f.decoder.add(p.seq, p.payload);
+                }
+                if (f.decoder.done && !f.done) {
+                    f.done = true;
+                    f.bytes = f.decoder.result();
+                    f.crcOk = f.crc === null ? null : (ftnCrc32(f.bytes, 0, f.bytes.length) === f.crc);
+                    if (this.cb.onProgress) this.cb.onProgress(f);
+                    if (this.cb.onComplete) this.cb.onComplete(f);
+                    return;
+                }
+                if (this.cb.onProgress) this.cb.onProgress(f);
+            }
+        }
+        FountainReceiver._seq = 0;
+
+        function ftnBytesToBits(bytes) {
+            const out = new Array(bytes.length * 8);
+            for (let i = 0; i < bytes.length; i++) for (let k = 0; k < 8; k++) out[i * 8 + k] = (bytes[i] >> (7 - k)) & 1;
+            return out;
+        }
+        // ===== FOUNTAIN END =====
+
+        // ===== TXSTREAM BEGIN =====
+        // 流式发送：  数据源 ──► 包装器（纠错等）──► 调制器 ──► 声卡
+        //   · 数据源（Source）每次交出一小块比特，可以是有限的（一条消息）也可以是无限的（喷泉码水滴流）
+        //   · 包装器（Stage）把码字流变换成另一个码字流：push(bits)→bits，end()→bits（流式卷积 / RS 编码器）
+        //   · 调制器一边收一边播：begin → pushBits → … → finish；内部队列由 AudioWorklet 消费并回报水位
+        //   · TxPipeline 按水位拉取：队列里不足 N 秒就再向数据源要一块，所以可以一直发下去
+
+        // ---- 有状态的符号编码器：跨块延续差分相位 / 未满一个符号的残余比特 ----
+        class StreamSymbolEncoder {
+            constructor(o) {
+                this.bitsPer = o.bitsPer;
+                this.M = o.M || (1 << o.bitsPer);
+                this.gray = o.gray || null;
+                this.diff = !!o.differential;
+                this.phase = 0; this.pending = []; this.started = false;
+            }
+
+            _sym(group) {
+                let v = 0;
+                for (let i = 0; i < group.length; i++) v = (v << 1) | group[i];
+                if (!this.diff) return v;
+                this.phase = (this.phase + (this.gray ? this.gray[v] : v)) % this.M;
+                return this.phase;
+            }
+
+            push(bits) {
+                const out = [];
+                if (this.diff && !this.started && bits.length) { this.started = true; out.push(0); }   // 差分编码的参考符号
+                for (let i = 0; i < bits.length; i++) {
+                    this.pending.push(bits[i]);
+                    if (this.pending.length === this.bitsPer) { out.push(this._sym(this.pending)); this.pending = []; }
+                }
+                return out;
+            }
+
+            end() {
+                const out = [];
+                if (this.pending.length) {
+                    while (this.pending.length < this.bitsPer) this.pending.push(0);
+                    out.push(this._sym(this.pending));
+                    this.pending = [];
+                }
+                return out;
+            }
+        }
+
+        // ---- 调制器基类（流式接口）----
         class Modulator {
             constructor() {
                 this.baudRate = 50;
                 this.carrierFreq = 16000;
                 this.onStop = null;
-                this.bits = 0
+                this.onNeed = null;
+                this.stopped = false;
+                this.finishedInput = false;
+                this.pushedBits = 0;
             }
 
-            setOnStop(onStop) {
-                this.onStop = onStop;
-            }
-
+            setOnStop(onStop) { this.onStop = onStop; }
+            setOnNeed(onNeed) { this.onNeed = onNeed; }
             setBaudRate() { this.baudRate = baudRate; }
             setCarrierFreq() { this.carrierFreq = carrierFreq; }
-            getBitrate() {
-                return this.baudRate;
-            }
-            transmit(audioCtx, bitArray) {
+            getBitrate() { return this.baudRate; }
 
-            }
+            begin(audioCtx) { }              // 建立音频节点，开始输出
+            pushBits(bits) { }               // 追加（纠错后的）比特
+            finish() { }                     // 不会再有数据了：播完队列后自然结束
+            get queuedSeconds() { return 0; }   // 队列里还有多少秒音频没播
+            get bitsPerSymbol() { return 1; }
+            get channelBitRate() { return this.baudRate * this.bitsPerSymbol; }   // 信道上每秒多少比特
 
-            stop() {
+            _fireStop() {
+                if (this.stopped) return;
+                this.stopped = true;
                 if (this.onStop) this.onStop();
             }
 
-            get bitsPerSymbol() {
-                return 1;
-            }
+            stop() { this._fireStop(); }
 
-            get totalBits() {
-                return this.bits;
-            }
-
-            // 实际平均比特率（OFDM 这类非“符号速率×每符号比特”的模式使用；null 表示用默认公式）
-            get bitRate() {
-                return null;
+            // 兼容旧接口：一次性发送整个比特数组
+            transmit(audioCtx, bitArray) {
+                this.begin(audioCtx);
+                this.pushBits(bitArray);
+                this.finish();
             }
         }
 
-        class GFSKModulator extends Modulator {
-            constructor() {
-                super();
+        // ---- 基于 'mod' AudioWorklet 的调制器：符号经消息送进 worklet 里的队列 ----
+        class WorkletModulator extends Modulator {
+            begin(audioCtx) {
+                this.audioCtx = audioCtx;
+                this.pushedSymbols = 0; this.playedSymbols = 0; this.underruns = 0;
+                const mod = new AudioWorkletNode(audioCtx, 'mod', this.modOptions);
+                this.mod = mod;
+                mod.port.postMessage({ type: 'baudRate', baudRate: this.baudRate });
+                if (this.symbolMap) mod.port.postMessage({ type: 'symbolMap', symbolMap: this.symbolMap });
+                if (this.filler) mod.port.postMessage({ type: 'filler', symbols: this.filler });
+                mod.port.onmessage = evt => this._onWorklet(evt.data);
+                this._buildGraph(audioCtx, mod);
+                this._append(this._preamble());
             }
 
-            transmit(audioCtx, bitArray) {
-                const mod = new AudioWorkletNode(audioCtx, 'mod')
-                mod.port.postMessage({ type: "baudRate", baudRate: this.baudRate })
-                mod.port.postMessage({ type: "data", data: bitArray })
-                this.bits = bitArray.length
+            _preamble() { return []; }
 
+            _append(symbols) {
+                if (!symbols.length) return;
+                this.pushedSymbols += symbols.length;
+                this.mod.port.postMessage({ type: 'append', data: Uint8Array.from(symbols) });
+            }
+
+            pushBits(bits) {
+                if (this.stopped || this.finishedInput || !this.mod) return;
+                this.pushedBits += bits.length;
+                this._append(this.encoder.push(bits));
+            }
+
+            finish() {
+                if (this.finishedInput || !this.mod) return;
+                this.finishedInput = true;
+                this._append(this.encoder.end());
+                this.mod.port.postMessage({ type: 'finish', tail: 10 });     // 结束后再补 10 个静音符号，让成形滤波器的拖尾播完
+            }
+
+            get queuedSeconds() { return Math.max(0, this.pushedSymbols - this.playedSymbols) / this.baudRate; }
+
+            _onWorklet(d) {
+                if (d.type === 'level') { this.playedSymbols = d.played; if (this.onNeed) this.onNeed(); }
+                else if (d.type === 'underrun') { this.underruns = d.n; }
+                else if (d.type === 'stop') { this._teardown(); this._fireStop(); }
+            }
+
+            stop() {
+                if (this.mod) { try { this.mod.port.postMessage({ type: 'abort' }); } catch (e) { } }
+                this._teardown();
+                this._fireStop();
+            }
+
+            _teardown() { }
+        }
+
+        // 频移键控：成形后的符号去调制振荡器的频率
+        class GFSKModulator extends WorkletModulator {
+            constructor() {
+                super();
+                this.encoder = new StreamSymbolEncoder({ bitsPer: 1 });
+                this.filler = [0, 1];
+            }
+
+            _buildGraph(audioCtx, mod) {
                 const convolver = audioCtx.createConvolver();
-                const filter = createGFSKFilter(this.baudRate);
-                convolver.buffer = filter;
-
+                convolver.buffer = createGFSKFilter(this.baudRate);
                 const freqDeviation = audioCtx.createGain();
                 freqDeviation.gain.value = 170.778026716646371 * this.baudRate * 0.25;
                 const oscillator = audioCtx.createOscillator();
                 oscillator.frequency.value = this.carrierFreq;
                 const gainNode = audioCtx.createGain();
                 gainNode.gain.value = 0.5;
-
-                mod.connect(convolver)
+                mod.connect(convolver);
                 convolver.connect(freqDeviation);
                 freqDeviation.connect(oscillator.frequency);
                 oscillator.connect(gainNode);
                 gainNode.connect(audioCtx.destination, 0, 0);
                 oscillator.start();
-
-                let symbolTime = 1 / this.baudRate;
-
-                oscillator.stop(audioCtx.currentTime + symbolTime * bitArray.length);
-
-                oscillator.onended = () => {
-                    if (this.onStop) this.onStop();
-                }
-
                 this.oscillator = oscillator;
-                return oscillator;
             }
 
-            stop() {
-                super.stop();
-                if (this.oscillator) this.oscillator.stop();
+            _teardown() {
+                if (this.oscillator) { try { this.oscillator.stop(); } catch (e) { } this.oscillator = null; }
             }
         }
 
-        class MFSKModulator extends Modulator {
+        class MFSKModulator extends GFSKModulator {
             constructor(order) {
                 super();
                 this.order = order;
-                this.bitsPer = Math.log2(order)
+                this.bitsPer = Math.log2(order);
+                this.encoder = new StreamSymbolEncoder({ bitsPer: this.bitsPer });
+                this.symbolMap = this.distributePoints(order, -1, 1);
+                this.filler = [0, order - 1];
             }
 
-            transmit(audioCtx, bitArray) {
-                let packed = packBitArray(bitArray, this.bitsPer)
-
-                const mod = new AudioWorkletNode(audioCtx, 'mod')
-                mod.port.postMessage({ type: "baudRate", baudRate: this.baudRate })
-                mod.port.postMessage({ type: "data", data: packed })
-                mod.port.postMessage({
-                    type: "symbolMap", symbolMap: this.distributePoints(this.order, -1, 1)
-                })
-                this.bits = bitArray.length
-
-                const convolver = audioCtx.createConvolver();
-                const filter = createGFSKFilter(this.baudRate);
-                convolver.buffer = filter;
-
-                const freqDeviation = audioCtx.createGain();
-                freqDeviation.gain.value = 170.778026716646371 * this.baudRate * 0.25;
-                const oscillator = audioCtx.createOscillator();
-                oscillator.frequency.value = this.carrierFreq;
-                const gainNode = audioCtx.createGain();
-                gainNode.gain.value = 0.5;
-
-                mod.connect(convolver)
-                convolver.connect(freqDeviation);
-                freqDeviation.connect(oscillator.frequency);
-                oscillator.connect(gainNode);
-                gainNode.connect(audioCtx.destination, 0, 0);
-                oscillator.start();
-
-                let symbolTime = 1 / this.baudRate;
-
-                oscillator.stop(audioCtx.currentTime + symbolTime * packed.length);
-
-                oscillator.onended = () => {
-                    if (this.onStop) this.onStop();
-                }
-
-                this.oscillator = oscillator;
-                return oscillator;
-            }
-
-            stop() {
-                super.stop();
-                if (this.oscillator) this.oscillator.stop();
-            }
-
-            get bitsPerSymbol() {
-                return this.bitsPer;
-            }
+            get bitsPerSymbol() { return this.bitsPer; }
 
             distributePoints(numPoints, start, end) {
-                // 如果点的数量小于2，直接返回空数组
-                if (numPoints < 2) {
-                    return {};
-                }
-
-                // 如果点的数量为2，直接返回起始点和结束点
-                if (numPoints === 2) {
-                    return { 0: [-1, 0], 1: [1, 0] };
-                }
-
-                // 计算每个区间的长度
+                if (numPoints < 2) return {};
+                if (numPoints === 2) return { 0: [-1, 0], 1: [1, 0] };
                 const intervalLength = (end - start) / (numPoints - 1);
-
-                // 创建一个数组来存储分割点
-                const points = { 0: [start, 0] }; // 第一个点是起始点
-
-                // 计算中间的分割点
-                for (let i = 1; i < numPoints - 1; i++) {
-                    const point = start + intervalLength * i;
-                    points[i] = [point, 0];
-                }
-
-                // 最后一个点是结束点
+                const points = { 0: [start, 0] };
+                for (let i = 1; i < numPoints - 1; i++) points[i] = [start + intervalLength * i, 0];
                 points[numPoints - 1] = [end, 0];
-
                 return points;
             }
-
         }
 
         class FSK4Modulator extends MFSKModulator {
-            constructor() {
-                super(4);
-            }
+            constructor() { super(4); }
         }
 
-        class BPSKModulator extends Modulator {
-            transmit(audioCtx, bitArray) {
-                // differential coding
-                let codedArray = differentialEncoding(bitArray)
-                console.log(codedArray)
+        function createRrcConvolver(audioCtx, baud) {
+            const convolver = audioCtx.createConvolver();
+            const filter = new Float32Array(rrcosFilter(sampleRate, baud, 0.5)[0]);
+            const buffer = audioCtx.createBuffer(1, filter.length, sampleRate);
+            buffer.copyToChannel(filter, 0);
+            convolver.buffer = buffer;
+            return convolver;
+        }
 
-                let startSync = []
-                // Use 1 second of alternating bits for robust lock-in
-                for (let i = 0; i < this.baudRate; i++) {
-                    startSync.push(...[1, 0])
-                }
+        function randomSymbols(n, M) {
+            const s = [];
+            for (let i = 0; i < n; i++) s.push(Math.floor(Math.random() * M));
+            return s;
+        }
 
-                // Add 1 seconds of random bits to train the symbol timing recovery
-                for (let i = 0; i < this.baudRate; i++) {
-                    startSync.push(Math.random() > 0.5 ? 1 : 0)
-                }
+        // 实数载波相乘（BPSK）
+        class BPSKModulator extends WorkletModulator {
+            constructor() {
+                super();
+                this.encoder = new StreamSymbolEncoder({ bitsPer: 1, M: 2, differential: true });
+                this.filler = [1, 0];
+            }
 
-                codedArray = startSync.concat(codedArray)
-                this.bits = codedArray.length
+            // 1 秒交替符号用于锁定载波，再加 1 秒随机符号训练符号定时
+            _preamble() {
+                const s = [];
+                for (let i = 0; i < this.baudRate; i++) s.push(1, 0);
+                return s.concat(randomSymbols(this.baudRate, 2));
+            }
 
-                const mod = new AudioWorkletNode(audioCtx, 'mod')
-
-                mod.port.postMessage({ type: "baudRate", baudRate: this.baudRate })
-                mod.port.postMessage({ type: "data", data: codedArray })
-
-                const convolver = audioCtx.createConvolver();
-                const filter = new Float32Array(rrcosFilter(sampleRate, this.baudRate, 0.5)[0]);
-                const buffer = audioCtx.createBuffer(1, filter.length, sampleRate);
-                buffer.copyToChannel(filter, 0);
-                convolver.buffer = buffer;
-
+            _buildGraph(audioCtx, mod) {
+                const convolver = createRrcConvolver(audioCtx, this.baudRate);
                 this.mixer = audioCtx.createOscillator();
                 this.mixer.frequency.value = this.carrierFreq;
-
                 const gainNode = audioCtx.createGain();
                 gainNode.gain.value = 100;
-
                 const multiplier = audioCtx.createGain();
                 multiplier.gain.value = 0;
-
-                mod.connect(convolver)
+                mod.connect(convolver);
                 convolver.connect(gainNode);
                 this.mixer.connect(multiplier.gain);
                 gainNode.connect(multiplier);
                 multiplier.connect(audioCtx.destination, 0, 0);
-
                 this.mixer.start();
-                this.mixer.stop(audioCtx.currentTime + symbolTime * codedArray.length);
-
-
-                this.mixer.onended = () => {
-                    if (this.onStop) this.onStop();
-                }
-
-                return this.mixer;
             }
 
-            stop() {
-                super.stop();
-                if (this.mixer) this.mixer.stop();
+            _teardown() {
+                if (this.mixer) { try { this.mixer.stop(); } catch (e) { } this.mixer = null; }
             }
         }
 
-        class QPSKModulator extends Modulator {
-            transmit(audioCtx, bitArray) {
-                // differential coding
-                let codedArray = qpskEncode(bitArray)
-                console.log(codedArray)
+        // 复数载波（QPSK / 8PSK）：I/Q 两路经 mixer worklet 上变频
+        class IQPSKModulator extends WorkletModulator {
+            constructor() {
+                super();
+                this.modOptions = { outputChannelCount: [2] };
+            }
 
-                let startSync = []
-                // Use 1 second of alternating symbols for robust lock-in
-                for (let i = 0; i < this.baudRate; i++) {
-                    startSync.push(...[0, 2])
-                }
-
-                // Add 1 seconds of random bits to train the symbol timing recovery
-                for (let i = 0; i < this.baudRate; i++) {
-                    startSync.push(Math.floor(Math.random() * 4))
-                }
-
-                codedArray = startSync.concat(codedArray)
-                this.bits = codedArray.length * this.bitsPerSymbol
-
-                const mod = new AudioWorkletNode(audioCtx, 'mod', { outputChannelCount: [2] })
-                mod.port.postMessage({ type: "baudRate", baudRate: this.baudRate })
-                mod.port.postMessage({ type: "data", data: codedArray })
-                mod.port.postMessage({
-                    type: "symbolMap", symbolMap: {
-                        0: [1, 1],
-                        1: [-1, 1],
-                        2: [-1, -1],
-                        3: [1, -1]
-                    }
-                })
-                mod.port.onmessage = evt => {
-                    if (evt.data.type === "stop") {
-                        this.stop();
-                    }
-                }
-                console.log(codedArray)
-
-
-                const convolver = audioCtx.createConvolver();
-                const filter = new Float32Array(rrcosFilter(sampleRate, this.baudRate, 0.5)[0]);
-                const buffer = audioCtx.createBuffer(1, filter.length, sampleRate);
-                buffer.copyToChannel(filter, 0);
-                convolver.buffer = buffer;
-
+            _buildGraph(audioCtx, mod) {
+                const convolver = createRrcConvolver(audioCtx, this.baudRate);
                 this.mixer = new AudioWorkletNode(audioCtx, 'mixer', { inputChannelCount: [2], outputChannelCount: [2] });
                 this.mixer.parameters.get('frequency').value = this.carrierFreq;
-
-
                 const gainNode = audioCtx.createGain();
                 gainNode.gain.value = 100;
-
-                const merger = audioCtx.createChannelMerger(2)
-
-                mod.connect(convolver)
+                const merger = audioCtx.createChannelMerger(2);
+                mod.connect(convolver);
                 convolver.connect(gainNode);
                 gainNode.connect(this.mixer);
-                merger.connect(audioCtx.destination, 0, 0)
-                this.mixer.connect(merger, 0, 0)
-                this.mixer.connect(merger, 0, 1)
-
-                this.mixer.onprocessorerror = e => { console.log(e) }
-
-                return this.mixer;
+                merger.connect(audioCtx.destination, 0, 0);
+                this.mixer.connect(merger, 0, 0);
+                this.mixer.connect(merger, 0, 1);
+                this.mixer.onprocessorerror = e => { console.log(e); };
             }
 
-            stop() {
-                super.stop();
-                if (this.mixer) this.mixer.disconnect();
-            }
-
-            get bitsPerSymbol() {
-                return 2;
+            _teardown() {
+                if (this.mixer) { try { this.mixer.disconnect(); } catch (e) { } this.mixer = null; }
             }
         }
 
+        class QPSKModulator extends IQPSKModulator {
+            constructor() {
+                super();
+                this.encoder = new StreamSymbolEncoder({ bitsPer: 2, M: 4, gray: QPSK_GRAY_TO_PHASE, differential: true });
+                this.symbolMap = { 0: [1, 1], 1: [-1, 1], 2: [-1, -1], 3: [1, -1] };
+                this.filler = [0, 2];
+            }
 
-        class PSK8Modulator extends Modulator {
-            transmit(audioCtx, bitArray) {
-                // differential coding
-                let codedArray = psk8Encode(bitArray)
-                console.log(codedArray)
+            _preamble() {
+                const s = [];
+                for (let i = 0; i < this.baudRate; i++) s.push(0, 2);
+                return s.concat(randomSymbols(this.baudRate, 4));
+            }
 
-                let startSync = []
-                // Use 1 second of alternating symbols for robust lock-in
-                for (let i = 0; i < this.baudRate; i++) {
-                    startSync.push(...[0, 4])
-                }
+            get bitsPerSymbol() { return 2; }
+        }
 
-                // Add 1 seconds of random bits to train the symbol timing recovery
-                for (let i = 0; i < this.baudRate; i++) {
-                    startSync.push(Math.floor(Math.random() * 8))
-                }
+        class PSK8Modulator extends IQPSKModulator {
+            constructor() {
+                super();
+                this.encoder = new StreamSymbolEncoder({ bitsPer: 3, M: 8, gray: PSK8_GRAY_TO_PHASE, differential: true });
+                this.symbolMap = {
+                    0: [1, 0], 1: [0.7071, 0.7071], 2: [0, 1], 3: [-0.7071, 0.7071],
+                    4: [-1, 0], 5: [-0.7071, -0.7071], 6: [0, -1], 7: [0.7071, -0.7071]
+                };
+                this.filler = [0, 4];
+            }
 
-                codedArray = startSync.concat(codedArray)
-                this.bits = codedArray.length * this.bitsPerSymbol
+            _preamble() {
+                const s = [];
+                for (let i = 0; i < this.baudRate; i++) s.push(0, 4);
+                return s.concat(randomSymbols(this.baudRate, 8));
+            }
 
-                const mod = new AudioWorkletNode(audioCtx, 'mod', { outputChannelCount: [2] })
-                mod.port.postMessage({ type: "baudRate", baudRate: this.baudRate })
-                mod.port.postMessage({ type: "data", data: codedArray })
-                mod.port.postMessage({
-                    type: "symbolMap", symbolMap: {
-                        0: [1, 0],
-                        1: [0.7071, 0.7071],
-                        2: [0, 1],
-                        3: [-0.7071, 0.7071],
-                        4: [-1, 0],
-                        5: [-0.7071, - 0.7071],
-                        6: [0, - 1],
-                        7: [0.7071, - 0.7071]
-                    }
-                })
-                mod.port.onmessage = evt => {
-                    console.log(evt.data)
-                    if (evt.data.type === "stop") {
-                        this.stop();
-                    }
-                }
-                console.log(codedArray)
+            get bitsPerSymbol() { return 3; }
+        }
 
+        // ---- OFDM：按帧流式调制，每帧生成一段音频，用 AudioBufferSource 首尾相接地排队播放 ----
+        const OFDM_STREAM_SYMS = 24;      // 流式发送时每帧的数据符号数（约 10 秒）
 
-                const convolver = audioCtx.createConvolver();
-                const filter = new Float32Array(rrcosFilter(sampleRate, this.baudRate, 0.5)[0]);
-                const buffer = audioCtx.createBuffer(1, filter.length, sampleRate);
-                buffer.copyToChannel(filter, 0);
-                convolver.buffer = buffer;
+        class OFDMModulator extends Modulator {
+            begin(audioCtx) {
+                this.audioCtx = audioCtx;
+                this.cfg = ofdmConfig(sampleRate, this.carrierFreq, this.baudRate * 1.5);
+                this.mod = parseInt(document.getElementById('ofdmMod').value) || 0;
+                this.fec = fecProfileId();
+                this.cap = this.cfg.nData * OFDM_MODS[this.mod].bpc;
+                this.frameBits = Math.max(1, this.cap * OFDM_STREAM_SYMS);   // 下限 1：极端配置下 nData=0 会让 pushBits 的凑帧循环转不停
+                this.frameSeconds = (this.cfg.symLen * OFDM_STREAM_SYMS + 4.4 * sampleRate / 2) / sampleRate;   // 每帧音频长度（约值，用来估计进度）
+                this.pending = [];
+                this.sources = [];
+                this.nextStart = audioCtx.currentTime + 0.15;
+            }
 
-                this.mixer = new AudioWorkletNode(audioCtx, 'mixer', { inputChannelCount: [2], outputChannelCount: [2] });
-                this.mixer.parameters.get('frequency').value = this.carrierFreq;
+            get channelBitRate() { return this.frameBits / this.frameSeconds; }
 
+            pushBits(bits) {
+                if (this.stopped || this.finishedInput || !this.audioCtx) return;
+                this.pushedBits += bits.length;
+                for (let i = 0; i < bits.length; i++) this.pending.push(bits[i]);
+                while (this.pending.length >= this.frameBits) this._emit(this.pending.splice(0, this.frameBits));
+            }
 
-                const gainNode = audioCtx.createGain();
-                gainNode.gain.value = 100;
+            finish() {
+                if (this.finishedInput || !this.audioCtx) return;
+                this.finishedInput = true;
+                if (this.pending.length) { this._emit(this.pending); this.pending = []; }
+                this._maybeDone();
+            }
 
-                const merger = audioCtx.createChannelMerger(2)
+            _emit(bits) {
+                const ac = this.audioCtx;
+                const wave = ofdmModulate(bits, this.cfg, { mod: this.mod, fec: this.fec });
+                const buffer = ac.createBuffer(1, wave.samples.length, sampleRate);
+                buffer.copyToChannel(wave.samples, 0);
+                const src = ac.createBufferSource();
+                src.buffer = buffer;
+                src.connect(ac.destination);
+                const when = Math.max(this.nextStart, ac.currentTime + 0.05);
+                src.start(when);
+                this.nextStart = when + buffer.duration;
+                this.sources.push(src);
+                src.onended = () => { this.sources = this.sources.filter(x => x !== src); this._maybeDone(); };
+            }
 
-                mod.connect(convolver)
-                convolver.connect(gainNode);
-                gainNode.connect(this.mixer);
-                merger.connect(audioCtx.destination, 0, 0)
-                this.mixer.connect(merger, 0, 0)
-                this.mixer.connect(merger, 0, 1)
+            _maybeDone() {
+                if (this.finishedInput && !this.sources.length) this._fireStop();
+            }
 
-                this.mixer.onprocessorerror = e => { console.log(e) }
-
-                return this.mixer;
+            get queuedSeconds() {
+                if (!this.audioCtx) return 0;
+                // 只统计已排进播放队列的音频。
+                // 此前把未凑满一帧的 pending 比特也折算成播放时长，一帧音频约 10s，
+                // 第一个拉取块就会让"水位"超过 pump 的 3s 目标 → pump 停止拉取，
+                // pending 永远凑不满一帧、一帧也发不出去 → 长消息发射死锁（看似无限循环卡住）。
+                // 现在只算真实排队时长：pump 会继续拉到凑满一帧并立即出帧（出帧后水位 ~10s 自然停住，不会过度拉取）。
+                return Math.max(0, this.nextStart - this.audioCtx.currentTime);
             }
 
             stop() {
-                super.stop();
-                if (this.mixer) this.mixer.disconnect();
-            }
-
-            get bitsPerSymbol() {
-                return 3;
+                for (const s of this.sources) { s.onended = null; try { s.stop(); } catch (e) { } }
+                this.sources = [];
+                this._fireStop();
             }
         }
+
+        // ===== 数据源 =====
+        // 一段现成的比特数组（文字消息、图片等有限数据）
+        class BitArraySource {
+            constructor(bits, chunk) { this.bits = bits; this.pos = 0; this.chunk = chunk || 2048; this.totalBits = bits.length; }
+            nextBits() {
+                if (this.pos >= this.bits.length) return null;
+                const out = this.bits.slice(this.pos, this.pos + this.chunk);
+                this.pos += out.length;
+                return out;
+            }
+            get consumedBits() { return this.pos; }
+            get label() { return '消息'; }
+        }
+
+        // 喷泉码：每次拉取一个水滴包；设了冗余倍数就发有限个，否则一直发到手动中止
+        class FountainBitSource {
+            constructor(packetSource) {
+                this.ps = packetSource;
+                this.bitsPerPacket = packetSource.packetBytes * 8;
+                this.packets = 0;
+                const t = packetSource.total;
+                this.totalBits = t === Infinity ? null : t * this.bitsPerPacket;
+            }
+            nextBits() {
+                const p = this.ps.next();
+                if (!p) return null;
+                this.packets++;
+                return ftnBytesToBits(p);
+            }
+            get consumedBits() { return this.packets * this.bitsPerPacket; }
+            get label() { return '文件'; }
+        }
+
+        // 文字令牌 → 比特：加开始/结束令牌、奇偶校验、同步令牌，再做斐波那契编码
+        function buildTokenBits(ordArray) {
+            const arr = ordArray.slice();
+            arr.unshift(2000002);                  // 消息开始
+            arr.push(2000003);                     // 消息结束
+            const parity = fecNeedsParity();
+            const prepared = parity ? arr.map(e => encodeWithParity(e)) : arr;
+            const sync = parity ? [2, 2] : [2000010, 2000010];
+            prepared.unshift(...sync);
+            prepared.push(...sync);
+            return fibonacciEncoding(prepared);
+        }
+
+        // ===== 流水线：数据源 → 包装器 → 调制器 =====
+        class TxPipeline {
+            constructor(source, stages, modulator, opts) {
+                opts = opts || {};
+                this.source = source;
+                this.stages = stages || [];
+                this.mod = modulator;
+                this.aheadSeconds = opts.aheadSeconds || 3;
+                this.timer = null;
+                this.inputDone = false;
+                this.stopped = false;
+                this.codedBits = 0;
+                this.startedAt = 0;
+                this.maxPullsPerPump = 200;
+            }
+
+            start(audioCtx) {
+                this.audioCtx = audioCtx;
+                this.startedAt = audioCtx.currentTime;
+                this.mod.setOnNeed(() => this.pump());
+                this.mod.begin(audioCtx);
+                this.pump();
+                this.timer = setInterval(() => this.pump(), 80);
+            }
+
+            _push(bits) {
+                let cur = bits;
+                for (const st of this.stages) { cur = st.push(cur); if (!cur.length) return; }
+                this.codedBits += cur.length;
+                this.mod.pushBits(cur);
+            }
+
+            _flush() {
+                let carry = [];
+                for (const st of this.stages) {
+                    const a = carry.length ? st.push(carry) : [];
+                    carry = a.concat(st.end());
+                }
+                if (carry.length) { this.codedBits += carry.length; this.mod.pushBits(carry); }
+            }
+
+            // 队列水位不足就继续向数据源要数据
+            pump() {
+                if (this.stopped || this.inputDone) return;
+                let n = 0;
+                while (this.mod.queuedSeconds < this.aheadSeconds && n++ < this.maxPullsPerPump) {
+                    const bits = this.source.nextBits();
+                    if (bits === null) {
+                        this.inputDone = true;
+                        this._flush();
+                        this.mod.finish();
+                        this._stopTimer();
+                        return;
+                    }
+                    this._push(bits);
+                }
+            }
+
+            _stopTimer() { if (this.timer) { clearInterval(this.timer); this.timer = null; } }
+
+            stop() {
+                this.stopped = true;
+                this._stopTimer();
+                this.mod.stop();
+            }
+
+            // 进度：有限数据源可以估算剩余时间；无限的（喷泉码一直发）只给计数
+            progress() {
+                const total = this.source.totalBits, done = this.source.consumedBits;
+                const elapsed = this.audioCtx ? Math.max(0, this.audioCtx.currentTime - this.startedAt) : 0;
+                const info = { elapsed, fraction: null, remaining: null, packets: this.source.packets };
+                if (total && done > 0) {
+                    const expansion = Math.max(1, this.codedBits / done);
+                    const rate = this.mod.channelBitRate || 1;
+                    const remainingBits = Math.max(0, total - done) * expansion;
+                    info.remaining = this.mod.queuedSeconds + remainingBits / rate;
+                    info.fraction = elapsed / Math.max(1e-6, elapsed + info.remaining);
+                }
+                return info;
+            }
+        }
+        // ===== TXSTREAM END =====
 
         // Demodulators
 
@@ -5599,37 +6329,6 @@
         chatInit();
         // ===== CHAT END =====
 
-        // OFDM 的“符号速率”选项被当作带宽选择：带宽 = 符号速率 × 1.5（与单载波 PSK 占用的带宽一致），最小 600Hz
-        class OFDMModulator extends Modulator {
-            transmit(audioCtx, bitArray) {
-                const cfg = ofdmConfig(sampleRate, this.carrierFreq, this.baudRate * 1.5);
-                const mod = parseInt(document.getElementById('ofdmMod').value) || 0;
-                // MCS 写进每个符号的元数据子载波：调制阶数 + 当前纠错方案编号，对端据此自动匹配
-                const wave = ofdmModulate(bitArray, cfg, { mod: mod, fec: fecProfileId() });
-                this.bits = bitArray.length;
-                this.duration = wave.seconds;
-                const buffer = audioCtx.createBuffer(1, wave.samples.length, sampleRate);
-                buffer.copyToChannel(wave.samples, 0);
-                const src = audioCtx.createBufferSource();
-                src.buffer = buffer;
-                src.connect(audioCtx.destination);
-                src.onended = () => { if (this.onStop) this.onStop(); };
-                this.startTime = audioCtx.currentTime;
-                src.start();
-                this.src = src;
-                return src;
-            }
-
-            stop() {
-                super.stop();
-                if (this.src) { try { this.src.stop(); } catch (e) { } }
-            }
-
-            get bitRate() {
-                return this.duration ? this.bits / this.duration : null;
-            }
-        }
-
         class OFDMDemodulator extends Demodulator {
             _build() {
                 if (!this.source) return;
@@ -5820,6 +6519,116 @@
             }
         }
 
+        // ===== 喷泉码文件接收 =====
+        // FountainDeframer 在纠错后的比特流里找同步字、收包、验 CRC；
+        // FountainReceiver 按 FID 管理解码器还原文件。收文件期间暂停文字解码，避免文件数据被当乱码打印。
+        let ftnReceiver = null;
+        let ftnStatusTimer = null;
+
+        // 接收运行期间轮询解帧器状态：正在收水滴包时给出显眼提示
+        function startFtnStatusPoll(getActive) {
+            stopFtnStatusPoll();
+            const el = document.getElementById('ftnStatus');
+            ftnStatusTimer = setInterval(() => {
+                el.textContent = getActive() ? '📡 正在接收文件…' : '';
+            }, 200);
+        }
+
+        function stopFtnStatusPoll() {
+            if (ftnStatusTimer) { clearInterval(ftnStatusTimer); ftnStatusTimer = null; }
+            document.getElementById('ftnStatus').textContent = '';
+        }
+
+        function ensureFtnReceiver() {
+            if (ftnReceiver) return ftnReceiver;
+            const list = document.getElementById('fileRecvList');
+            ftnReceiver = new FountainReceiver({
+                onStart(f) {
+                    const row = document.createElement('div');
+                    row.className = 'ftn-file';
+                    const name = document.createElement('div');
+                    name.className = 'ftn-name';
+                    name.textContent = `${ftnDisplayName(f)}（等待信息包…）`;
+                    const bar = document.createElement('div');
+                    bar.className = 'ftn-bar';
+                    const fill = document.createElement('div');
+                    fill.className = 'ftn-fill';
+                    bar.appendChild(fill);
+                    const stat = document.createElement('div');
+                    stat.className = 'ftn-stat';
+                    row.append(name, bar, stat);
+                    // 右上角 ×：二次确认后删除该条接收记录
+                    const close = document.createElement('button');
+                    close.className = 'ftn-close';
+                    close.textContent = '×';
+                    close.title = '删除此记录';
+                    close.onclick = () => {
+                        const label = f.name || `文件 #${f.fid}`;
+                        const what = f.done ? '删除这条接收记录？' :
+                            `删除「${label}」的接收记录？\n若对方仍在发送该文件，将从头重新接收。`;
+                        if (!confirm(what)) return;
+                        if (ftnReceiver) ftnReceiver.files.delete(f.fid);
+                        row.remove();
+                    };
+                    row.append(close);
+                    f.ui = { row, name, fill, stat };
+                    list.prepend(row);
+                    document.getElementById('fileRecvDiv').open = true;
+                    updateFtnRow(f);
+                },
+                onInfo(f) {
+                    if (f.ui) f.ui.name.textContent = ftnDisplayName(f);
+                },
+                onProgress(f) { updateFtnRow(f); },
+                onComplete(f) {
+                    updateFtnRow(f);
+                    if (!f.ui) return;
+                    const btn = document.createElement('button');
+                    btn.textContent = '保存文件';
+                    btn.onclick = () => {
+                        const a = document.createElement('a');
+                        a.href = URL.createObjectURL(new Blob([f.bytes]));
+                        a.download = (f.crcOk === false ? '损坏-' : '') + (f.name || `file-${f.fid}.bin`);
+                        a.click();
+                        setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+                    };
+                    f.ui.row.appendChild(btn);
+                }
+            });
+            return ftnReceiver;
+        }
+
+        // 标题行：文件名 (大小)，如 file.txt (32.00 KB)；信息包未到时只有占位名
+        function ftnDisplayName(f) {
+            const base = f.name || `文件 #${f.fid}`;
+            return f.size ? `${base} (${toSI(f.size, true)}B)` : base;
+        }
+
+        function updateFtnRow(f) {
+            if (!f.ui) return;
+            // 进度条跟"已收到的独立水滴 / k"走：剥皮解出的块数前中期往往很低
+            //（大量方程要等高斯消元兜底一次性解出），拿它当进度会长时间趴在低位然后跳 100%。
+            // 水滴数才是接收进度的直观反映；已解出比例只作为下限，完成时精确到 100%。
+            const innov = Math.min(f.decoder.seen.size / f.k, 1);
+            const dec = f.decoder.nKnown / f.k;
+            let pct = Math.max(dec, innov);
+            if (!f.done && pct >= 1) pct = 0.99;   // 水滴收够但还没消元完成：留在 99%，完成才到 100%
+            f.ui.fill.style.width = Math.round(pct * 100) + '%';
+            // 有效数据：已解出的块 × 块长，封顶到文件实际大小
+            const valid = Math.min(f.decoder.nKnown * f.L, f.size);
+            let s = `已收 ${f.decoder.seen.size}/${f.k} 个水滴 · 已解出 ${toSI(valid, true)}B · 共收 ${f.packets} 包`;
+            if (f.done) {
+                if (f.crcOk === false) {
+                    s += ' · 整包校验失败，文件可能损坏';
+                    f.ui.fill.style.background = '#e53e3e';
+                } else {
+                    s += ' · 完成 ✓';
+                    f.ui.fill.style.background = '#39d353';
+                }
+            }
+            f.ui.stat.textContent = s;
+        }
+
         async function startRx() {
             rxBtn.textContent = '停止';
             audioCtx.resume()
@@ -5919,10 +6728,16 @@
             demodulator = new selectedMode.demodulate();
             demodulator.setBaudRate(baudRate);
             demodulator.setCarrierFreq(carrierFreq);
+            // 喷泉码解帧器：纠错后的比特进这里找水滴包；Receiver 全局保留，断开重连不清进度
+            const ftnDeframer = new FountainDeframer(p => ensureFtnReceiver().onPacket(p));
+            startFtnStatusPoll(() => ftnDeframer.active);
             fecRx = new FecDeframer({
                 onBits: bits => {
-                    for (let bit of bits)
+                    for (let bit of bits) {
+                        ftnDeframer.feed(bit);
+                        if (ftnDeframer.active) continue;   // 正在收文件包：暂停文字解码
                         rxRawMode ? rawDecoder.feed(bit) : decoder.feed(bit)
+                    }
                 },
                 onLoss: () => {
                     // 丢了码字或新消息开始：清掉斐波那契解码器里残留的半个符号
@@ -5933,8 +6748,11 @@
             });
             ccRx = new ConvDeframer({
                 onBits: bits => {
-                    for (let bit of bits)
+                    for (let bit of bits) {
+                        ftnDeframer.feed(bit);
+                        if (ftnDeframer.active) continue;   // 正在收文件包：暂停文字解码
                         rxRawMode ? rawDecoder.feed(bit) : decoder.feed(bit)
+                    }
                 },
                 onLoss: () => { if (!rxRawMode) decoder.bitBuffer = []; },
                 onEnd: () => { if (!rxRawMode) decoder.bitBuffer = []; },
@@ -5948,8 +6766,11 @@
                     // 两种纠错方案的同步字不同，同时监听，谁锁定谁输出
                     for (let bit of data.bits) { fecRx.feed(bit); ccRx.feed(bit); }
                 } else {
-                    for (let bit of data.bits)
+                    for (let bit of data.bits) {
+                        ftnDeframer.feed(bit);              // 无纠错时也要扫水滴包，否则文件收不到
+                        if (ftnDeframer.active) continue;   // 正在收文件包：暂停文字解码
                         rxRawMode ? rawDecoder.feed(bit) : decoder.feed(bit)
+                    }
                 }
             })
             demodulator.receive(source)
@@ -6041,6 +6862,7 @@
             flushRxBuffer();
             fecRx = null;
             ccRx = null;
+            stopFtnStatusPoll();
             rxBtn.textContent = '开始';
             constellation.clear();
         }
@@ -6050,37 +6872,35 @@
         audioCtx.audioWorklet.addModule(workletData).then(() => {
             let oscillator;
 
-            function transmitOrdArray(ordArray, delay = 1) {
-                audioCtx.resume();
-                const mod = new AudioWorkletNode(audioCtx, 'mod')
-                ordArray.unshift(2000002); // Start message token
-                ordArray.push(2000003); // End message token
-                const preparedArray = fecNeedsParity() ? ordArray.map(e => encodeWithParity(e)) : ordArray;
-                const sync = fecNeedsParity() ? [2, 2] : [2000010, 2000010];
-
-                preparedArray.unshift(...sync);
-                preparedArray.push(...sync);
-
-                console.log("发送数据:", preparedArray);
-
-                const bits = fibonacciEncoding(preparedArray);
-
-                transmitBitArray(bits, baudRate);
+            // 纠错包装器：流式编码器，按档位选择（与接收端的 fecProfileId 约定一致）
+            function makeTxStages() {
+                const p = fecProfileId();
+                if (p >= 10) return [new CcStreamEncoder(p - 10)];   // 实时卷积码
+                if (p) return [new RsStreamEncoder(p)];              // 分组 RS
+                return [];
             }
 
-            window.__chatTransmit = tokens => transmitOrdArray(tokens);
+            let txPipeline = null;
 
-            function transmitBitArray(bits, baudRate) {
+            // 数据源 → 纠错 → 调制器 → 声卡；数据源可以是有限的（消息）也可以是无限的（喷泉码）
+            function startTransmit(source) {
+                audioCtx.resume();
                 modulator = new selectedMode.modulate();
                 modulator.setBaudRate(baudRate);
                 modulator.setCarrierFreq(carrierFreq);
+                const pipeline = new TxPipeline(source, makeTxStages(), modulator);
+                txPipeline = pipeline;
 
+                let interval = null;
                 let stopped = false; // Guard against duplicate stop callbacks
                 modulator.setOnStop(() => {
                     if (stopped) return; // Already handled
                     stopped = true;
-                    console.log(modulator, "stopped")
+                    console.log(modulator, "stopped");
+                    pipeline._stopTimer();
+                    if (txPipeline === pipeline) txPipeline = null;
                     txImageBtn.disabled = false;
+                    txFileBtn.disabled = false;
                     clearInterval(interval);
                     bitDisplay.textContent = '';
                     txBtn.textContent = '发送';
@@ -6088,29 +6908,53 @@
                     progressBar.style.display = 'none';
                     progressDiv.style.width = '0%';
                     chatUpdateState();
-                })
-                const fecProfile = fecProfileId();
-                if (fecProfile >= 10) bits = ccEncodeBits(bits, fecProfile - 10);   // 实时卷积码
-                else if (fecProfile) bits = fecEncodeBits(bits, fecProfile);        // 分组RS
-                modulator.transmit(audioCtx, bits);
+                });
 
-                const currentTime = audioCtx.currentTime;
-                const interval = setInterval(() => {
-                    const rate = modulator.bitRate || (baudRate * modulator.bitsPerSymbol);
-                    const elapsed = Math.max(0, audioCtx.currentTime - (modulator.startTime !== undefined ? modulator.startTime : currentTime));
-                    const sent = Math.min(modulator.totalBits, elapsed * rate);
-                    const remainingSeconds = (modulator.totalBits - sent) / rate;
-                    bitDisplay.textContent = `发送进度: ${toSI(sent / 8, true)}B / ${toSI(modulator.totalBits / 8, true)}B (剩余 ${secondsToHms(remainingSeconds)})`;
-                    progressDiv.style.width = `${Math.min(100, (sent / modulator.totalBits) * 100)}%`;
+                pipeline.start(audioCtx);
+
+                interval = setInterval(() => {
+                    const p = pipeline.progress();
+                    if (p.fraction === null) {
+                        // 无限数据源（喷泉码一直发）：只显示已发的包数和时间
+                        bitDisplay.textContent = `已发送 ${p.packets || 0} 个水滴包 (${secondsToHms(p.elapsed)})，点“中止”停止`;
+                        progressDiv.style.width = '100%';
+                    } else {
+                        const sent = source.consumedBits, total = source.totalBits;
+                        bitDisplay.textContent = `发送进度: ${toSI(sent / 8, true)}B / ${toSI(total / 8, true)}B (剩余 ${secondsToHms(p.remaining)})`;
+                        progressDiv.style.width = `${Math.min(100, p.fraction * 100)}%`;
+                    }
                 }, 100);
-
 
                 txStart = true;
                 txImageBtn.disabled = true;
+                txFileBtn.disabled = true;
                 txBtn.textContent = '中止';
                 progressBar.style.display = 'block';
                 chatUpdateState();
+                return pipeline;
             }
+
+            function transmitOrdArray(ordArray, delay = 1) {
+                console.log("发送数据:", ordArray);
+                startTransmit(new BitArraySource(buildTokenBits(ordArray)));
+            }
+
+            window.__chatTransmit = tokens => transmitOrdArray(tokens);
+
+            function transmitBitArray(bits, baudRate) {
+                startTransmit(new BitArraySource(bits));
+            }
+
+            // 喷泉码发送文件：bytes = 文件内容，name = 文件名；redundancy 为空则一直发，直到手动中止
+            window.__fountainTransmit = (bytes, name, redundancy, L) => {
+                if (!L) {                                       // 块长按文件大小自动选，减少包头开销
+                    L = bytes.length > 256 * 1024 ? 255 :
+                        bytes.length > 64 * 1024 ? 128 :
+                            bytes.length > 8 * 1024 ? 96 : 64;
+                }
+                const ps = new FountainPacketSource(bytes, name, { redundancy: redundancy || 0, L });
+                return startTransmit(new FountainBitSource(ps));
+            };
 
             function transmitRawPacket(bytes) {
                 const buffer = new ArrayBuffer(36);
@@ -6226,12 +7070,13 @@
             const txFileInput = document.getElementById('txFile');
             const txFileBtn = document.getElementById('txFileBtn');
             txFileBtn.addEventListener('click', () => {
+                if (txStart) { alert('正在发送中，请先中止'); return; }
                 const file = txFileInput.files[0];
-                if (!file) return;
+                if (!file) { alert('请先选择要发送的文件'); return; }
+                const red = parseFloat(document.getElementById('txFileRed').value) || 0;
                 const reader = new FileReader();
                 reader.onload = function (e) {
-                    const buffer = e.target.result;
-                    transmitRawPacket(buffer);
+                    window.__fountainTransmit(new Uint8Array(e.target.result), file.name, red);
                 };
                 reader.readAsArrayBuffer(file);
             });
