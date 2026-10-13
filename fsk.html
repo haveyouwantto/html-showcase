@@ -735,9 +735,10 @@
                 <summary>文件发送</summary>
                 <div>
                     <input type="file" id="txFile">
-                    <label>冗余倍数：<input type="number" id="txFileRed" min="1" step="0.5" style="width:5em"
-                            placeholder="留空一直发"></label>
                     <button id="txFileBtn">发送</button>
+                    <br>
+                    <label>冗余倍数：<input type="number" id="txFileRed" min="1" step="0.5" style="width:7em"
+                            placeholder="无限"></label>
                 </div>
             </details>
             <div id="bits"></div>
@@ -2938,8 +2939,10 @@
 
         function ofdmPilotVal(cfg, known, m, p) { return 1 - 2 * known.pb[m * cfg.pilotIdx.length + p]; }
 
-        // 一个 OFDM 符号 → 时域（含循环前缀），载波值 Xr/Xi 长度 nCar
-        function ofdmSymbolTime(cfg, fft, Xr, Xi, re, im, out, off) {
+        // 一个 OFDM 符号 → 时域（含循环前缀），载波值 Xr/Xi 长度 nCar。
+        // ext>0 时在 [cp][N] 前后各补 ext 个采样作周期延拓（供 WOLA 加窗交叠用），
+        // 交叠区两端各 2*ext 长的斜坡由调用方施加。
+        function ofdmSymbolTime(cfg, fft, Xr, Xi, re, im, out, off, ext) {
             const N = cfg.N;
             re.fill(0); im.fill(0);
             for (let i = 0; i < cfg.nCar; i++) {
@@ -2949,12 +2952,18 @@
             }
             fft.transform(re, im, true);
             const cp = cfg.cp;
+            if (ext) {
+                for (let n = 0; n < ext; n++) out[off - ext + n] = re[N - cp - ext + n];
+                for (let n = 0; n < ext; n++) out[off + cp + N + n] = re[n];
+            }
             for (let n = 0; n < cp; n++) out[off + n] = re[N - cp + n];
             for (let n = 0; n < N; n++) out[off + cp + n] = re[n];
         }
 
         // 把比特流变成可播放的波形。opts.mod: 调制阶数索引(0..4)，opts.fec: 纠错方案编号(0..15，写进元数据供对端自动匹配)
         // 返回 { samples:Float32Array, seconds, nSym }
+        // 符号间用 WOLA（加窗交叠）衔接：矩形拼接的符号交界处波形跳变，听感是每符号一声 click。
+        // 每个符号两端加 Tukey 斜坡并与相邻符号交叠相加；斜坡区都在接收端 FFT 窗之外（W ≤ margin），不损失任何数据。
         function ofdmModulate(bits, cfg, opts) {
             opts = opts || {};
             const mod = opts.mod === undefined ? 1 : opts.mod, fecId = (opts.fec || 0) & 15;
@@ -2963,11 +2972,23 @@
             const re = new Float64Array(cfg.N), im = new Float64Array(cfg.N);
             const chirp = ofdmChirp(cfg);
             const cap = cfg.nData * bpc;
-            const pieces = [];
-            let total = 0, nSymTotal = 0;
+            const W = Math.min(320, cfg.margin >> 1);        // 交叠窗半长，必须 ≤ margin（接收端 FFT 窗离符号边界的保护距离）
+            const symExt = cfg.symLen + 2 * W;
+            const syms = [];
+            // 生成一个 OFDM 符号：周期延拓 + Tukey 窗（两端 2W 斜坡），相邻符号的斜坡互补相加恰好为 1
+            const pushSym = () => {
+                const s = new Float64Array(symExt);
+                ofdmSymbolTime(cfg, fft, Xr, Xi, re, im, s, W, W);
+                for (let j = 0; j < 2 * W; j++) {
+                    const wv = 0.5 - 0.5 * Math.cos(Math.PI * j / (2 * W));
+                    s[j] *= wv;
+                    s[symExt - 1 - j] *= wv;
+                }
+                syms.push(s);
+            };
+            let nSymTotal = 0;
             let pos = 0;
             const Xr = new Float64Array(cfg.nCar), Xi = new Float64Array(cfg.nCar);
-            const symbolBuf = () => new Float64Array(cfg.symLen);
             const pt = [0, 0];
             // 每个符号都带导频 + 元数据子载波
             const fillCommon = (m, cd) => {
@@ -2979,14 +3000,12 @@
             while (pos < bits.length) {
                 const fbits = Math.min(bits.length - pos, OFDM_MAX_SYM * cap);
                 const nSym = Math.ceil(fbits / cap);
-                pieces.push(chirp.slice()); total += chirp.length;
                 // 梳状符号
-                { const s = symbolBuf(); ofdmSymbolTime(cfg, fft, known.cr, known.ci, re, im, s, 0); pieces.push(s); total += s.length; }
+                { Xr.set(known.cr); Xi.set(known.ci); pushSym(); }
                 // 训练符号 ×2
                 for (let r = 0; r < 2; r++) {
                     for (let i = 0; i < cfg.nCar; i++) { Xr[i] = known.tr[i]; Xi[i] = known.ti[i]; }
-                    const s = symbolBuf(); ofdmSymbolTime(cfg, fft, Xr, Xi, re, im, s, 0);
-                    pieces.push(s); total += s.length;
+                    pushSym();
                 }
                 // 帧头：数据子载波上 BPSK 重复编码 本帧比特数(24)+CRC8
                 const hb = new Uint8Array(32);
@@ -2998,7 +3017,7 @@
                     const sgn = 1 - 2 * known.hs[c];
                     Xr[cfg.dataIdx[c]] = sgn * (1 - 2 * hb[c % 32]);
                 }
-                { const s = symbolBuf(); ofdmSymbolTime(cfg, fft, Xr, Xi, re, im, s, 0); pieces.push(s); total += s.length; }
+                pushSym();
                 // 数据符号
                 const scr = ofdmLfsr(0x55AA55, nSym * cap);
                 const bb = new Uint8Array(bpc);
@@ -3011,30 +3030,34 @@
                         const ci = cfg.dataIdx[cfg.perm[u]];
                         Xr[ci] = pt[0]; Xi[ci] = pt[1];
                     }
-                    const s = symbolBuf(); ofdmSymbolTime(cfg, fft, Xr, Xi, re, im, s, 0);
-                    pieces.push(s); total += s.length;
+                    pushSym();
                 }
                 nSymTotal += nSym;
                 pos += fbits;
             }
             // 归一化：以 OFDM 符号的均方根为基准，chirp 与之相同；3.2σ 软限幅后峰值 0.9
             let e = 0, cnt = 0;
-            for (const p of pieces) if (p.length === cfg.symLen) { for (let i = 0; i < p.length; i += 7) { e += p[i] * p[i]; cnt++; } }
+            for (const s of syms) { for (let i = W; i < symExt - W; i += 7) { e += s[i] * s[i]; cnt++; } }
             const rms = Math.sqrt(e / Math.max(1, cnt));
             let ce = 0; for (let i = 0; i < chirp.length; i++) ce += chirp[i] * chirp[i];
             const chirpGain = rms / Math.sqrt(ce / chirp.length);
             const lead = Math.round(0.15 * cfg.fs), tail = Math.round(0.15 * cfg.fs);
-            const out = new Float32Array(lead + total + tail);
-            const clip = 3.2 * rms, g = 0.9 / clip;
+            const out = new Float32Array(lead + chirp.length + (syms.length - 1) * cfg.symLen + symExt - W + tail);
+            // chirp（两端自带斜坡）+ 符号交叠相加
             let o = lead;
-            for (const p of pieces) {
-                const gain = (p.length === cfg.Lc) ? chirpGain : 1;
-                for (let i = 0; i < p.length; i++) {
-                    let v = p[i] * gain;
-                    if (v > clip) v = clip; else if (v < -clip) v = -clip;
-                    out[o++] = v * g;
-                }
+            for (let i = 0; i < chirp.length; i++) out[o++] = chirp[i] * chirpGain;
+            for (let k = 0; k < syms.length; k++) {
+                const base = lead + chirp.length + k * cfg.symLen - W;
+                const s = syms[k];
+                for (let j = 0; j < symExt; j++) out[base + j] += s[j];
             }
+            // 峰值归一化：提前把整帧增益压到峰值 0.9，而不是事后靠限幅器压峰——
+            // 限幅（硬削波/软膝点都一样）在高峰平比帧上仍会产生可闻失真（不规则 click）。
+            // 接收端每个符号都重测增益、对绝对电平不敏感，帧间响度的微小波动不影响解码。
+            let peak = 0;
+            for (let i = 0; i < out.length; i++) { const a = Math.abs(out[i]); if (a > peak) peak = a; }
+            const g = 0.9 / Math.max(peak, 1e-12);
+            for (let i = 0; i < out.length; i++) out[i] *= g;
             return { samples: out, seconds: out.length / cfg.fs, nSym: nSymTotal, mod, fec: fecId };
         }
 
@@ -5070,6 +5093,17 @@
                 this.source = source;
             }
 
+            // 热切换输入源：接收运行中更换输入设备时，不断开解调链路，只换最前端的源。
+            // 子类在 receive() 里把链路第一个节点记到 this.inputNode。
+            switchSource(newSource) {
+                if (this.source) {
+                    try { this.source.disconnect(); } catch (e) { }
+                    if (this.source.mediaStream) this.source.mediaStream.getTracks().forEach(t => t.stop());
+                }
+                this.source = newSource;
+                if (this.inputNode) newSource.connect(this.inputNode);
+            }
+
             stop() {
                 if (this.source) this.source.mediaStream.getTracks().forEach(track => track.stop());
                 if (this.onSample) this.onSample = null;
@@ -5094,6 +5128,7 @@
             receive(source) {
                 super.receive(source)
                 this.mixer = new AudioWorkletNode(audioCtx, 'mixer', { outputChannelCount: [2] });
+                this.inputNode = this.mixer;
                 this.convolver = audioCtx.createConvolver()
                 this.demod = new AudioWorkletNode(audioCtx, 'demod')
                 this.setBaudRate(this.baudRate)
@@ -5143,6 +5178,7 @@
             receive(source) {
                 super.receive(source)
                 this.mixer = new AudioWorkletNode(audioCtx, 'mixer', { outputChannelCount: [2] });
+                this.inputNode = this.mixer;
                 this.convolver = audioCtx.createConvolver()
                 this.demod = new AudioWorkletNode(audioCtx, 'demod')
                 this.setBaudRate(this.baudRate)
@@ -5223,6 +5259,7 @@
             receive(source) {
                 super.receive(source)
                 this.mixer = new AudioWorkletNode(audioCtx, 'mixer', { outputChannelCount: [2] });
+                this.inputNode = this.mixer;
                 this.convolver = audioCtx.createConvolver()
                 this.demod = new AudioWorkletNode(audioCtx, 'bpsk-demod')
                 this.setBaudRate(this.baudRate)
@@ -5319,6 +5356,7 @@
             receive(source) {
                 super.receive(source)
                 this.mixer = new AudioWorkletNode(audioCtx, 'mixer', { outputChannelCount: [2] });
+                this.inputNode = this.mixer;
                 this.convolver = audioCtx.createConvolver()
                 this.demod = new AudioWorkletNode(audioCtx, 'qpsk-demod')
                 this.setBaudRate(this.baudRate)
@@ -5429,6 +5467,7 @@
             receive(source) {
                 super.receive(source)
                 this.mixer = new AudioWorkletNode(audioCtx, 'mixer', { outputChannelCount: [2] });
+                this.inputNode = this.mixer;
                 this.convolver = audioCtx.createConvolver()
                 this.demod = new AudioWorkletNode(audioCtx, '8psk-demod')
                 this.setBaudRate(this.baudRate)
@@ -6032,14 +6071,28 @@
         const progressBar = document.getElementById('progress-bar');
         const progressDiv = document.getElementById('progress');
 
-        navigator.mediaDevices?.enumerateDevices().then(devices => {
-            devices.filter(device => device.kind === 'audioinput').forEach(device => {
-                const option = document.createElement('option');
-                option.value = device.deviceId;
-                option.innerText = device.label || `设备 ${audioInput.options.length + 1}`;
-                audioInput.appendChild(option);
-            })
-        })
+        // 设备列表不能只枚举一次：拿到麦克风权限前 Chrome 返回的 deviceId 全是空串，
+        // 那时填的选项没有真实值，选谁都会落到默认设备。授权后（以及设备插拔时）要重建列表。
+        async function refreshInputDevices() {
+            if (!navigator.mediaDevices?.enumerateDevices) return;
+            try {
+                const devices = (await navigator.mediaDevices.enumerateDevices())
+                    .filter(d => d.kind === 'audioinput');
+                const prev = audioInput.value;
+                audioInput.innerHTML = '';
+                let found = false;
+                devices.forEach(device => {
+                    const option = document.createElement('option');
+                    option.value = device.deviceId;
+                    option.innerText = device.label || `设备 ${audioInput.options.length + 1}`;
+                    if (device.deviceId && device.deviceId === prev) found = true;
+                    audioInput.appendChild(option);
+                });
+                if (found) audioInput.value = prev;        // 保持原选择（若设备还在）
+            } catch (e) { console.warn('枚举音频输入设备失败:', e); }
+        }
+        refreshInputDevices();
+        navigator.mediaDevices?.addEventListener?.('devicechange', refreshInputDevices);
 
         let txBtn = document.getElementById('start-tx')
         let txUpdate = null
@@ -6399,6 +6452,7 @@
             receive(source) {
                 super.receive(source);
                 this.node = new AudioWorkletNode(audioCtx, 'ofdm-capture');
+                this.inputNode = this.node;
                 source.connect(this.node);
                 this._build();
                 this.node.port.onmessage = e => { if (this.rx) this.rx.push(e.data); };
@@ -6629,23 +6683,34 @@
             f.ui.stat.textContent = s;
         }
 
-        async function startRx() {
-            rxBtn.textContent = '停止';
-            audioCtx.resume()
-
-
-            let stream = await navigator.mediaDevices.getUserMedia(
-                {
-                    audio: {
-                        sampleRate: audioCtx.sampleRate,
-                        deviceId: audioInput.value,
-                        echoCancellation: false,
-                        noiseSuppression: false,
-                        autoGainControl: selectedMode !== MODES.ofdm
-                    },
-                    video: false
+            // 按当前下拉框选择打开输入流。deviceId 用 exact 才是硬性指定
+            //（普通值只是"建议"，可能被静默忽略而回退默认设备）；所选设备不可用时回退默认
+            async function openInputStream() {
+                const audioConstraints = {
+                    sampleRate: audioCtx.sampleRate,
+                    echoCancellation: false,
+                    noiseSuppression: false,
+                    autoGainControl: selectedMode !== MODES.ofdm
+                };
+                if (audioInput.value) {
+                    try {
+                        return await navigator.mediaDevices.getUserMedia({
+                            audio: { ...audioConstraints, deviceId: { exact: audioInput.value } },
+                            video: false
+                        });
+                    } catch (e) {
+                        console.warn('所选输入设备不可用，回退默认设备:', e);
+                    }
                 }
-            )
+                return await navigator.mediaDevices.getUserMedia({ audio: audioConstraints, video: false });
+            }
+
+            async function startRx() {
+                rxBtn.textContent = '停止';
+                audioCtx.resume()
+
+                const stream = await openInputStream();
+                refreshInputDevices();   // 已有权限：这次能拿到真实的设备名和 deviceId，刷新下拉框
 
             const decoder = new FibonacciDecoder(result => {
                 const dec = fecNeedsParity() ? decodeAndVerify(result) : result;//decodeAndVerify(result)
@@ -6992,6 +7057,20 @@
                     stopRx();
                 }
                 rxStart = !rxStart;
+            })
+
+            // 切换输入设备热切换：接收中直接换源，解调链路保持运行
+            audioInput.addEventListener('change', async () => {
+                if (!rxStart || !demodulator) return;   // 未在接收：下次点“开始”自然用新设备
+                try {
+                    const stream = await openInputStream();
+                    demodulator.switchSource(audioCtx.createMediaStreamSource(stream));
+                    refreshInputDevices();
+                } catch (e) {
+                    console.warn('切换输入设备失败:', e);
+                    alert('切换输入设备失败：' + (e && e.message || e));
+                    refreshInputDevices();
+                }
             })
 
             document.getElementById('cancelImage').addEventListener('click', () => {
