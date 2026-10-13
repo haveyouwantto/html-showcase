@@ -219,8 +219,8 @@
         <div id="popover" class="popover">
             <button class="close-popover" id="closePopover">✖</button>
             <div class="control-row">
-                <div class="control-label"><span>Min dB</span><span id="minDbValue">-100</span></div>
-                <input type="range" id="minDbSlider" min="-150" max="0" value="-100" step="1">
+                <div class="control-label"><span>Min dB</span><span id="minDbValue">-120</span></div>
+                <input type="range" id="minDbSlider" min="-150" max="0" value="-120" step="1">
             </div>
             <div class="control-row">
                 <div class="control-label"><span>Max dB</span><span id="maxDbValue">0</span></div>
@@ -441,7 +441,7 @@
                 this.dpr = window.devicePixelRatio || 1;
 
                 // 可控参数
-                this.minDb = -100;
+                this.minDb = -120;
                 this.maxDb = 0;
                 this.isComplex = false;
 
