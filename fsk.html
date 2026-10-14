@@ -994,24 +994,40 @@
         .det-line b { color: var(--text-primary); }
 
         /* 纠错"健康条带"：每格 = 一次采样间隔内的事件（绿=全正常 红=有失败 灰=空闲） */
+        /* 解码批次堆积条带：每根柱 = 绿(成功) + 红(失败)，空闲批次不画柱 */
         .det-strip {
             display: flex;
             gap: 2px;
             align-items: flex-end;
-            height: 26px;
+            height: 30px;
             margin-top: 6px;
         }
 
         .det-strip > span {
-            flex: 1 1 0;
-            min-width: 2px;
-            border-radius: 1px;
-            background: #35d07f;
-            opacity: 0.9;
+            /* 固定"时间轴刻度"宽度：60 根正好铺满一行，批次少时左侧聚拢不拉伸 */
+            flex: 0 1 calc(100% / 60);
+            min-width: 3px;
+            display: flex;
+            flex-direction: column-reverse;   /* 绿在下、红在上 */
+            border-radius: 2px 2px 0 0;
+            overflow: hidden;
+            background: rgba(148, 163, 184, 0.12);
         }
 
-        .det-strip > span.bad { background: #ff5c72; }
-        .det-strip > span.idle { background: rgba(148, 163, 184, 0.22); }
+        .det-strip > span > i { display: block; width: 100%; }
+        .det-strip > span > i.ok { background: #35d07f; }
+        .det-strip > span > i.bad { background: #ff5c72; }
+
+        .det-strip > span.empty {
+            flex: 1 1 auto;
+            height: 100%;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.68rem;
+            color: var(--text-secondary);
+            background: rgba(148, 163, 184, 0.10);
+            border-radius: 4px;
+        }
 
         .det-hint {
             font-size: 0.68rem;
@@ -1205,9 +1221,7 @@
                         <div id="detChanText" style="color: var(--text-secondary); font-size: 0.75rem; text-align: center;"></div>
                     </div>
                 </div>
-                <!-- 各模式共用的状态行（更新函数不变） -->
-                <div id="fecStats" style="align-self: stretch; color: var(--text-secondary); font-size: 0.85rem; min-height: 1.3em;"></div>
-                <div id="ofdmStats" style="align-self: stretch; color: var(--text-secondary); font-size: 0.85rem; min-height: 1.3em;"></div>
+                <!-- 文件接收提示（原有，更新函数不变） -->
                 <div id="ftnStatus" style="align-self: stretch; color: var(--neon-cyan); font-size: 0.85rem; min-height: 1.3em;"></div>
                 <!-- 深度诊断：OFDM 显示状态徽标/配置卡/子载波构成/跟踪环/捕获流程/信道图，其他模式只显示基本参数卡 -->
                 <div id="detExtra" style="display: none; align-self: stretch; font-size: 0.8rem;"></div>
@@ -2772,7 +2786,7 @@
                             for (let i = 0; i < nbits; i++) out.push((d[3 + (i >> 3)] >> (7 - (i & 7))) & 1);
                             this.stats.cwOk++;
                             this.stats.corrected += res.errors;
-                            this.onBits(out);
+                            this.onBits(out);       // 交给上层的净数据比特（UI 的实时有效速率按这个口径统计）
                         }
                     }
                     if (!valid) {
@@ -4059,24 +4073,11 @@
             return effBaudRate() >= 200 && !(p >= 1 && p <= 4);
         }
 
-        function showCcStats(st) {
-            const el = document.getElementById('fecStats');
-            if (!el) return;
-            if (!st) { el.textContent = ''; return; }
-            el.textContent = `实时卷积：消息 ${st.messages} ｜ 段标记 正常 ${st.markersOk} / 缺失 ${st.markersMissed} ｜ 重新对齐 ${st.resyncs} ｜ 失锁 ${st.lost}`;
-        }
-
-        function showFecStats(st) {
-            const el = document.getElementById('fecStats');
-            if (!el) return;
-            if (!st || st.frames === 0) { el.textContent = ''; return; }
-            el.textContent = `纠错：帧 ${st.frames} ｜ 码字 正常 ${st.cwOk} / 失败 ${st.cwFail} ｜ 已纠正 ${st.corrected} 字节`;
-        }
+        // 纠错的统计不再走文字行：showFecStats 已合并进"解码详情"的纠错卡片（detRsHtml）
 
         // ===== 解码详情面板 =====
-        // 共用的三行状态（fecStats/ofdmStats/ftnStatus）原样保留；这里只负责"深度诊断"附加区，全部做成可视指标：
-        //   OFDM：状态徽标 / 配置指标卡 / 子载波构成条 / 跟踪环指标卡（带进度条）/ 捕获流程步骤 + 训练相关柱 / 信道频率响应图
-        //   其他模式：只显示基本参数卡，不影响原有显示
+        // 纠错卡片（所有模式通用）+ OFDM 深度诊断（状态徽标 / 自适应链路 / 跟踪环 / 捕获流程 / 速率 / 子载波 / 统计 / 信道图）
+        // 原来的 fecStats、ofdmStats 文字行已删除，字段全部并入卡片；ftnStatus 保留（文件接收提示）
         let detTimer = null;
         let constRedetect = null;       // 星座图 redetect（在 startRx 里注册），展开面板时重新量尺寸
 
@@ -4135,9 +4136,24 @@
         const detBadge = (kind, text) => `<span class="det-badge ${kind}"><span class="det-dot"></span>${detEsc(text)}</span>`;
 
         // ===== 纠错可视化 =====
-        // 每 250ms 采样一次增量，画成"健康条带"；只补原有文字行没有的量（成功率/开销/历史趋势），不重复统计数字
-        const FEC_HIST_MAX = 60;
-        const fecHist = { key: '', ticks: [], last: null };
+        // 每 250ms 采样一次增量，画成"解码批次"堆积条带；文字版统计已并入卡片，这里不再有重复的文字行
+        const FEC_HIST_MAX = 120;      // 保留约 30 秒的时间轴（含空闲批次，用于算实时速率）
+        const FEC_BAR_MAX = 60;        // 条带里最多画 60 根柱（只画有解码活动的批次）
+        const FEC_RATE_WIN = 2000;     // 实时有效速率的统计窗口（毫秒）
+        const fecHist = { key: '', ticks: [], last: null, rate: 0 };
+
+        // 上层有效数据累计：纠错解码之后真正交给上层解码器的比特数
+        // （不看 RS/卷积解码器内部的码字计数，也不含 RS 内部重试/重放）
+        let rxUpBits = 0;
+        function addUpBits(n) { if (n > 0) rxUpBits += n; }
+
+        function resetFecHist() {
+            fecHist.key = '';
+            fecHist.ticks = [];
+            fecHist.last = null;
+            fecHist.rate = 0;
+            rxUpBits = 0;
+        }
 
         function fecProfileInfo() {
             const p = fecProfileId();
@@ -4156,28 +4172,60 @@
             return { id: 0, kind: 'off', title: '纠错关闭', sub: '无冗余直传，仅靠奇偶校验做残余检错', rate: '1/1' };
         }
 
-        function fecTick(key, a, b) {
+        // 每 250ms 取一次统计增量：a=成功、b=失败、net=解出的净信息比特、t=时间戳
+        function fecTick(key, a, b, net) {
             if (fecHist.key !== key) { fecHist.key = key; fecHist.ticks = []; fecHist.last = null; }
-            const prev = fecHist.last || { a, b };
-            fecHist.last = { a, b };
-            fecHist.ticks.push({ a: Math.max(0, a - prev.a), b: Math.max(0, b - prev.b) });
+            const now = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+            const prev = fecHist.last || { a: a, b: b, net: net || 0 };
+            fecHist.last = { a: a, b: b, net: net || 0 };
+            fecHist.ticks.push({
+                a: Math.max(0, a - prev.a),
+                b: Math.max(0, b - prev.b),
+                net: Math.max(0, (net || 0) - (prev.net || 0)),
+                t: now
+            });
             while (fecHist.ticks.length > FEC_HIST_MAX) fecHist.ticks.shift();
             return fecHist.ticks;
         }
 
-        // 条带：每格高度按窗口内事件数归一，绿=全正常，红=有失败，灰=空闲
+        // 实时有效速率：只有"本批真的向上层交付了数据"时才重算并刷新；空闲/全失败批次保持上一次的值
+        function detFecRate(ticks) {
+            if (!ticks || !ticks.length) return fecHist.rate || 0;
+            const last = ticks[ticks.length - 1];
+            if (!(last.net > 0)) return fecHist.rate || 0;      // 这一批没有新的上层数据 → 不更新
+            const tEnd = last.t;
+            let bits = 0, t0 = tEnd;
+            for (let i = ticks.length - 1; i >= 0; i--) {
+                const q = ticks[i];
+                if (tEnd - q.t > FEC_RATE_WIN) break;
+                bits += q.net;
+                t0 = q.t;
+            }
+            const span = Math.max(0.25, (tEnd - t0) / 1000 + 0.25);
+            fecHist.rate = bits / span;
+            return fecHist.rate;
+        }
+
+        // 解码批次堆积条带：只画"有解码活动"的批次，每根柱 = 绿(成功) + 红(失败) 堆积
         function detStrip(ticks, legend) {
-            const peak = Math.max(1, ...ticks.map(t => t.a + t.b));
-            const cols = ticks.map(t => {
+            const act = ticks.filter(t => (t.a + t.b) > 0).slice(-FEC_BAR_MAX);
+            if (!act.length) {
+                return `<div class="det-strip"><span class="empty">等待解码…</span></div>`
+                    + `<div class="det-hint">${detEsc(legend)}</div>`;
+            }
+            const peak = Math.max(1, ...act.map(t => t.a + t.b));
+            const cols = act.map(t => {
                 const n = t.a + t.b;
-                const h = n ? Math.max(10, n / peak * 100) : 6;
-                const cls = n === 0 ? 'idle' : (t.b ? 'bad' : '');
-                return `<span class="${cls}" style="height:${h.toFixed(0)}%" title="正常 ${t.a} / 失败 ${t.b}"></span>`;
+                const h = Math.max(14, n / peak * 100);
+                let inner = '';
+                if (t.a) inner += `<i class="ok" style="height:${(t.a / n * 100).toFixed(2)}%"></i>`;
+                if (t.b) inner += `<i class="bad" style="height:${(t.b / n * 100).toFixed(2)}%"></i>`;
+                return `<span style="height:${h.toFixed(1)}%" title="成功 ${t.a} / 失败 ${t.b}">${inner}</span>`;
             }).join('');
             return `<div class="det-strip">${cols}</div><div class="det-hint">${detEsc(legend)}</div>`;
         }
 
-        // 分组 RS：成功率 + 平均纠正量 + 码率 + 码字健康条带
+        // 分组 RS：成功率 / 实时有效速率 / 平均纠正量 + 原有文字统计（帧、码字、纠正字节）
         function detRsHtml(info) {
             if (!fecRx) return '';
             const st = fecRx.stats || { frames: 0, cwOk: 0, cwFail: 0, corrected: 0 };
@@ -4185,34 +4233,42 @@
             const succ = tot ? st.cwOk / tot : 1;
             const avg = st.cwOk ? st.corrected / st.cwOk : 0;
             const cap = FEC_PROFILES[info.id] ? FEC_PROFILES[info.id].parity / 2 : 1;
-            const ticks = fecTick('rs', st.cwOk, st.cwFail);
+            const ticks = fecTick('rs', st.cwOk, st.cwFail, rxUpBits);
             return detSec(`纠错 · ${info.title}`, detGrid([
                 detCard('码字成功率', (100 * succ).toFixed(succ > 0.999 ? 2 : 1), '%', succ,
                     succ > 0.99 ? '#35d07f' : (succ > 0.9 ? '#f5a524' : '#ff5c72')),
+                detRateCard('实时有效速率', detFecRate(ticks), '#35d07f'),
                 detCard('平均纠正', avg.toFixed(2), `/ ${cap} 字节`, detClamp01(avg / cap), '#00f3ff'),
+                detCard('帧数', st.frames),
+                detCard('码字 正常/失败', `${st.cwOk}`, `/ ${st.cwFail}`),
+                detCard('已纠正', st.corrected, '字节'),
                 detCard('码率', info.rate),
-            ]) + detStrip(ticks, '每格 ≈ 250ms 内的码字（绿=全部正常，红=有译码失败，灰=空闲）') 
-                + `<div class="det-hint">${detEsc(info.sub)}</div>`);
+            ]) + detStrip(ticks, '每根柱 ≈ 250ms 内解出的码字（绿=成功、红=失败，堆积）；空闲时段不画柱')
+                + `<div class="det-hint">${detEsc(info.sub)}</div>`
+                + `<div class="det-hint">实时有效速率：纠错解码后交给上层解码器的净数据比特率（不含冗余、帧头与 CRC）</div>`);
         }
 
-        // 实时卷积：段标记命中率 + 重对齐/失锁 + 标记健康条带
+        // 实时卷积：标记命中率 / 实时有效速率 + 原有文字统计（消息、段标记、重对齐、失锁）
         function detCcHtml(info) {
             if (!ccRx) return '';
             const st = ccRx.stats || { messages: 0, markersOk: 0, markersMissed: 0, resyncs: 0, lost: 0 };
             const mk = st.markersOk + st.markersMissed;
             const hit = mk ? st.markersOk / mk : 1;
-            const ticks = fecTick('cc', st.markersOk, st.markersMissed);
+            const ticks = fecTick('cc', st.markersOk, st.markersMissed, rxUpBits);
             return detSec(`纠错 · ${info.title}`, `<div class="det-toprow" style="margin-bottom:6px;">`
                 + (st.lost ? detBadge('bad', `失锁 ${st.lost} 次`) : detBadge('ok', '未失锁'))
                 + `</div>` + detGrid([
                     detCard('段标记命中率', (100 * hit).toFixed(1), '%', hit,
                         hit > 0.99 ? '#35d07f' : (hit > 0.9 ? '#f5a524' : '#ff5c72')),
+                    detRateCard('实时有效速率', detFecRate(ticks), '#35d07f'),
                     detCard('消息数', st.messages),
+                    detCard('段标记 正常/缺失', `${st.markersOk}`, `/ ${st.markersMissed}`),
                     detCard('重新对齐', st.resyncs, '次', detClamp01(st.resyncs / Math.max(1, st.messages)), st.resyncs ? '#f5a524' : undefined),
                     detCard('失锁', st.lost, '次', detClamp01(st.lost / Math.max(1, st.messages + st.lost)), st.lost ? '#ff5c72' : undefined),
                     detCard('码率', info.rate),
-                ]) + detStrip(ticks, '每格 ≈ 250ms 内的段标记（绿=命中，红=缺失，灰=空闲）')
-                + `<div class="det-hint">${detEsc(info.sub)}</div>`);
+                ]) + detStrip(ticks, '每根柱 ≈ 250ms 内解出的段标记（绿=命中、红=缺失，堆积）；空闲时段不画柱')
+                + `<div class="det-hint">${detEsc(info.sub)}</div>`
+                + `<div class="det-hint">实时有效速率：纠错解码后交给上层解码器的净数据比特率（不含冗余、帧头与 CRC）</div>`);
         }
 
         // 喷泉码 LT：每个文件的解码进度 + 水滴开销倍数
@@ -4235,7 +4291,7 @@
             return detSec('喷泉码 LT（文件传输）', detGrid(cards));
         }
 
-        // 纠错区：文字统计行保持原样，这里只做可视化补充
+        // 纠错区：原文字统计（帧/码字/纠正字节、消息/标记/重对齐/失锁）已并入卡片，卡片另加实时有效速率与批次堆积条带
         function detFecHtml() {
             const info = fecProfileInfo();
             const parts = [];
@@ -4327,14 +4383,21 @@
                 + `<span>失锁 <b>${st.losses}</b> 次</span></div></div>`);
             if (fecHead) out.push(fecHead);     // 纠错可视化紧跟在整体锁定状态之后
 
-            // ---- 最近符号：只放示波器没有的量（SNR/增益/频偏/窗移已由上方示波器实时绘制，不重复）----
+            // ---- 最近符号 · 链路：合并了原"自适应链路"区，重复的 MCS 字段只保留一份
+            //（SNR/增益/频偏/窗移已由上方示波器实时绘制，这里不重复）----
             if (ls) {
-                out.push(detSec('最近符号', detGrid([
+                const tune = d.lastTune;
+                const tuneTxt = !tune ? '未收到'
+                    : (tune.changed.length ? tune.changed.join('，') : (tune.applied ? '与当前设置一致' : '自动匹配已关闭'));
+                out.push(detSec('最近符号 · 链路', detGrid([
                     detCard('判决一致性', (100 * (ls.consistency || 0)).toFixed(1), '%', ls.consistency || 0, '#35d07f'),
                     detCard(ls.filler ? '符号类型' : '调制 / FEC', ls.filler ? '填充' : ls.modName, ls.filler ? '' : 'id ' + ls.fec),
                     detCard('有效槽', ls.filler ? '—' : `${ls.cnt}/${cfg.nData * OFDM_MODS[ls.mod].bpc}`,
                         '', ls.filler ? 0 : detClamp01(ls.cnt / Math.max(1, cfg.nData * OFDM_MODS[ls.mod].bpc)), '#00f3ff'),
                     detCard('超帧槽', `sf ${ls.sf}`, `/ ${OFDM_SF}`, detClamp01(ls.sf / OFDM_SF), '#bd00ff'),
+                    detCard('采样钟 clock', isFinite(ls.ppm) ? ls.ppm.toFixed(0) : '—', 'ppm'),
+                    detCard('推荐调制', d._hint(ls.snr)),
+                    detCard('自动匹配', tuneTxt),
                 ])));
             }
 
@@ -4394,7 +4457,7 @@
 
             // 速率区：数值随最近符号的调制阶数 / FEC 档位实时变化
             out.push(detSec('速率', detGrid([
-                detCard('每符号载荷', (cfg.nData * bpcNow), `bit × ${OFDM_MODS[modNow].name}`),
+                detCard('每符号载荷', (cfg.nData * bpcNow), 'bit'),
                 detRateCard('空中速率', airRate, '#00f3ff'),
                 detRateCard('有效速率', netRate, '#35d07f'),
                 detCard('训练开销', (100 * (1 - trainHead)).toFixed(1), '%', (1 - trainHead)),
@@ -4420,7 +4483,6 @@
                 detCard('符号总数', st.symbols),
                 detCard('训练符号', st.trainings),
                 detCard('meta 失败', st.metaBad, '', detClamp01(st.metaBad / Math.max(1, st.symbols)), st.metaBad ? '#ff5c72' : undefined),
-                detCard('累计帧数', d.frames || 0),
             ])));
 
             return out.join('');
@@ -7401,6 +7463,7 @@
                 if (!this.source) return;
                 const cfg = ofdmActiveConfig(this.carrierFreq);
                 this.frames = 0; this.snr = 0;
+                this.lastTune = null;       // 重启接收时清掉上一次的对端方案记录
                 // OFDM 忽略"保留数量"：每个符号清空重画，画面上始终是最近一个符号的
                 // 全部子载波点（清空动作在 onSymbol 里，这里配 Infinity 让缓冲只受符号点数约束）
                 constellation.maxLen = Infinity;
@@ -7430,7 +7493,7 @@
                         offsetWaves.addData(s.shift || 0);
                         freqWaves.addData(s.ppm * 1e-6 * cfg.fc);
                         snrWaves.addData(Math.min(Math.max(s.snr, -20), 120));
-                        this._status(`${s.filler ? 'idle(filler)' : OFDM_MODS[s.mod].name} sym ${this.frames}  SNR ${s.snr.toFixed(1)} dB  gain ${(20 * Math.log10(s.g)).toFixed(1)} dB  clock ${s.ppm.toFixed(0)} ppm  hint: ${this._hint(s.snr)}`);
+                        this._status(`${s.filler ? 'idle(filler)' : OFDM_MODS[s.mod].name} · SNR ${s.snr.toFixed(1)} dB · 推荐 ${this._hint(s.snr)}`);
                         // 给"解码详情"面板的最新符号快照（不放 points 大数组，只留标量）
                         this.lastSym = {
                             snr: s.snr, ppm: s.ppm, shift: s.shift, timing: s.timing, gain: s.gain, sf: s.sf,
@@ -7469,12 +7532,16 @@
                     }
                     if (changed.length) saveSettings();
                 }
+                // 记录最近一次收到的对端方案（以及自动匹配改了哪几项），供"解码详情"的自适应链路卡片显示
+                this.lastTune = {
+                    mod: m.mod, modName: m.modName, fec: m.fec,
+                    changed: changed.slice(), applied: !!(auto && auto.checked)
+                };
                 this._status(`MCS: ${m.modName}, FEC id ${m.fec}` + (changed.length ? `（已自动匹配：${changed.join('，')}）` : ''));
             }
 
+            // 文字版 OFDM 状态行已删除，只保留折叠面板摘要；具体字段都在"解码详情"的卡片里
             _status(t) {
-                const el = document.getElementById('ofdmStats');
-                if (el) el.textContent = 'OFDM：' + t;
                 const br = document.getElementById('detBrief');   // 折叠面板摘要行
                 if (br) br.textContent = t;
             }
@@ -7857,9 +7924,11 @@
             // 喷泉码解帧器：纠错后的比特进这里找水滴包；Receiver 全局保留，断开重连不清进度
             const ftnDeframer = new FountainDeframer(p => ensureFtnReceiver().onPacket(p));
             startFtnStatusPoll(() => ftnDeframer.active);
+            resetFecHist();             // 清掉上一轮接收留下的纠错批次历史
             startDecodeDetails();
             fecRx = new FecDeframer({
                 onBits: bits => {
+                    addUpBits(bits.length);     // 上层有效数据：纠错解码后真正交给上层解码器的比特
                     for (let bit of bits) {
                         ftnDeframer.feed(bit);
                         if (ftnDeframer.active) continue;   // 正在收文件包：暂停文字解码
@@ -7870,11 +7939,11 @@
                     // 丢了码字或新消息开始：清掉斐波那契解码器里残留的半个符号
                     // （原始字节解码器按字节对齐，丢整字节不影响对齐，所以不动它）
                     if (!rxRawMode) decoder.bitBuffer = [];
-                },
-                onStats: showFecStats
+                }
             });
             ccRx = new ConvDeframer({
                 onBits: bits => {
+                    addUpBits(bits.length);     // 上层有效数据：Viterbi 解码后交给上层解码器的比特
                     for (let bit of bits) {
                         ftnDeframer.feed(bit);
                         if (ftnDeframer.active) continue;   // 正在收文件包：暂停文字解码
@@ -7882,10 +7951,8 @@
                     }
                 },
                 onLoss: () => { if (!rxRawMode) decoder.bitBuffer = []; },
-                onEnd: () => { if (!rxRawMode) decoder.bitBuffer = []; },
-                onStats: showCcStats
+                onEnd: () => { if (!rxRawMode) decoder.bitBuffer = []; }
             });
-            showFecStats(null);
             demodulator.setOnSample(data => {
                 // console.log(data)
                 if (data.meta) constellationMeta.addSample(data.sample[0], data.sample[1]);
@@ -7894,6 +7961,7 @@
                     // 两种纠错方案的同步字不同，同时监听，谁锁定谁输出
                     for (let bit of data.bits) { fecRx.feed(bit); ccRx.feed(bit); }
                 } else {
+                    addUpBits(data.bits.length);        // 无纠错：直通给上层的数据同样算有效数据
                     for (let bit of data.bits) {
                         ftnDeframer.feed(bit);              // 无纠错时也要扫水滴包，否则文件收不到
                         if (ftnDeframer.active) continue;   // 正在收文件包：暂停文字解码
@@ -8200,7 +8268,7 @@
                 saveSettings();
                 if (fecRx) { fecRx.reset(); fecRx.resetStats(); }
                 if (ccRx) { ccRx.reset(); ccRx.resetStats(); }
-                showFecStats(null);
+                resetFecHist();
             })
 
             document.getElementById('mode').addEventListener('change', () => {
