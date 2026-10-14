@@ -1169,11 +1169,11 @@
             </select>
             <label id="ofdmModLabel" style="display:none">OFDM调制：</label>
             <select id="ofdmMod" style="display:none">
-                <option value="0">BPSK（最稳）</option>
+                <option value="0">BPSK</option>
                 <option value="1" selected>QPSK</option>
                 <option value="2">16QAM</option>
                 <option value="3">64QAM</option>
-                <option value="4">256QAM（需极高信噪比）</option>
+                <option value="4">256QAM</option>
             </select>
             <label id="ofdmAutoLabel" style="display:none">自动匹配对端：</label>
             <input type="checkbox" id="ofdmAuto" checked style="display:none; justify-self: start;">
@@ -1193,28 +1193,28 @@
                         </div>
                     </div>
                     <div class="chart-card">
-                        <div class="chart-head"><span class="chart-name">增益 Gain</span><span class="chart-tag">dB</span></div>
+                        <div class="chart-head"><span class="chart-name">增益</span><span class="chart-tag">dB</span></div>
                         <div class="chart-body"><canvas class="oscilloscope chart-canvas trace" id="gainCanvas"></canvas></div>
                         <div class="chart-val" id="gainLabel"></div>
                     </div>
                     <div class="chart-card">
-                        <div class="chart-head"><span class="chart-name">偏移 Offset</span><span class="chart-tag">sample</span></div>
+                        <div class="chart-head"><span class="chart-name">偏移</span><span class="chart-tag">sample</span></div>
                         <div class="chart-body"><canvas class="oscilloscope chart-canvas trace" id="offsetCanvas"></canvas></div>
                         <div class="chart-val" id="offsetLabel"></div>
                     </div>
                     <div class="chart-card">
-                        <div class="chart-head"><span class="chart-name">频偏 Frequency</span><span class="chart-tag">Hz</span></div>
+                        <div class="chart-head"><span class="chart-name">频偏</span><span class="chart-tag">Hz</span></div>
                         <div class="chart-body"><canvas class="oscilloscope chart-canvas trace" id="freqCanvas"></canvas></div>
                         <div class="chart-val" id="freqLabel"></div>
                     </div>
                     <div class="chart-card">
-                        <div class="chart-head"><span class="chart-name">信噪比 SNR</span><span class="chart-tag">dB</span></div>
+                        <div class="chart-head"><span class="chart-name">信噪比</span><span class="chart-tag">dB</span></div>
                         <div class="chart-body"><canvas class="oscilloscope chart-canvas trace" id="snrCanvas"></canvas></div>
                         <div class="chart-val" id="snrLabel"></div>
                     </div>
                     <!-- 信道频率响应（OFDM 专属，随接收显示） -->
                     <div id="detChanWrap" class="chart-card" style="display: none; grid-column: 1 / -1; margin-top: 0;">
-                        <div class="chart-head"><span class="chart-name">信道频率响应 |H|</span><span class="chart-tag">导频 + meta · 逐符号</span></div>
+                        <div class="chart-head"><span class="chart-name">信道频率响应 |H|</span><span class="chart-tag">导频 + meta</span></div>
                         <canvas id="detChan" class="chart-canvas" style="height: 92px;"></canvas>
                         <div id="detChanText" style="color: var(--text-secondary); font-size: 0.75rem; text-align: center;"></div>
                     </div>
@@ -1237,7 +1237,6 @@
                             <div class="det-card"><div class="det-k">信道速率</div><div class="det-v" id="detBasicChanV"><small id="detBasicChanU">bps</small></div></div>
                             <div class="det-card"><div class="det-k">有效速率</div><div class="det-v" id="detBasicNetV"><small id="detBasicNetU">bps</small></div></div>
                         </div>
-                        <div class="det-hint" id="detBasicHint"></div>
                     </div>
 
                     <!-- OFDM：锁定徽标 + 锁定/失锁次数 -->
@@ -1302,7 +1301,7 @@
                             <div class="det-card"><div class="det-k" id="detSymK"></div><div class="det-v" id="detSymV"><small id="detSymU"></small></div></div>
                             <div class="det-card"><div class="det-k">有效槽</div><div class="det-v" id="detSymSlotV"></div><div class="det-bar"><i id="detSymSlotBar"></i></div></div>
                             <div class="det-card"><div class="det-k">超帧槽</div><div class="det-v" id="detSymSfV"><small>/ 16</small></div><div class="det-bar"><i id="detSymSfBar"></i></div></div>
-                            <div class="det-card"><div class="det-k">采样钟 clock</div><div class="det-v" id="detSymClockV"><small>ppm</small></div></div>
+                            <div class="det-card"><div class="det-k">采样钟</div><div class="det-v" id="detSymClockV"><small>ppm</small></div></div>
                             <div class="det-card"><div class="det-k">推荐调制</div><div class="det-v" id="detSymHintV"></div></div>
                             <div class="det-card"><div class="det-k">自动匹配</div><div class="det-v" id="detSymTuneV"></div></div>
                         </div>
@@ -4410,13 +4409,13 @@
                 const prof = FEC_PROFILES[p];
                 return {
                     id: p, kind: 'rs', title: `分组 RS · ${prof.name}`,
-                    sub: `RS+${prof.parity}：每码字可纠 ${prof.parity / 2} 字节，交织深度 ${FEC_MAX_DEPTH}，帧头带 CRC16`,
+                    sub: `RS+${prof.parity}：每码字可纠 ${prof.parity / 2} 字节，交织深度 ${FEC_MAX_DEPTH}`,
                     rate: `${FEC_MAX_PAYLOAD}/${FEC_MAX_PAYLOAD + prof.parity}`
                 };
             }
             if (p >= 11 && p <= 13) {
                 const m = { 11: '3/4', 12: '2/3', 13: '1/2' }[p];
-                return { id: p, kind: 'cc', title: '实时卷积 · Viterbi', sub: `K=7 生成多项式 (171,133)₈，打孔到 ${m}，流式回溯（无需整帧等待）`, rate: m };
+                return { id: p, kind: 'cc', title: '实时卷积 · Viterbi', sub: `K=7 生成多项式 (171,133)₈，打孔到 ${m}`, rate: m };
             }
             return { id: 0, kind: 'off', title: '纠错关闭', sub: '无冗余直传，仅靠奇偶校验做残余检错', rate: '1/1' };
         }
@@ -4504,7 +4503,6 @@
             for (const f of files.sort((a, b) => (a.done - b.done) || (b.id - a.id)).slice(0, 3)) {
                 const seen = f.decoder ? (f.decoder.seen ? f.decoder.seen.size : (f.decoder.nKnown || 0)) : 0;
                 const prog = f.k ? detClamp01(seen / f.k) : 0;
-                const ov = f.k ? f.packets / f.k : 0;
                 const nm = (typeof ftnDisplayName === 'function') ? ftnDisplayName(f) : ('#' + f.fid);
                 const state = !f.done ? '接收中' : (f.crcOk === true ? '已完成 · CRC 通过' : (f.crcOk === false ? '已完成 · CRC 失败' : '已完成 · CRC 未知'));
                 const col = !f.done ? '#00f3ff' : (f.crcOk === false ? '#ff5c72' : '#35d07f');
@@ -4517,7 +4515,7 @@
                 fill.style.width = (prog * 100).toFixed(1) + '%';
                 fill.style.background = col;
                 card.querySelector('.det-hint').textContent =
-                    `解出块 ${seen}/${f.k} · 收到水滴 ${f.packets} · 开销 ${ov.toFixed(2)}×（LT 理论下限 1.00×）`;
+                    `解出块 ${seen}/${f.k} · 收到水滴 ${f.packets}`;
                 frag.appendChild(card);
             }
             grid.appendChild(frag);
@@ -4590,7 +4588,6 @@
             detValue('detBasicBps', bps);
             detRateValue('detBasicChanV', 'detBasicChanU', rate);
             detRateValue('detBasicNetV', 'detBasicNetU', rate * fecRateOf(fecProfileId()));
-            detText('detBasicHint', `有效速率 = 波特率 ${effBaudRate()} × 每符号 ${bps} bit × FEC 码率 ${fecRateText(fecProfileId())}（奇偶校验位另占信道速率）`);
             if (cw) cw.style.display = 'none';
         }
 
@@ -4602,7 +4599,7 @@
             if (selectedMode === MODES.ofdm && d && d.decidePoints && d.decidePoints.length) {
                 const mod = (typeof OFDM_MODS !== 'undefined' && d.curMod >= 0 && OFDM_MODS[d.curMod])
                     ? OFDM_MODS[d.curMod].name : '';
-                el.textContent = (mod ? mod + ' · ' : '') + d.decidePoints.length + ' 判决点';
+                el.textContent = (mod ? mod + ' · ' : '');
             } else {
                 el.textContent = selectedMode ? selectedMode.name : '—';
             }
@@ -4650,7 +4647,7 @@
             if (ls) {
                 const tune = d.lastTune;
                 const tuneTxt = !tune ? '未收到'
-                    : (tune.changed.length ? tune.changed.join('，') : (tune.applied ? '与当前设置一致' : '自动匹配已关闭'));
+                    : (tune.changed.length ? tune.changed.join('，') : (tune.applied ? '已匹配' : '关闭'));
                 detValue('detSymConsistV', (100 * (ls.consistency || 0)).toFixed(1));
                 detBar('detSymConsistBar', ls.consistency || 0, '#35d07f');
                 detValue('detSymK', ls.filler ? '符号类型' : '调制 / FEC');
@@ -4732,7 +4729,7 @@
             detBar('detRateTrainBar', 1 - trainHead);
             detValue('detRateFecV', fecRateText(fecIdNow));
             detRateValue('detRatePerCarV', 'detRatePerCarU', bpcNow * trainHead * symRate * rateFec);
-            detText('detRateHint', `有效速率 = 数据子载波 ${cfg.nData} × 每载波 ${bpcNow} bit × 符号率 ${symRate.toFixed(2)} × 15/16（超帧训练开销） × FEC 码率 ${fecRateText(fecIdNow)}`);
+            detText('detRateHint', `有效速率 = 数据子载波 ${cfg.nData} × 每载波 ${bpcNow} bit × 符号率 ${symRate.toFixed(2)} × 训练占用 15/16 × FEC ${fecRateText(fecIdNow)}`);
 
             // ---- 子载波构成（堆叠条 + 图例）----
             const nP = cfg.pilotIdx.length, nD = cfg.nData, nM = OFDM_META;
@@ -4806,7 +4803,7 @@
             ctx.strokeStyle = 'rgba(189, 0, 255, 0.55)';
             for (const k of cfg.metaIdx || []) { const x = xOf(k); ctx.beginPath(); ctx.moveTo(x, h - 4); ctx.lineTo(x, h); ctx.stroke(); }
 
-            if (txt) txt.textContent = `信道频率响应 |H|（相对均值 dB）：min ${mn.toFixed(1)} / max +${mx.toFixed(1)} · 橙=导频 紫=meta · 逐符号更新`;
+            if (txt) txt.textContent = `信道频率响应 |H| min ${mn.toFixed(1)} / max +${mx.toFixed(1)} · 橙=导频 紫=meta`;
         }
 
         class FibonacciDecoder {
