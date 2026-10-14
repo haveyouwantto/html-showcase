@@ -2967,7 +2967,8 @@
                 : ofdmConfig(sampleRate, fc, ofdmBandwidth);
         }
 
-        function ofdmConfig(fs, fc, bw) {            const N = 1 << Math.round(Math.log2(0.3413 * fs));
+        function ofdmConfig(fs, fc, bw) {
+            const N = 1 << Math.round(Math.log2(0.3413 * fs));
             const cp = N >> 2, symLen = N + cp, df = fs / N;
             bw = Math.max(bw, 600);
             let lo = Math.max(fc - bw / 2, 200), hi = Math.min(fc + bw / 2, fs / 2 - 400);
@@ -4250,15 +4251,10 @@
             }
         }
 
-        // 星座图采样缓存。底层用 Float32Array 存 (I,Q) 对，比对象数组省一半以上内存，
-        // 支撑 OFDM 无上限模式的长时间累计。
-        //   · maxLen = Infinity：不丢弃任何点（OFDM：画每个符号的所有子载波点），
-        //     配合离屏点图层（layer）增量绘制——点只画一次，之后每帧只是一次贴图
-        //   · maxLen 有限：环形缓冲覆盖最旧的点（FSK 行为不变），绘制走逐点重绘
         class ConstellationRecorder {
             constructor(maxLen) {
-                this.maxLen = (maxLen === undefined) ? Infinity : Math.max(1, maxLen);
-                this.cap = this.maxLen === Infinity ? 4096 : Math.ceil(this.maxLen);
+                this.maxLen = (maxLen === undefined) ? 48000 : Math.max(1, maxLen);
+                this.cap = Math.ceil(this.maxLen);
                 this.buf = new Float32Array(this.cap * 2);
                 this.n = 0;          // 当前缓存点数
                 this.dropped = 0;    // 环形覆盖掉的总点数（逻辑序号起点）
@@ -4270,7 +4266,7 @@
             get total() { return this.dropped + this.n; }
 
             addSample(i, q) {
-                if (this.maxLen !== Infinity && this.n >= this.maxLen) {
+                if (this.n >= this.maxLen) {
                     // 满且有限上限：覆盖最旧的点（逻辑序号连续，物理位置取模）
                     const pos = (this.dropped % this.cap) * 2;
                     this.buf[pos] = i; this.buf[pos + 1] = q;
@@ -6962,34 +6958,34 @@
             f.ui.stat.textContent = s;
         }
 
-            // 按当前下拉框选择打开输入流。deviceId 用 exact 才是硬性指定
-            //（普通值只是"建议"，可能被静默忽略而回退默认设备）；所选设备不可用时回退默认
-            async function openInputStream() {
-                const audioConstraints = {
-                    sampleRate: audioCtx.sampleRate,
-                    echoCancellation: false,
-                    noiseSuppression: false,
-                    autoGainControl: selectedMode !== MODES.ofdm
-                };
-                if (audioInput.value) {
-                    try {
-                        return await navigator.mediaDevices.getUserMedia({
-                            audio: { ...audioConstraints, deviceId: { exact: audioInput.value } },
-                            video: false
-                        });
-                    } catch (e) {
-                        console.warn('所选输入设备不可用，回退默认设备:', e);
-                    }
+        // 按当前下拉框选择打开输入流。deviceId 用 exact 才是硬性指定
+        //（普通值只是"建议"，可能被静默忽略而回退默认设备）；所选设备不可用时回退默认
+        async function openInputStream() {
+            const audioConstraints = {
+                sampleRate: audioCtx.sampleRate,
+                echoCancellation: false,
+                noiseSuppression: false,
+                autoGainControl: selectedMode !== MODES.ofdm
+            };
+            if (audioInput.value) {
+                try {
+                    return await navigator.mediaDevices.getUserMedia({
+                        audio: { ...audioConstraints, deviceId: { exact: audioInput.value } },
+                        video: false
+                    });
+                } catch (e) {
+                    console.warn('所选输入设备不可用，回退默认设备:', e);
                 }
-                return await navigator.mediaDevices.getUserMedia({ audio: audioConstraints, video: false });
             }
+            return await navigator.mediaDevices.getUserMedia({ audio: audioConstraints, video: false });
+        }
 
-            async function startRx() {
-                rxBtn.textContent = '停止';
-                audioCtx.resume()
+        async function startRx() {
+            rxBtn.textContent = '停止';
+            audioCtx.resume()
 
-                const stream = await openInputStream();
-                refreshInputDevices();   // 已有权限：这次能拿到真实的设备名和 deviceId，刷新下拉框
+            const stream = await openInputStream();
+            refreshInputDevices();   // 已有权限：这次能拿到真实的设备名和 deviceId，刷新下拉框
 
             const decoder = new FibonacciDecoder(result => {
                 const dec = fecNeedsParity() ? decodeAndVerify(result) : result;//decodeAndVerify(result)
@@ -7165,7 +7161,7 @@
 
                 const centerX = width / 2;
                 const centerY = height / 2;
-                const plotSize = Math.min(width, height) * 0.4; // 使用画布短边的40%作为绘图区域
+                const plotSize = Math.min(width, height) * (Math.SQRT1_2 * 0.5);
 
                 // OFDM：画出每个判决区域的边界（虚线网格），铺满整个画布；切换调制阶数时边界跟着变
                 if (selectedMode === MODES.ofdm && demodulator && demodulator.decideLines) {
@@ -7198,50 +7194,21 @@
                     ctx.fillText(point.label, x + 4, y - 4);
                 }
 
-
                 // 绘制星座点
-
                 ctx.strokeStyle = "gray"
                 ctx.beginPath();
-                ctx.arc(width / 2, height / 2, 2, 0, Math.PI * 2);
+                ctx.arc(width / 2, height / 2, plotSize, 0, Math.PI * 2);
                 ctx.stroke();
 
-                // 无上限模式的增量绘制：新点画进离屏图层（设备像素），每帧把整层贴上来。
-                // 点只画一次，累计再多也不增加每帧开销；画布尺寸变化时重置游标，下一帧全量重画
-                function renderLayerPoints(rec, fill) {
-                    if (!rec.layer) { rec.layer = document.createElement('canvas'); rec.lctx = rec.layer.getContext('2d'); }
-                    if (rec.layer.width !== canvas.width || rec.layer.height !== canvas.height) {
-                        rec.layer.width = canvas.width; rec.layer.height = canvas.height;
-                        rec.drawn = 0;
-                    }
-                    if (rec.drawn < rec.total) {
-                        const dpr = window.devicePixelRatio || 1;
-                        rec.lctx.fillStyle = fill;
-                        rec.newSince(rec.drawn, (i, q) => {
-                            const x = (centerX + i * plotSize) * dpr;
-                            const y = (centerY - q * plotSize) * dpr;
-                            rec.lctx.fillRect(x - 1.5 * dpr, y - 1.5 * dpr, 3 * dpr, 3 * dpr);
-                        });
-                        rec.drawn = rec.total;
-                    }
-                    ctx.drawImage(rec.layer, 0, 0, width, height);
-                }
-
-                // 星座点：OFDM（保留数无上限 + 每符号清空）走离屏图层增量绘制；
-                // FSK（有限保留数，点数少）维持逐点重绘，被环形覆盖的旧点自然消失
-                if (constellation.maxLen === Infinity) {
-                    renderLayerPoints(constellation, 'white');
-                } else {
-                    ctx.fillStyle = 'white';
-                    constellation.each((i, q) => {
-                        // 将I/Q信号映射到绘图区域
-                        const x = clamp(centerX + i * plotSize, 0, width);
-                        const y = clamp(centerY - q * plotSize, 0, height);
-                        ctx.beginPath();
-                        ctx.arc(x, y, 2, 0, Math.PI * 2); // 使用准确的角度值
-                        ctx.fill();
-                    });
-                }
+                // 星座点：每帧直接全量重绘
+                ctx.fillStyle = 'white';
+                constellation.each((i, q) => {
+                    const x = clamp(centerX + i * plotSize, 0, width);
+                    const y = clamp(centerY - q * plotSize, 0, height);
+                    ctx.beginPath();
+                    ctx.arc(x, y, 2, 0, Math.PI * 2);
+                    ctx.fill();
+                });
 
                 // OFDM 元数据子载波（BPSK ±1）：橙色绘制，理想位置画淡色参考圈
                 if (selectedMode === MODES.ofdm) {
@@ -7251,18 +7218,14 @@
                         ctx.arc(centerX + p.i * plotSize, centerY - p.q * plotSize, 6, 0, Math.PI * 2);
                         ctx.fill();
                     }
-                    if (constellationMeta.maxLen === Infinity) {
-                        renderLayerPoints(constellationMeta, 'rgba(255,170,40,0.95)');
-                    } else {
-                        ctx.fillStyle = 'rgba(255,170,40,0.95)';
-                        constellationMeta.each((i, q) => {
-                            const x = clamp(centerX + i * plotSize, 0, width);
-                            const y = clamp(centerY - q * plotSize, 0, height);
-                            ctx.beginPath();
-                            ctx.arc(x, y, 2, 0, Math.PI * 2);
-                            ctx.fill();
-                        });
-                    }
+                    ctx.fillStyle = 'rgba(255,170,40,0.95)';
+                    constellationMeta.each((i, q) => {
+                        const x = clamp(centerX + i * plotSize, 0, width);
+                        const y = clamp(centerY - q * plotSize, 0, height);
+                        ctx.beginPath();
+                        ctx.arc(x, y, 2, 0, Math.PI * 2);
+                        ctx.fill();
+                    });
                 }
 
                 gainWaves.draw()
