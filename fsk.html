@@ -1224,10 +1224,191 @@
                 <!-- 文件接收提示（原有，更新函数不变） -->
                 <div id="ftnStatus" style="align-self: stretch; color: var(--neon-cyan); font-size: 0.85rem; min-height: 1.3em;"></div>
                 <!-- 深度诊断：OFDM 显示状态徽标/配置卡/子载波构成/跟踪环/捕获流程/信道图，其他模式只显示基本参数卡 -->
-                <div id="detExtra" style="display: none; align-self: stretch; font-size: 0.8rem;"></div>
+                <!-- 解码详情的内容结构全部写在这里（单位、颜色、进度条、模板都是静态 HTML），
+                     JS 只负责填数值、设进度条宽度、切换显隐；按数据条数生成的片段用文末的 <template>。 -->
+                <div id="detExtra" style="display: none; align-self: stretch; font-size: 0.8rem;">
+
+                    <!-- 非 OFDM：基础参数卡 -->
+                    <div class="det-sec" id="detBasicSec" style="display: none;">
+                        <div class="det-h">当前模式</div>
+                        <div class="det-grid">
+                            <div class="det-card"><div class="det-k">模式</div><div class="det-v" id="detBasicMode"></div></div>
+                            <div class="det-card"><div class="det-k">波特率</div><div class="det-v" id="detBasicBaud"><small>Bd</small></div></div>
+                            <div class="det-card"><div class="det-k">载波</div><div class="det-v" id="detBasicCarrier"><small>Hz</small></div></div>
+                            <div class="det-card"><div class="det-k">每符号</div><div class="det-v" id="detBasicBps"><small>bit</small></div></div>
+                            <div class="det-card"><div class="det-k">信道速率</div><div class="det-v" id="detBasicChanV"><small id="detBasicChanU">bps</small></div></div>
+                            <div class="det-card"><div class="det-k">有效速率</div><div class="det-v" id="detBasicNetV"><small id="detBasicNetU">bps</small></div></div>
+                        </div>
+                        <div class="det-hint" id="detBasicHint"></div>
+                    </div>
+
+                    <!-- OFDM：锁定徽标 + 锁定/失锁次数 -->
+                    <div class="det-sec det-toprow" id="detTopRow" style="display: none;">
+                        <span id="detLockBadge" class="det-badge warn"><span class="det-dot"></span></span>
+                        <div class="det-meta-line"><span>锁定 <b id="detLockCount">0</b> 次</span><span>失锁 <b id="detLossCount">0</b> 次</span></div>
+                    </div>
+
+                    <!-- 喷泉码 LT（文件传输）：卡片按 #tplFtnCard 克隆 -->
+                    <div class="det-sec" id="detFtnSec" style="display: none;">
+                        <div class="det-h">喷泉码 LT（文件传输）</div>
+                        <div class="det-grid" id="detFtnGrid"></div>
+                    </div>
+
+                    <!-- 纠错 · 分组 RS -->
+                    <div class="det-sec" id="detRsSec" style="display: none;">
+                        <div class="det-h" id="detRsH">纠错 · </div>
+                        <div class="det-grid">
+                            <div class="det-card"><div class="det-k">码字成功率</div><div class="det-v" id="detRsSuccV"><small>%</small></div><div class="det-bar"><i id="detRsSuccBar"></i></div></div>
+                            <div class="det-card"><div class="det-k">实时有效速率</div><div class="det-v" id="detRsRateV"><small id="detRsRateU">bps</small></div></div>
+                            <div class="det-card"><div class="det-k">平均纠正</div><div class="det-v" id="detRsAvgV"><small id="detRsAvgU"></small></div><div class="det-bar"><i id="detRsAvgBar"></i></div></div>
+                            <div class="det-card"><div class="det-k">帧数</div><div class="det-v" id="detRsFrames"></div></div>
+                            <div class="det-card"><div class="det-k">码字 正常/失败</div><div class="det-v" id="detRsCwV"><small id="detRsCwU"></small></div></div>
+                            <div class="det-card"><div class="det-k">已纠正</div><div class="det-v" id="detRsFixedV"><small>字节</small></div></div>
+                            <div class="det-card"><div class="det-k">码率</div><div class="det-v" id="detRsRate"></div></div>
+                        </div>
+                        <div class="det-strip" id="detRsStrip"><span class="empty">等待解码…</span></div>
+                        <div class="det-hint">每根柱 ≈ 250ms 内解出的码字（绿=成功、红=失败，堆积）；空闲时段不画柱</div>
+                        <div class="det-hint" id="detRsSub"></div>
+                        <div class="det-hint">实时有效速率：纠错解码后交给上层解码器的净数据比特率（不含冗余、帧头与 CRC）</div>
+                    </div>
+
+                    <!-- 纠错 · 实时卷积 -->
+                    <div class="det-sec" id="detCcSec" style="display: none;">
+                        <div class="det-h" id="detCcH">纠错 · </div>
+                        <div class="det-toprow" style="margin-bottom: 6px;"><span id="detCcBadge" class="det-badge ok"><span class="det-dot"></span></span></div>
+                        <div class="det-grid">
+                            <div class="det-card"><div class="det-k">段标记命中率</div><div class="det-v" id="detCcHitV"><small>%</small></div><div class="det-bar"><i id="detCcHitBar"></i></div></div>
+                            <div class="det-card"><div class="det-k">实时有效速率</div><div class="det-v" id="detCcRateV"><small id="detCcRateU">bps</small></div></div>
+                            <div class="det-card"><div class="det-k">消息数</div><div class="det-v" id="detCcMsgV"></div></div>
+                            <div class="det-card"><div class="det-k">段标记 正常/缺失</div><div class="det-v" id="detCcMarkV"><small id="detCcMarkU"></small></div></div>
+                            <div class="det-card"><div class="det-k">重新对齐</div><div class="det-v" id="detCcResyncV"><small>次</small></div><div class="det-bar"><i id="detCcResyncBar"></i></div></div>
+                            <div class="det-card"><div class="det-k">失锁</div><div class="det-v" id="detCcLostV"><small>次</small></div><div class="det-bar"><i id="detCcLostBar"></i></div></div>
+                            <div class="det-card"><div class="det-k">码率</div><div class="det-v" id="detCcRate"></div></div>
+                        </div>
+                        <div class="det-strip" id="detCcStrip"><span class="empty">等待解码…</span></div>
+                        <div class="det-hint">每根柱 ≈ 250ms 内解出的段标记（绿=命中、红=缺失，堆积）；空闲时段不画柱</div>
+                        <div class="det-hint" id="detCcSub"></div>
+                        <div class="det-hint">实时有效速率：纠错解码后交给上层解码器的净数据比特率（不含冗余、帧头与 CRC）</div>
+                    </div>
+
+                    <!-- 纠错 · 关闭 -->
+                    <div class="det-sec" id="detFecOffSec" style="display: none;">
+                        <div class="det-h">纠错 · 关闭</div>
+                        <div class="det-grid">
+                            <div class="det-card"><div class="det-k">方案</div><div class="det-v">无冗余直传</div></div>
+                            <div class="det-card"><div class="det-k">码率</div><div class="det-v">1/1</div></div>
+                        </div>
+                    </div>
+
+                    <!-- 最近符号 · 链路 -->
+                    <div class="det-sec" id="detSymSec" style="display: none;">
+                        <div class="det-h">最近符号 · 链路</div>
+                        <div class="det-grid">
+                            <div class="det-card"><div class="det-k">判决一致性</div><div class="det-v" id="detSymConsistV"><small>%</small></div><div class="det-bar"><i id="detSymConsistBar"></i></div></div>
+                            <div class="det-card"><div class="det-k" id="detSymK"></div><div class="det-v" id="detSymV"><small id="detSymU"></small></div></div>
+                            <div class="det-card"><div class="det-k">有效槽</div><div class="det-v" id="detSymSlotV"></div><div class="det-bar"><i id="detSymSlotBar"></i></div></div>
+                            <div class="det-card"><div class="det-k">超帧槽</div><div class="det-v" id="detSymSfV"><small>/ 16</small></div><div class="det-bar"><i id="detSymSfBar"></i></div></div>
+                            <div class="det-card"><div class="det-k">采样钟 clock</div><div class="det-v" id="detSymClockV"><small>ppm</small></div></div>
+                            <div class="det-card"><div class="det-k">推荐调制</div><div class="det-v" id="detSymHintV"></div></div>
+                            <div class="det-card"><div class="det-k">自动匹配</div><div class="det-v" id="detSymTuneV"></div></div>
+                        </div>
+                    </div>
+
+                    <!-- 跟踪环 -->
+                    <div class="det-sec" id="detTrackSec" style="display: none;">
+                        <div class="det-h">跟踪环</div>
+                        <div class="det-grid">
+                            <div class="det-card"><div class="det-k">定时</div><div class="det-v" id="detTrkTimingV"><small>符号</small></div></div>
+                            <div class="det-card"><div class="det-k">相位斜率</div><div class="det-v" id="detTrkBsV"><small>rad</small></div><div class="det-bar"><i id="detTrkBsBar"></i></div></div>
+                            <div class="det-card"><div class="det-k">累计迟量</div><div class="det-v" id="detTrkBabsV"><small>载波</small></div></div>
+                            <div class="det-card"><div class="det-k">连续坏符号</div><div class="det-v" id="detTrkBadV"><small>/ 6</small></div><div class="det-bar"><i id="detTrkBadBar"></i></div></div>
+                        </div>
+                    </div>
+
+                    <!-- 捕获流程：三步状态 + 可选的相关值卡片 -->
+                    <div class="det-sec" id="detAcqSec" style="display: none;">
+                        <div class="det-h" id="detAcqH">捕获流程 · </div>
+                        <div class="det-steps">
+                            <div class="det-step" id="detStep1"><b>① CP 相关</b></div>
+                            <div class="det-step" id="detStep2"><b>② 训练搜索</b></div>
+                            <div class="det-step" id="detStep3"><b>③ 锁定</b></div>
+                        </div>
+                        <div id="detAcqWrap" style="display: none; margin-top: 7px;">
+                            <div class="det-grid">
+                                <div class="det-card" id="detRhoCard" style="display: none;"><div class="det-k">CP 峰值 ρ</div><div class="det-v" id="detRhoV"><small id="detRhoU"></small></div><div class="det-bar"><i id="detRhoBar"></i></div></div>
+                                <div class="det-card" id="detDeltaCard" style="display: none;"><div class="det-k">δ 初估</div><div class="det-v" id="detDeltaV"><small>ppm</small></div></div>
+                                <div class="det-card" id="detAmbCard" style="display: none;"><div class="det-k">频率模糊度</div><div class="det-v" id="detAmbV"><small>ppm</small></div></div>
+                                <div class="det-card" id="detCorrCard" style="display: none; grid-column: 1/-1;">
+                                    <div class="det-k">训练符号相关值（阈值 0.45，绿=通过）</div>
+                                    <div class="det-corr" id="detCorr"><div class="det-thr" style="top: 55%;"></div></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- OFDM 派生参数 -->
+                    <div class="det-sec" id="detDerivedSec" style="display: none;">
+                        <div class="det-h">OFDM 派生参数</div>
+                        <div class="det-grid">
+                            <div class="det-card"><div class="det-k">FFT N</div><div class="det-v" id="detDerivedFft"></div></div>
+                            <div class="det-card"><div class="det-k">循环前缀 CP</div><div class="det-v" id="detDerivedCp"><small>采样</small></div></div>
+                            <div class="det-card"><div class="det-k">符号长度</div><div class="det-v" id="detDerivedSymLen"><small>采样</small></div></div>
+                            <div class="det-card"><div class="det-k">符号率</div><div class="det-v" id="detDerivedSymRate"><small>sym/s</small></div></div>
+                            <div class="det-card"><div class="det-k">子载波间隔</div><div class="det-v" id="detDerivedDf"><small>Hz</small></div></div>
+                            <div class="det-card"><div class="det-k">占用子载波</div><div class="det-v" id="detDerivedNcar"></div></div>
+                        </div>
+                    </div>
+
+                    <!-- 速率（数值随最近符号的调制阶数 / FEC 档位实时变化） -->
+                    <div class="det-sec" id="detRateSec" style="display: none;">
+                        <div class="det-h">速率</div>
+                        <div class="det-grid">
+                            <div class="det-card"><div class="det-k">每符号载荷</div><div class="det-v" id="detRatePayload"><small>bit</small></div></div>
+                            <div class="det-card"><div class="det-k">空中速率</div><div class="det-v" id="detRateAirV"><small id="detRateAirU">bps</small></div></div>
+                            <div class="det-card"><div class="det-k">有效速率</div><div class="det-v" id="detRateNetV"><small id="detRateNetU">bps</small></div></div>
+                            <div class="det-card"><div class="det-k">训练开销</div><div class="det-v" id="detRateTrainV"><small>%</small></div><div class="det-bar"><i id="detRateTrainBar"></i></div></div>
+                            <div class="det-card"><div class="det-k">FEC 码率</div><div class="det-v" id="detRateFecV"></div></div>
+                            <div class="det-card"><div class="det-k">每子载波净速率</div><div class="det-v" id="detRatePerCarV"><small id="detRatePerCarU">bps</small></div></div>
+                        </div>
+                        <div class="det-hint" id="detRateHint"></div>
+                    </div>
+
+                    <!-- 子载波构成（堆叠条 + 图例） -->
+                    <div class="det-sec" id="detSubcarrierSec" style="display: none;">
+                        <div class="det-h">子载波构成</div>
+                        <div class="det-stack"><i id="detStackData" style="background: #39a0ff;"></i><i id="detStackPilot" style="background: #f5a524;"></i><i id="detStackMeta" style="background: #bd00ff;"></i></div>
+                        <div class="det-legend"><span><i style="background: #39a0ff;"></i>数据 <span id="detLegendData">0</span></span><span><i style="background: #f5a524;"></i>导频 <span id="detLegendPilot">0</span></span><span><i style="background: #bd00ff;"></i>meta <span id="detLegendMeta">0</span></span><span>共 <span id="detLegendTotal">0</span> 个子载波</span></div>
+                    </div>
+
+                    <!-- 统计 -->
+                    <div class="det-sec" id="detStatsSec" style="display: none;">
+                        <div class="det-h">统计</div>
+                        <div class="det-grid">
+                            <div class="det-card"><div class="det-k">符号总数</div><div class="det-v" id="detStatsSymbols"></div></div>
+                            <div class="det-card"><div class="det-k">训练符号</div><div class="det-v" id="detStatsTrainings"></div></div>
+                            <div class="det-card"><div class="det-k">meta 失败</div><div class="det-v" id="detStatsMetaBad"></div><div class="det-bar"><i id="detStatsMetaBadBar"></i></div></div>
+                        </div>
+                    </div>
+                </div>
             </div>
         </details>
     </div>
+    <!-- “解码详情”里按数据条数生成的片段：结构就在模板里，JS 只克隆后填值 -->
+    <template id="tplDetStripCol">
+        <span><i class="ok"></i><i class="bad"></i></span>
+    </template>
+    <template id="tplDetCorrBar">
+        <span></span>
+    </template>
+    <template id="tplFtnCard">
+        <div class="det-card" style="grid-column: 1/-1;">
+            <div class="det-k"></div>
+            <div class="det-v" style="font-size: 0.82rem;"></div>
+            <div class="det-bar"><i></i></div>
+            <div class="det-hint"></div>
+        </div>
+    </template>
+
     <dialog id="message-modal">
         <div id="message-date"></div>
         <textarea id="message-content" disabled></textarea>
@@ -4073,7 +4254,7 @@
             return effBaudRate() >= 200 && !(p >= 1 && p <= 4);
         }
 
-        // 纠错的统计不再走文字行：showFecStats 已合并进"解码详情"的纠错卡片（detRsHtml）
+        // 纠错的统计不再走文字行：showFecStats 已合并进"解码详情"的纠错卡片（detRsFill）
 
         // ===== 解码详情面板 =====
         // 纠错卡片（所有模式通用）+ OFDM 深度诊断（状态徽标 / 自适应链路 / 跟踪环 / 捕获流程 / 速率 / 子载波 / 统计 / 信道图）
@@ -4089,8 +4270,73 @@
             } catch (e) { /* 图表可能尚未创建 */ }
         }
 
-        const detEsc = s => String(s).replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+        // 详情面板的 DOM 结构全部写在 HTML（#detExtra 与文末的 <template>）里，
+        // 下面这些函数只填数值、改进度条宽度、切显隐，不再拼接 HTML 字符串。
+        const detEl = id => document.getElementById(id);
+        const detTpl = id => document.getElementById(id).content.firstElementChild.cloneNode(true);
         const detClamp01 = v => Math.max(0, Math.min(1, isFinite(v) ? v : 0));
+
+        // 显隐一律用行内 display：这些标签带 display 规则的类会把 hidden 属性盖掉
+        function detShow(id, on) {
+            const el = detEl(id);
+            if (el) el.style.display = on ? '' : 'none';
+        }
+
+        // 纯文本填充
+        function detText(id, v) {
+            const el = detEl(id);
+            if (el) el.textContent = (v === undefined || v === null) ? '' : String(v);
+        }
+
+        // 卡片数值：文本节点放在 <small> 单位（静态）之前，重复填充只改这一个文本节点
+        function detValue(id, v) {
+            const el = detEl(id);
+            if (!el) return;
+            const s = (v === undefined || v === null) ? '' : String(v);
+            const first = el.firstChild;
+            if (first && first.nodeType === 3) first.nodeValue = s;
+            else el.insertBefore(document.createTextNode(s), first);
+        }
+
+        // 数值 + 动态单位：unit 为空串时隐藏 <small>（对应原来 unit 为假就不输出 small）
+        function detValueUnit(vId, uId, v, unit) {
+            detValue(vId, v);
+            const u = detEl(uId);
+            if (!u) return;
+            u.textContent = unit || '';
+            u.style.display = unit ? '' : 'none';
+        }
+
+        // 后缀文字：静态前缀留在 HTML，动态部分追加成一个文本节点（徽标、捕获步骤、动态区段标题）
+        function detSuffix(id, text) {
+            const el = detEl(id);
+            if (!el) return;
+            const s = (text === undefined || text === null) ? '' : String(text);
+            if (el.childNodes.length > 1 && el.lastChild.nodeType === 3) el.lastChild.nodeValue = s;
+            else el.appendChild(document.createTextNode(s));
+        }
+
+        // 进度条：ratio 取 0~1，color 省略时沿用样式表里的默认渐变
+        function detBar(id, ratio, color) {
+            const el = detEl(id);
+            if (!el) return;
+            el.style.width = (detClamp01(ratio) * 100).toFixed(1) + '%';
+            el.style.background = color || '';
+        }
+
+        // 子载波堆叠条：颜色写在 HTML 里，这里只改宽度（原实现保留两位小数）
+        function detStackBar(id, ratio) {
+            const el = detEl(id);
+            if (el) el.style.width = (detClamp01(ratio) * 100).toFixed(2) + '%';
+        }
+
+        // 徽标：只切样式类，文字接在圆点后面的文本节点上
+        function detBadge(id, kind, text) {
+            const el = detEl(id);
+            if (!el) return;
+            el.className = 'det-badge ' + kind;
+            detSuffix(id, text);
+        }
 
         // 速率换算：自动选 bps / kbps / Mbps（bps 档保留一位小数但不显示多余的 .0）
         function detRate(bps) {
@@ -4100,10 +4346,11 @@
             const v = Math.round(bps * 10) / 10;
             return { v: Number.isInteger(v) ? String(v) : v.toFixed(1), u: 'bps' };
         }
-        const detRateCard = (label, bps, color) => {
+        // 速率卡（自动选 bps / kbps / Mbps）
+        function detRateValue(vId, uId, bps) {
             const r = detRate(bps);
-            return detCard(label, r.v, r.u, undefined, color);
-        };
+            detValueUnit(vId, uId, r.v, r.u);
+        }
 
         // FEC 档位 → 码率（信息比特 / 空中比特）
         function fecRateOf(id) {
@@ -4123,17 +4370,6 @@
             if (id === 11) return '3/4';
             return '1/1';
         };
-
-        // 指标卡：标签 + 大字数值（可带单位）+ 可选进度条（bar 取 0~1）
-        function detCard(k, v, unit, bar, color) {
-            const b = (bar === undefined) ? '' :
-                `<div class="det-bar"><i style="width:${(detClamp01(bar) * 100).toFixed(1)}%${color ? `;background:${color}` : ''}"></i></div>`;
-            return `<div class="det-card"><div class="det-k">${detEsc(k)}</div>`
-                + `<div class="det-v">${detEsc(v)}${unit ? `<small>${detEsc(unit)}</small>` : ''}</div>${b}</div>`;
-        }
-        const detGrid = cards => `<div class="det-grid">${cards.join('')}</div>`;
-        const detSec = (title, body) => `<div class="det-sec"><div class="det-h">${detEsc(title)}</div>${body}</div>`;
-        const detBadge = (kind, text) => `<span class="det-badge ${kind}"><span class="det-dot"></span>${detEsc(text)}</span>`;
 
         // ===== 纠错可视化 =====
         // 每 250ms 采样一次增量，画成"解码批次"堆积条带；文字版统计已并入卡片，这里不再有重复的文字行
@@ -4207,100 +4443,119 @@
         }
 
         // 解码批次堆积条带：只画"有解码活动"的批次，每根柱 = 绿(成功) + 红(失败) 堆积
-        function detStrip(ticks, legend) {
+        // 柱子按 #tplDetStripCol 克隆；条带里第一个子元素是静态的"等待解码…"占位
+        function detStripFill(boxId, ticks) {
+            const box = detEl(boxId);
+            if (!box) return;
             const act = ticks.filter(t => (t.a + t.b) > 0).slice(-FEC_BAR_MAX);
-            if (!act.length) {
-                return `<div class="det-strip"><span class="empty">等待解码…</span></div>`
-                    + `<div class="det-hint">${detEsc(legend)}</div>`;
-            }
+            while (box.children.length > 1) box.lastElementChild.remove();
+            const empty = box.firstElementChild;
+            if (empty) empty.style.display = act.length ? 'none' : '';
+            if (!act.length) return;
             const peak = Math.max(1, ...act.map(t => t.a + t.b));
-            const cols = act.map(t => {
+            const frag = document.createDocumentFragment();
+            for (const t of act) {
                 const n = t.a + t.b;
-                const h = Math.max(14, n / peak * 100);
-                let inner = '';
-                if (t.a) inner += `<i class="ok" style="height:${(t.a / n * 100).toFixed(2)}%"></i>`;
-                if (t.b) inner += `<i class="bad" style="height:${(t.b / n * 100).toFixed(2)}%"></i>`;
-                return `<span style="height:${h.toFixed(1)}%" title="成功 ${t.a} / 失败 ${t.b}">${inner}</span>`;
-            }).join('');
-            return `<div class="det-strip">${cols}</div><div class="det-hint">${detEsc(legend)}</div>`;
+                const col = detTpl('tplDetStripCol');
+                col.style.height = Math.max(14, n / peak * 100).toFixed(1) + '%';
+                col.title = `成功 ${t.a} / 失败 ${t.b}`;
+                const ok = col.querySelector('.ok'), bad = col.querySelector('.bad');
+                ok.style.display = t.a ? '' : 'none';
+                bad.style.display = t.b ? '' : 'none';
+                if (t.a) ok.style.height = (t.a / n * 100).toFixed(2) + '%';
+                if (t.b) bad.style.height = (t.b / n * 100).toFixed(2) + '%';
+                frag.appendChild(col);
+            }
+            box.appendChild(frag);
         }
 
-        // 分组 RS：成功率 / 实时有效速率 / 平均纠正量 + 原有文字统计（帧、码字、纠正字节）
-        function detRsHtml(info) {
-            if (!fecRx) return '';
+        // 分组 RS：成功率 / 实时有效速率 / 平均纠正量，以及帧、码字、纠正字节
+        function detRsFill(info) {
             const st = fecRx.stats || { frames: 0, cwOk: 0, cwFail: 0, corrected: 0 };
             const tot = st.cwOk + st.cwFail;
             const succ = tot ? st.cwOk / tot : 1;
             const avg = st.cwOk ? st.corrected / st.cwOk : 0;
             const cap = FEC_PROFILES[info.id] ? FEC_PROFILES[info.id].parity / 2 : 1;
             const ticks = fecTick('rs', st.cwOk, st.cwFail, rxUpBits);
-            return detSec(`纠错 · ${info.title}`, detGrid([
-                detCard('码字成功率', (100 * succ).toFixed(succ > 0.999 ? 2 : 1), '%', succ,
-                    succ > 0.99 ? '#35d07f' : (succ > 0.9 ? '#f5a524' : '#ff5c72')),
-                detRateCard('实时有效速率', detFecRate(ticks), '#35d07f'),
-                detCard('平均纠正', avg.toFixed(2), `/ ${cap} 字节`, detClamp01(avg / cap), '#00f3ff'),
-                detCard('帧数', st.frames),
-                detCard('码字 正常/失败', `${st.cwOk}`, `/ ${st.cwFail}`),
-                detCard('已纠正', st.corrected, '字节'),
-                detCard('码率', info.rate),
-            ]) + detStrip(ticks, '每根柱 ≈ 250ms 内解出的码字（绿=成功、红=失败，堆积）；空闲时段不画柱')
-                + `<div class="det-hint">${detEsc(info.sub)}</div>`
-                + `<div class="det-hint">实时有效速率：纠错解码后交给上层解码器的净数据比特率（不含冗余、帧头与 CRC）</div>`);
+            detSuffix('detRsH', info.title);
+            detValue('detRsSuccV', (100 * succ).toFixed(succ > 0.999 ? 2 : 1));
+            detBar('detRsSuccBar', succ, succ > 0.99 ? '#35d07f' : (succ > 0.9 ? '#f5a524' : '#ff5c72'));
+            detRateValue('detRsRateV', 'detRsRateU', detFecRate(ticks));
+            detValueUnit('detRsAvgV', 'detRsAvgU', avg.toFixed(2), `/ ${cap} 字节`);
+            detBar('detRsAvgBar', avg / cap, '#00f3ff');
+            detValue('detRsFrames', st.frames);
+            detValueUnit('detRsCwV', 'detRsCwU', st.cwOk, `/ ${st.cwFail}`);
+            detValue('detRsFixedV', st.corrected);
+            detValue('detRsRate', info.rate);
+            detStripFill('detRsStrip', ticks);
+            detText('detRsSub', info.sub);
         }
 
-        // 实时卷积：标记命中率 / 实时有效速率 + 原有文字统计（消息、段标记、重对齐、失锁）
-        function detCcHtml(info) {
-            if (!ccRx) return '';
+        // 实时卷积：标记命中率 / 实时有效速率，以及消息、段标记、重对齐、失锁
+        function detCcFill(info) {
             const st = ccRx.stats || { messages: 0, markersOk: 0, markersMissed: 0, resyncs: 0, lost: 0 };
             const mk = st.markersOk + st.markersMissed;
             const hit = mk ? st.markersOk / mk : 1;
             const ticks = fecTick('cc', st.markersOk, st.markersMissed, rxUpBits);
-            return detSec(`纠错 · ${info.title}`, `<div class="det-toprow" style="margin-bottom:6px;">`
-                + (st.lost ? detBadge('bad', `失锁 ${st.lost} 次`) : detBadge('ok', '未失锁'))
-                + `</div>` + detGrid([
-                    detCard('段标记命中率', (100 * hit).toFixed(1), '%', hit,
-                        hit > 0.99 ? '#35d07f' : (hit > 0.9 ? '#f5a524' : '#ff5c72')),
-                    detRateCard('实时有效速率', detFecRate(ticks), '#35d07f'),
-                    detCard('消息数', st.messages),
-                    detCard('段标记 正常/缺失', `${st.markersOk}`, `/ ${st.markersMissed}`),
-                    detCard('重新对齐', st.resyncs, '次', detClamp01(st.resyncs / Math.max(1, st.messages)), st.resyncs ? '#f5a524' : undefined),
-                    detCard('失锁', st.lost, '次', detClamp01(st.lost / Math.max(1, st.messages + st.lost)), st.lost ? '#ff5c72' : undefined),
-                    detCard('码率', info.rate),
-                ]) + detStrip(ticks, '每根柱 ≈ 250ms 内解出的段标记（绿=命中、红=缺失，堆积）；空闲时段不画柱')
-                + `<div class="det-hint">${detEsc(info.sub)}</div>`
-                + `<div class="det-hint">实时有效速率：纠错解码后交给上层解码器的净数据比特率（不含冗余、帧头与 CRC）</div>`);
+            detSuffix('detCcH', info.title);
+            detBadge('detCcBadge', st.lost ? 'bad' : 'ok', st.lost ? `失锁 ${st.lost} 次` : '未失锁');
+            detValue('detCcHitV', (100 * hit).toFixed(1));
+            detBar('detCcHitBar', hit, hit > 0.99 ? '#35d07f' : (hit > 0.9 ? '#f5a524' : '#ff5c72'));
+            detRateValue('detCcRateV', 'detCcRateU', detFecRate(ticks));
+            detValue('detCcMsgV', st.messages);
+            detValueUnit('detCcMarkV', 'detCcMarkU', st.markersOk, `/ ${st.markersMissed}`);
+            detValue('detCcResyncV', st.resyncs);
+            detBar('detCcResyncBar', st.resyncs / Math.max(1, st.messages), st.resyncs ? '#f5a524' : undefined);
+            detValue('detCcLostV', st.lost);
+            detBar('detCcLostBar', st.lost / Math.max(1, st.messages + st.lost), st.lost ? '#ff5c72' : undefined);
+            detValue('detCcRate', info.rate);
+            detStripFill('detCcStrip', ticks);
+            detText('detCcSub', info.sub);
         }
 
-        // 喷泉码 LT：每个文件的解码进度 + 水滴开销倍数
-        function detFountainHtml() {
-            if (!ftnReceiver || !ftnReceiver.files || ftnReceiver.files.size === 0) return '';
-            const files = [...ftnReceiver.files.values()].sort((a, b) => (a.done - b.done) || (b.id - a.id));
-            const cards = files.slice(0, 3).map(f => {
+        // 喷泉码 LT：每个文件的解码进度 + 水滴开销倍数（最多列 3 个），卡片按 #tplFtnCard 克隆
+        function detFountainFill() {
+            const grid = detEl('detFtnGrid');
+            const files = (ftnReceiver && ftnReceiver.files) ? [...ftnReceiver.files.values()] : [];
+            if (!grid || !files.length) { detShow('detFtnSec', false); return false; }
+            detShow('detFtnSec', true);
+            grid.textContent = '';
+            const frag = document.createDocumentFragment();
+            for (const f of files.sort((a, b) => (a.done - b.done) || (b.id - a.id)).slice(0, 3)) {
                 const seen = f.decoder ? (f.decoder.seen ? f.decoder.seen.size : (f.decoder.nKnown || 0)) : 0;
                 const prog = f.k ? detClamp01(seen / f.k) : 0;
                 const ov = f.k ? f.packets / f.k : 0;
                 const nm = (typeof ftnDisplayName === 'function') ? ftnDisplayName(f) : ('#' + f.fid);
                 const state = !f.done ? '接收中' : (f.crcOk === true ? '已完成 · CRC 通过' : (f.crcOk === false ? '已完成 · CRC 失败' : '已完成 · CRC 未知'));
                 const col = !f.done ? '#00f3ff' : (f.crcOk === false ? '#ff5c72' : '#35d07f');
-                return `<div class="det-card" style="grid-column:1/-1">`
-                    + `<div class="det-k">${detEsc(nm)} · ${f.size} B · 分块 k=${f.k}</div>`
-                    + `<div class="det-v" style="font-size:0.82rem;color:${col}">${detEsc(state)}</div>`
-                    + `<div class="det-bar"><i style="width:${(prog * 100).toFixed(1)}%;background:${col}"></i></div>`
-                    + `<div class="det-hint">解出块 ${seen}/${f.k} · 收到水滴 ${f.packets} · 开销 ${ov.toFixed(2)}×（LT 理论下限 1.00×）</div></div>`;
-            });
-            return detSec('喷泉码 LT（文件传输）', detGrid(cards));
+                const card = detTpl('tplFtnCard');
+                card.querySelector('.det-k').textContent = `${nm} · ${f.size} B · 分块 k=${f.k}`;
+                const v = card.querySelector('.det-v');
+                v.textContent = state;
+                v.style.color = col;
+                const fill = card.querySelector('.det-bar > i');
+                fill.style.width = (prog * 100).toFixed(1) + '%';
+                fill.style.background = col;
+                card.querySelector('.det-hint').textContent =
+                    `解出块 ${seen}/${f.k} · 收到水滴 ${f.packets} · 开销 ${ov.toFixed(2)}×（LT 理论下限 1.00×）`;
+                frag.appendChild(card);
+            }
+            grid.appendChild(frag);
+            return true;
         }
 
-        // 纠错区：原文字统计（帧/码字/纠正字节、消息/标记/重对齐/失锁）已并入卡片，卡片另加实时有效速率与批次堆积条带
-        function detFecHtml() {
+        // 纠错区（所有模式通用）：文字统计已并入卡片，卡片另带实时有效速率与批次堆积条带。
+        // 区段在 HTML 里的位置固定（整体锁定状态之后），这里只填数值并切换显隐。
+        function detFecFill() {
             const info = fecProfileInfo();
-            const parts = [];
-            const ftn = detFountainHtml();
-            if (ftn) parts.push(ftn);
-            if (info.kind === 'rs') parts.push(detRsHtml(info));
-            else if (info.kind === 'cc') parts.push(detCcHtml(info));
-            else if (!ftn) parts.push(detSec('纠错 · 关闭', detGrid([detCard('方案', '无冗余直传'), detCard('码率', '1/1')])));
-            return parts.join('');
+            const haveFtn = detFountainFill();
+            const haveRs = info.kind === 'rs' && !!fecRx;
+            const haveCc = info.kind === 'cc' && !!ccRx;
+            if (haveRs) detRsFill(info);
+            else if (haveCc) detCcFill(info);
+            detShow('detRsSec', haveRs);
+            detShow('detCcSec', haveCc);
+            detShow('detFecOffSec', info.kind === 'off' && !haveFtn);
         }
 
         function startDecodeDetails() {
@@ -4311,48 +4566,51 @@
 
         function stopDecodeDetails() {
             if (detTimer) { clearInterval(detTimer); detTimer = null; }
-            const ex = document.getElementById('detExtra');
-            if (ex) { ex.innerHTML = ''; ex.style.display = 'none'; }
-            const ct = document.getElementById('detChanText');
+            // 结构常驻在 HTML 里，收工只隐藏面板
+            const ex = detEl('detExtra');
+            if (ex) ex.style.display = 'none';
+            const ct = detEl('detChanText');
             if (ct) ct.textContent = '';
-            const cw = document.getElementById('detChanWrap');
+            const cw = detEl('detChanWrap');
             if (cw) cw.style.display = 'none';
-            const br = document.getElementById('detBrief');
+            const br = detEl('detBrief');
             if (br) br.textContent = '';
-            const tag = document.getElementById('constTag');
+            const tag = detEl('constTag');
             if (tag) tag.textContent = '—';
         }
 
+        // 只在 OFDM 模式出现、结构固定不变的深度诊断区段
+        const OFDM_DET_SECS = ['detTopRow', 'detSymSec', 'detTrackSec', 'detAcqSec',
+            'detDerivedSec', 'detRateSec', 'detSubcarrierSec', 'detStatsSec'];
+
         function updateDecodeDetails() {
-            const ex = document.getElementById('detExtra');
-            const cw = document.getElementById('detChanWrap');
+            const ex = detEl('detExtra');
             if (!ex) return;
             updateConstTag();
             const d = demodulator;
-            const fecHead = detFecHtml();       // 纠错可视化（所有模式通用）
-            if (selectedMode === MODES.ofdm && d && d.rx) {
-                ex.style.display = '';
-                ex.innerHTML = ofdmDetailHtml(d, fecHead);
-                if (cw) {
-                    cw.style.display = '';
-                    drawChannelResponse(d);
-                }
-            } else {
-                // 非 OFDM：给一组基本参数卡即可（深度诊断只对 OFDM 有意义）
-                ex.style.display = '';
-                const bps = (d && d.bitsPerSymbol) ? d.bitsPerSymbol : 1;
-                const rate = effBaudRate() * bps;
-                const netRate = rate * fecRateOf(fecProfileId());
-                ex.innerHTML = detSec('当前模式', detGrid([
-                    detCard('模式', selectedMode.name),
-                    detCard('波特率', effBaudRate(), 'Bd'),
-                    detCard('载波', effCarrierFreq(), 'Hz'),
-                    detCard('每符号', bps, 'bit'),
-                    detRateCard('信道速率', rate, '#00f3ff'),
-                    detRateCard('有效速率', netRate, '#35d07f'),
-                ]) + `<div class="det-hint">有效速率 = 波特率 ${effBaudRate()} × 每符号 ${bps} bit × FEC 码率 ${fecRateText(fecProfileId())}（奇偶校验位另占信道速率）</div>` + fecHead);
-                if (cw) cw.style.display = 'none';
+            const cw = detEl('detChanWrap');
+            const ofdm = !!(selectedMode === MODES.ofdm && d && d.rx);
+            ex.style.display = '';
+
+            detFecFill();                       // 纠错可视化（所有模式通用）
+            detShow('detBasicSec', !ofdm);      // 非 OFDM：只留一组基本参数卡（深度诊断只对 OFDM 有意义）
+            for (const id of OFDM_DET_SECS) detShow(id, ofdm);
+
+            if (ofdm) {
+                detOfdmFill(d);                 // 内部再按有无数据决定"最近符号 / 跟踪环"是否显示
+                if (cw) { cw.style.display = ''; drawChannelResponse(d); }
+                return;
             }
+            const bps = (d && d.bitsPerSymbol) ? d.bitsPerSymbol : 1;
+            const rate = effBaudRate() * bps;
+            detValue('detBasicMode', selectedMode.name);
+            detValue('detBasicBaud', effBaudRate());
+            detValue('detBasicCarrier', effCarrierFreq());
+            detValue('detBasicBps', bps);
+            detRateValue('detBasicChanV', 'detBasicChanU', rate);
+            detRateValue('detBasicNetV', 'detBasicNetU', rate * fecRateOf(fecProfileId()));
+            detText('detBasicHint', `有效速率 = 波特率 ${effBaudRate()} × 每符号 ${bps} bit × FEC 码率 ${fecRateText(fecProfileId())}（奇偶校验位另占信道速率）`);
+            if (cw) cw.style.display = 'none';
         }
 
         // 星座图卡片右上的小标签：显示当前解调调制阶数与判决点数（新信息，不与别处重复）
@@ -4369,71 +4627,104 @@
             }
         }
 
-        function ofdmDetailHtml(d, fecHead) {
+        // 捕获步骤：只切样式类，说明文字接在 <b> 后面的文本节点上
+        function detStep(id, cls, sub) {
+            const el = detEl(id);
+            if (!el) return;
+            el.className = cls ? 'det-step ' + cls : 'det-step';
+            detSuffix(id, sub);
+        }
+
+        // 训练符号相关值：只重建柱子，阈值虚线是 HTML 里的静态子元素
+        function detCorrFill(values) {
+            const box = detEl('detCorr');
+            if (!box) return;
+            while (box.children.length > 1) box.lastElementChild.remove();
+            const frag = document.createDocumentFragment();
+            for (const v of values) {
+                const bar = detTpl('tplDetCorrBar');
+                bar.className = v >= 0.45 ? 'hit' : '';
+                bar.style.height = (detClamp01(v) * 100).toFixed(1) + '%';
+                bar.title = v.toFixed(3);
+                frag.appendChild(bar);
+            }
+            box.appendChild(frag);
+        }
+
+        // OFDM 深度诊断：锁定状态 / 最近符号 / 跟踪环 / 捕获流程 / 派生参数 / 速率 / 子载波构成 / 统计
+        function detOfdmFill(d) {
             const rx = d.rx, cfg = rx.cfg, st = rx.stats, dg = rx.diag || {};
             const locked = rx.state === 'track';
             const tr = dg.track, ls = d.lastSym;
-            const out = [];
 
             // ---- 顶部：锁定徽标 + 锁定/失锁次数（其余计数统一放"统计"区，不重复）----
-            const badge = locked ? detBadge('ok', '已锁定')
-                : detBadge(/失锁|重扫|未命中/.test(dg.phase || '') ? 'bad' : 'warn', dg.phase || '搜索中');
-            out.push('<div class="det-sec det-toprow">' + badge
-                + `<div class="det-meta-line"><span>锁定 <b>${st.locks}</b> 次</span>`
-                + `<span>失锁 <b>${st.losses}</b> 次</span></div></div>`);
-            if (fecHead) out.push(fecHead);     // 纠错可视化紧跟在整体锁定状态之后
+            detBadge('detLockBadge', locked ? 'ok' : (/失锁|重扫|未命中/.test(dg.phase || '') ? 'bad' : 'warn'),
+                locked ? '已锁定' : (dg.phase || '搜索中'));
+            detValue('detLockCount', st.locks);
+            detValue('detLossCount', st.losses);
 
             // ---- 最近符号 · 链路：合并了原"自适应链路"区，重复的 MCS 字段只保留一份
             //（SNR/增益/频偏/窗移已由上方示波器实时绘制，这里不重复）----
+            detShow('detSymSec', !!ls);
             if (ls) {
                 const tune = d.lastTune;
                 const tuneTxt = !tune ? '未收到'
                     : (tune.changed.length ? tune.changed.join('，') : (tune.applied ? '与当前设置一致' : '自动匹配已关闭'));
-                out.push(detSec('最近符号 · 链路', detGrid([
-                    detCard('判决一致性', (100 * (ls.consistency || 0)).toFixed(1), '%', ls.consistency || 0, '#35d07f'),
-                    detCard(ls.filler ? '符号类型' : '调制 / FEC', ls.filler ? '填充' : ls.modName, ls.filler ? '' : 'id ' + ls.fec),
-                    detCard('有效槽', ls.filler ? '—' : `${ls.cnt}/${cfg.nData * OFDM_MODS[ls.mod].bpc}`,
-                        '', ls.filler ? 0 : detClamp01(ls.cnt / Math.max(1, cfg.nData * OFDM_MODS[ls.mod].bpc)), '#00f3ff'),
-                    detCard('超帧槽', `sf ${ls.sf}`, `/ ${OFDM_SF}`, detClamp01(ls.sf / OFDM_SF), '#bd00ff'),
-                    detCard('采样钟 clock', isFinite(ls.ppm) ? ls.ppm.toFixed(0) : '—', 'ppm'),
-                    detCard('推荐调制', d._hint(ls.snr)),
-                    detCard('自动匹配', tuneTxt),
-                ])));
+                detValue('detSymConsistV', (100 * (ls.consistency || 0)).toFixed(1));
+                detBar('detSymConsistBar', ls.consistency || 0, '#35d07f');
+                detValue('detSymK', ls.filler ? '符号类型' : '调制 / FEC');
+                detValueUnit('detSymV', 'detSymU', ls.filler ? '填充' : ls.modName, ls.filler ? '' : 'id ' + ls.fec);
+                if (ls.filler) {
+                    detValue('detSymSlotV', '—');
+                    detBar('detSymSlotBar', 0, '#00f3ff');
+                } else {
+                    const slot = cfg.nData * OFDM_MODS[ls.mod].bpc;
+                    detValue('detSymSlotV', `${ls.cnt}/${slot}`);
+                    detBar('detSymSlotBar', ls.cnt / Math.max(1, slot), '#00f3ff');
+                }
+                detValue('detSymSfV', `sf ${ls.sf}`);
+                detBar('detSymSfBar', ls.sf / OFDM_SF, '#bd00ff');
+                detValue('detSymClockV', isFinite(ls.ppm) ? ls.ppm.toFixed(0) : '—');
+                detValue('detSymHintV', d._hint(ls.snr));
+                detValue('detSymTuneV', tuneTxt);
             }
 
             // ---- 跟踪环：同样避开示波器已有的量（频率/增益/窗移）----
+            detShow('detTrackSec', !!tr);
             if (tr) {
-                out.push(detSec('跟踪环', detGrid([
-                    detCard('定时', (tr.timing / cfg.symLen).toFixed(3), '符号'),
-                    detCard('相位斜率', tr.bS.toFixed(5), 'rad', detClamp01(Math.abs(tr.bS) / 0.01)),
-                    detCard('累计迟量', tr.Babs.toFixed(3), '载波'),
-                    detCard('连续坏符号', tr.bad, '/ 6', detClamp01(tr.bad / 6), tr.bad ? '#ff5c72' : undefined),
-                ])));
+                detValue('detTrkTimingV', (tr.timing / cfg.symLen).toFixed(3));
+                detValue('detTrkBsV', tr.bS.toFixed(5));
+                detBar('detTrkBsBar', Math.abs(tr.bS) / 0.01);
+                detValue('detTrkBabsV', tr.Babs.toFixed(3));
+                detValue('detTrkBadV', tr.bad);
+                detBar('detTrkBadBar', tr.bad / 6, tr.bad ? '#ff5c72' : undefined);
             }
 
             // ---- 捕获流程：CP 相关 → 训练搜索 → 锁定 ----
             const ph = dg.phase || '搜索中';
             const cpDone = /训练|已锁定/.test(ph);
             const trainDone = ph === '已锁定';
-            const step = (cls, name, sub) => `<div class="det-step ${cls}"><b>${detEsc(name)}</b>${detEsc(sub)}</div>`;
-            const steps = step(cpDone ? 'done' : (ph === 'CP 相关搜索' ? 'act' : ''), '① CP 相关', cpDone ? '命中' : (ph === '等待音频' ? '等待' : '折叠'))
-                + step(trainDone ? 'done' : (/训练/.test(ph) ? 'act' : ''), '② 训练搜索', trainDone ? '通过' : '分支匹配')
-                + step(trainDone ? 'done' : (ph === '失锁，重新捕获' ? 'act' : ''), '③ 锁定', trainDone ? '跟踪中' : '待定');
+            detSuffix('detAcqH', ph);
+            detStep('detStep1', cpDone ? 'done' : (ph === 'CP 相关搜索' ? 'act' : ''), cpDone ? '命中' : (ph === '等待音频' ? '等待' : '折叠'));
+            detStep('detStep2', trainDone ? 'done' : (/训练/.test(ph) ? 'act' : ''), trainDone ? '通过' : '分支匹配');
+            detStep('detStep3', trainDone ? 'done' : (ph === '失锁，重新捕获' ? 'act' : ''), trainDone ? '跟踪中' : '待定');
 
-            const acqCards = [];
-            if (dg.rho !== undefined) acqCards.push(detCard('CP 峰值 ρ', dg.rho.toFixed(3), `均值 ${dg.mean !== undefined ? dg.mean.toFixed(3) : '-'}`, detClamp01(dg.rho / 0.6), '#00f3ff'));
-            if (dg.delta0 !== undefined) acqCards.push(detCard('δ 初估', (dg.delta0 * 1e6).toFixed(1), 'ppm'));
-            if (dg.amb !== undefined) acqCards.push(detCard('频率模糊度', '±' + (dg.amb * 1e6).toFixed(0), 'ppm'));
-            if (dg.C && dg.C.length) {
-                const bars = dg.C.map(v => {
-                    const h = detClamp01(v) * 100;
-                    return `<span class="${v >= 0.45 ? 'hit' : ''}" style="height:${h.toFixed(1)}%" title="${v.toFixed(3)}"></span>`;
-                }).join('');
-                acqCards.push(`<div class="det-card" style="grid-column:1/-1"><div class="det-k">训练符号相关值（阈值 0.45，绿=通过）</div>`
-                    + `<div class="det-corr"><div class="det-thr" style="top:55%"></div>${bars}</div></div>`);
+            // 相关值卡片：没有那个量就整张卡隐藏（对应原来按需 push 卡片）
+            const hasRho = dg.rho !== undefined, hasDelta = dg.delta0 !== undefined, hasAmb = dg.amb !== undefined;
+            const hasCorr = !!(dg.C && dg.C.length);
+            detShow('detRhoCard', hasRho);
+            if (hasRho) {
+                detValueUnit('detRhoV', 'detRhoU', dg.rho.toFixed(3),
+                    `均值 ${dg.mean !== undefined ? dg.mean.toFixed(3) : '-'}`);
+                detBar('detRhoBar', dg.rho / 0.6, '#00f3ff');
             }
-            out.push(detSec(`捕获流程 · ${ph}`, `<div class="det-steps">${steps}</div>`
-                + (acqCards.length ? `<div style="margin-top:7px;">${detGrid(acqCards)}</div>` : '')));
+            detShow('detDeltaCard', hasDelta);
+            if (hasDelta) detValue('detDeltaV', (dg.delta0 * 1e6).toFixed(1));
+            detShow('detAmbCard', hasAmb);
+            if (hasAmb) detValue('detAmbV', '±' + (dg.amb * 1e6).toFixed(0));
+            detShow('detCorrCard', hasCorr);
+            if (hasCorr) detCorrFill(dg.C);
+            detShow('detAcqWrap', hasRho || hasDelta || hasAmb || hasCorr);
 
             // ---- 速率：按当前实际 MCS（最近符号的调制/FEC）算，'空中速率' = 载荷比特率，'有效速率' = 扣掉 FEC 后的信息比特率 ----
             const modNow = (ls && !ls.filler && ls.mod !== undefined) ? ls.mod : ((d.curMod === undefined) ? 1 : d.curMod);
@@ -4443,49 +4734,41 @@
             const airRate = cfg.nData * bpcNow * trainHead * symRate;   // 与 TX 的 payloadRate 同口径
             const fecIdNow = (ls && ls.fec !== undefined) ? ls.fec : fecProfileId();
             const rateFec = fecRateOf(fecIdNow);
-            const netRate = airRate * rateFec;
 
             // 派生参数：只放界面上看不到的量（采样率/载波/带宽在左侧输入框已有，不重复）
-            out.push(detSec('OFDM 派生参数', detGrid([
-                detCard('FFT N', cfg.N),
-                detCard('循环前缀 CP', cfg.cp, '采样'),
-                detCard('符号长度', cfg.symLen, '采样'),
-                detCard('符号率', symRate.toFixed(2), 'sym/s'),
-                detCard('子载波间隔', cfg.df.toFixed(1), 'Hz'),
-                detCard('占用子载波', cfg.nCar),
-            ])));
+            detValue('detDerivedFft', cfg.N);
+            detValue('detDerivedCp', cfg.cp);
+            detValue('detDerivedSymLen', cfg.symLen);
+            detValue('detDerivedSymRate', symRate.toFixed(2));
+            detValue('detDerivedDf', cfg.df.toFixed(1));
+            detValue('detDerivedNcar', cfg.nCar);
 
             // 速率区：数值随最近符号的调制阶数 / FEC 档位实时变化
-            out.push(detSec('速率', detGrid([
-                detCard('每符号载荷', (cfg.nData * bpcNow), 'bit'),
-                detRateCard('空中速率', airRate, '#00f3ff'),
-                detRateCard('有效速率', netRate, '#35d07f'),
-                detCard('训练开销', (100 * (1 - trainHead)).toFixed(1), '%', (1 - trainHead)),
-                detCard('FEC 码率', fecRateText(fecIdNow)),
-                detRateCard('每子载波净速率', bpcNow * trainHead * symRate * rateFec, '#bd00ff'),
-            ]) + `<div class="det-hint">有效速率 = 数据子载波 ${cfg.nData} × 每载波 ${bpcNow} bit × 符号率 ${symRate.toFixed(2)} × 15/16（超帧训练开销） × FEC 码率 ${fecRateText(fecIdNow)}</div>`));
+            detValue('detRatePayload', cfg.nData * bpcNow);
+            detRateValue('detRateAirV', 'detRateAirU', airRate);
+            detRateValue('detRateNetV', 'detRateNetU', airRate * rateFec);
+            detValue('detRateTrainV', (100 * (1 - trainHead)).toFixed(1));
+            detBar('detRateTrainBar', 1 - trainHead);
+            detValue('detRateFecV', fecRateText(fecIdNow));
+            detRateValue('detRatePerCarV', 'detRatePerCarU', bpcNow * trainHead * symRate * rateFec);
+            detText('detRateHint', `有效速率 = 数据子载波 ${cfg.nData} × 每载波 ${bpcNow} bit × 符号率 ${symRate.toFixed(2)} × 15/16（超帧训练开销） × FEC 码率 ${fecRateText(fecIdNow)}`);
 
             // ---- 子载波构成（堆叠条 + 图例）----
             const nP = cfg.pilotIdx.length, nD = cfg.nData, nM = OFDM_META;
             const tot = Math.max(1, nD + nP + nM);
-            out.push(detSec('子载波构成', `<div class="det-stack">`
-                + `<i style="width:${(nD / tot * 100).toFixed(2)}%;background:#39a0ff"></i>`
-                + `<i style="width:${(nP / tot * 100).toFixed(2)}%;background:#f5a524"></i>`
-                + `<i style="width:${(nM / tot * 100).toFixed(2)}%;background:#bd00ff"></i>`
-                + `</div><div class="det-legend">`
-                + `<span><i style="background:#39a0ff"></i>数据 ${nD}</span>`
-                + `<span><i style="background:#f5a524"></i>导频 ${nP}</span>`
-                + `<span><i style="background:#bd00ff"></i>meta ${nM}</span>`
-                + `<span>共 ${cfg.nCar} 个子载波</span></div>`));
+            detStackBar('detStackData', nD / tot);
+            detStackBar('detStackPilot', nP / tot);
+            detStackBar('detStackMeta', nM / tot);
+            detValue('detLegendData', nD);
+            detValue('detLegendPilot', nP);
+            detValue('detLegendMeta', nM);
+            detValue('detLegendTotal', cfg.nCar);
 
             // ---- 统计 ----
-            out.push(detSec('统计', detGrid([
-                detCard('符号总数', st.symbols),
-                detCard('训练符号', st.trainings),
-                detCard('meta 失败', st.metaBad, '', detClamp01(st.metaBad / Math.max(1, st.symbols)), st.metaBad ? '#ff5c72' : undefined),
-            ])));
-
-            return out.join('');
+            detValue('detStatsSymbols', st.symbols);
+            detValue('detStatsTrainings', st.trainings);
+            detValue('detStatsMetaBad', st.metaBad);
+            detBar('detStatsMetaBadBar', st.metaBad / Math.max(1, st.symbols), st.metaBad ? '#ff5c72' : undefined);
         }
 
         // 信道频率响应小图：|H(k)| 相对均值取 dB，逐符号由导频+meta 联合更新
