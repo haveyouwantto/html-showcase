@@ -4968,6 +4968,16 @@
                 setTimeout(() => this._fill(), 0);
             }
 
+            // Switch modulation on air.  Takes effect with the next symbol that is generated (symbols already queued in the
+            // audio worklet, ~1–2 symbols, still use the old scheme).  Every symbol announces its own scheme in its header,
+            // so the receiver follows without any resync.  The FIFO is bit-oriented, so no data is lost or reordered.
+            setModulation(m) {
+                m = Math.max(0, Math.min(OFDM_MODS.length - 1, m | 0));
+                this.modIdx = m;
+                if (this.tx) this.tx.setMod(m);
+                this.emit('modchange', { mod: m, name: OFDM_MODS[m].name });
+            }
+
             get bitsPerSymbol() { return OFDM_MODS[this.modIdx || 0].bpc; }
             get channelBitRate() { return this.tx ? this.tx.payloadRate : 1; }
             get queuedSamples() { return Math.max(0, this.posted - this.played); }
@@ -7191,7 +7201,11 @@
                 navigator.clipboard.writeText(text);
             })
 
-            document.getElementById('ofdmMod').addEventListener('change', saveSettings);
+            document.getElementById('ofdmMod').addEventListener('change', () => {
+                saveSettings();
+                // live switch while transmitting: next generated OFDM symbol uses the new scheme
+                if (txPipeline && txPipeline.mod instanceof OFDMModulator) txPipeline.mod.setModulation(parseInt(document.getElementById('ofdmMod').value) || 0);
+            });
             document.getElementById('ofdmAuto').addEventListener('change', saveSettings);
 
             document.getElementById('fec').addEventListener('change', () => {
