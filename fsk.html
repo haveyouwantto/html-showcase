@@ -797,11 +797,13 @@
                 <option value="psk8">8PSK</option>
                 <option value="ofdm" selected>OFDM</option>
             </select>
+            <label>UWB：</label>
+            <input type="checkbox" id="uwbCheck" style="justify-self: start;">
             <label>选择频道：</label>
             <input type="number" id="channel" value="11" min="-16" max="180">
             <span id="freq"></span>
             <label>范围：1~21，120~180</label>
-            <label>符号速率：</label>
+            <label id="baudrateLabel">符号速率：</label>
             <select id="baudrateInput">
                 <option value="2">2</option>
                 <option value="4">4</option>
@@ -821,6 +823,16 @@
                 <option value="2400">2400</option>
             </select>
             <!-- <input type="number" id="baudrateInput" value="50" min="30" max="4800"> -->
+            <label id="ofdmBwLabel" style="display:none">带宽：</label>
+            <select id="ofdmBwInput" style="display:none">
+                <option value="600">600 Hz</option>
+                <option value="900">900 Hz</option>
+                <option value="1200">1200 Hz</option>
+                <option value="1800" selected>1800 Hz</option>
+                <option value="2400">2400 Hz</option>
+                <option value="3000">3000 Hz</option>
+                <option value="4000">4000 Hz</option>
+            </select>
             <label>纠错：</label>
             <select id="fec">
                 <option value="0">关</option>
@@ -915,15 +927,18 @@
         let baudRate = 1200; // 波特率
         const sampleRate = 48000; // 采样率
         let carrierFreq = 1800; // 载波频率
+        let ofdmBandwidth = 1800; // OFDM 占用带宽（Hz），OFDM 模式下直接用它，不再从波特率换算
 
         function saveSettings() {
             const settings = {
                 mode: document.getElementById('mode').value,
                 baudRate: document.getElementById('baudrateInput').value,
+                ofdmBw: document.getElementById('ofdmBwInput').value,
                 channel: document.getElementById('channel').value,
                 fec: document.getElementById('fec').value,
                 ofdmMod: document.getElementById('ofdmMod').value,
-                ofdmAuto: document.getElementById('ofdmAuto').checked
+                ofdmAuto: document.getElementById('ofdmAuto').checked,
+                uwb: document.getElementById('uwbCheck').checked
             };
             localStorage.setItem('fsk_settings', JSON.stringify(settings));
         }
@@ -941,6 +956,10 @@
                         document.getElementById('baudrateInput').value = settings.baudRate;
                         setBaudRate(parseInt(settings.baudRate));
                     }
+                    if (settings.ofdmBw) {
+                        document.getElementById('ofdmBwInput').value = settings.ofdmBw;
+                        ofdmBandwidth = parseInt(settings.ofdmBw) || 1800;
+                    }
                     if (settings.fec !== undefined) {
                         document.getElementById('fec').value = settings.fec;
                     }
@@ -949,6 +968,9 @@
                     }
                     if (settings.ofdmAuto !== undefined) {
                         document.getElementById('ofdmAuto').checked = !!settings.ofdmAuto;
+                    }
+                    if (settings.uwb !== undefined) {
+                        document.getElementById('uwbCheck').checked = !!settings.uwb;
                     }
                     if (settings.channel) {
                         document.getElementById('channel').value = settings.channel;
@@ -2933,8 +2955,19 @@
             return { mod, fec: rd(3, 4), sf: rd(7, 4), cnt: rd(11, 13) };
         }
 
-        function ofdmConfig(fs, fc, bw) {
-            const N = 1 << Math.round(Math.log2(0.3413 * fs));
+        // UWB 勾选（任何模式可用）：参数固定——载波 8 kHz；
+        // OFDM 家族带宽固定 9 kHz，符号速率模式固定 6000 波特（6000×1.5=9000，两者等价）。
+        // 勾选后界面上的速率/带宽/频道输入全部禁用，收发都走这里的固定值。
+        const OFDM_UWB_FC = 8000, OFDM_UWB_BAUD = 6000, OFDM_UWB_BW = 9000;
+        let uwbChecked = false;
+        function effCarrierFreq() { return uwbChecked ? OFDM_UWB_FC : carrierFreq; }
+        function effBaudRate() { return uwbChecked ? OFDM_UWB_BAUD : baudRate; }
+        function ofdmActiveConfig(fc) {
+            return uwbChecked ? ofdmConfig(sampleRate, OFDM_UWB_FC, OFDM_UWB_BW)
+                : ofdmConfig(sampleRate, fc, ofdmBandwidth);
+        }
+
+        function ofdmConfig(fs, fc, bw) {            const N = 1 << Math.round(Math.log2(0.3413 * fs));
             const cp = N >> 2, symLen = N + cp, df = fs / N;
             bw = Math.max(bw, 600);
             let lo = Math.max(fc - bw / 2, 200), hi = Math.min(fc + bw / 2, fs / 2 - 400);
@@ -3114,8 +3147,16 @@
 
             // after the last symbol: the pending WOLA tail (2W samples) so the final symbol ramps out cleanly
             flushTail() {
-                const out = new Float32Array(2 * this.W);
-                for (let j = 0; j < out.length; j++) out[j] = OfdmStreamTx.limit(this.carry[j] * this.scale);
+                // 短流补齐：接收端捕获需要 ACQ_L（131072 采样 ≈ 2.7 秒）的音频才能锁定，
+                // 短消息的流可能比这短。流尾补填充符号（cnt=0，不携带数据）凑够
+                // 捕获窗 + 1 个符号，保证任何长度的发送都能被对端捕获，之后自然收尾。
+                const need = Math.ceil((1 << 17) / this.cfg.symLen) + 1;
+                const tail = [];
+                while (this.stats.symbols < need) tail.push(this.nextChunk());
+                const out = new Float32Array(tail.length * this.cfg.symLen + 2 * this.W);
+                let o = 0;
+                for (const s of tail) { out.set(s, o); o += s.length; }
+                for (let j = 0; j < 2 * this.W; j++) out[o++] = OfdmStreamTx.limit(this.carry[j] * this.scale);
                 this.carry.fill(0);
                 return out;
             }
@@ -3559,6 +3600,9 @@
                 fr.bad = 0;
                 const mw = ofdmMetaWord(meta.mod, meta.fec, meta.sf, meta.cnt);
                 this._updateFromRefs(eq, sf, mw, 0.5);          // refines eq.g and the channel – pilots + meta only
+                // 元数据子载波的均衡结果（BPSK ±1，取 g 精调后的值），供星座图单独着色显示
+                const metaPts = [];
+                for (let j = 0; j < OFDM_META; j++) { const k = cfg.metaIdx[j]; metaPts.push([eq.Xr[k], eq.Xi[k]]); }
                 const snr = this._pilotSnr(eq.Xr, eq.Xi, eq.Wt, sf);
                 eq.snr = snr;
                 const mod = meta.mod, bpc = OFDM_MODS[mod].bpc, cap = nD * bpc;
@@ -3583,7 +3627,7 @@
                 let hm = 0; for (let k = 0; k < cfg.nCar; k++) hm += Math.hypot(fr.H.Hr[k], fr.H.Hi[k]);
                 this.stats.symbols++;
                 if (this.cb.onSymbol) this.cb.onSymbol({
-                    points: pts, snr, ppm: fr.delta * 1e6, shift: fr.lastShift, timing: fr.tau - fr.t0,
+                    points: pts, meta: metaPts, snr, ppm: fr.delta * 1e6, shift: fr.lastShift, timing: fr.tau - fr.t0,
                     gain: hm / cfg.nCar * eq.g, g: eq.g, sf, mod, fec: meta.fec, cnt: meta.cnt, filler: meta.cnt === 0,
                     consistency: good / nD
                 });
@@ -3638,6 +3682,31 @@
                 const el = document.getElementById(id);
                 if (el) el.style.display = show ? '' : 'none';
             }
+            // OFDM 用“带宽”选择（直接决定占用带宽），其他模式用“符号速率”
+            for (const id of ['baudrateLabel', 'baudrateInput']) {
+                const el = document.getElementById(id);
+                if (el) el.style.display = show ? 'none' : '';
+            }
+            for (const id of ['ofdmBwLabel', 'ofdmBwInput']) {
+                const el = document.getElementById(id);
+                if (el) el.style.display = show ? '' : 'none';
+            }
+            applyUwbUi();
+        }
+
+        // UWB 勾选后：速率/带宽/频道全部禁用（参数固定），频率显示固定值
+        function applyUwbUi() {
+            const uwb = !!document.getElementById('uwbCheck')?.checked;
+            uwbChecked = uwb;
+            for (const id of ['baudrateInput', 'ofdmBwInput', 'channel']) {
+                const el = document.getElementById(id);
+                if (el) el.disabled = uwb;
+            }
+            const freqEl = document.getElementById('freq');
+            if (freqEl) {
+                freqEl.textContent = uwb ? '8000 Hz（UWB 固定）'
+                    : ((freqOfChannel(parseInt(document.getElementById('channel').value)) ?? carrierFreq) + ' Hz');
+            }
         }
 
         let fecRx = null; // 当前接收端的分组RS解帧器
@@ -3646,7 +3715,7 @@
         // 分组RS自带CRC，不再需要逐符号奇偶校验；卷积码没有CRC，保留奇偶校验作为残余错误检测
         function fecNeedsParity() {
             const p = fecProfileId();
-            return baudRate >= 200 && !(p >= 1 && p <= 4);
+            return effBaudRate() >= 200 && !(p >= 1 && p <= 4);
         }
 
         function showCcStats(st) {
@@ -4683,8 +4752,8 @@
 
             setOnStop(onStop) { this.onStop = onStop; }
             setOnNeed(onNeed) { this.onNeed = onNeed; this.on('need', onNeed); }
-            setBaudRate() { this.baudRate = baudRate; }
-            setCarrierFreq() { this.carrierFreq = carrierFreq; }
+            setBaudRate(bd) { this.baudRate = bd === undefined ? effBaudRate() : bd; }
+            setCarrierFreq(f) { this.carrierFreq = f === undefined ? effCarrierFreq() : f; }
             getBitrate() { return this.baudRate; }
 
             begin(audioCtx) { }              // 建立音频节点，开始输出
@@ -4951,7 +5020,7 @@
         class OFDMModulator extends Modulator {
             begin(audioCtx) {
                 this.audioCtx = audioCtx;
-                this.cfg = ofdmConfig(sampleRate, this.carrierFreq, this.baudRate * 1.5);
+                this.cfg = ofdmActiveConfig(this.carrierFreq);
                 this.modIdx = parseInt(document.getElementById('ofdmMod').value) || 0;
                 this.fec = fecProfileId();
                 this.tx = new OfdmStreamTx(this.cfg, { mod: this.modIdx, fec: this.fec });
@@ -6495,8 +6564,12 @@
         class OFDMDemodulator extends Demodulator {
             _build() {
                 if (!this.source) return;
-                const cfg = ofdmConfig(sampleRate, this.carrierFreq, this.baudRate * 1.5);
+                const cfg = ofdmActiveConfig(this.carrierFreq);
                 this.frames = 0; this.snr = 0;
+                // 星座图保留点数按真实符号率算（约 125ms 的数据子载波点），不再受界面波特率选项影响；
+                // 元数据子载波每符号固定 OFDM_META 个，保留约 0.5 秒
+                constellation.maxLen = Math.max(64, Math.round(0.125 * cfg.nData * sampleRate / cfg.symLen));
+                constellationMeta.maxLen = Math.max(64, Math.round(0.5 * OFDM_META * sampleRate / cfg.symLen));
                 this.curMod = parseInt(document.getElementById('ofdmMod').value) || 1;
                 this.locked = false;
                 this.rx = new OfdmStreamRx(cfg, {
@@ -6512,6 +6585,8 @@
                         this.frames++;
                         if (!this.onSample) return;
                         for (const p of s.points) { this.last = p; this.onSample({ sample: p, bits: [] }); }
+                        // 元数据子载波（BPSK ±1）：标 meta，星座图上单独颜色绘制
+                        if (s.meta) for (const p of s.meta) this.onSample({ sample: p, bits: [], meta: true });
                         gainWaves.addData(20 * Math.log10(Math.max(s.gain, 1e-3)));
                         offsetWaves.addData(s.shift || 0);
                         freqWaves.addData(s.ppm * 1e-6 * cfg.fc);
@@ -6585,6 +6660,21 @@
                 for (let a = 0; a < L; a++) for (let b = 0; b < L; b++) pts.push({ i: (2 * a - (L - 1)) * sc, q: (2 * b - (L - 1)) * sc, label: '' });
                 return pts;
             }
+
+            // 判决区域边界（星座图上画出来）：方格 QAM 是两组等距网格线（相邻电平的中点），
+            // BPSK 只有虚轴一条分界线。返回值是归一化坐标（与星座点同一尺度）。
+            get decideLines() {
+                const mod = this.curMod === undefined ? 1 : this.curMod;
+                const bpc = OFDM_MODS[mod].bpc;
+                if (bpc === 1) return { vertical: [0], horizontal: [] };
+                const m = bpc >> 1, L = 1 << m, sc = ofdmAxisScale(m);
+                const v = [], h = [];
+                for (let a = 0; a < L - 1; a++) {
+                    const p = (2 * a + 1 - (L - 1)) * sc;
+                    v.push(p); h.push(p);
+                }
+                return { vertical: v, horizontal: h };
+            }
         }
 
         const MODES = {
@@ -6622,6 +6712,7 @@
         let selectedMode = MODES['bpsk'];
 
         const constellation = new ConstellationRecorder(baudRate / 8);
+        const constellationMeta = new ConstellationRecorder(256);   // OFDM 元数据子载波（单独颜色绘制）
 
 
         function startRxImage() {
@@ -6902,8 +6993,8 @@
 
             const source = audioCtx.createMediaStreamSource(stream)
             demodulator = new selectedMode.demodulate();
-            demodulator.setBaudRate(baudRate);
-            demodulator.setCarrierFreq(carrierFreq);
+            demodulator.setBaudRate(effBaudRate());
+            demodulator.setCarrierFreq(effCarrierFreq());
             // 喷泉码解帧器：纠错后的比特进这里找水滴包；Receiver 全局保留，断开重连不清进度
             const ftnDeframer = new FountainDeframer(p => ensureFtnReceiver().onPacket(p));
             startFtnStatusPoll(() => ftnDeframer.active);
@@ -6937,7 +7028,8 @@
             showFecStats(null);
             demodulator.setOnSample(data => {
                 // console.log(data)
-                constellation.addSample(data.sample[0], data.sample[1]);
+                if (data.meta) constellationMeta.addSample(data.sample[0], data.sample[1]);
+                else constellation.addSample(data.sample[0], data.sample[1]);
                 if (fecProfileId()) {
                     // 两种纠错方案的同步字不同，同时监听，谁锁定谁输出
                     for (let bit of data.bits) { fecRx.feed(bit); ccRx.feed(bit); }
@@ -6991,6 +7083,26 @@
                 const centerY = height / 2;
                 const plotSize = Math.min(width, height) * 0.3; // 使用画布短边的40%作为绘图区域
 
+                // OFDM：画出每个判决区域的边界（虚线网格），铺满整个画布；切换调制阶数时边界跟着变
+                if (selectedMode === MODES.ofdm && demodulator && demodulator.decideLines) {
+                    const { vertical, horizontal } = demodulator.decideLines;
+                    ctx.strokeStyle = 'rgba(150,150,150,0.45)';
+                    ctx.setLineDash([4, 3]);
+                    ctx.beginPath();
+                    for (const xv of vertical) {
+                        const x = centerX + xv * plotSize;
+                        ctx.moveTo(x, 0);
+                        ctx.lineTo(x, height);
+                    }
+                    for (const yh of horizontal) {
+                        const y = centerY - yh * plotSize;
+                        ctx.moveTo(0, y);
+                        ctx.lineTo(width, y);
+                    }
+                    ctx.stroke();
+                    ctx.setLineDash([]);
+                }
+
                 // 绘制判定点
                 ctx.fillStyle = 'gray';
                 for (let point of demodulator.decidePoints) {
@@ -7018,8 +7130,26 @@
                     const y = clamp(centerY - sample[1] * plotSize, 0, height);
 
                     ctx.beginPath();
-                    ctx.arc(x, y, 3, 0, Math.PI * 2); // 使用准确的角度值
+                    ctx.arc(x, y, 2, 0, Math.PI * 2); // 使用准确的角度值
                     ctx.fill();
+                }
+
+                // OFDM 元数据子载波（BPSK ±1）：橙色绘制，理想位置画淡色参考圈
+                if (selectedMode === MODES.ofdm) {
+                    ctx.fillStyle = 'rgba(80,80,80,0.35)';
+                    for (const p of [{ i: 1, q: 0 }, { i: -1, q: 0 }]) {
+                        ctx.beginPath();
+                        ctx.arc(centerX + p.i * plotSize, centerY - p.q * plotSize, 6, 0, Math.PI * 2);
+                        ctx.fill();
+                    }
+                    ctx.fillStyle = 'rgba(255,170,40,0.95)';
+                    for (const sample of constellationMeta.getSamples()) {
+                        const x = clamp(centerX + sample[0] * plotSize, 0, width);
+                        const y = clamp(centerY - sample[1] * plotSize, 0, height);
+                        ctx.beginPath();
+                        ctx.arc(x, y, 2, 0, Math.PI * 2);
+                        ctx.fill();
+                    }
                 }
 
                 gainWaves.draw()
@@ -7041,6 +7171,7 @@
             stopFtnStatusPoll();
             rxBtn.textContent = '开始';
             constellation.clear();
+            constellationMeta.clear();
         }
 
         let txRawMode = false;
@@ -7062,8 +7193,8 @@
             function startTransmit(source) {
                 audioCtx.resume();
                 modulator = new selectedMode.modulate();
-                modulator.setBaudRate(baudRate);
-                modulator.setCarrierFreq(carrierFreq);
+                modulator.setBaudRate(effBaudRate());
+                modulator.setCarrierFreq(effCarrierFreq());
                 const pipeline = new TxPipeline(source, makeTxStages(), modulator);
                 txPipeline = pipeline;
 
@@ -7226,6 +7357,16 @@
                 }
             })
 
+            // UWB 勾选：参数固定（载波 8k；波特 6000 / OFDM 带宽 9000），输入框禁用，接收立即重启生效
+            document.getElementById('uwbCheck').addEventListener('change', () => {
+                applyUwbUi();
+                saveSettings();
+                if (rxStart) {
+                    stopRx();
+                    startRx();
+                }
+            });
+
 
             const baudrateInput = document.getElementById('baudrateInput');
 
@@ -7237,6 +7378,14 @@
                     demodulator.setBaudRate(bd)
                 }
                 saveSettings();
+            });
+
+            // OFDM 带宽选择：收端立即重建（热切换），发端在下一次发送时生效
+            const ofdmBwInput = document.getElementById('ofdmBwInput');
+            ofdmBwInput.addEventListener('change', () => {
+                ofdmBandwidth = parseInt(ofdmBwInput.value) || 1800;
+                saveSettings();
+                if (selectedMode === MODES.ofdm && demodulator) demodulator._build();
             });
 
             // image transmit
@@ -7299,6 +7448,16 @@
         acquireWakelock();
 
         const channelInput = document.getElementById('channel')
+
+        // 频道号 → 载波频率（channel 处理器和模式切换时刷新频率显示共用）
+        function freqOfChannel(channel) {
+            if (channel >= 1 && channel <= 21) return 500 + 100 * (channel - 1);
+            if (channel >= 120 && channel <= 180) return 16000 + 100 * (channel - 120);
+            if (channel < 0) return 100 + 5 * channel;
+            if (channel == 64) return 8000;
+            return null;
+        }
+
         channelInput.addEventListener('change', () => {
             let channel = parseInt(channelInput.value)
 
@@ -7314,15 +7473,8 @@
                 channelInput.value = 120
             }
 
-            if (channel >= 1 && channel <= 21) {
-                carrierFreq = 500 + 100 * (channel - 1)
-            } else if (channel >= 120 && channel <= 180) {
-                carrierFreq = 16000 + 100 * (channel - 120)
-            } else if (channel < 0) {
-                carrierFreq = 100 + 5 * channel
-            } else if (channel == 64) {
-                carrierFreq = 8000
-            }
+            const f = freqOfChannel(channel);
+            if (f !== null) carrierFreq = f;
 
             document.getElementById('freq').textContent = carrierFreq + ' Hz'
 
@@ -7343,7 +7495,7 @@
             //     txUpdate()
             // }
             if (demodulator) {
-                demodulator.setCarrierFreq(carrierFreq)
+                demodulator.setCarrierFreq(effCarrierFreq())
             }
             saveSettings();
         })
