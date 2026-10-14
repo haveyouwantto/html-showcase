@@ -1267,9 +1267,7 @@
                             <div class="det-card"><div class="det-k">码率</div><div class="det-v" id="detRsRate"></div></div>
                         </div>
                         <div class="det-strip" id="detRsStrip"><span class="empty">等待解码…</span></div>
-                        <div class="det-hint">每根柱 ≈ 250ms 内解出的码字（绿=成功、红=失败，堆积）；空闲时段不画柱</div>
                         <div class="det-hint" id="detRsSub"></div>
-                        <div class="det-hint">实时有效速率：纠错解码后交给上层解码器的净数据比特率（不含冗余、帧头与 CRC）</div>
                     </div>
 
                     <!-- 纠错 · 实时卷积 -->
@@ -1286,9 +1284,7 @@
                             <div class="det-card"><div class="det-k">码率</div><div class="det-v" id="detCcRate"></div></div>
                         </div>
                         <div class="det-strip" id="detCcStrip"><span class="empty">等待解码…</span></div>
-                        <div class="det-hint">每根柱 ≈ 250ms 内解出的段标记（绿=命中、红=缺失，堆积）；空闲时段不画柱</div>
                         <div class="det-hint" id="detCcSub"></div>
-                        <div class="det-hint">实时有效速率：纠错解码后交给上层解码器的净数据比特率（不含冗余、帧头与 CRC）</div>
                     </div>
 
                     <!-- 纠错 · 关闭 -->
@@ -1339,7 +1335,7 @@
                                 <div class="det-card" id="detDeltaCard" style="display: none;"><div class="det-k">δ 初估</div><div class="det-v" id="detDeltaV"><small>ppm</small></div></div>
                                 <div class="det-card" id="detAmbCard" style="display: none;"><div class="det-k">频率模糊度</div><div class="det-v" id="detAmbV"><small>ppm</small></div></div>
                                 <div class="det-card" id="detCorrCard" style="display: none; grid-column: 1/-1;">
-                                    <div class="det-k">训练符号相关值（阈值 0.45，绿=通过）</div>
+                                    <div class="det-k">训练符号相关值</div>
                                     <div class="det-corr" id="detCorr"><div class="det-thr" style="top: 55%;"></div></div>
                                 </div>
                             </div>
@@ -5350,77 +5346,31 @@
             }
         }
 
+        
         class ConstellationRecorder {
             constructor(maxLen) {
-                // 外部常直接赋 baudRate/8 这类小数（且可能中途再赋值），必须取整，
-                // 否则缩窗步进/环形索引会出现小数，打碎 k % cap 映射
-                this.maxLen = (maxLen === undefined) ? 48000 : Math.max(1, Math.ceil(maxLen));
-                this.cap = (this.maxLen === Infinity) ? 4096 : Math.ceil(this.maxLen);
-                this.buf = new Float32Array(this.cap * 2);
-                this.n = 0;          // 当前缓存点数
-                this.dropped = 0;    // 环形覆盖掉的总点数（逻辑序号起点）
-                this.drawn = 0;      // 已画进离屏图层的逻辑点数（增量绘制游标）
-                this.layer = null;   // 离屏点图层（无上限模式用，draw 循环里创建）
-                this.lctx = null;
+                this.maxLen = Math.max(1, maxLen);
+                this.samples = [];
             }
-
-            get total() { return this.dropped + this.n; }
 
             addSample(i, q) {
-                if (this.n >= this.maxLen) {
-                    // 追加到逻辑尾部（新点逻辑序号 = dropped + n）：
-                    //   n == cap 时该位置恰好是最旧点 → 环形覆盖；
-                    //   n <  cap 时（maxLen 中途调大过）是空位 → 普通追加。
-                    // 写死 dropped % cap 只在满环时成立，maxLen 变化后会写错槽位
-                    const pos = ((this.dropped + this.n) % this.cap) * 2;
-                    this.buf[pos] = i; this.buf[pos + 1] = q;
-                    this.dropped++;
-                    if (this.n > this.maxLen) {          // maxLen 被调小：窗口从左侧收缩
-                        const extra = this.n - this.maxLen;
-                        this.dropped += extra; this.n -= extra;
-                    }
-                    if (this.drawn < this.dropped) this.drawn = this.dropped;   // 被覆盖的点不用再画
-                    return;
-                }
-                if (this.n >= this.cap) this._grow();
-                const pos = this.n * 2;
-                this.buf[pos] = i; this.buf[pos + 1] = q;
-                this.n++;
+                this.samples.push([i, q])
+                while (this.samples.length > this.maxLen) this.samples.shift()
             }
 
-            _grow() {
-                const nc = this.cap * 2;
-                const nb = new Float32Array(nc * 2);
-                // cap 变了，逻辑→物理映射（k % cap）跟着变：把已存的点按新 cap 重排
-                for (let k = this.dropped; k < this.dropped + this.n; k++) {
-                    const src = (k % this.cap) * 2, dst = (k % nc) * 2;
-                    nb[dst] = this.buf[src]; nb[dst + 1] = this.buf[src + 1];
-                }
-                this.buf = nb;
-                this.cap = nc;
-            }
-
-            // 顺序遍历缓存里的所有点（旧→新）：fn(i, q)
-            each(fn) {
-                for (let k = this.dropped; k < this.dropped + this.n; k++) {
-                    const pos = (k % this.cap) * 2;
-                    fn(this.buf[pos], this.buf[pos + 1]);
-                }
-            }
-
-            // 从逻辑序号 from 开始遍历新点（增量绘制）：fn(i, q)
-            newSince(from, fn) {
-                for (let k = Math.max(from, this.dropped); k < this.dropped + this.n; k++) {
-                    const pos = (k % this.cap) * 2;
-                    fn(this.buf[pos], this.buf[pos + 1]);
-                }
+            getSamples() {
+                return this.samples
             }
 
             clear() {
-                this.n = 0; this.dropped = 0; this.drawn = 0;
-                if (this.lctx) this.lctx.clearRect(0, 0, this.layer.width, this.layer.height);
+                this.samples = []
+            }
+
+            each(callback) {
+                for (const [i, q] of this.samples) callback(i, q)
             }
         }
+
 
         // ===== FOUNTAIN BEGIN =====
         // 喷泉码文件传输（LT 码）。发送端把文件切成 k 个块，之后可以无限地生成“水滴”（若干块的异或）；
