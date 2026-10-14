@@ -7200,16 +7200,6 @@
                 ctx.arc(width / 2, height / 2, plotSize, 0, Math.PI * 2);
                 ctx.stroke();
 
-                // 星座点：每帧直接全量重绘
-                ctx.fillStyle = 'white';
-                constellation.each((i, q) => {
-                    const x = clamp(centerX + i * plotSize, 0, width);
-                    const y = clamp(centerY - q * plotSize, 0, height);
-                    ctx.beginPath();
-                    ctx.arc(x, y, 2, 0, Math.PI * 2);
-                    ctx.fill();
-                });
-
                 // OFDM 元数据子载波（BPSK ±1）：橙色绘制，理想位置画淡色参考圈
                 if (selectedMode === MODES.ofdm) {
                     ctx.fillStyle = 'rgba(80,80,80,0.35)';
@@ -7227,6 +7217,16 @@
                         ctx.fill();
                     });
                 }
+
+                // 星座点：每帧直接全量重绘
+                ctx.fillStyle = 'white';
+                constellation.each((i, q) => {
+                    const x = clamp(centerX + i * plotSize, 0, width);
+                    const y = clamp(centerY - q * plotSize, 0, height);
+                    ctx.beginPath();
+                    ctx.arc(x, y, 2, 0, Math.PI * 2);
+                    ctx.fill();
+                });
 
                 gainWaves.draw()
                 offsetWaves.draw()
