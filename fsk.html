@@ -146,11 +146,7 @@
         }
 
         #constellation {
-            background: var(--dark-bg);
-            border: var(--border-width) solid #2d3746;
-            border-radius: var(--border-radius);
-            margin-top: 1rem;
-            max-width: 500px;
+            background: #0a1428;
         }
 
         .container {
@@ -322,27 +318,97 @@
             background: rgba(0, 243, 255, 0.1);
         }
 
-        .oscilloscope {
-            background-color: #0a1428;
-            max-width: 300px;
+        /* ===== 解码详情·图表区（卡片网格） ===== */
+        .chart-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 12px;
+            align-self: stretch;
+            align-items: stretch;
+            margin-top: 12px;
         }
 
-        .decode-info-container {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 32px;
-            align-items: center;
-        }
-
-        .oscilloscope-container {
-            flex-grow: 1;
-        }
-
-        .info-container {
+        .chart-card {
             display: flex;
             flex-direction: column;
+            gap: 6px;
+            min-width: 0;
+            padding: 8px 10px 10px;
+            background: rgba(120, 160, 220, 0.10);
+            border: 1px solid rgba(148, 163, 184, 0.22);
+            border-radius: var(--border-radius);
+        }
+
+        .chart-head {
+            display: flex;
+            align-items: baseline;
+            gap: 6px;
+            font-size: 0.74rem;
+            color: var(--text-secondary);
+            white-space: nowrap;
+        }
+
+        .chart-head .chart-name {
+            color: var(--text-primary);
+            font-weight: 600;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .chart-tag {
+            margin-left: auto;
+            flex: 0 0 auto;
+            font-size: 0.66rem;
+            padding: 1px 7px;
+            border-radius: 999px;
+            border: 1px solid rgba(0, 243, 255, 0.35);
+            background: rgba(0, 243, 255, 0.10);
+            color: var(--neon-cyan);
+            font-variant-numeric: tabular-nums;
+        }
+
+        .chart-val {
+            font-size: 0.82rem;
+            font-weight: 600;
+            color: var(--neon-cyan);
+            text-align: center;
+            font-variant-numeric: tabular-nums;
+        }
+
+        .chart-body {
+            display: flex;
+            flex: 1 1 auto;
+            justify-content: center;
             align-items: center;
-            flex-grow: 1;
+            min-height: 0;
+        }
+
+        .chart-canvas {
+            display: block;
+            width: 100%;
+            background: #0a1428;
+            border-radius: 6px;
+            /* 用 outline 描边：不占布局，避免画布测量尺寸被边框挤偏 */
+            outline: 1px solid rgba(148, 163, 184, 0.18);
+            outline-offset: -1px;
+            box-sizing: border-box;
+        }
+
+        .chart-canvas.square {
+            width: 100%;
+            max-width: 220px;
+            aspect-ratio: 1 / 1;
+            height: auto;
+        }
+
+        .chart-canvas.trace {
+            height: 150px;
+        }
+
+        @media (max-width: 768px) {
+            .chart-canvas.trace {
+                height: 110px;
+            }
         }
 
         @media (max-width: 768px) {
@@ -707,6 +773,252 @@
             color: var(--neon-cyan);
             cursor: pointer;
         }
+
+        /* ===== 解码详情：指标卡面板（暗色主题） ===== */
+        .det-sec {
+            align-self: stretch;
+            margin-top: 9px;
+        }
+
+        .det-h {
+            font-size: 0.68rem;
+            letter-spacing: 0.08em;
+            color: var(--neon-cyan);
+            opacity: 0.85;
+            margin-bottom: 4px;
+        }
+
+        .det-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(86px, 1fr));
+            gap: 6px;
+        }
+
+        .det-card {
+            background: rgba(120, 160, 220, 0.10);
+            border: 1px solid rgba(148, 163, 184, 0.22);
+            border-radius: 6px;
+            padding: 4px 7px 6px;
+            min-width: 0;
+        }
+
+        .det-k {
+            font-size: 0.65rem;
+            color: var(--text-secondary);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .det-v {
+            font-size: 0.92rem;
+            font-weight: 600;
+            color: var(--text-primary);
+            font-variant-numeric: tabular-nums;
+        }
+
+        .det-v small {
+            font-size: 0.66rem;
+            font-weight: 400;
+            color: var(--text-secondary);
+            margin-left: 2px;
+        }
+
+        .det-bar {
+            height: 5px;
+            border-radius: 3px;
+            background: rgba(148, 163, 184, 0.20);
+            overflow: hidden;
+            margin-top: 4px;
+        }
+
+        .det-bar > i {
+            display: block;
+            height: 100%;
+            width: 0;
+            border-radius: 3px;
+            background: linear-gradient(90deg, var(--neon-cyan), var(--neon-purple));
+            transition: width 0.25s;
+        }
+
+        .det-toprow {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .det-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 0.72rem;
+            font-weight: 600;
+            padding: 2px 9px;
+            border-radius: 999px;
+            border: 1px solid currentColor;
+            line-height: 1.5;
+        }
+
+        .det-badge.ok { color: #35d07f; background: rgba(53, 208, 127, 0.12); }
+        .det-badge.warn { color: #f5a524; background: rgba(245, 165, 36, 0.12); }
+        .det-badge.bad { color: #ff5c72; background: rgba(255, 92, 114, 0.12); }
+
+        .det-dot {
+            width: 7px;
+            height: 7px;
+            border-radius: 50%;
+            background: currentColor;
+            box-shadow: 0 0 8px currentColor;
+            animation: detPulse 1.4s ease-in-out infinite;
+        }
+
+        @keyframes detPulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.3; }
+        }
+
+        .det-meta-line {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 2px 10px;
+            font-size: 0.74rem;
+            color: var(--text-secondary);
+        }
+
+        .det-meta-line b { color: var(--text-primary); }
+
+        .det-stack {
+            display: flex;
+            height: 10px;
+            border-radius: 5px;
+            overflow: hidden;
+            background: rgba(148, 163, 184, 0.15);
+        }
+
+        .det-stack > i { height: 100%; }
+
+        .det-legend {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 3px 12px;
+            font-size: 0.7rem;
+            color: var(--text-secondary);
+            margin-top: 4px;
+        }
+
+        .det-legend i {
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            border-radius: 2px;
+            margin-right: 4px;
+        }
+
+        .det-steps {
+            display: flex;
+            gap: 6px;
+        }
+
+        .det-step {
+            flex: 1 1 0;
+            min-width: 0;
+            border: 1px dashed rgba(148, 163, 184, 0.35);
+            border-radius: 6px;
+            padding: 4px 6px;
+            font-size: 0.68rem;
+            color: var(--text-secondary);
+            text-align: center;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .det-step b {
+            display: block;
+            font-size: 0.73rem;
+            font-weight: 600;
+            color: var(--text-secondary);
+        }
+
+        .det-step.done {
+            border-style: solid;
+            border-color: rgba(0, 243, 255, 0.6);
+            background: rgba(0, 243, 255, 0.10);
+            color: #9fe9f5;
+        }
+
+        .det-step.done b { color: var(--neon-cyan); }
+
+        .det-step.act {
+            border-style: solid;
+            border-color: rgba(245, 165, 36, 0.7);
+            background: rgba(245, 165, 36, 0.12);
+            color: #ffd79a;
+        }
+
+        .det-step.act b { color: #f5a524; }
+
+        .det-corr {
+            display: flex;
+            gap: 3px;
+            align-items: flex-end;
+            height: 34px;
+            position: relative;
+            margin-top: 8px;
+        }
+
+        .det-corr > .det-thr {
+            position: absolute;
+            left: 0;
+            right: 0;
+            top: 0;
+            border-top: 1px dashed rgba(255, 92, 114, 0.75);
+        }
+
+        .det-corr > span {
+            flex: 1 1 0;
+            min-width: 3px;
+            border-radius: 2px 2px 0 0;
+            background: rgba(0, 243, 255, 0.5);
+        }
+
+        .det-corr > span.hit { background: #35d07f; }
+
+        .det-line {
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+            line-height: 1.55;
+        }
+
+        .det-line b { color: var(--text-primary); }
+
+        /* 纠错"健康条带"：每格 = 一次采样间隔内的事件（绿=全正常 红=有失败 灰=空闲） */
+        .det-strip {
+            display: flex;
+            gap: 2px;
+            align-items: flex-end;
+            height: 26px;
+            margin-top: 6px;
+        }
+
+        .det-strip > span {
+            flex: 1 1 0;
+            min-width: 2px;
+            border-radius: 1px;
+            background: #35d07f;
+            opacity: 0.9;
+        }
+
+        .det-strip > span.bad { background: #ff5c72; }
+        .det-strip > span.idle { background: rgba(148, 163, 184, 0.22); }
+
+        .det-hint {
+            font-size: 0.68rem;
+            color: var(--text-secondary);
+            margin-top: 3px;
+            line-height: 1.5;
+        }
     </style>
 </head>
 
@@ -750,9 +1062,6 @@
         <div>
             <div class="title-text">接收</div>
             <textarea id="received" rows="25" cols="80" disabled placeholder="接收到的内容"></textarea>
-            <div id="fecStats" style="color: var(--text-secondary); font-size: 0.85rem; min-height: 1.3em;"></div>
-            <div id="ofdmStats" style="color: var(--text-secondary); font-size: 0.85rem; min-height: 1.3em;"></div>
-            <div id="ftnStatus" style="color: var(--neon-cyan); font-size: 0.85rem; min-height: 1.3em;"></div>
 
             <div class="btn-container">
                 <button id='start'>接收</button>
@@ -856,36 +1165,52 @@
             <input type="checkbox" id="ofdmAuto" checked style="display:none; justify-self: start;">
         </div>
         <details id="decodeInfo">
-            <summary>解码详情</summary>
+            <summary>解码详情 <span id="detBrief" style="color: var(--text-secondary); font-size: 0.85rem;"></span></summary>
             <div style="
     display: flex;
     align-items: center;
     flex-direction: column;
 ">
-                <div class="decode-info-container">
-                    <div class="info-container">
-                        <canvas id="constellation" width="300" height="300"></canvas>
-                        <label>星座图</label>
+                <div class="chart-grid">
+                    <div class="chart-card">
+                        <div class="chart-head"><span class="chart-name">星座图</span><span class="chart-tag" id="constTag">—</span></div>
+                        <div class="chart-body">
+                            <canvas id="constellation" class="chart-canvas square" width="300" height="300"></canvas>
+                        </div>
                     </div>
-                    <div class="oscilloscope-container">
-                        <div class="info-container">
-                            <canvas class="oscilloscope" id="gainCanvas"></canvas>
-                            <label id="gainLabel"></label>
-                        </div>
-                        <div class="info-container">
-                            <canvas class="oscilloscope" id="offsetCanvas"></canvas>
-                            <label id="offsetLabel"></label>
-                        </div>
-                        <div class="info-container">
-                            <canvas class="oscilloscope" id="freqCanvas"></canvas>
-                            <label id="freqLabel"></label>
-                        </div>
-                        <div class="info-container">
-                            <canvas class="oscilloscope" id="snrCanvas"></canvas>
-                            <label id="snrLabel"></label>
-                        </div>
+                    <div class="chart-card">
+                        <div class="chart-head"><span class="chart-name">增益 Gain</span><span class="chart-tag">dB</span></div>
+                        <div class="chart-body"><canvas class="oscilloscope chart-canvas trace" id="gainCanvas"></canvas></div>
+                        <div class="chart-val" id="gainLabel"></div>
+                    </div>
+                    <div class="chart-card">
+                        <div class="chart-head"><span class="chart-name">偏移 Offset</span><span class="chart-tag">sample</span></div>
+                        <div class="chart-body"><canvas class="oscilloscope chart-canvas trace" id="offsetCanvas"></canvas></div>
+                        <div class="chart-val" id="offsetLabel"></div>
+                    </div>
+                    <div class="chart-card">
+                        <div class="chart-head"><span class="chart-name">频偏 Frequency</span><span class="chart-tag">Hz</span></div>
+                        <div class="chart-body"><canvas class="oscilloscope chart-canvas trace" id="freqCanvas"></canvas></div>
+                        <div class="chart-val" id="freqLabel"></div>
+                    </div>
+                    <div class="chart-card">
+                        <div class="chart-head"><span class="chart-name">信噪比 SNR</span><span class="chart-tag">dB</span></div>
+                        <div class="chart-body"><canvas class="oscilloscope chart-canvas trace" id="snrCanvas"></canvas></div>
+                        <div class="chart-val" id="snrLabel"></div>
+                    </div>
+                    <!-- 信道频率响应（OFDM 专属，随接收显示） -->
+                    <div id="detChanWrap" class="chart-card" style="display: none; grid-column: 1 / -1; margin-top: 0;">
+                        <div class="chart-head"><span class="chart-name">信道频率响应 |H|</span><span class="chart-tag">导频 + meta · 逐符号</span></div>
+                        <canvas id="detChan" class="chart-canvas" style="height: 92px;"></canvas>
+                        <div id="detChanText" style="color: var(--text-secondary); font-size: 0.75rem; text-align: center;"></div>
                     </div>
                 </div>
+                <!-- 各模式共用的状态行（更新函数不变） -->
+                <div id="fecStats" style="align-self: stretch; color: var(--text-secondary); font-size: 0.85rem; min-height: 1.3em;"></div>
+                <div id="ofdmStats" style="align-self: stretch; color: var(--text-secondary); font-size: 0.85rem; min-height: 1.3em;"></div>
+                <div id="ftnStatus" style="align-self: stretch; color: var(--neon-cyan); font-size: 0.85rem; min-height: 1.3em;"></div>
+                <!-- 深度诊断：OFDM 显示状态徽标/配置卡/子载波构成/跟踪环/捕获流程/信道图，其他模式只显示基本参数卡 -->
+                <div id="detExtra" style="display: none; align-self: stretch; font-size: 0.8rem;"></div>
             </div>
         </details>
     </div>
@@ -3207,6 +3532,8 @@
                 this.acq = null;
                 this.lossLimit = 6;      // consecutive bad symbols before we give up the lock
                 this.stats = { locks: 0, losses: 0, symbols: 0, metaBad: 0, trainings: 0 };
+                // 面向"解码详情"面板的诊断快照：捕获各阶段 / 跟踪环最新值（只增不改流程）
+                this.diag = { phase: '等待音频' };
             }
 
             get locked() { return this.state === 'track'; }
@@ -3291,7 +3618,10 @@
                     if (dd > symLen / 8) { mean += rho[d]; cnt++; }
                 }
                 mean /= Math.max(1, cnt);
-                if (rmax < 0.12 || rmax < 3 * mean) return false;
+                if (rmax < 0.12 || rmax < 3 * mean) {
+                    this.diag = { phase: 'CP 相关搜索', rho: rmax, mean, pos: (this.searchPos - this.start) / cfg.fs };
+                    return false;
+                }
                 // centre of the plateau (≥ 0.9 of the peak), circular
                 const t = 0.9 * rmax;
                 let l = 0, r = 0;
@@ -3308,6 +3638,7 @@
                 while (tauA < p0) tauA += symLen;
                 // the CP phase only fixes δ modulo `amb` (2π of phase) – the training search tries several branches
                 this.acq = { tauA, delta, amb: cfg.fs / (fcen * N), C: [], rho: rmax };
+                this.diag = { phase: 'CP 命中，训练搜索', rho: rmax, mean, delta0: delta, amb: this.acq.amb, C: [] };
                 return true;
             }
 
@@ -3355,8 +3686,10 @@
                 if (n >= OFDM_SF + 1) {                 // searched a whole superframe, nothing: start over further on
                     this.searchPos = Math.floor(a.tauA + (OFDM_SF - 1) * cfg.symLen);
                     this.acq = null;
+                    this.diag = { phase: '训练未命中，重扫', rho: a.rho, delta0: a.delta, amb: a.amb, C: a.C.filter(v => v !== undefined) };
                     return true;
                 }
+                this.diag = Object.assign({}, this.diag, { phase: '训练搜索', C: a.C.filter(v => v !== undefined), delta0: a.delta, amb: a.amb });
                 return false;                           // wait for more samples
             }
 
@@ -3374,6 +3707,7 @@
                     bS: 0, Babs: 0, lastShift: 0, snr: 0, bad: 0, mcs: null, t0: tauT
                 };
                 this.stats.locks++;
+                this.diag = { phase: '已锁定', delta };
                 if (this.cb.onLock) this.cb.onLock(true, { t0: tauT, delta });
             }
 
@@ -3382,6 +3716,7 @@
                 this.state = 'acquire'; this.acq = null;
                 this.searchPos = Math.max(this.start, Math.floor(fr.tau - 2 * cfg.symLen));
                 this.stats.losses++;
+                this.diag = { phase: '失锁，重新捕获' };
                 if (this.cb.onLock) this.cb.onLock(false, {});
                 if (this.cb.onLoss) this.cb.onLoss();
             }
@@ -3667,6 +4002,11 @@
                 fr.bS += TWO_PI * shift / N;
                 fr.snr = 0.8 * fr.snr + 0.2 * eq.snr;
                 fr.sf = (fr.sf + 1) % OFDM_SF;
+                // 诊断快照：给"解码详情"面板看跟踪环的当前状态
+                if (this.diag && this.diag.phase === '已锁定') this.diag.track = {
+                    delta: fr.delta, timing: fr.tau - fr.t0, shift: fr.lastShift,
+                    sf: fr.sf, bS: fr.bS, Babs: fr.Babs, snr: fr.snr, bad: fr.bad
+                };
             }
         }
         // ===== OFDM END =====
@@ -3731,6 +4071,420 @@
             if (!el) return;
             if (!st || st.frames === 0) { el.textContent = ''; return; }
             el.textContent = `纠错：帧 ${st.frames} ｜ 码字 正常 ${st.cwOk} / 失败 ${st.cwFail} ｜ 已纠正 ${st.corrected} 字节`;
+        }
+
+        // ===== 解码详情面板 =====
+        // 共用的三行状态（fecStats/ofdmStats/ftnStatus）原样保留；这里只负责"深度诊断"附加区，全部做成可视指标：
+        //   OFDM：状态徽标 / 配置指标卡 / 子载波构成条 / 跟踪环指标卡（带进度条）/ 捕获流程步骤 + 训练相关柱 / 信道频率响应图
+        //   其他模式：只显示基本参数卡，不影响原有显示
+        let detTimer = null;
+        let constRedetect = null;       // 星座图 redetect（在 startRx 里注册），展开面板时重新量尺寸
+
+        // "解码详情"折叠时画布尺寸为 0，展开后需要重新量取所有图表画布（否则空白）
+        function redetectCharts() {
+            try {
+                for (const w of [gainWaves, offsetWaves, freqWaves, snrWaves]) { if (w) w.redetect(); }
+                if (constRedetect) constRedetect();
+            } catch (e) { /* 图表可能尚未创建 */ }
+        }
+
+        const detEsc = s => String(s).replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+        const detClamp01 = v => Math.max(0, Math.min(1, isFinite(v) ? v : 0));
+
+        // 速率换算：自动选 bps / kbps / Mbps（bps 档保留一位小数但不显示多余的 .0）
+        function detRate(bps) {
+            if (!isFinite(bps) || bps <= 0) return { v: '0', u: 'bps' };
+            if (bps >= 1e6) return { v: (bps / 1e6).toFixed(2), u: 'Mbps' };
+            if (bps >= 1000) return { v: (bps / 1000).toFixed(2), u: 'kbps' };
+            const v = Math.round(bps * 10) / 10;
+            return { v: Number.isInteger(v) ? String(v) : v.toFixed(1), u: 'bps' };
+        }
+        const detRateCard = (label, bps, color) => {
+            const r = detRate(bps);
+            return detCard(label, r.v, r.u, undefined, color);
+        };
+
+        // FEC 档位 → 码率（信息比特 / 空中比特）
+        function fecRateOf(id) {
+            if (id >= 1 && id <= 4 && FEC_PROFILES[id]) {
+                const p = FEC_PROFILES[id].parity;
+                return FEC_MAX_PAYLOAD / (FEC_MAX_PAYLOAD + p);
+            }
+            if (id === 13) return 1 / 2;
+            if (id === 12) return 2 / 3;
+            if (id === 11) return 3 / 4;
+            return 1;
+        }
+        const fecRateText = id => {
+            if (id >= 1 && id <= 4 && FEC_PROFILES[id]) return `${FEC_MAX_PAYLOAD}/${FEC_MAX_PAYLOAD + FEC_PROFILES[id].parity}`;
+            if (id === 13) return '1/2';
+            if (id === 12) return '2/3';
+            if (id === 11) return '3/4';
+            return '1/1';
+        };
+
+        // 指标卡：标签 + 大字数值（可带单位）+ 可选进度条（bar 取 0~1）
+        function detCard(k, v, unit, bar, color) {
+            const b = (bar === undefined) ? '' :
+                `<div class="det-bar"><i style="width:${(detClamp01(bar) * 100).toFixed(1)}%${color ? `;background:${color}` : ''}"></i></div>`;
+            return `<div class="det-card"><div class="det-k">${detEsc(k)}</div>`
+                + `<div class="det-v">${detEsc(v)}${unit ? `<small>${detEsc(unit)}</small>` : ''}</div>${b}</div>`;
+        }
+        const detGrid = cards => `<div class="det-grid">${cards.join('')}</div>`;
+        const detSec = (title, body) => `<div class="det-sec"><div class="det-h">${detEsc(title)}</div>${body}</div>`;
+        const detBadge = (kind, text) => `<span class="det-badge ${kind}"><span class="det-dot"></span>${detEsc(text)}</span>`;
+
+        // ===== 纠错可视化 =====
+        // 每 250ms 采样一次增量，画成"健康条带"；只补原有文字行没有的量（成功率/开销/历史趋势），不重复统计数字
+        const FEC_HIST_MAX = 60;
+        const fecHist = { key: '', ticks: [], last: null };
+
+        function fecProfileInfo() {
+            const p = fecProfileId();
+            if (p >= 1 && p <= 4) {
+                const prof = FEC_PROFILES[p];
+                return {
+                    id: p, kind: 'rs', title: `分组 RS · ${prof.name}`,
+                    sub: `RS+${prof.parity}：每码字可纠 ${prof.parity / 2} 字节，交织深度 ${FEC_MAX_DEPTH}，帧头带 CRC16`,
+                    rate: `${FEC_MAX_PAYLOAD}/${FEC_MAX_PAYLOAD + prof.parity}`
+                };
+            }
+            if (p >= 11 && p <= 13) {
+                const m = { 11: '3/4', 12: '2/3', 13: '1/2' }[p];
+                return { id: p, kind: 'cc', title: '实时卷积 · Viterbi', sub: `K=7 生成多项式 (171,133)₈，打孔到 ${m}，流式回溯（无需整帧等待）`, rate: m };
+            }
+            return { id: 0, kind: 'off', title: '纠错关闭', sub: '无冗余直传，仅靠奇偶校验做残余检错', rate: '1/1' };
+        }
+
+        function fecTick(key, a, b) {
+            if (fecHist.key !== key) { fecHist.key = key; fecHist.ticks = []; fecHist.last = null; }
+            const prev = fecHist.last || { a, b };
+            fecHist.last = { a, b };
+            fecHist.ticks.push({ a: Math.max(0, a - prev.a), b: Math.max(0, b - prev.b) });
+            while (fecHist.ticks.length > FEC_HIST_MAX) fecHist.ticks.shift();
+            return fecHist.ticks;
+        }
+
+        // 条带：每格高度按窗口内事件数归一，绿=全正常，红=有失败，灰=空闲
+        function detStrip(ticks, legend) {
+            const peak = Math.max(1, ...ticks.map(t => t.a + t.b));
+            const cols = ticks.map(t => {
+                const n = t.a + t.b;
+                const h = n ? Math.max(10, n / peak * 100) : 6;
+                const cls = n === 0 ? 'idle' : (t.b ? 'bad' : '');
+                return `<span class="${cls}" style="height:${h.toFixed(0)}%" title="正常 ${t.a} / 失败 ${t.b}"></span>`;
+            }).join('');
+            return `<div class="det-strip">${cols}</div><div class="det-hint">${detEsc(legend)}</div>`;
+        }
+
+        // 分组 RS：成功率 + 平均纠正量 + 码率 + 码字健康条带
+        function detRsHtml(info) {
+            if (!fecRx) return '';
+            const st = fecRx.stats || { frames: 0, cwOk: 0, cwFail: 0, corrected: 0 };
+            const tot = st.cwOk + st.cwFail;
+            const succ = tot ? st.cwOk / tot : 1;
+            const avg = st.cwOk ? st.corrected / st.cwOk : 0;
+            const cap = FEC_PROFILES[info.id] ? FEC_PROFILES[info.id].parity / 2 : 1;
+            const ticks = fecTick('rs', st.cwOk, st.cwFail);
+            return detSec(`纠错 · ${info.title}`, detGrid([
+                detCard('码字成功率', (100 * succ).toFixed(succ > 0.999 ? 2 : 1), '%', succ,
+                    succ > 0.99 ? '#35d07f' : (succ > 0.9 ? '#f5a524' : '#ff5c72')),
+                detCard('平均纠正', avg.toFixed(2), `/ ${cap} 字节`, detClamp01(avg / cap), '#00f3ff'),
+                detCard('码率', info.rate),
+            ]) + detStrip(ticks, '每格 ≈ 250ms 内的码字（绿=全部正常，红=有译码失败，灰=空闲）') 
+                + `<div class="det-hint">${detEsc(info.sub)}</div>`);
+        }
+
+        // 实时卷积：段标记命中率 + 重对齐/失锁 + 标记健康条带
+        function detCcHtml(info) {
+            if (!ccRx) return '';
+            const st = ccRx.stats || { messages: 0, markersOk: 0, markersMissed: 0, resyncs: 0, lost: 0 };
+            const mk = st.markersOk + st.markersMissed;
+            const hit = mk ? st.markersOk / mk : 1;
+            const ticks = fecTick('cc', st.markersOk, st.markersMissed);
+            return detSec(`纠错 · ${info.title}`, `<div class="det-toprow" style="margin-bottom:6px;">`
+                + (st.lost ? detBadge('bad', `失锁 ${st.lost} 次`) : detBadge('ok', '未失锁'))
+                + `</div>` + detGrid([
+                    detCard('段标记命中率', (100 * hit).toFixed(1), '%', hit,
+                        hit > 0.99 ? '#35d07f' : (hit > 0.9 ? '#f5a524' : '#ff5c72')),
+                    detCard('消息数', st.messages),
+                    detCard('重新对齐', st.resyncs, '次', detClamp01(st.resyncs / Math.max(1, st.messages)), st.resyncs ? '#f5a524' : undefined),
+                    detCard('失锁', st.lost, '次', detClamp01(st.lost / Math.max(1, st.messages + st.lost)), st.lost ? '#ff5c72' : undefined),
+                    detCard('码率', info.rate),
+                ]) + detStrip(ticks, '每格 ≈ 250ms 内的段标记（绿=命中，红=缺失，灰=空闲）')
+                + `<div class="det-hint">${detEsc(info.sub)}</div>`);
+        }
+
+        // 喷泉码 LT：每个文件的解码进度 + 水滴开销倍数
+        function detFountainHtml() {
+            if (!ftnReceiver || !ftnReceiver.files || ftnReceiver.files.size === 0) return '';
+            const files = [...ftnReceiver.files.values()].sort((a, b) => (a.done - b.done) || (b.id - a.id));
+            const cards = files.slice(0, 3).map(f => {
+                const seen = f.decoder ? (f.decoder.seen ? f.decoder.seen.size : (f.decoder.nKnown || 0)) : 0;
+                const prog = f.k ? detClamp01(seen / f.k) : 0;
+                const ov = f.k ? f.packets / f.k : 0;
+                const nm = (typeof ftnDisplayName === 'function') ? ftnDisplayName(f) : ('#' + f.fid);
+                const state = !f.done ? '接收中' : (f.crcOk === true ? '已完成 · CRC 通过' : (f.crcOk === false ? '已完成 · CRC 失败' : '已完成 · CRC 未知'));
+                const col = !f.done ? '#00f3ff' : (f.crcOk === false ? '#ff5c72' : '#35d07f');
+                return `<div class="det-card" style="grid-column:1/-1">`
+                    + `<div class="det-k">${detEsc(nm)} · ${f.size} B · 分块 k=${f.k}</div>`
+                    + `<div class="det-v" style="font-size:0.82rem;color:${col}">${detEsc(state)}</div>`
+                    + `<div class="det-bar"><i style="width:${(prog * 100).toFixed(1)}%;background:${col}"></i></div>`
+                    + `<div class="det-hint">解出块 ${seen}/${f.k} · 收到水滴 ${f.packets} · 开销 ${ov.toFixed(2)}×（LT 理论下限 1.00×）</div></div>`;
+            });
+            return detSec('喷泉码 LT（文件传输）', detGrid(cards));
+        }
+
+        // 纠错区：文字统计行保持原样，这里只做可视化补充
+        function detFecHtml() {
+            const info = fecProfileInfo();
+            const parts = [];
+            const ftn = detFountainHtml();
+            if (ftn) parts.push(ftn);
+            if (info.kind === 'rs') parts.push(detRsHtml(info));
+            else if (info.kind === 'cc') parts.push(detCcHtml(info));
+            else if (!ftn) parts.push(detSec('纠错 · 关闭', detGrid([detCard('方案', '无冗余直传'), detCard('码率', '1/1')])));
+            return parts.join('');
+        }
+
+        function startDecodeDetails() {
+            stopDecodeDetails();
+            updateDecodeDetails();
+            detTimer = setInterval(updateDecodeDetails, 250);
+        }
+
+        function stopDecodeDetails() {
+            if (detTimer) { clearInterval(detTimer); detTimer = null; }
+            const ex = document.getElementById('detExtra');
+            if (ex) { ex.innerHTML = ''; ex.style.display = 'none'; }
+            const ct = document.getElementById('detChanText');
+            if (ct) ct.textContent = '';
+            const cw = document.getElementById('detChanWrap');
+            if (cw) cw.style.display = 'none';
+            const br = document.getElementById('detBrief');
+            if (br) br.textContent = '';
+            const tag = document.getElementById('constTag');
+            if (tag) tag.textContent = '—';
+        }
+
+        function updateDecodeDetails() {
+            const ex = document.getElementById('detExtra');
+            const cw = document.getElementById('detChanWrap');
+            if (!ex) return;
+            updateConstTag();
+            const d = demodulator;
+            const fecHead = detFecHtml();       // 纠错可视化（所有模式通用）
+            if (selectedMode === MODES.ofdm && d && d.rx) {
+                ex.style.display = '';
+                ex.innerHTML = ofdmDetailHtml(d, fecHead);
+                if (cw) {
+                    cw.style.display = '';
+                    drawChannelResponse(d);
+                }
+            } else {
+                // 非 OFDM：给一组基本参数卡即可（深度诊断只对 OFDM 有意义）
+                ex.style.display = '';
+                const bps = (d && d.bitsPerSymbol) ? d.bitsPerSymbol : 1;
+                const rate = effBaudRate() * bps;
+                const netRate = rate * fecRateOf(fecProfileId());
+                ex.innerHTML = detSec('当前模式', detGrid([
+                    detCard('模式', selectedMode.name),
+                    detCard('波特率', effBaudRate(), 'Bd'),
+                    detCard('载波', effCarrierFreq(), 'Hz'),
+                    detCard('每符号', bps, 'bit'),
+                    detRateCard('信道速率', rate, '#00f3ff'),
+                    detRateCard('有效速率', netRate, '#35d07f'),
+                ]) + `<div class="det-hint">有效速率 = 波特率 ${effBaudRate()} × 每符号 ${bps} bit × FEC 码率 ${fecRateText(fecProfileId())}（奇偶校验位另占信道速率）</div>` + fecHead);
+                if (cw) cw.style.display = 'none';
+            }
+        }
+
+        // 星座图卡片右上的小标签：显示当前解调调制阶数与判决点数（新信息，不与别处重复）
+        function updateConstTag() {
+            const el = document.getElementById('constTag');
+            if (!el) return;
+            const d = demodulator;
+            if (selectedMode === MODES.ofdm && d && d.decidePoints && d.decidePoints.length) {
+                const mod = (typeof OFDM_MODS !== 'undefined' && d.curMod >= 0 && OFDM_MODS[d.curMod])
+                    ? OFDM_MODS[d.curMod].name : '';
+                el.textContent = (mod ? mod + ' · ' : '') + d.decidePoints.length + ' 判决点';
+            } else {
+                el.textContent = selectedMode ? selectedMode.name : '—';
+            }
+        }
+
+        function ofdmDetailHtml(d, fecHead) {
+            const rx = d.rx, cfg = rx.cfg, st = rx.stats, dg = rx.diag || {};
+            const locked = rx.state === 'track';
+            const tr = dg.track, ls = d.lastSym;
+            const out = [];
+
+            // ---- 顶部：锁定徽标 + 锁定/失锁次数（其余计数统一放"统计"区，不重复）----
+            const badge = locked ? detBadge('ok', '已锁定')
+                : detBadge(/失锁|重扫|未命中/.test(dg.phase || '') ? 'bad' : 'warn', dg.phase || '搜索中');
+            out.push('<div class="det-sec det-toprow">' + badge
+                + `<div class="det-meta-line"><span>锁定 <b>${st.locks}</b> 次</span>`
+                + `<span>失锁 <b>${st.losses}</b> 次</span></div></div>`);
+            if (fecHead) out.push(fecHead);     // 纠错可视化紧跟在整体锁定状态之后
+
+            // ---- 最近符号：只放示波器没有的量（SNR/增益/频偏/窗移已由上方示波器实时绘制，不重复）----
+            if (ls) {
+                out.push(detSec('最近符号', detGrid([
+                    detCard('判决一致性', (100 * (ls.consistency || 0)).toFixed(1), '%', ls.consistency || 0, '#35d07f'),
+                    detCard(ls.filler ? '符号类型' : '调制 / FEC', ls.filler ? '填充' : ls.modName, ls.filler ? '' : 'id ' + ls.fec),
+                    detCard('有效槽', ls.filler ? '—' : `${ls.cnt}/${cfg.nData * OFDM_MODS[ls.mod].bpc}`,
+                        '', ls.filler ? 0 : detClamp01(ls.cnt / Math.max(1, cfg.nData * OFDM_MODS[ls.mod].bpc)), '#00f3ff'),
+                    detCard('超帧槽', `sf ${ls.sf}`, `/ ${OFDM_SF}`, detClamp01(ls.sf / OFDM_SF), '#bd00ff'),
+                ])));
+            }
+
+            // ---- 跟踪环：同样避开示波器已有的量（频率/增益/窗移）----
+            if (tr) {
+                out.push(detSec('跟踪环', detGrid([
+                    detCard('定时', (tr.timing / cfg.symLen).toFixed(3), '符号'),
+                    detCard('相位斜率', tr.bS.toFixed(5), 'rad', detClamp01(Math.abs(tr.bS) / 0.01)),
+                    detCard('累计迟量', tr.Babs.toFixed(3), '载波'),
+                    detCard('连续坏符号', tr.bad, '/ 6', detClamp01(tr.bad / 6), tr.bad ? '#ff5c72' : undefined),
+                ])));
+            }
+
+            // ---- 捕获流程：CP 相关 → 训练搜索 → 锁定 ----
+            const ph = dg.phase || '搜索中';
+            const cpDone = /训练|已锁定/.test(ph);
+            const trainDone = ph === '已锁定';
+            const step = (cls, name, sub) => `<div class="det-step ${cls}"><b>${detEsc(name)}</b>${detEsc(sub)}</div>`;
+            const steps = step(cpDone ? 'done' : (ph === 'CP 相关搜索' ? 'act' : ''), '① CP 相关', cpDone ? '命中' : (ph === '等待音频' ? '等待' : '折叠'))
+                + step(trainDone ? 'done' : (/训练/.test(ph) ? 'act' : ''), '② 训练搜索', trainDone ? '通过' : '分支匹配')
+                + step(trainDone ? 'done' : (ph === '失锁，重新捕获' ? 'act' : ''), '③ 锁定', trainDone ? '跟踪中' : '待定');
+
+            const acqCards = [];
+            if (dg.rho !== undefined) acqCards.push(detCard('CP 峰值 ρ', dg.rho.toFixed(3), `均值 ${dg.mean !== undefined ? dg.mean.toFixed(3) : '-'}`, detClamp01(dg.rho / 0.6), '#00f3ff'));
+            if (dg.delta0 !== undefined) acqCards.push(detCard('δ 初估', (dg.delta0 * 1e6).toFixed(1), 'ppm'));
+            if (dg.amb !== undefined) acqCards.push(detCard('频率模糊度', '±' + (dg.amb * 1e6).toFixed(0), 'ppm'));
+            if (dg.C && dg.C.length) {
+                const bars = dg.C.map(v => {
+                    const h = detClamp01(v) * 100;
+                    return `<span class="${v >= 0.45 ? 'hit' : ''}" style="height:${h.toFixed(1)}%" title="${v.toFixed(3)}"></span>`;
+                }).join('');
+                acqCards.push(`<div class="det-card" style="grid-column:1/-1"><div class="det-k">训练符号相关值（阈值 0.45，绿=通过）</div>`
+                    + `<div class="det-corr"><div class="det-thr" style="top:55%"></div>${bars}</div></div>`);
+            }
+            out.push(detSec(`捕获流程 · ${ph}`, `<div class="det-steps">${steps}</div>`
+                + (acqCards.length ? `<div style="margin-top:7px;">${detGrid(acqCards)}</div>` : '')));
+
+            // ---- 速率：按当前实际 MCS（最近符号的调制/FEC）算，'空中速率' = 载荷比特率，'有效速率' = 扣掉 FEC 后的信息比特率 ----
+            const modNow = (ls && !ls.filler && ls.mod !== undefined) ? ls.mod : ((d.curMod === undefined) ? 1 : d.curMod);
+            const bpcNow = OFDM_MODS[modNow].bpc;
+            const symRate = cfg.fs / cfg.symLen;
+            const trainHead = (OFDM_SF - 1) / OFDM_SF;                 // 每 16 个符号 1 个训练符号
+            const airRate = cfg.nData * bpcNow * trainHead * symRate;   // 与 TX 的 payloadRate 同口径
+            const fecIdNow = (ls && ls.fec !== undefined) ? ls.fec : fecProfileId();
+            const rateFec = fecRateOf(fecIdNow);
+            const netRate = airRate * rateFec;
+
+            // 派生参数：只放界面上看不到的量（采样率/载波/带宽在左侧输入框已有，不重复）
+            out.push(detSec('OFDM 派生参数', detGrid([
+                detCard('FFT N', cfg.N),
+                detCard('循环前缀 CP', cfg.cp, '采样'),
+                detCard('符号长度', cfg.symLen, '采样'),
+                detCard('符号率', symRate.toFixed(2), 'sym/s'),
+                detCard('子载波间隔', cfg.df.toFixed(1), 'Hz'),
+                detCard('占用子载波', cfg.nCar),
+            ])));
+
+            // 速率区：数值随最近符号的调制阶数 / FEC 档位实时变化
+            out.push(detSec('速率', detGrid([
+                detCard('每符号载荷', (cfg.nData * bpcNow), `bit × ${OFDM_MODS[modNow].name}`),
+                detRateCard('空中速率', airRate, '#00f3ff'),
+                detRateCard('有效速率', netRate, '#35d07f'),
+                detCard('训练开销', (100 * (1 - trainHead)).toFixed(1), '%', (1 - trainHead)),
+                detCard('FEC 码率', fecRateText(fecIdNow)),
+                detRateCard('每子载波净速率', bpcNow * trainHead * symRate * rateFec, '#bd00ff'),
+            ]) + `<div class="det-hint">有效速率 = 数据子载波 ${cfg.nData} × 每载波 ${bpcNow} bit × 符号率 ${symRate.toFixed(2)} × 15/16（超帧训练开销） × FEC 码率 ${fecRateText(fecIdNow)}</div>`));
+
+            // ---- 子载波构成（堆叠条 + 图例）----
+            const nP = cfg.pilotIdx.length, nD = cfg.nData, nM = OFDM_META;
+            const tot = Math.max(1, nD + nP + nM);
+            out.push(detSec('子载波构成', `<div class="det-stack">`
+                + `<i style="width:${(nD / tot * 100).toFixed(2)}%;background:#39a0ff"></i>`
+                + `<i style="width:${(nP / tot * 100).toFixed(2)}%;background:#f5a524"></i>`
+                + `<i style="width:${(nM / tot * 100).toFixed(2)}%;background:#bd00ff"></i>`
+                + `</div><div class="det-legend">`
+                + `<span><i style="background:#39a0ff"></i>数据 ${nD}</span>`
+                + `<span><i style="background:#f5a524"></i>导频 ${nP}</span>`
+                + `<span><i style="background:#bd00ff"></i>meta ${nM}</span>`
+                + `<span>共 ${cfg.nCar} 个子载波</span></div>`));
+
+            // ---- 统计 ----
+            out.push(detSec('统计', detGrid([
+                detCard('符号总数', st.symbols),
+                detCard('训练符号', st.trainings),
+                detCard('meta 失败', st.metaBad, '', detClamp01(st.metaBad / Math.max(1, st.symbols)), st.metaBad ? '#ff5c72' : undefined),
+                detCard('累计帧数', d.frames || 0),
+            ])));
+
+            return out.join('');
+        }
+
+        // 信道频率响应小图：|H(k)| 相对均值取 dB，逐符号由导频+meta 联合更新
+        function drawChannelResponse(d) {
+            const cv = document.getElementById('detChan'), txt = document.getElementById('detChanText');
+            if (!cv) return;
+            if (!d.rx || !d.rx.fr) { if (txt) txt.textContent = '信道估计：等待锁定'; return; }
+            const H = d.rx.fr.H, cfg = d.rx.cfg, n = cfg.nCar;
+            const dpr = window.devicePixelRatio || 1;
+            const w = cv.clientWidth || 300, h = cv.clientHeight || 70;
+            if (cv.width !== Math.round(w * dpr)) { cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr); }
+            const ctx = cv.getContext('2d');
+            ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+            ctx.clearRect(0, 0, w, h);
+            const mag = new Float64Array(n);
+            let sum = 0;
+            for (let k = 0; k < n; k++) { mag[k] = Math.hypot(H.Hr[k], H.Hi[k]) + 1e-12; sum += mag[k]; }
+            const mean = sum / n;
+            let mn = Infinity, mx = -Infinity;
+            for (let k = 0; k < n; k++) {
+                mag[k] = 20 * Math.log10(mag[k] / mean);
+                if (mag[k] < mn) mn = mag[k];
+                if (mag[k] > mx) mx = mag[k];
+            }
+            const span = Math.max(6, mx - mn);
+            const yOf = v => h - 5 - (v - mn) / span * (h - 10);
+            const xOf = k => n > 1 ? k / (n - 1) * (w - 2) + 1 : 1;
+
+            // 曲线下方填充（渐变）
+            const grad = ctx.createLinearGradient(0, 0, 0, h);
+            grad.addColorStop(0, 'rgba(57, 160, 255, 0.35)');
+            grad.addColorStop(1, 'rgba(57, 160, 255, 0.02)');
+            ctx.fillStyle = grad;
+            ctx.beginPath();
+            ctx.moveTo(xOf(0), h);
+            for (let k = 0; k < n; k++) ctx.lineTo(xOf(k), yOf(mag[k]));
+            ctx.lineTo(xOf(n - 1), h);
+            ctx.closePath();
+            ctx.fill();
+
+            // 0 dB 参考线
+            ctx.strokeStyle = 'rgba(148, 163, 184, 0.55)';
+            ctx.setLineDash([3, 3]);
+            ctx.beginPath(); ctx.moveTo(0, yOf(0)); ctx.lineTo(w, yOf(0)); ctx.stroke();
+            ctx.setLineDash([]);
+
+            // 曲线
+            ctx.strokeStyle = '#39a0ff';
+            ctx.lineWidth = 1.4;
+            ctx.beginPath();
+            for (let k = 0; k < n; k++) (k ? ctx.lineTo : ctx.moveTo).call(ctx, xOf(k), yOf(mag[k]));
+            ctx.stroke();
+
+            // 导频 / meta 位置刻度
+            ctx.lineWidth = 1;
+            ctx.strokeStyle = 'rgba(245, 165, 36, 0.55)';
+            for (const k of cfg.pilotIdx) { const x = xOf(k); ctx.beginPath(); ctx.moveTo(x, h - 4); ctx.lineTo(x, h); ctx.stroke(); }
+            ctx.strokeStyle = 'rgba(189, 0, 255, 0.55)';
+            for (const k of cfg.metaIdx || []) { const x = xOf(k); ctx.beginPath(); ctx.moveTo(x, h - 4); ctx.lineTo(x, h); ctx.stroke(); }
+
+            if (txt) txt.textContent = `信道频率响应 |H|（相对均值 dB）：min ${mn.toFixed(1)} / max +${mx.toFixed(1)} · 橙=导频 紫=meta · 逐符号更新`;
         }
 
         class FibonacciDecoder {
@@ -4253,8 +5007,10 @@
 
         class ConstellationRecorder {
             constructor(maxLen) {
-                this.maxLen = (maxLen === undefined) ? 48000 : Math.max(1, maxLen);
-                this.cap = Math.ceil(this.maxLen);
+                // 外部常直接赋 baudRate/8 这类小数（且可能中途再赋值），必须取整，
+                // 否则缩窗步进/环形索引会出现小数，打碎 k % cap 映射
+                this.maxLen = (maxLen === undefined) ? 48000 : Math.max(1, Math.ceil(maxLen));
+                this.cap = (this.maxLen === Infinity) ? 4096 : Math.ceil(this.maxLen);
                 this.buf = new Float32Array(this.cap * 2);
                 this.n = 0;          // 当前缓存点数
                 this.dropped = 0;    // 环形覆盖掉的总点数（逻辑序号起点）
@@ -4267,24 +5023,36 @@
 
             addSample(i, q) {
                 if (this.n >= this.maxLen) {
-                    // 满且有限上限：覆盖最旧的点（逻辑序号连续，物理位置取模）
-                    const pos = (this.dropped % this.cap) * 2;
+                    // 追加到逻辑尾部（新点逻辑序号 = dropped + n）：
+                    //   n == cap 时该位置恰好是最旧点 → 环形覆盖；
+                    //   n <  cap 时（maxLen 中途调大过）是空位 → 普通追加。
+                    // 写死 dropped % cap 只在满环时成立，maxLen 变化后会写错槽位
+                    const pos = ((this.dropped + this.n) % this.cap) * 2;
                     this.buf[pos] = i; this.buf[pos + 1] = q;
                     this.dropped++;
+                    if (this.n > this.maxLen) {          // maxLen 被调小：窗口从左侧收缩
+                        const extra = this.n - this.maxLen;
+                        this.dropped += extra; this.n -= extra;
+                    }
                     if (this.drawn < this.dropped) this.drawn = this.dropped;   // 被覆盖的点不用再画
                     return;
                 }
-                if (this.n === this.cap) this._grow();
+                if (this.n >= this.cap) this._grow();
                 const pos = this.n * 2;
                 this.buf[pos] = i; this.buf[pos + 1] = q;
                 this.n++;
             }
 
             _grow() {
-                const nb = new Float32Array(this.cap * 4);
-                nb.set(this.buf);
+                const nc = this.cap * 2;
+                const nb = new Float32Array(nc * 2);
+                // cap 变了，逻辑→物理映射（k % cap）跟着变：把已存的点按新 cap 重排
+                for (let k = this.dropped; k < this.dropped + this.n; k++) {
+                    const src = (k % this.cap) * 2, dst = (k % nc) * 2;
+                    nb[dst] = this.buf[src]; nb[dst + 1] = this.buf[src + 1];
+                }
                 this.buf = nb;
-                this.cap *= 2;
+                this.cap = nc;
             }
 
             // 顺序遍历缓存里的所有点（旧→新）：fn(i, q)
@@ -5920,10 +6688,10 @@
                 const dpr = window.devicePixelRatio || 1;
                 const rect = this.canvas.getBoundingClientRect();
 
-                this.canvas.width = rect.width * dpr;
-                this.canvas.height = rect.height * dpr;
+                this.canvas.width = Math.max(1, Math.round(rect.width * dpr));
+                this.canvas.height = Math.max(1, Math.round(rect.height * dpr));
 
-                this.ctx.scale(dpr, dpr);
+                this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);   // 用 setTransform 覆盖，避免多次调用累积缩放
 
                 // 重新绘制
                 this.draw();
@@ -5942,9 +6710,9 @@
 
             }
 
-            // 更新标签显示
+            // 更新标签显示（名称已由卡片表头给出，这里只显示数值+单位）
             updateLabel(value) {
-                this.labelElement.textContent = `${this.title}: ${value.toFixed(this.precision)} ${this.unit}`;
+                this.labelElement.textContent = `${value.toFixed(this.precision)} ${this.unit}`.trim();
             }
 
             // 设置Y轴标记
@@ -6663,6 +7431,12 @@
                         freqWaves.addData(s.ppm * 1e-6 * cfg.fc);
                         snrWaves.addData(Math.min(Math.max(s.snr, -20), 120));
                         this._status(`${s.filler ? 'idle(filler)' : OFDM_MODS[s.mod].name} sym ${this.frames}  SNR ${s.snr.toFixed(1)} dB  gain ${(20 * Math.log10(s.g)).toFixed(1)} dB  clock ${s.ppm.toFixed(0)} ppm  hint: ${this._hint(s.snr)}`);
+                        // 给"解码详情"面板的最新符号快照（不放 points 大数组，只留标量）
+                        this.lastSym = {
+                            snr: s.snr, ppm: s.ppm, shift: s.shift, timing: s.timing, gain: s.gain, sf: s.sf,
+                            mod: s.mod, modName: OFDM_MODS[s.mod].name, fec: s.fec, cnt: s.cnt, filler: s.filler,
+                            consistency: s.consistency
+                        };
                     },
                     onBits: bits => {
                         if (this.onSample && bits.length) this.onSample({ sample: this.last || [0, 0], bits: bits });
@@ -6701,6 +7475,8 @@
             _status(t) {
                 const el = document.getElementById('ofdmStats');
                 if (el) el.textContent = 'OFDM：' + t;
+                const br = document.getElementById('detBrief');   // 折叠面板摘要行
+                if (br) br.textContent = t;
             }
 
             setBaudRate(baudRate) { this.baudRate = baudRate; this._build(); }
@@ -6780,7 +7556,10 @@
                 demodulate: OFDMDemodulator
             }
         }
-        let selectedMode = MODES['bpsk'];
+        // 初始模式必须跟下拉框的 HTML 默认选中项一致（OFDM 是 selected 项）。
+        // 写死成某个模式的话，首次加载（本地无保存设置）会出现"下拉框显示 OFDM、
+        // 实际按 BPSK 渲染 UI"的错位
+        let selectedMode = MODES[document.getElementById('mode').value] || MODES['bpsk'];
 
         const constellation = new ConstellationRecorder(baudRate / 8);
         const constellationMeta = new ConstellationRecorder(256);   // OFDM 元数据子载波（单独颜色绘制）
@@ -7078,6 +7857,7 @@
             // 喷泉码解帧器：纠错后的比特进这里找水滴包；Receiver 全局保留，断开重连不清进度
             const ftnDeframer = new FountainDeframer(p => ensureFtnReceiver().onPacket(p));
             startFtnStatusPoll(() => ftnDeframer.active);
+            startDecodeDetails();
             fecRx = new FecDeframer({
                 onBits: bits => {
                     for (let bit of bits) {
@@ -7131,16 +7911,16 @@
                 const dpr = window.devicePixelRatio || 1;
                 const rect = canvas.getBoundingClientRect();
 
-                canvas.width = rect.width * dpr;
-                canvas.height = rect.height * dpr;
+                canvas.width = Math.max(1, Math.round(rect.width * dpr));
+                canvas.height = Math.max(1, Math.round(rect.height * dpr));
 
-                ctx.scale(dpr, dpr);
-
+                ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+                ctx.font = "12px Arial";
+                ctx.lineWidth = 1;
             }
             redetect();
             window.addEventListener('resize', redetect);
-            ctx.lineWidth = 1
-            ctx.font = "12px Arial";
+            constRedetect = redetect;      // 供"解码详情"面板展开时重新量尺寸
             function draw() {
                 const width = canvas.width / window.devicePixelRatio
                 const height = canvas.height / window.devicePixelRatio
@@ -7245,6 +8025,7 @@
             fecRx = null;
             ccRx = null;
             stopFtnStatusPoll();
+            stopDecodeDetails();
             rxBtn.textContent = '开始';
             constellation.clear();
             constellationMeta.clear();
@@ -7847,6 +8628,17 @@
         snrWaves.title = 'SNR'
         snrWaves.unit = 'dB'
         snrWaves.markers = [10, 20, 30, 40, -10];
+
+        // "解码详情"默认折叠，展开时画布才拿到真实尺寸 → 重新量取并绘制
+        {
+            const decodeInfoEl = document.getElementById('decodeInfo');
+            if (decodeInfoEl) {
+                decodeInfoEl.addEventListener('toggle', () => {
+                    if (decodeInfoEl.open) requestAnimationFrame(redetectCharts);
+                });
+                if (decodeInfoEl.open) redetectCharts();
+            }
+        }
     </script>
 </body>
 
