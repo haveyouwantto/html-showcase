@@ -1103,7 +1103,6 @@
                 <summary>消息列表</summary>
                 <div id="message-list"></div>
             </details>
-            <!-- <button id="rxImageBtn">接收图片</button> -->
             <div id="audio-inputs">
                 <label for="audio-input">音频输入：</label>
                 <select id="audio-input"></select>
@@ -1147,7 +1146,6 @@
                 <option value="1600">1600</option>
                 <option value="2400">2400</option>
             </select>
-            <!-- <input type="number" id="baudrateInput" value="50" min="30" max="4800"> -->
             <label id="ofdmBwLabel" style="display:none">带宽：</label>
             <select id="ofdmBwInput" style="display:none">
                 <option value="600">600 Hz</option>
@@ -1221,7 +1219,7 @@
                         <div id="detChanText" style="color: var(--text-secondary); font-size: 0.75rem; text-align: center;"></div>
                     </div>
                 </div>
-                <!-- 文件接收提示（原有，更新函数不变） -->
+                <!-- 文件接收提示 -->
                 <div id="ftnStatus" style="align-self: stretch; color: var(--neon-cyan); font-size: 0.85rem; min-height: 1.3em;"></div>
                 <!-- 深度诊断：OFDM 显示状态徽标/配置卡/子载波构成/跟踪环/捕获流程/信道图，其他模式只显示基本参数卡 -->
                 <!-- 解码详情的内容结构全部写在这里（单位、颜色、进度条、模板都是静态 HTML），
@@ -1440,10 +1438,10 @@
 
     <script>
 
-        let baudRate = 1200; // 波特率
-        const sampleRate = 48000; // 采样率
-        let carrierFreq = 1800; // 载波频率
-        let ofdmBandwidth = 1800; // OFDM 占用带宽（Hz），OFDM 模式下直接用它，不再从波特率换算
+        let baudRate = 1200;
+        const sampleRate = 48000;
+        let carrierFreq = 1800;
+        let ofdmBandwidth = 1800;
 
         function saveSettings() {
             const settings = {
@@ -1498,13 +1496,12 @@
                 }
             }
         }
-        const freqMulti = 1; // 频率倍数
-        let samplePerSymbol = sampleRate / baudRate; // 每个符号的采样点数
+        const freqMulti = 1;
+        let samplePerSymbol = sampleRate / baudRate;
         let symbolTime = samplePerSymbol / sampleRate;
         let bandwidth = baudRate * freqMulti
 
 
-        // 创建音频工作线程
         function createWorklets(baudRate, sampleRate) {
             class Complex {
                 constructor(real, imag) {
@@ -1540,7 +1537,7 @@
                 }
 
                 abs() {
-                    return Math.sqrt(this.real * this.real + this.imag * this.imag); // 绝对值
+                    return Math.sqrt(this.real * this.real + this.imag * this.imag);
                 }
 
                 toString() {
@@ -1549,7 +1546,7 @@
             }
 
             function getSample(array, index) {
-                const windowSize = 5; // 可调整的窗口大小（左右各包含的样本数）
+                const windowSize = 5;
                 const start = Math.max(0, Math.floor(index - windowSize));
                 const end = Math.min(array.length - 1, Math.ceil(index + windowSize));
                 let sum = 0;
@@ -1654,7 +1651,6 @@
                     };
                 }
 
-                // 取下一个符号；没有就返回 null（静音）
                 nextSymbol() {
                     while (this.cur === null || this.curPtr >= this.cur.length) {
                         if (!this.chunks.length) { this.cur = null; break; }
@@ -1689,7 +1685,6 @@
                     if (!output || !output[0]) return !this.done;
 
                     for (let i = 0; i < output[0].length; i++) {
-                        // 符号周期结束，取下一个符号
                         if (this.samplesElapsed >= this.samplesPerSymbol) {
                             this.samplesElapsed = 0;
                             const sym = this.nextSymbol();
@@ -1720,14 +1715,14 @@
                 setBaudRate(baudRate) {
                     this.baudRate = baudRate;
                     this.samplesPerSymbol = Math.round(this.sampleRate / baudRate);
-                    this.samplesElapsed = 0; // 重置计数器
+                    this.samplesElapsed = 0;
                 }
 
                 setData(data) {
                     this.chunks = [data];
                     this.cur = null; this.curPtr = 0;
                     this.queued = data.length;
-                    this.samplesElapsed = 0; // 开始新数据
+                    this.samplesElapsed = 0;
                     this.started = true;
                     this.finished = true;
                     this.tail = 0;
@@ -1742,7 +1737,7 @@
                         defaultValue: 440,
                         minValue: 20,
                         maxValue: 20000,
-                        automationRate: 'a-rate' // 关键：指定 automationRate 为 'a-rate'
+                        automationRate: 'a-rate'
                     }];
                 }
 
@@ -1753,33 +1748,28 @@
                 }
 
                 process(inputs, outputs, parameters) {
-                    // 确保有一个输入通道
                     const input = inputs[0];
                     const output = outputs[0];
 
-                    // 确保是双声道输出
                     const leftChannel = output[0]; // 实部
                     const rightChannel = output[1]; // 虚部
-                    const frequencies = parameters.frequency; // 获取频率数组，因为是 a-rate
+                    const frequencies = parameters.frequency;
 
                     for (let i = 0; i < leftChannel.length; i++) {
-                        const frequency = frequencies[i] ?? frequencies[0]; // 获取当前帧的频率
+                        const frequency = frequencies[i] ?? frequencies[0];
                         const omega = 2 * Math.PI * frequency / this.sampleRate;
 
                         const real = Math.cos(this.phase);
                         const imag = Math.sin(this.phase);
 
-                        // 处理左声道输入，如果未连接则乘以1
                         const leftInputValue = input && input[0] ? input[0][i] : 1;
 
-                        // 处理右声道输入，如果未连接则乘以1
                         const rightInputValue = input && input[1] ? input[1][i] : 1;
 
                         leftChannel[i] = real * leftInputValue;
                         rightChannel[i] = imag * rightInputValue;
 
                         this.phase += omega;
-                        //this.phase %= (2 * Math.PI); // 周期重置
                     }
 
                     return true;
@@ -1809,7 +1799,6 @@
                 }
 
                 process(inputs, outputs, parameters) {
-                    // 获取输入信号和固定解调频率参数
                     const input = inputs[0];
 
                     const filteredI = input[0]
@@ -1817,35 +1806,27 @@
 
                     if (!filteredI || !filteredQ) return true;
 
-                    // 相位差检测与符号同步处理
                     const phase = new Float32Array(filteredI.length);
                     for (let j = 0; j < filteredI.length - 1; ++j) {
-                        // 计算相邻样本的共轭乘积（用于相位差检测）
                         const real1 = filteredI[j], imag1 = filteredQ[j];
                         const real2 = filteredI[j + 1], imag2 = filteredQ[j + 1];
                         const resultReal = real1 * real2 + imag1 * imag2;  // 实部
                         const resultImag = real1 * -imag2 + imag1 * real2;  // 虚部
 
-                        // 计算瞬时相位差（arctan(虚部/实部））
                         phase[j] = Math.atan2(resultImag, resultReal);
 
-                        // 符号边界检测（相位符号变化时触发）
                         if (j > 0 && Math.sign(phase[j]) != Math.sign(phase[j - 1])) {
-                            // 重置计数器
                             this.count = 0;
                         }
 
-                        // 符号周期计数
                         this.count = (this.count + 1) % this.samplesPerSymbol;
-                        // 当达到采样时机时提交相位
                         if (this.count === this.samplesPerSymbol * 0.5) {
                             this.port.postMessage({ phase: phase[j] * this.samplesPerSymbol, bit: phase[j] > 0 ? 1 : 0 });
                         }
                     }
 
-                    phase[phase.length - 1] = phase[phase.length - 2];  // 边界处理
+                    phase[phase.length - 1] = phase[phase.length - 2];
 
-                    // 将相位数据输出到指定端口
                     outputs[0][0].set(phase);
                     return true;
                 }
@@ -1882,7 +1863,7 @@
                     // Update all loop gains based on the new baud rate
                     this.alpha = calculateAlpha(this.baudRate);
                     this.beta = calculateBeta(this.baudRate);
-                    this.gamma = calculateGamma(this.baudRate); // Add this line
+                    this.gamma = calculateGamma(this.baudRate);
                     this.gainAlpha = 0.25;
                 }
 
@@ -1899,7 +1880,6 @@
                             let currQ = clamp(q[j], -2, 2);
 
                             // Derotate with the current carrier-phase estimate BEFORE the timing detector,
-                            // so its hard decisions are made on an aligned constellation.
                             this.out[0] = new Complex(currI, currQ).mul(new Complex(Math.cos(this.phase), -Math.sin(this.phase)));
                             this.outRail[0] = new Complex(this.out[0].real > 0 ? 1 : -1, 0);
 
@@ -1912,7 +1892,6 @@
                             this.count -= offset;
                             this.mu -= offset;
 
-                            // Shift history
                             this.out[2] = this.out[1];
                             this.out[1] = this.out[0];
                             this.outRail[2] = this.outRail[1];
@@ -1928,11 +1907,10 @@
 
                             // Costas Loop
                             let costas = new Complex(Math.cos(this.phase), -Math.sin(this.phase));
-                            let out = gained; // already derotated above
+                            let out = gained;
                             let error = out.real * out.imag;
                             this.freq += clamp(this.beta * error, -0.01, 0.01);
 
-                            // Clamp freq 
                             let radianPerHz = Math.PI * 2 / this.baudRate;
                             let maxRadian = 4 * radianPerHz;
                             this.freq = clamp(this.freq, -maxRadian, maxRadian);
@@ -1982,7 +1960,7 @@
                     // Update all loop gains based on the new baud rate
                     this.alpha = calculateAlpha(this.baudRate);
                     this.beta = calculateBeta(this.baudRate);
-                    this.gamma = calculateGamma(this.baudRate) / 2; // Add this line
+                    this.gamma = calculateGamma(this.baudRate) / 2;
 
                     this.gainAlpha = 0.25;
                 }
@@ -2000,7 +1978,6 @@
                             let currQ = clamp(q[j], -2, 2);
 
                             // Derotate with the current carrier-phase estimate BEFORE the timing detector,
-                            // so its hard decisions are made on an aligned constellation.
                             this.out[0] = new Complex(currI, currQ).mul(new Complex(Math.cos(this.phase), -Math.sin(this.phase)));
                             this.outRail[0] = new Complex(this.out[0].real > 0 ? 1 : -1, this.out[0].imag > 0 ? 1 : -1);
 
@@ -2013,7 +1990,6 @@
                             this.count -= offset;
                             this.mu -= offset;
 
-                            // Shift history
                             this.out[2] = this.out[1];
                             this.out[1] = this.out[0];
                             this.outRail[2] = this.outRail[1];
@@ -2029,11 +2005,10 @@
 
                             // Costas Loop
                             let costas = new Complex(Math.cos(this.phase), -Math.sin(this.phase));
-                            let out = gained; // already derotated above
-                            let error = this.errorFunc(out); // errorFunc 需要根据实际情况进行修改
+                            let out = gained;
+                            let error = this.errorFunc(out);
                             this.freq += clamp(this.beta * error, -0.01, 0.01);
 
-                            // Clamp freq 
                             let radianPerHz = Math.PI * 2 / this.baudRate;
                             let maxRadian = 4 * radianPerHz;
                             this.freq = clamp(this.freq, -maxRadian, maxRadian);
@@ -2096,7 +2071,7 @@
                     // Update all loop gains based on the new baud rate
                     this.alpha = calculateAlpha(this.baudRate);
                     this.beta = calculateBeta(this.baudRate);
-                    this.gamma = calculateGamma(this.baudRate) / 4; // Add this line
+                    this.gamma = calculateGamma(this.baudRate) / 4;
                     this.gainAlpha = 0.25;
                 }
 
@@ -2127,7 +2102,6 @@
                             let currQ = clamp(q[j], -2, 2);
 
                             // Derotate with the current carrier-phase estimate BEFORE the timing detector,
-                            // so its hard decisions are made on an aligned constellation.
                             this.out[0] = new Complex(currI, currQ).mul(new Complex(Math.cos(this.phase), -Math.sin(this.phase)));
                             this.outRail[0] = this.nearest8psk(this.out[0]);
 
@@ -2140,7 +2114,6 @@
                             this.count -= offset;
                             this.mu -= offset;
 
-                            // Shift history
                             this.out[2] = this.out[1];
                             this.out[1] = this.out[0];
                             this.outRail[2] = this.outRail[1];
@@ -2156,11 +2129,10 @@
 
                             // Costas Loop
                             let costas = new Complex(Math.cos(this.phase), -Math.sin(this.phase));
-                            let out = gained; // already derotated above
+                            let out = gained;
                             let error = this.phaseDetector8(out);
                             this.freq += clamp(this.beta * error, -0.01, 0.01);
 
-                            // Clamp freq 
                             let radianPerHz = Math.PI * 2 / this.baudRate;
                             let maxRadian = 4 * radianPerHz;
                             this.freq = clamp(this.freq, -maxRadian, maxRadian);
@@ -2211,8 +2183,6 @@
             registerProcessor('ofdm-capture', OfdmCapture)
 
             // OFDM transmit player: the main thread generates one OFDM symbol at a time and posts it here.
-            // The worklet plays them back-to-back from a queue, reports the exact level every ~20 ms and
-            // raises 'low' as soon as the queue is about to run dry, so the main thread can refill in time.
             class OfdmTxPlayer extends AudioWorkletProcessor {
                 constructor() {
                     super();
@@ -2285,7 +2255,7 @@
         const BLOCK_SIZE_CHROMA = BLOCK_SIZE_Y >> 1;      // 色度块尺寸（4×4）
 
 
-        const fib = [1, 2, 3, 5, 8, 13, 21, 34, 55, 89, 144, 233, 377, 610, 987, 1597, 2584, 4181, 6765, 10946, 17711, 28657, 46368, 75025, 121393, 196418, 317811, 514229, 832040, 1346269, 2178309, 3524578]; // 斐波那契数列
+        const fib = [1, 2, 3, 5, 8, 13, 21, 34, 55, 89, 144, 233, 377, 610, 987, 1597, 2584, 4181, 6765, 10946, 17711, 28657, 46368, 75025, 121393, 196418, 317811, 514229, 832040, 1346269, 2178309, 3524578];
         const fibRev = [...fib].reverse()
         const VARICODE = [
             " ", "e",
@@ -2316,7 +2286,6 @@
                 i++;
             }
 
-            // 斐波那契编码过程
             while (i < fibRev.length) {
                 if (fibRev[i] <= number) {
                     number -= fibRev[i];
@@ -2327,7 +2296,6 @@
                 i++;
             }
 
-            // 结束符号 1
             result.push(1);
 
             return result;
@@ -2409,7 +2377,6 @@
             let symbols = [0];
             let packed = packBitArray(bitArray, 2)
             for (let e of packed) {
-                // Convert Gray bits to phase offset
                 let phaseOffset = QPSK_GRAY_TO_PHASE[e];
                 phase = (phase + phaseOffset) % 4
                 symbols.push(phase)
@@ -2422,7 +2389,6 @@
             let symbols = [0];
             let packed = packBitArray(bitArray, 3)
             for (let e of packed) {
-                // Convert Gray bits to phase offset
                 let phaseOffset = PSK8_GRAY_TO_PHASE[e];
                 phase = (phase + phaseOffset) % 8
                 symbols.push(phase)
@@ -2438,15 +2404,12 @@
             if (len <= 0) return [];
 
             const arr = new Array(len);
-            // 随机生成第一个元素（0或1）
             arr[0] = Math.random() < 0.5 ? 0 : 1;
 
-            // 生成后续元素，确保不出现连续1
             for (let i = 1; i < len; i++) {
                 if (arr[i - 1] === 1) {
                     arr[i] = 0;  // 如果前一个是1，当前必须为0
                 } else {
-                    // 前一个是0时，随机生成0或1
                     arr[i] = Math.random() < 0.5 ? 0 : 1;
                 }
             }
@@ -2456,7 +2419,7 @@
 
 
         function encodeWithParity(n) {
-            if (!Number.isInteger(n) || n < 0) return -1; // 确保输入为非负整数
+            if (!Number.isInteger(n) || n < 0) return -1;
             let ones = 0;
             let temp = n;
             while (temp) {
@@ -2468,10 +2431,9 @@
         }
 
         function decodeAndVerify(m) {
-            if (!Number.isInteger(m) || m < 0) return -1; // 确保输入为非负整数
-            const nCandidate = m >>> 1; // 无符号右移获取原始左移后的值
-            const receivedParity = m & 1; // 提取接收到的校验位
-            // 计算原始值的奇偶性
+            if (!Number.isInteger(m) || m < 0) return -1;
+            const nCandidate = m >>> 1;
+            const receivedParity = m & 1;
             let ones = 0;
             let temp = nCandidate;
             while (temp) {
@@ -2484,7 +2446,7 @@
 
         function secondsToHms(seconds) {
             if (typeof seconds !== 'number' || seconds < 0) {
-                return "00:00:00"; // 或者抛出错误，取决于你的需求
+                return "00:00:00";
             }
 
             const hours = Math.floor(seconds / 3600);
@@ -2499,54 +2461,46 @@
         }
 
         function clamp(value, min, max) {
-            // 确保 min <= max
             if (min > max) {
-                [min, max] = [max, min]; // 交换 min 和 max 的值
+                [min, max] = [max, min];
             }
 
-            // 如果 value 小于 min，则返回 min
             if (value < min) {
                 return min;
             }
 
-            // 如果 value 大于 max，则返回 max
             if (value > max) {
                 return max;
             }
 
-            // 否则，value 在 min 和 max 之间，直接返回 value
             return value;
         }
 
         function arrayBufferToBitArray(buffer) {
-            const uint8Array = new Uint8Array(buffer); // 先把 ArrayBuffer 变成 Uint8Array，这样才能方便地读取每个字节
-            const bitArray = []; // 用来存放比特的数组
+            const uint8Array = new Uint8Array(buffer);
+            const bitArray = [];
 
-            for (let i = 0; i < uint8Array.length; i++) { // 遍历每一个字节
-                const byte = uint8Array[i]; // 取出当前的字节
-                for (let j = 7; j >= 0; j--) { // 从最高位到最低位，依次取出每一个比特
-                    const bit = (byte >> j) & 1; // 右移 j 位，然后和 1 进行与运算，就可以得到第 j 位的比特
-                    bitArray.push(bit); // 把这个比特放到数组里
+            for (let i = 0; i < uint8Array.length; i++) {
+                const byte = uint8Array[i];
+                for (let j = 7; j >= 0; j--) {
+                    const bit = (byte >> j) & 1;
+                    bitArray.push(bit);
                 }
             }
 
-            return bitArray; // 返回装满了比特的数组
+            return bitArray;
         }
 
         function concatArrayBuffers(...arrayBuffers) {
-            // 计算所有 ArrayBuffer 的总长度
             let totalLength = 0;
             for (let i = 0; i < arrayBuffers.length; i++) {
                 totalLength += arrayBuffers[i].byteLength;
             }
 
-            // 创建一个新的 ArrayBuffer，长度是所有 ArrayBuffer 的总和
             const result = new ArrayBuffer(totalLength);
 
-            // 创建一个 Uint8Array 来操作新的 ArrayBuffer
             const uint8Array = new Uint8Array(result);
 
-            // 依次把每个 ArrayBuffer 的内容复制到新的 ArrayBuffer 中
             let offset = 0;
             for (let i = 0; i < arrayBuffers.length; i++) {
                 const currentBuffer = new Uint8Array(arrayBuffers[i]);
@@ -2630,7 +2584,6 @@
                 this.gen = g;
             }
 
-            // 返回 P 字节校验
             encode(msg) {
                 const P = this.P, gen = this.gen;
                 const par = new Array(P).fill(0);
@@ -2923,7 +2876,6 @@
                 this.regCount = 0;
                 this.acc = [];
                 this.hdr = null;
-                // 重放比特放到队列最前面
                 this.q = replay.concat(this.q.slice(this.qi));
                 this.qi = 0;
             }
@@ -3034,8 +2986,7 @@
 
         // 流式卷积编码器：比特一块一块地送进来，编码后的比特一块一块地送出去。
         // 第一次 push 先输出 同步字+档位；每 CC_SEG_STEPS 步（在下一步之前）插入一个段标记；end() 补 6 个 0 并输出结束字。
-        // 把整条消息一次性送进去，输出与旧的“整条编码”逐比特相同。
-        class CcStreamEncoder {
+                class CcStreamEncoder {
             constructor(profileId) {
                 this.profileId = profileId;
                 this.prof = CC_PROFILES[profileId];
@@ -3546,7 +3497,6 @@
         }
 
         // One OFDM symbol → time domain incl. CP.  Xr/Xi hold nCar carrier values.  ext>0: periodic extension of ext samples
-        // before the CP and after the body (for the WOLA overlap).
         function ofdmSymbolTime(cfg, fft, Xr, Xi, re, im, out, off, ext) {
             const N = cfg.N;
             re.fill(0); im.fill(0);
@@ -3690,7 +3640,6 @@
         // ---------------------------------------------------------------------------------------------
         // Receiver: continuous tracker.
         // callbacks: onLock(bool), onMeta({mod,modName,fec,sf,cnt}), onSymbol({...}), onBits(bits), onLoss()
-        // ---------------------------------------------------------------------------------------------
         class OfdmStreamRx {
             constructor(cfg, cb) {
                 this.cfg = cfg;
@@ -3881,7 +3830,7 @@
                     return true;
                 }
                 this.diag = Object.assign({}, this.diag, { phase: '训练搜索', C: a.C.filter(v => v !== undefined), delta0: a.delta, amb: a.amb });
-                return false;                           // wait for more samples
+                return false;
             }
 
             _lock(tauT, delta) {
@@ -4207,7 +4156,6 @@
             return el ? (parseInt(el.value) || 0) : 0;
         }
 
-        // 只在选中 OFDM 模式时显示 OFDM 的调制选项
         function updateOfdmUi() {
             const show = selectedMode === MODES.ofdm;
             for (const id of ['ofdmModLabel', 'ofdmMod', 'ofdmAutoLabel', 'ofdmAuto']) {
@@ -4244,17 +4192,15 @@
         let fecRx = null; // 当前接收端的分组RS解帧器
         let ccRx = null;  // 当前接收端的实时卷积解帧器
 
-        // 分组RS自带CRC，不再需要逐符号奇偶校验；卷积码没有CRC，保留奇偶校验作为残余错误检测
+        // 分组RS自带CRC；卷积码没有CRC，保留逐符号奇偶校验作为残余错误检测
         function fecNeedsParity() {
             const p = fecProfileId();
             return effBaudRate() >= 200 && !(p >= 1 && p <= 4);
         }
 
-        // 纠错的统计不再走文字行：showFecStats 已合并进"解码详情"的纠错卡片（detRsFill）
 
         // ===== 解码详情面板 =====
         // 纠错卡片（所有模式通用）+ OFDM 深度诊断（状态徽标 / 自适应链路 / 跟踪环 / 捕获流程 / 速率 / 子载波 / 统计 / 信道图）
-        // 原来的 fecStats、ofdmStats 文字行已删除，字段全部并入卡片；ftnStatus 保留（文件接收提示）
         let detTimer = null;
         let constRedetect = null;       // 星座图 redetect（在 startRx 里注册），展开面板时重新量尺寸
 
@@ -4267,7 +4213,7 @@
         }
 
         // 详情面板的 DOM 结构全部写在 HTML（#detExtra 与文末的 <template>）里，
-        // 下面这些函数只填数值、改进度条宽度、切显隐，不再拼接 HTML 字符串。
+        // 下面这些函数只填数值、改进度条宽度、切显隐。
         const detEl = id => document.getElementById(id);
         const detTpl = id => document.getElementById(id).content.firstElementChild.cloneNode(true);
         const detClamp01 = v => Math.max(0, Math.min(1, isFinite(v) ? v : 0));
@@ -4278,7 +4224,6 @@
             if (el) el.style.display = on ? '' : 'none';
         }
 
-        // 纯文本填充
         function detText(id, v) {
             const el = detEl(id);
             if (el) el.textContent = (v === undefined || v === null) ? '' : String(v);
@@ -4294,7 +4239,7 @@
             else el.insertBefore(document.createTextNode(s), first);
         }
 
-        // 数值 + 动态单位：unit 为空串时隐藏 <small>（对应原来 unit 为假就不输出 small）
+        // 数值 + 动态单位：unit 为空串时隐藏 <small>
         function detValueUnit(vId, uId, v, unit) {
             detValue(vId, v);
             const u = detEl(uId);
@@ -4320,7 +4265,7 @@
             el.style.background = color || '';
         }
 
-        // 子载波堆叠条：颜色写在 HTML 里，这里只改宽度（原实现保留两位小数）
+        // 子载波堆叠条：颜色写在 HTML 里，这里只改宽度
         function detStackBar(id, ratio) {
             const el = detEl(id);
             if (el) el.style.width = (detClamp01(ratio) * 100).toFixed(2) + '%';
@@ -4342,7 +4287,6 @@
             const v = Math.round(bps * 10) / 10;
             return { v: Number.isInteger(v) ? String(v) : v.toFixed(1), u: 'bps' };
         }
-        // 速率卡（自动选 bps / kbps / Mbps）
         function detRateValue(vId, uId, bps) {
             const r = detRate(bps);
             detValueUnit(vId, uId, r.v, r.u);
@@ -4368,7 +4312,7 @@
         };
 
         // ===== 纠错可视化 =====
-        // 每 250ms 采样一次增量，画成"解码批次"堆积条带；文字版统计已并入卡片，这里不再有重复的文字行
+        // 每 250ms 采样一次增量，画成"解码批次"堆积条带
         const FEC_HIST_MAX = 120;      // 保留约 30 秒的时间轴（含空闲批次，用于算实时速率）
         const FEC_BAR_MAX = 60;        // 条带里最多画 60 根柱（只画有解码活动的批次）
         const FEC_RATE_WIN = 2000;     // 实时有效速率的统计窗口（毫秒）
@@ -4540,7 +4484,7 @@
             return true;
         }
 
-        // 纠错区（所有模式通用）：文字统计已并入卡片，卡片另带实时有效速率与批次堆积条带。
+        // 纠错区（所有模式通用）：卡片带实时有效速率与批次堆积条带。
         // 区段在 HTML 里的位置固定（整体锁定状态之后），这里只填数值并切换显隐。
         function detFecFill() {
             const info = fecProfileInfo();
@@ -4562,7 +4506,6 @@
 
         function stopDecodeDetails() {
             if (detTimer) { clearInterval(detTimer); detTimer = null; }
-            // 结构常驻在 HTML 里，收工只隐藏面板
             const ex = detEl('detExtra');
             if (ex) ex.style.display = 'none';
             const ct = detEl('detChanText');
@@ -4609,7 +4552,7 @@
             if (cw) cw.style.display = 'none';
         }
 
-        // 星座图卡片右上的小标签：显示当前解调调制阶数与判决点数（新信息，不与别处重复）
+        // 星座图卡片右上的小标签：显示当前解调调制阶数与判决点数
         function updateConstTag() {
             const el = document.getElementById('constTag');
             if (!el) return;
@@ -4659,7 +4602,7 @@
             detValue('detLockCount', st.locks);
             detValue('detLossCount', st.losses);
 
-            // ---- 最近符号 · 链路：合并了原"自适应链路"区，重复的 MCS 字段只保留一份
+            // ---- 最近符号 · 链路 ----
             //（SNR/增益/频偏/窗移已由上方示波器实时绘制，这里不重复）----
             detShow('detSymSec', !!ls);
             if (ls) {
@@ -4705,7 +4648,7 @@
             detStep('detStep2', trainDone ? 'done' : (/训练/.test(ph) ? 'act' : ''), trainDone ? '通过' : '分支匹配');
             detStep('detStep3', trainDone ? 'done' : (ph === '失锁，重新捕获' ? 'act' : ''), trainDone ? '跟踪中' : '待定');
 
-            // 相关值卡片：没有那个量就整张卡隐藏（对应原来按需 push 卡片）
+            // 相关值卡片：没有那个量就整张卡隐藏
             const hasRho = dg.rho !== undefined, hasDelta = dg.delta0 !== undefined, hasAmb = dg.amb !== undefined;
             const hasCorr = !!(dg.C && dg.C.length);
             detShow('detRhoCard', hasRho);
@@ -4793,7 +4736,6 @@
             const yOf = v => h - 5 - (v - mn) / span * (h - 10);
             const xOf = k => n > 1 ? k / (n - 1) * (w - 2) + 1 : 1;
 
-            // 曲线下方填充（渐变）
             const grad = ctx.createLinearGradient(0, 0, 0, h);
             grad.addColorStop(0, 'rgba(57, 160, 255, 0.35)');
             grad.addColorStop(1, 'rgba(57, 160, 255, 0.02)');
@@ -4805,20 +4747,17 @@
             ctx.closePath();
             ctx.fill();
 
-            // 0 dB 参考线
             ctx.strokeStyle = 'rgba(148, 163, 184, 0.55)';
             ctx.setLineDash([3, 3]);
             ctx.beginPath(); ctx.moveTo(0, yOf(0)); ctx.lineTo(w, yOf(0)); ctx.stroke();
             ctx.setLineDash([]);
 
-            // 曲线
             ctx.strokeStyle = '#39a0ff';
             ctx.lineWidth = 1.4;
             ctx.beginPath();
             for (let k = 0; k < n; k++) (k ? ctx.lineTo : ctx.moveTo).call(ctx, xOf(k), yOf(mag[k]));
             ctx.stroke();
 
-            // 导频 / meta 位置刻度
             ctx.lineWidth = 1;
             ctx.strokeStyle = 'rgba(245, 165, 36, 0.55)';
             for (const k of cfg.pilotIdx) { const x = xOf(k); ctx.beginPath(); ctx.moveTo(x, h - 4); ctx.lineTo(x, h); ctx.stroke(); }
@@ -4838,18 +4777,16 @@
             feed(bit) {
                 this.bitBuffer.push(bit);
 
-                // 检测结束标志
                 if (this.bitBuffer.length >= 2 && this.bitBuffer[this.bitBuffer.length - 1] === 1 && this.bitBuffer[this.bitBuffer.length - 2] === 1) {
                     try {
                         this._decode();
                     } catch (IndexError) {
-                        // 忽略 IndexError 异常
                     }
-                    this.bitBuffer = []; // 清空 bitBuffer
+                    this.bitBuffer = [];
                 }
 
                 if (this.bitBuffer.length > 32) {
-                    this.bitBuffer = []; // 清空 bitBuffer
+                    this.bitBuffer = [];
                 }
             }
 
@@ -4886,7 +4823,6 @@
                     this._correlate();
                 }
                 if (this.buffer.length >= 8) {
-                    // 这里Iris来帮你把8个比特变成一个字节哦！
                     let byte = 0;
                     for (let i = 0; i < 8; i++) {
                         byte = (byte << 1) | this.buffer[i];
@@ -4897,19 +4833,18 @@
             }
 
             _correlate() {
-                if (this.syncBuffer.length > 32) { // 当同步缓冲区里的比特超过32个时
-                    this.syncBuffer.shift(); // 移除最老的那个比特
-                    // 现在我们来检查是不是找到了同步码！
+                if (this.syncBuffer.length > 32) {
+                    this.syncBuffer.shift();
                     let isCorrelated = true;
-                    for (let i = 0; i < this.syncCode.length; i++) { // 遍历32个比特
+                    for (let i = 0; i < this.syncCode.length; i++) {
                         if (this.syncBuffer[i] !== this.syncCode[i]) {
-                            isCorrelated = false; // 有一个不一样就不是同步码啦
+                            isCorrelated = false;
                             break;
                         }
                     }
-                    if (isCorrelated) { // 如果找到了同步码
-                        this.buffer = []; // 清空数据缓冲区，因为同步码不是数据哦
-                        this.sync = false; // 设置为不同步模式，就不再找同步码了
+                    if (isCorrelated) {
+                        this.buffer = [];
+                        this.sync = false;
                         if (this.onstart) this.onstart();
                     }
                 }
@@ -5272,7 +5207,7 @@
              * @param {Object} sample 四元组数据，字段包括 type, blockX, blockY, idx, value
              */
             addSample(sample) {
-                if (!isValidSample(sample)) return; // invaild
+                if (!isValidSample(sample)) return;
                 const bx = sample.blockX;
                 const by = sample.blockY;
                 if (sample.type === "Y") {
@@ -5875,7 +5810,6 @@
             }
 
             // Tiny event emitter.  Events: 'need' (buffer is getting low – feed me), 'low' (about to run empty),
-            //                              'underrun' (it did run empty), 'drain' (everything has been played)
             on(evt, fn) { (this._ev[evt] || (this._ev[evt] = [])).push(fn); return () => this.off(evt, fn); }
             off(evt, fn) { const l = this._ev[evt]; if (l) this._ev[evt] = l.filter(f => f !== fn); }
             emit(evt, detail) { const l = this._ev[evt]; if (l) for (const f of l.slice()) { try { f(detail || {}); } catch (e) { console.error(e); } } }
@@ -6136,7 +6070,6 @@
             get bitsPerSymbol() { return 3; }
         }
 
-        // ---- OFDM：按帧流式调制，每帧生成一段音频，用 AudioBufferSource 首尾相接地排队播放 ----
         // ---- OFDM transmitter: ONE continuous stream, never a series of blocks ----
         // The modulator generates one OFDM symbol (427 ms) at a time and keeps ~2.5 symbols queued in the 'ofdm-tx' worklet.
         // Events (see Modulator.on):
@@ -6582,7 +6515,6 @@
                     let current = event.data.i > 0 ? 1 : 0;
                     this.debug.push(current)
                     if (this.debug.length >= 18) {
-                        //console.log([...this.debug])
                         this.debug = []
                     }
                     if (this.onSample) this.onSample({
@@ -6599,24 +6531,20 @@
 
                     let error = Math.sqrt(Math.pow(decidecI - event.data.i, 2) + Math.pow(decidecQ - event.data.q, 2));
 
-                    // Calculate SNR
                     let signalPower = 1;
                     let noisePower = error;
                     let snr = signalPower / Math.max(noisePower, 1e-6);
 
-                    // Add to snr array
                     this.snrArray[this.arrayIndex] = snr;
                     this.arrayIndex++;
                     if (this.arrayIndex >= this.baudRate) this.arrayIndex = 0;
 
-                    // Calculate average snr
                     let snrSum = 0;
                     for (let i = 0; i < this.baudRate; i++) {
                         snrSum += this.snrArray[i];
                     }
                     let snrAverage = snrSum / this.baudRate;
 
-                    // Convert to dB
                     snrAverage = Math.log10(snrAverage) * 20;
 
                     snrWaves.addData(Math.min(snrAverage, 120))
@@ -6686,7 +6614,6 @@
                     let phaseDiff = phase - this.lastPhase;
                     if (phaseDiff < 0) phaseDiff += 4;
 
-                    // Convert phase difference to Gray bits
                     let grayBits = QPSK_PHASE_TO_GRAY[phaseDiff];
                     let bit1 = (grayBits >> 1) & 1
                     let bit2 = grayBits & 1
@@ -6705,23 +6632,19 @@
 
                     let error = Math.sqrt(Math.pow(decidecI - event.data.i, 2) + Math.pow(decidecQ - event.data.q, 2));
 
-                    // Calculate SNR
                     let signalPower = 1;
                     let snr = signalPower / Math.max(error, 1e-6);
 
-                    // Add to snr array
                     this.snrArray[this.arrayIndex] = snr;
                     this.arrayIndex++;
                     if (this.arrayIndex >= this.baudRate) this.arrayIndex = 0;
 
-                    // Calculate average snr
                     let snrSum = 0;
                     for (let i = 0; i < this.baudRate; i++) {
                         snrSum += this.snrArray[i];
                     }
                     let snrAverage = snrSum / this.baudRate;
 
-                    // Convert to dB
                     snrAverage = Math.log10(snrAverage) * 20;
 
                     snrWaves.addData(Math.min(snrAverage, 120))
@@ -6793,7 +6716,6 @@
                     let phaseDiff = phase - this.lastPhase;
                     if (phaseDiff < 0) phaseDiff += 8;
 
-                    // Convert phase difference to Gray bits
                     let grayBits = PSK8_PHASE_TO_GRAY[phaseDiff];
                     let bit1 = (grayBits >> 2) & 1
                     let bit2 = (grayBits >> 1) & 1
@@ -6814,23 +6736,19 @@
 
                     let error = Math.sqrt(Math.pow(decidecI - i, 2) + Math.pow(decidecQ - q, 2));
 
-                    // Calculate SNR
                     let signalPower = 1;
                     let snr = signalPower / Math.max(error, 1e-6);
 
-                    // Add to snr array
                     this.snrArray[this.arrayIndex] = snr;
                     this.arrayIndex++;
                     if (this.arrayIndex >= this.baudRate) this.arrayIndex = 0;
 
-                    // Calculate average snr
                     let snrSum = 0;
                     for (let i = 0; i < this.baudRate; i++) {
                         snrSum += this.snrArray[i];
                     }
                     let snrAverage = snrSum / this.baudRate;
 
-                    // Convert to dB
                     snrAverage = Math.log10(snrAverage) * 20;
 
                     snrWaves.addData(Math.min(snrAverage, 120))
@@ -6838,13 +6756,10 @@
             }
 
             getPhase(i, q) {
-                // 计算相位角度（以弧度为单位）
                 let angle = Math.atan2(q, i);
-                // 转换为 0 - 360° 范围（以度数计算）
                 angle = (angle * 180 / Math.PI + 360) % 360;
                 // 星座点位于 k*45°，判决边界位于 22.5° 处（无需平移）
-                // 通过角度计算 8PSK 相位索引
-                return Math.round(angle / 45) % 8; // 将角度转换为 0-7 之间的索引
+                return Math.round(angle / 45) % 8;
             }
 
             stop() {
@@ -6894,21 +6809,16 @@
             }
 
             download() {
-                // 创建一个 Blob 对象，把字节数组放进去
                 const blob = new Blob([new Uint8Array(this.bytes)], { type: "application/octet-stream" });
 
-                // 创建一个 URL 对象，指向 Blob 对象
                 const url = URL.createObjectURL(blob);
 
-                // 创建一个 <a> 元素，用来触发下载
                 const a = document.createElement('a');
                 a.href = url;
-                a.download = "download.dat"; // 设置下载的文件名
+                a.download = "download.dat";
 
-                // 模拟点击 <a> 元素，触发下载
                 a.click();
 
-                // 释放 URL 对象，防止内存泄漏
                 URL.revokeObjectURL(url);
             }
 
@@ -6919,13 +6829,13 @@
                 let preview = "";
                 let idx = 0;
 
-                while (idx < this.data.length) { // Corrected loop condition to prevent infinite loops
+                while (idx < this.data.length) {
                     let str = this.data[idx];
 
                     if (str != null) {
                         if (counter + str.length >= 20) {
                             preview += str.substring(0, 20 - counter);
-                            break; // Exit the loop after reaching the limit
+                            break;
                         } else {
                             preview += str;
                             counter += str.length;
@@ -6957,28 +6867,23 @@
                 this.isRunning = false;
                 this.animationId = null;
                 this.maxValue = 0;
-                this.minValue = 0; // 添加最小值
-                this.markers = []; // 默认Y轴标记
-                this.precision = 3; // 显示精度
-                this.mode = mode; // 1: 零中线, 2: 0到最大正值, 3: 最小值到最大值
+                this.minValue = 0;
+                this.markers = [];
+                this.precision = 3;
+                this.mode = mode;
                 this.title = "Value"
-                this.unit = ""; // 单位
+                this.unit = "";
                 this.lineColor = '#2ecc71'
 
-                // 初始化缓冲区为0
                 this.buffer.fill(0);
 
-                // 设置初始标签
                 this.updateLabel(0);
 
-                // 初始调整画布大小
                 this.redetect();
 
-                // 监听窗口大小变化
                 window.addEventListener('resize', () => this.redetect());
             }
 
-            // 调整画布大小以适应CSS尺寸和设备像素比
             redetect() {
                 const dpr = window.devicePixelRatio || 1;
                 const rect = this.canvas.getBoundingClientRect();
@@ -6988,19 +6893,14 @@
 
                 this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);   // 用 setTransform 覆盖，避免多次调用累积缩放
 
-                // 重新绘制
                 this.draw();
             }
 
-            // 添加数据到缓冲区
             addData(value) {
-                // 更新缓冲区
                 this.buffer[this.head] = value;
 
-                // 更新当前指针（循环缓冲区）
                 this.head = (this.head + 1) % this.memorySize;
 
-                // 更新标签
                 this.updateLabel(value);
 
             }
@@ -7010,31 +6910,24 @@
                 this.labelElement.textContent = `${value.toFixed(this.precision)} ${this.unit}`.trim();
             }
 
-            // 设置Y轴标记
             setMarkers(markers) {
-                this.markers = markers.slice(); // 复制数组
-                this.draw(); // 重绘以显示标记
+                this.markers = markers.slice();
+                this.draw();
             }
 
-            // 绘制波形
             draw() {
                 const width = this.canvas.width / window.devicePixelRatio;
                 const height = this.canvas.height / window.devicePixelRatio;
                 const ctx = this.ctx;
 
-                // 计算当前缓冲区的最大值和最小值
                 this.calculateMaxValue();
 
-                // 清除画布
                 ctx.clearRect(0, 0, width, height);
 
-                // 绘制网格和坐标轴
                 this.drawGrid(width, height);
 
-                // 绘制Y轴标记
                 this.drawMarkers(width, height);
 
-                // 绘制波形
                 ctx.beginPath();
                 ctx.lineWidth = 1;
                 ctx.strokeStyle = this.lineColor;
@@ -7042,27 +6935,24 @@
                 let scaleY, centerY;
 
                 switch (this.mode) {
-                    case 1: // 零中线
+                    case 1:
                         scaleY = height / (2 * this.maxAbsValue);
                         centerY = height / 2;
                         break;
-                    case 2: // 0到最大正值
+                    case 2:
                         scaleY = height / this.maxValue;
                         centerY = height;
                         break;
-                    case 3: // 最小值到最大值
+                    case 3:
                         scaleY = height / (this.maxValue - this.minValue);
                         centerY = this.maxValue / (this.maxValue - this.minValue) * height;
                         break;
                 }
 
-                // 计算每个数据点的水平间距
                 const stepX = width / (this.memorySize - 1);
 
-                // 从当前指针开始绘制（最新数据）
                 let x = 0;
 
-                // 绘制从head到缓冲区末尾的数据
                 for (let i = this.head; i < this.memorySize; i++) {
                     const y = centerY - this.buffer[i] * scaleY;
 
@@ -7075,7 +6965,6 @@
                     x += stepX;
                 }
 
-                // 绘制从缓冲区开头到head的数据
                 for (let i = 0; i < this.head; i++) {
                     const y = centerY - this.buffer[i] * scaleY;
                     ctx.lineTo(x, y);
@@ -7085,7 +6974,6 @@
                 ctx.stroke();
             }
 
-            // 计算当前缓冲区的最大值和最小值
             calculateMaxValue() {
                 let maxValue = -2147483638;
                 let minValue = 2147483637;
@@ -7107,7 +6995,6 @@
                 this.maxAbsValue = maxAbsValue;
             }
 
-            // 绘制网格和坐标轴
             drawGrid(width, height) {
                 const ctx = this.ctx;
                 let centerY;
@@ -7116,13 +7003,13 @@
                 ctx.beginPath();
 
                 switch (this.mode) {
-                    case 1: // 零中线
+                    case 1:
                         centerY = height / 2;
                         break;
-                    case 2: // 0到最大正值
+                    case 2:
                         centerY = height;
                         break;
-                    case 3: // 最小值到最大值
+                    case 3:
                         centerY = this.maxValue / (this.maxValue - this.minValue) * height;
                         break;
                 }
@@ -7133,27 +7020,25 @@
             }
 
 
-            // 绘制Y轴标记
             drawMarkers(width, height) {
                 const ctx = this.ctx;
                 let centerY, scaleY;
 
                 switch (this.mode) {
-                    case 1: // 零中线
+                    case 1:
                         centerY = height / 2;
                         scaleY = height / (2 * this.maxValue);
                         break;
-                    case 2: // 0到最大正值
+                    case 2:
                         centerY = height;
                         scaleY = height / this.maxValue;
                         break;
-                    case 3: // 最小值到最大值
+                    case 3:
                         centerY = this.maxValue / (this.maxValue - this.minValue) * height;
                         scaleY = height / (this.maxValue - this.minValue);
                         break;
                 }
 
-                // 绘制标记线
                 ctx.strokeStyle = 'rgba(255, 215, 0, 0.7)';
                 ctx.lineWidth = 1.5;
                 ctx.setLineDash([5, 3]);
@@ -7161,14 +7046,12 @@
                 this.markers.forEach(marker => {
                     const yPos = centerY - marker * scaleY;
 
-                    // 如果标记在可见范围内
                     if (yPos >= 0 && yPos <= height) {
                         ctx.beginPath();
                         ctx.moveTo(0, yPos);
                         ctx.lineTo(width, yPos);
                         ctx.stroke();
 
-                        // 绘制标记文本
                         ctx.fillStyle = '#ffd700';
                         ctx.font = '12px Arial';
                         ctx.textAlign = 'right';
@@ -7177,11 +7060,9 @@
                     }
                 });
 
-                // 重置虚线样式
                 ctx.setLineDash([]);
             }
 
-            // 重置示波器
             reset() {
                 this.buffer.fill(0);
                 this.head = 0;
@@ -7191,22 +7072,18 @@
                 this.draw();
             }
 
-            // 设置缓冲区大小
             setMemorySize(size) {
-                // 创建新缓冲区并复制数据
                 const newBuffer = new Float64Array(size);
 
-                // 复制尽可能多的数据
                 const copySize = Math.min(this.memorySize, size);
                 for (let i = 0; i < copySize; i++) {
-                    // 从当前指针开始复制
                     const index = (this.head + i) % this.memorySize;
                     newBuffer[i] = this.buffer[index];
                 }
 
                 this.buffer = newBuffer;
                 this.memorySize = size;
-                this.head = 0; // 重置指针
+                this.head = 0;
             }
         }
 
@@ -7274,39 +7151,24 @@
         }
 
         function createGFSKFilter(baudRate, centerFreq, bt = 0.5) {
-            /* 
-            高斯频移键控滤波器生成函数
-            参数：
-            - audioCtx: Web Audio API上下文
-            - sampleRate: 采样率 (Hz)
-            - baudRate: 符号率 (Baud)
-            - centerFreq: 中心频率 (Hz)
-            - bt: 带宽时间积 (默认0.5)
-            */
 
-            // 符号周期计算
             const T = 1 / baudRate;
 
-            // 确定滤波器持续时间（±3个符号周期）
             const numSymbols = 6;
             const totalDuration = 2 * numSymbols * T;
             const taps = Math.round(totalDuration * audioCtx.sampleRate);
 
-            // 生成对称时间轴（精确到采样点）
             const tValues = Array.from({ length: taps }, (_, i) => {
-                return (i - taps / 2 + 0.5) / audioCtx.sampleRate; // 采样点中心对齐
+                return (i - taps / 2 + 0.5) / audioCtx.sampleRate;
             });
 
-            // 高斯脉冲参数计算
             const B = bt / T; // 3dB带宽
             const alpha = Math.sqrt(Math.LN2 / 2) / B;
 
-            // 生成基带高斯脉冲
             const baseband = tValues.map(t => {
                 return Math.exp(-Math.pow(Math.PI * t / alpha, 2));
             });
 
-            // 创建音频缓冲区
             const buffer = audioCtx.createBuffer(1, taps, audioCtx.sampleRate);
             buffer.getChannelData(0).set(baseband);
 
@@ -7328,18 +7190,15 @@
              *   t        : 对应的时间向量
              */
 
-            // 每个符号对应的采样点数
             const sps = Math.floor(sr / symRate);
             const Ts = 1 / symRate; // 符号间隔
 
-            // 构造对称的时间向量，从 -span*Ts/2 到 span*Ts/2，共 span*sps+1 个点
             const t = Array.from({ length: span * sps + 1 }, (_, i) => -span * Ts / 2 + i * (span * Ts) / (span * sps));
             const h = new Array(t.length).fill(0);
 
             for (let i = 0; i < t.length; i++) {
                 const ti = t[i];
 
-                // 当 t=0 时，直接计算极限值
                 if (Math.abs(ti) < 1e-8) {
                     h[i] = (1 - alpha) + 4 * alpha / Math.PI;
                 }
@@ -7485,7 +7344,7 @@
         // 正在接收一条消息（或图片）。结束令牌会清零；丢了结束令牌则超时后自动恢复，不会永远卡住。
         function rxBusy() { return !!isRxImage || Date.now() < rxBusyUntil; }
 
-        // 解码出一个令牌后先过这里。返回 true 表示已被聊天逻辑处理，不再走原有的显示逻辑。
+        // 解码出一个令牌后先过这里。返回 true 表示已被聊天逻辑处理，不再进入主显示逻辑。
         function chatRxToken(dec) {
             if (!(dec > 0)) return false;
             if (dec === 2000002) {                       // 新消息开始
@@ -7773,7 +7632,6 @@
                 this._status(`MCS: ${m.modName}, FEC id ${m.fec}` + (changed.length ? `（已自动匹配：${changed.join('，')}）` : ''));
             }
 
-            // 文字版 OFDM 状态行已删除，只保留折叠面板摘要；具体字段都在"解码详情"的卡片里
             _status(t) {
                 const br = document.getElementById('detBrief');   // 折叠面板摘要行
                 if (br) br.textContent = t;
@@ -7862,7 +7720,7 @@
         let selectedMode = MODES[document.getElementById('mode').value] || MODES['bpsk'];
 
         const constellation = new ConstellationRecorder(baudRate / 8);
-        const constellationMeta = new ConstellationRecorder(256);   // OFDM 元数据子载波（单独颜色绘制）
+        const constellationMeta = new ConstellationRecorder(64);   // OFDM 元数据子载波（单独颜色绘制）
 
 
         function startRxImage() {
@@ -7870,7 +7728,6 @@
             rxImage = new ColorDCTReconstructor(reconCanvas)
             imgParser = new ImgSampleParser()
             imgParser.onSample = sample => {
-                // console.log(sample)
                 dequantizeDCT(sample)
                 if (sample.idx === 0) {
                     if (sample.type === 'Y') sample.value += 128 * BLOCK_SIZE_Y;
@@ -7900,8 +7757,6 @@
         }
 
         // 把缓冲区里剩下的字符写进接收框。
-        // 以前高波特率下要攒满 baudRate/16 个字符才写入，不满的尾巴会一直卡在缓冲区里；
-        // 现在消息结束、停止接收、或者 150ms 没有新字符时都会冲刷。
         function flushRxBuffer() {
             clearTimeout(rxFlushTimer);
             rxFlushTimer = null;
@@ -7963,7 +7818,6 @@
                     const stat = document.createElement('div');
                     stat.className = 'ftn-stat';
                     row.append(name, bar, stat);
-                    // 右上角 ×：二次确认后删除该条接收记录
                     const close = document.createElement('button');
                     close.className = 'ftn-close';
                     close.textContent = '×';
@@ -8067,9 +7921,8 @@
             refreshInputDevices();   // 已有权限：这次能拿到真实的设备名和 deviceId，刷新下拉框
 
             const decoder = new FibonacciDecoder(result => {
-                const dec = fecNeedsParity() ? decodeAndVerify(result) : result;//decodeAndVerify(result)
+                const dec = fecNeedsParity() ? decodeAndVerify(result) : result;
                 if (chatRxToken(dec)) return;      // 聊天消息由聊天层处理，不进主页面接收框
-                // console.log("解码结果:", dec);
                 if (dec > 0) {
                     if (dec >= 2000000 && dec <= 2001000) { // Control tokens
                         console.log("控制令牌:", dec);
@@ -8187,7 +8040,6 @@
                 onEnd: () => { if (!rxRawMode) decoder.bitBuffer = []; }
             });
             demodulator.setOnSample(data => {
-                // console.log(data)
                 if (data.meta) constellationMeta.addSample(data.sample[0], data.sample[1]);
                 else constellation.addSample(data.sample[0], data.sample[1]);
                 if (fecProfileId()) {
@@ -8227,7 +8079,6 @@
                 const height = canvas.height / window.devicePixelRatio
                 ctx.clearRect(0, 0, width, height);
 
-                // 绘制参考轴线
                 ctx.strokeStyle = 'red';
                 ctx.beginPath();
                 ctx.moveTo(0, height / 2);
@@ -8264,7 +8115,6 @@
                     ctx.setLineDash([]);
                 }
 
-                // 绘制判定点
                 ctx.fillStyle = 'gray';
                 for (let point of demodulator.decidePoints) {
                     const x = centerX + point.i * plotSize;
@@ -8275,7 +8125,6 @@
                     ctx.fillText(point.label, x + 4, y - 4);
                 }
 
-                // 绘制星座点
                 ctx.strokeStyle = "gray"
                 ctx.beginPath();
                 ctx.arc(width / 2, height / 2, plotSize, 0, Math.PI * 2);
@@ -8299,7 +8148,6 @@
                     });
                 }
 
-                // 星座点：每帧直接全量重绘
                 ctx.fillStyle = 'white';
                 constellation.each((i, q) => {
                     const x = clamp(centerX + i * plotSize, 0, width);
@@ -8359,7 +8207,7 @@
                 let interval = null;
                 let stopped = false; // Guard against duplicate stop callbacks
                 modulator.setOnStop(() => {
-                    if (stopped) return; // Already handled
+                    if (stopped) return;
                     stopped = true;
                     console.log(modulator, "stopped");
                     pipeline._stopTimer();
@@ -8649,9 +8497,6 @@
                 })
             }
 
-            // if (txUpdate) {
-            //     txUpdate()
-            // }
             if (demodulator) {
                 demodulator.setCarrierFreq(effCarrierFreq())
             }
@@ -8659,8 +8504,6 @@
         })
 
         function isPlainText(text) {
-            // 简单判断是否为纯文本 (例如检查是否存在二进制数据)
-            // 可以根据实际情况进行更复杂的判断
             for (let i = 0; i < text.length; i++) {
                 const charCode = text.charCodeAt(i);
                 if (charCode < 32 && charCode !== 10 && charCode !== 13 && charCode !== 9) {
@@ -8685,21 +8528,17 @@
                 return;
             }
 
-            // 检查文件大小
-            const maxSize = 512 * 1024; // 256KB
+            const maxSize = 512 * 1024;
             if (file.size > maxSize) {
                 alert('文件大小不能超过 512KB');
-                uploadTextFile.value = ''; // 清空文件选择
+                uploadTextFile.value = '';
                 return;
             }
 
-            // 检查文件类型（读取文件内容并判断）
             const reader = new FileReader();
             reader.onload = function (event) {
                 const text = event.target.result;
-                // 简单判断是否为纯文本 (例如检查是否存在二进制数据)
                 if (!isPlainText(text)) {
-                    // 转dataurl
                     reader.onload = function (e) {
                         const dataUrl = e.target.result;
                         document.getElementById('transmit').value = dataUrl;
@@ -8707,7 +8546,6 @@
                     reader.readAsDataURL(file);
                 }
 
-                // 文件验证通过，可以进行后续操作
                 document.getElementById('transmit').value = text
             };
             reader.onerror = function () {
@@ -8721,7 +8559,6 @@
             uploadTextFile.click();
         })
 
-        // 下载图片
         document.getElementById('downloadImg').addEventListener('click', () => {
             const a = document.createElement('a');
             a.href = reconCanvas.toDataURL('image/png');
@@ -8777,7 +8614,7 @@
             } else {
                 qTable = CHROMINANCE_QUANT_TABLE;
             }
-            const qFactor = qTable[sample.idx >> 3][sample.idx & 7]; // 获取量化系数
+            const qFactor = qTable[sample.idx >> 3][sample.idx & 7];
             sample.value = Math.round(sample.value / qFactor);
         }
 
@@ -8794,10 +8631,8 @@
         function sampleMetaToSymbol(sample) {
             let symbol = 0;
 
-            // Write idx (6 bits)
             symbol |= sample.idx;
 
-            // Write type (2 bits)
             symbol <<= 2;
             switch (sample.type) {
                 case "Y":
@@ -8813,15 +8648,12 @@
                     break;
             }
 
-            // Write blockX (4 bits)
             symbol <<= 4;
             symbol |= sample.blockX;
 
-            // Write blockY (4 bits)
             symbol <<= 4;
             symbol |= sample.blockY;
 
-            // Write sync bit (1 bit)
             symbol <<= 1;
             symbol |= 1;
 
@@ -8836,18 +8668,14 @@
                 idx: 0
             };
 
-            // Remove sync bit (1 bit)
             symbol >>= 1;
 
-            // Read blockY (4 bits)
             meta.blockY = symbol & 0b1111;
             symbol >>= 4;
 
-            // Read blockX (4 bits)
             meta.blockX = symbol & 0b1111;
             symbol >>= 4;
 
-            // Read type (2 bits)
             switch (symbol & 0b11) {
                 case 0:
                     meta.type = "Y";
@@ -8864,7 +8692,6 @@
             }
             symbol >>= 2;
 
-            // Read idx (6 bits)
             meta.idx = symbol & 0b111111;
             symbol >>= 6;
 
@@ -8872,33 +8699,26 @@
         }
 
 
-        function sampleToSymbol(sample) {//return sample.value << 1;
+        function sampleToSymbol(sample) {
 
             let symbol = Math.abs(sample.value)
 
-            // Write sign bit
             symbol <<= 1;
             symbol |= Math.sign(sample.value) > 0 ? 0 : 1;
 
-            // Write sync bit
             symbol <<= 1;
             return symbol
         }
 
         function symbolToSample(symbol, sample) {
-            // 去掉同步位
             symbol >>= 1;
 
-            // 提取符号位
             const signBit = symbol & 1;
 
-            // 去掉符号位
             symbol >>= 1;
 
-            // 还原数值
             let value = symbol;
 
-            // 应用符号
             if (signBit === 1) {
                 value = -value;
             }
