@@ -4270,7 +4270,7 @@
             get total() { return this.dropped + this.n; }
 
             addSample(i, q) {
-                if (this.maxLen !== Infinity && this.n === this.maxLen) {
+                if (this.maxLen !== Infinity && this.n >= this.maxLen) {
                     // 满且有限上限：覆盖最旧的点（逻辑序号连续，物理位置取模）
                     const pos = (this.dropped % this.cap) * 2;
                     this.buf[pos] = i; this.buf[pos + 1] = q;
@@ -7165,7 +7165,7 @@
 
                 const centerX = width / 2;
                 const centerY = height / 2;
-                const plotSize = Math.min(width, height) * 0.3; // 使用画布短边的40%作为绘图区域
+                const plotSize = Math.min(width, height) * 0.4; // 使用画布短边的40%作为绘图区域
 
                 // OFDM：画出每个判决区域的边界（虚线网格），铺满整个画布；切换调制阶数时边界跟着变
                 if (selectedMode === MODES.ofdm && demodulator && demodulator.decideLines) {
@@ -7203,7 +7203,7 @@
 
                 ctx.strokeStyle = "gray"
                 ctx.beginPath();
-                ctx.arc(width / 2, height / 2, plotSize, 0, Math.PI * 2);
+                ctx.arc(width / 2, height / 2, 2, 0, Math.PI * 2);
                 ctx.stroke();
 
                 // 无上限模式的增量绘制：新点画进离屏图层（设备像素），每帧把整层贴上来。
