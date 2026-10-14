@@ -1671,6 +1671,47 @@
                 }
             }
             registerProcessor('ofdm-capture', OfdmCapture)
+
+            // OFDM transmit player: the main thread generates one OFDM symbol at a time and posts it here.
+            // The worklet plays them back-to-back from a queue, reports the exact level every ~20 ms and
+            // raises 'low' as soon as the queue is about to run dry, so the main thread can refill in time.
+            class OfdmTxPlayer extends AudioWorkletProcessor {
+                constructor() {
+                    super();
+                    this.q = []; this.pos = 0; this.played = 0; this.queued = 0;
+                    this.fin = false; this.done = false; this.under = false; this.started = false;
+                    this.rep = 0; this.every = Math.round(sampleRate * 0.02);
+                    this.port.onmessage = e => {
+                        const d = e.data;
+                        if (d.type === 'chunk') { this.q.push(d.data); this.queued += d.data.length; this.under = false; this.started = true; }
+                        else if (d.type === 'finish') this.fin = true;
+                        else if (d.type === 'abort') { this.q = []; this.queued = 0; this.pos = 0; this.fin = true; }
+                    };
+                }
+                process(inputs, outputs) {
+                    const out = outputs[0][0], L = out.length;
+                    let n = 0;
+                    while (n < L && this.q.length) {
+                        const c = this.q[0], take = Math.min(L - n, c.length - this.pos);
+                        out.set(c.subarray(this.pos, this.pos + take), n);
+                        n += take; this.pos += take;
+                        if (this.pos >= c.length) { this.q.shift(); this.pos = 0; }
+                    }
+                    this.queued -= n; this.played += n;
+                    if (n < L) {
+                        out.fill(0, n);
+                        if (this.started && !this.fin && !this.under) { this.under = true; this.port.postMessage({ type: 'underrun', played: this.played }); }
+                    }
+                    this.rep += L;
+                    if (this.rep >= this.every) { this.rep = 0; this.port.postMessage({ type: 'level', queued: this.queued, played: this.played }); }
+                    if (this.fin && !this.q.length) {
+                        if (!this.done) { this.done = true; this.port.postMessage({ type: 'drained', played: this.played }); }
+                        return false;
+                    }
+                    return true;
+                }
+            }
+            registerProcessor('ofdm-tx', OfdmTxPlayer)
         }
 
         function arrayBufferToBase64(buffer) {
@@ -2737,17 +2778,33 @@
         // ===== CC END =====
 
         // ===== OFDM BEGIN =====
-        // 慢速 OFDM：每个符号 N=16384 点 (48kHz 下有用部分 341ms)，循环前缀 N/4 (85ms)，
-        // 足以覆盖房间的早期反射。直接在通带上做实数 OFDM（子载波落在 k·fs/N），无需混频。
+        // Continuous-stream OFDM (DRM-style).  Real passband OFDM, sub-carriers at k*fs/N.
         //
-        // 帧结构：  [Chirp 0.5s] [梳状符号] [训练符号×2] [帧头符号] [数据符号 × nSym]
-        //   Chirp   ：线性调频，匹配滤波定时（抗多径、抗低信噪比）
-        //   梳状符号：只占每 4 号子载波(k%4==0)，时域以 N/4 为周期 → 粗测频偏(可达 ±366ppm@16kHz)
-        //   训练符号：两个完全相同的已知 QPSK 符号 → 信道估计 + 精测采样时钟比
-        //   帧头符号：BPSK 重复编码，携带本帧比特数 + CRC8
-        //   数据符号：BPSK/QPSK/16QAM/64QAM/256QAM（主信道），每 8 个子载波一个导频，
-        //             另有 48 个“元数据子载波”(BPSK) 每个符号都携带 MCS：调制阶数、纠错方案、剩余符号数 + CRC8
-        //   接收端逐符号：导频测增益/相位/定时，数据判决反过来缓慢更新每个子载波的信道估计。
+        //   N = 16384 @48k (341 ms useful part), CP = N/4, symbol = 427 ms.  Symbols are chained
+        //   back-to-back with WOLA (overlap-add) ramps – there are NO frames, NO chirp, NO gaps.
+        //
+        //   Superframe = OFDM_SF (16) symbols.
+        //     sf = 0     : training symbol – every carrier carries a known QPSK value.
+        //                  Gives the receiver a full channel snapshot and a unique, in-band sync marker,
+        //                  so a receiver can join the stream at any time (late join) and re-baseline every 6.8 s.
+        //     sf = 1..15 : data symbols.  Each carries
+        //                    · scattered-in-frequency pilots (every 8th carrier, known BPSK)
+        //                    · OFDM_META (64) meta carriers: one 32-bit word sent twice (frequency diversity):
+        //                         mod(3) fec(4) sf(4) cnt(13) crc8(8)
+        //                      cnt = number of valid payload bits in this symbol
+        //                            (0 = filler symbol, 8191 = full symbol, otherwise a partial symbol)
+        //                    · data carriers (BPSK … 256QAM), frequency-interleaved, scrambled.
+        //
+        //   Because every symbol is self-describing, the transmitter can never run "dry":
+        //   if the source has nothing, it sends a partial symbol (whatever is queued) or a filler symbol.
+        //
+        //   Receiver = one continuous tracker:  acquire (CP correlation + training-symbol match)
+        //   → track forever (pilot/meta-aided equalisation, timing + clock loops).  It only falls back to
+        //   acquire when the meta words stop verifying.
+        //
+        //   Channel/gain tracking is PILOT-AIDED ONLY (pilots + CRC-verified meta carriers + training symbols).
+        //   There is no decision-directed update of the channel, so a wrong QAM decision can never
+        //   pull the channel estimate to a false lock.
         class OfdmFFT {
             constructor(n) {
                 this.n = n;
@@ -2766,7 +2823,7 @@
                 }
             }
 
-            // 原地变换；inverse=true 为反变换（不做 1/N 缩放）
+            // in place; inverse=true is the inverse transform (no 1/N scaling)
             transform(re, im, inverse) {
                 const n = this.n, rev = this.rev, cs = this.cos, sn = this.sin;
                 for (let i = 0; i < n; i++) {
@@ -2814,17 +2871,18 @@
             return crc;
         }
 
-        const OFDM_MAX_SYM = 64;      // 每帧最多数据符号数
-        const OFDM_META = 48;         // 元数据子载波个数（24 比特 × 2 份）
+        const OFDM_SF = 16;           // superframe length in symbols (symbol 0 = training)
+        const OFDM_META = 64;         // meta carriers: 32-bit word × 2 copies
+        const OFDM_CNT_FULL = 8191;   // meta.cnt value meaning "all payload slots of this symbol are valid"
         const OFDM_MODS = [
             { name: 'BPSK', bpc: 1 }, { name: 'QPSK', bpc: 2 }, { name: '16QAM', bpc: 4 },
             { name: '64QAM', bpc: 6 }, { name: '256QAM', bpc: 8 }
         ];
 
-        // 方阵 QAM：每个轴 m 位 Gray 码 → 电平；整体归一化为平均功率 1
+        // Square QAM: m-bit Gray per axis, normalised to unit average power
         function ofdmAxisScale(m) { const L = 1 << m; return 1 / Math.sqrt(2 * (L * L - 1) / 3); }
 
-        function ofdmMapSymbol(mod, bits, o, out) {         // 读 bpc 个比特，写 out[0]=I out[1]=Q
+        function ofdmMapSymbol(mod, bits, o, out) {         // reads bpc bits, writes out[0]=I out[1]=Q
             const bpc = OFDM_MODS[mod].bpc;
             if (bpc === 1) { out[0] = bits[o] ? 1 : -1; out[1] = 0; return; }
             const m = bpc >> 1, L = 1 << m, sc = ofdmAxisScale(m);
@@ -2837,7 +2895,7 @@
             out[1] = (2 * nq - (L - 1)) * sc;
         }
 
-        // 判决：写 bpc 个比特到 outBits[o..]，返回判决点到 dec[0],dec[1]
+        // hard decision: writes bpc bits to outBits[o..], decided point to dec[0], dec[1]
         function ofdmDemapSymbol(mod, xr, xi, outBits, o, dec) {
             const bpc = OFDM_MODS[mod].bpc;
             if (bpc === 1) { outBits[o] = xr > 0 ? 1 : 0; dec[0] = xr > 0 ? 1 : -1; dec[1] = 0; return; }
@@ -2854,22 +2912,25 @@
             dec[1] = (2 * nq - (L - 1)) * sc;
         }
 
-        // 元数据字：mod(3) fec(4) 剩余数据符号数(7) 保留(2) CRC8(8) = 24 比特
-        function ofdmMetaWord(mod, fec, cd) {
-            const b = new Uint8Array(24);
+        // meta word, 32 bits: mod(3) fec(4) sf(4) cnt(13) crc8(8)
+        function ofdmMetaWord(mod, fec, sf, cnt) {
+            const b = new Uint8Array(32);
             for (let i = 0; i < 3; i++) b[i] = (mod >> (2 - i)) & 1;
             for (let i = 0; i < 4; i++) b[3 + i] = (fec >> (3 - i)) & 1;
-            for (let i = 0; i < 7; i++) b[7 + i] = (cd >> (6 - i)) & 1;
-            const crc = ofdmCrc8(b.subarray(0, 16));
-            for (let i = 0; i < 8; i++) b[16 + i] = (crc >> (7 - i)) & 1;
+            for (let i = 0; i < 4; i++) b[7 + i] = (sf >> (3 - i)) & 1;
+            for (let i = 0; i < 13; i++) b[11 + i] = (cnt >> (12 - i)) & 1;
+            const crc = ofdmCrc8(b.subarray(0, 24));
+            for (let i = 0; i < 8; i++) b[24 + i] = (crc >> (7 - i)) & 1;
             return b;
         }
 
         function ofdmMetaParse(b) {
-            if (ofdmCrc8(b.subarray(0, 16)) !== (b[16] * 128 + b[17] * 64 + b[18] * 32 + b[19] * 16 + b[20] * 8 + b[21] * 4 + b[22] * 2 + b[23])) return null;
-            const mod = b[0] * 4 + b[1] * 2 + b[2];
+            let crc = 0; for (let i = 0; i < 8; i++) crc = crc * 2 + b[24 + i];
+            if (ofdmCrc8(b.subarray(0, 24)) !== crc) return null;
+            const rd = (o, n) => { let v = 0; for (let i = 0; i < n; i++) v = v * 2 + b[o + i]; return v; };
+            const mod = rd(0, 3);
             if (mod >= OFDM_MODS.length) return null;
-            return { mod, fec: b[3] * 8 + b[4] * 4 + b[5] * 2 + b[6], cd: b[7] * 64 + b[8] * 32 + b[9] * 16 + b[10] * 8 + b[11] * 4 + b[12] * 2 + b[13] };
+            return { mod, fec: rd(3, 4), sf: rd(7, 4), cnt: rd(11, 13) };
         }
 
         function ofdmConfig(fs, fc, bw) {
@@ -2882,7 +2943,7 @@
             const nCar = kHi - kLo + 1;
             const pilotIdx = [], isPilot = new Uint8Array(nCar);
             for (let i = 0; i < nCar; i += 8) { pilotIdx.push(i); isPilot[i] = 1; }
-            // 元数据子载波：均匀撒在整个频带上，避开导频；同一比特的两份相距半个频带（频率分集）
+            // meta carriers spread over the whole band, avoiding pilots; the two copies of a bit are half a band apart
             const metaIdx = [], isMeta = new Uint8Array(nCar);
             for (let j = 0; j < OFDM_META; j++) {
                 let i = Math.floor((j + 0.5) * nCar / OFDM_META);
@@ -2892,56 +2953,50 @@
             const dataIdx = [];
             for (let i = 0; i < nCar; i++) if (!isPilot[i] && !isMeta[i]) dataIdx.push(i);
             const nData = dataIdx.length;
-            // 频域交织：让相邻编码比特落在相距很远的子载波上
+            // frequency interleaver: neighbouring coded bits land far apart in frequency
             let S = Math.max(3, Math.round(nData * 0.6180339887));
             const gcd = (a, b) => b ? gcd(b, a % b) : a;
             while (gcd(S, nData) !== 1) S++;
             const perm = new Int32Array(nData);
             for (let j = 0; j < nData; j++) perm[j] = (j * S) % nData;
+            const margin = Math.round(0.25 * cp);          // FFT window starts `margin` samples before the end of the CP
             return {
                 fs, fc, bw, N, cp, symLen, df, kLo, kHi, nCar, pilotIdx, metaIdx, dataIdx, nData, perm,
                 kc: kLo + (nCar - 1) / 2,
-                margin: Math.round(0.18 * cp),
-                Lc: Math.round(0.5 * fs),
-                corrN: 1 << Math.ceil(Math.log2(Math.round(0.5 * fs) * 2.7))
+                margin,
+                W: Math.min(320, margin >> 1)              // WOLA half-overlap (ramp is 2W long)
             };
         }
 
-        function ofdmChirp(cfg) {
-            const L = cfg.Lc, f0 = cfg.kLo * cfg.df, f1 = cfg.kHi * cfg.df, T = L / cfg.fs;
-            const x = new Float64Array(L), taper = Math.round(0.12 * L);
-            for (let n = 0; n < L; n++) {
-                const t = n / cfg.fs;
-                let w = 1;
-                if (n < taper) w = 0.5 - 0.5 * Math.cos(Math.PI * n / taper);
-                else if (n >= L - taper) w = 0.5 - 0.5 * Math.cos(Math.PI * (L - 1 - n) / taper);
-                x[n] = w * Math.cos(2 * Math.PI * (f0 * t + (f1 - f0) * t * t / (2 * T)));
-            }
-            return x;
-        }
-
-        // 已知序列
+        // known sequences
         function ofdmKnown(cfg) {
-            const q = ofdmLfsr(0x1234567, 2 * cfg.nCar);
-            const tr = new Float64Array(cfg.nCar), ti = new Float64Array(cfg.nCar);
-            for (let i = 0; i < cfg.nCar; i++) { tr[i] = (1 - 2 * q[2 * i]) * Math.SQRT1_2; ti[i] = (1 - 2 * q[2 * i + 1]) * Math.SQRT1_2; }
-            const pb = ofdmLfsr(0x2468ACE, (OFDM_MAX_SYM + 6) * cfg.pilotIdx.length);
-            const ms = ofdmLfsr(0x1B2C3D4, (OFDM_MAX_SYM + 6) * OFDM_META);
-            const hs = ofdmLfsr(0x3C3C3C, cfg.nData);
-            // 梳状符号：绝对子载波号为 4 的倍数的位置，幅度 ×2 以保持功率
-            const cq = ofdmLfsr(0x0F1E2D3, 2 * cfg.nCar);
-            const cr = new Float64Array(cfg.nCar), ci = new Float64Array(cfg.nCar);
-            for (let i = 0; i < cfg.nCar; i++) {
-                if ((cfg.kLo + i) % 4 === 0) { cr[i] = 2 * (1 - 2 * cq[2 * i]) * Math.SQRT1_2; ci[i] = 2 * (1 - 2 * cq[2 * i + 1]) * Math.SQRT1_2; }
+            const nC = cfg.nCar, nP = cfg.pilotIdx.length;
+            const q = ofdmLfsr(0x1234567, 2 * nC);
+            const tr = new Float64Array(nC), ti = new Float64Array(nC);
+            for (let i = 0; i < nC; i++) { tr[i] = (1 - 2 * q[2 * i]) * Math.SQRT1_2; ti[i] = (1 - 2 * q[2 * i + 1]) * Math.SQRT1_2; }
+            const pb = ofdmLfsr(0x2468ACE, OFDM_SF * nP);
+            const ms = ofdmLfsr(0x1B2C3D4, OFDM_SF * OFDM_META);
+            const scr = [];
+            for (let s = 0; s < OFDM_SF; s++) scr.push(ofdmLfsr(0x55AA55 + 7919 * (s + 1), cfg.nData * 8));
+            // reference cells (pilots ∪ meta) sorted by carrier index, plus an interpolation table over all carriers
+            const refs = [];
+            for (let p = 0; p < nP; p++) refs.push({ k: cfg.pilotIdx[p], type: 0, i: p });
+            for (let j = 0; j < OFDM_META; j++) refs.push({ k: cfg.metaIdx[j], type: 1, i: j });
+            refs.sort((a, b) => a.k - b.k);
+            const rk = Int32Array.from(refs.map(r => r.k));
+            const lo = new Int32Array(nC), fr = new Float64Array(nC);
+            let r = 0;
+            for (let k = 0; k < nC; k++) {
+                while (r + 1 < rk.length && rk[r + 1] <= k) r++;
+                if (k <= rk[0]) { lo[k] = 0; fr[k] = 0; }
+                else if (k >= rk[rk.length - 1]) { lo[k] = rk.length - 2; fr[k] = 1; }
+                else { lo[k] = r; fr[k] = (k - rk[r]) / (rk[r + 1] - rk[r]); }
             }
-            return { tr, ti, pb, hs, cr, ci, ms };
+            return { tr, ti, pb, ms, scr, refs, refLo: lo, refFr: fr };
         }
 
-        function ofdmPilotVal(cfg, known, m, p) { return 1 - 2 * known.pb[m * cfg.pilotIdx.length + p]; }
-
-        // 一个 OFDM 符号 → 时域（含循环前缀），载波值 Xr/Xi 长度 nCar。
-        // ext>0 时在 [cp][N] 前后各补 ext 个采样作周期延拓（供 WOLA 加窗交叠用），
-        // 交叠区两端各 2*ext 长的斜坡由调用方施加。
+        // One OFDM symbol → time domain incl. CP.  Xr/Xi hold nCar carrier values.  ext>0: periodic extension of ext samples
+        // before the CP and after the body (for the WOLA overlap).
         function ofdmSymbolTime(cfg, fft, Xr, Xi, re, im, out, off, ext) {
             const N = cfg.N;
             re.fill(0); im.fill(0);
@@ -2960,130 +3015,135 @@
             for (let n = 0; n < N; n++) out[off + cp + n] = re[n];
         }
 
-        // 把比特流变成可播放的波形。opts.mod: 调制阶数索引(0..4)，opts.fec: 纠错方案编号(0..15，写进元数据供对端自动匹配)
-        // 返回 { samples:Float32Array, seconds, nSym }
-        // 符号间用 WOLA（加窗交叠）衔接：矩形拼接的符号交界处波形跳变，听感是每符号一声 click。
-        // 每个符号两端加 Tukey 斜坡并与相邻符号交叠相加；斜坡区都在接收端 FFT 窗之外（W ≤ margin），不损失任何数据。
-        function ofdmModulate(bits, cfg, opts) {
-            opts = opts || {};
-            const mod = opts.mod === undefined ? 1 : opts.mod, fecId = (opts.fec || 0) & 15;
-            const bpc = OFDM_MODS[mod].bpc;
-            const known = ofdmKnown(cfg), fft = new OfdmFFT(cfg.N);
-            const re = new Float64Array(cfg.N), im = new Float64Array(cfg.N);
-            const chirp = ofdmChirp(cfg);
-            const cap = cfg.nData * bpc;
-            const W = Math.min(320, cfg.margin >> 1);        // 交叠窗半长，必须 ≤ margin（接收端 FFT 窗离符号边界的保护距离）
-            const symExt = cfg.symLen + 2 * W;
-            const syms = [];
-            // 生成一个 OFDM 符号：周期延拓 + Tukey 窗（两端 2W 斜坡），相邻符号的斜坡互补相加恰好为 1
-            const pushSym = () => {
-                const s = new Float64Array(symExt);
-                ofdmSymbolTime(cfg, fft, Xr, Xi, re, im, s, W, W);
-                for (let j = 0; j < 2 * W; j++) {
-                    const wv = 0.5 - 0.5 * Math.cos(Math.PI * j / (2 * W));
-                    s[j] *= wv;
-                    s[symExt - 1 - j] *= wv;
+        // ---------------------------------------------------------------------------------------------
+        // Transmitter: an endless symbol generator.  Call nextChunk() once per symbol period; it always
+        // returns exactly symLen samples.  Payload comes from an internal FIFO (pushBits); when the FIFO
+        // cannot fill a symbol the generator sends a partial symbol or a filler symbol instead of stopping.
+        // ---------------------------------------------------------------------------------------------
+        class OfdmStreamTx {
+            constructor(cfg, opt) {
+                opt = opt || {};
+                this.cfg = cfg;
+                this.known = ofdmKnown(cfg);
+                this.fft = new OfdmFFT(cfg.N);
+                this.re = new Float64Array(cfg.N); this.im = new Float64Array(cfg.N);
+                this.Xr = new Float64Array(cfg.nCar); this.Xi = new Float64Array(cfg.nCar);
+                this.mod = opt.mod === undefined ? 1 : opt.mod;
+                this.fec = (opt.fec || 0) & 15;
+                this.sf = 0;
+                this.W = cfg.W;
+                this.symExt = cfg.symLen + 2 * cfg.W;
+                this.sym = new Float64Array(this.symExt);
+                this.carry = new Float64Array(2 * cfg.W);
+                this.scale = (opt.rms || 0.15) / Math.sqrt(2 * cfg.nCar);   // fixed gain: rms ≈ 0.15, peaks ≈ 6σ
+                this.fifo = new Uint8Array(1 << 16); this.head = 0; this.tail = 0;
+                this.stats = { symbols: 0, data: 0, partial: 0, filler: 0, bits: 0 };
+                this.lastKind = 'none';
+                // WOLA ramp (complementary: head + tail = 1 exactly)
+                this.ramp = new Float64Array(2 * cfg.W);
+                for (let j = 0; j < 2 * cfg.W; j++) this.ramp[j] = 0.5 - 0.5 * Math.cos(Math.PI * (j + 0.5) / (2 * cfg.W));
+            }
+
+            get capBits() { return this.cfg.nData * OFDM_MODS[this.mod].bpc; }
+            get fifoBits() { return this.tail - this.head; }
+            get payloadRate() {      // payload bit/s at full load
+                return this.capBits * (OFDM_SF - 1) / OFDM_SF * this.cfg.fs / this.cfg.symLen;
+            }
+
+            setMod(m) { this.mod = m; }
+            setFec(f) { this.fec = f & 15; }
+
+            pushBits(bits) {
+                const n = bits.length;
+                if (this.tail + n > this.fifo.length) {
+                    const live = this.tail - this.head;
+                    if (live + n > this.fifo.length) {
+                        const nf = new Uint8Array(Math.max(this.fifo.length * 2, live + n));
+                        nf.set(this.fifo.subarray(this.head, this.tail)); this.fifo = nf;
+                    } else this.fifo.copyWithin(0, this.head, this.tail);
+                    this.head = 0; this.tail = live;
                 }
-                syms.push(s);
-            };
-            let nSymTotal = 0;
-            let pos = 0;
-            const Xr = new Float64Array(cfg.nCar), Xi = new Float64Array(cfg.nCar);
-            const pt = [0, 0];
-            // 每个符号都带导频 + 元数据子载波
-            const fillCommon = (m, cd) => {
+                for (let i = 0; i < n; i++) this.fifo[this.tail + i] = bits[i] ? 1 : 0;
+                this.tail += n;
+            }
+
+            // Next symbol period (symLen samples).  Send whatever is queued (full → partial → filler).
+            nextChunk() {
+                const cfg = this.cfg, k = this.known, sf = this.sf, nP = cfg.pilotIdx.length;
+                const Xr = this.Xr, Xi = this.Xi;
                 Xr.fill(0); Xi.fill(0);
-                for (let p = 0; p < cfg.pilotIdx.length; p++) Xr[cfg.pilotIdx[p]] = ofdmPilotVal(cfg, known, m, p);
-                const mw = ofdmMetaWord(mod, fecId, cd);
-                for (let j = 0; j < OFDM_META; j++) Xr[cfg.metaIdx[j]] = (1 - 2 * known.ms[m * OFDM_META + j]) * (1 - 2 * mw[j % 24]);
-            };
-            while (pos < bits.length) {
-                const fbits = Math.min(bits.length - pos, OFDM_MAX_SYM * cap);
-                const nSym = Math.ceil(fbits / cap);
-                // 梳状符号
-                { Xr.set(known.cr); Xi.set(known.ci); pushSym(); }
-                // 训练符号 ×2
-                for (let r = 0; r < 2; r++) {
-                    for (let i = 0; i < cfg.nCar; i++) { Xr[i] = known.tr[i]; Xi[i] = known.ti[i]; }
-                    pushSym();
-                }
-                // 帧头：数据子载波上 BPSK 重复编码 本帧比特数(24)+CRC8
-                const hb = new Uint8Array(32);
-                for (let i = 0; i < 24; i++) hb[i] = (fbits >> (23 - i)) & 1;
-                const crc = ofdmCrc8(hb.subarray(0, 24));
-                for (let i = 0; i < 8; i++) hb[24 + i] = (crc >> (7 - i)) & 1;
-                fillCommon(3, nSym);
-                for (let c = 0; c < cfg.nData; c++) {
-                    const sgn = 1 - 2 * known.hs[c];
-                    Xr[cfg.dataIdx[c]] = sgn * (1 - 2 * hb[c % 32]);
-                }
-                pushSym();
-                // 数据符号
-                const scr = ofdmLfsr(0x55AA55, nSym * cap);
-                const bb = new Uint8Array(bpc);
-                for (let d = 0; d < nSym; d++) {
-                    fillCommon(4 + d, nSym - 1 - d);
+                if (sf === 0) {
+                    for (let i = 0; i < cfg.nCar; i++) { Xr[i] = k.tr[i]; Xi[i] = k.ti[i]; }
+                    this.lastKind = 'train';
+                } else {
+                    const bpc = OFDM_MODS[this.mod].bpc, cap = cfg.nData * bpc;
+                    const n = Math.min(this.tail - this.head, cap);
+                    const metaCnt = n === 0 ? 0 : (n === cap || n >= OFDM_CNT_FULL ? OFDM_CNT_FULL : n);
+                    for (let p = 0; p < nP; p++) Xr[cfg.pilotIdx[p]] = 1 - 2 * k.pb[sf * nP + p];
+                    const mw = ofdmMetaWord(this.mod, this.fec, sf, metaCnt);
+                    for (let j = 0; j < OFDM_META; j++) Xr[cfg.metaIdx[j]] = (1 - 2 * k.ms[sf * OFDM_META + j]) * (1 - 2 * mw[j % 32]);
+                    const scr = k.scr[sf], bb = new Uint8Array(bpc), pt = [0, 0], base = this.head;
                     for (let u = 0; u < cfg.nData; u++) {
-                        const q = d * cap + u * bpc;
-                        for (let i = 0; i < bpc; i++) bb[i] = ((q + i < fbits ? bits[pos + q + i] : 0) ^ scr[q + i]);
-                        ofdmMapSymbol(mod, bb, 0, pt);
+                        for (let i = 0; i < bpc; i++) {
+                            const q = u * bpc + i;
+                            bb[i] = (q < n ? this.fifo[base + q] : 0) ^ scr[q];
+                        }
+                        ofdmMapSymbol(this.mod, bb, 0, pt);
                         const ci = cfg.dataIdx[cfg.perm[u]];
                         Xr[ci] = pt[0]; Xi[ci] = pt[1];
                     }
-                    pushSym();
+                    this.head += n;
+                    this.stats.bits += n;
+                    if (n === 0) { this.stats.filler++; this.lastKind = 'filler'; }
+                    else if (n === cap) { this.stats.data++; this.lastKind = 'data'; }
+                    else { this.stats.partial++; this.lastKind = 'partial'; }
                 }
-                nSymTotal += nSym;
-                pos += fbits;
+                this.stats.symbols++;
+                const s = this.sym, W = this.W, symLen = cfg.symLen, ramp = this.ramp;
+                ofdmSymbolTime(cfg, this.fft, Xr, Xi, this.re, this.im, s, W, W);
+                for (let j = 0; j < 2 * W; j++) { s[j] *= ramp[j]; s[symLen + j] *= 1 - ramp[j]; }
+                const out = new Float32Array(symLen), sc = this.scale, carry = this.carry;
+                for (let j = 0; j < symLen; j++) {
+                    let v = s[j]; if (j < 2 * W) v += carry[j];
+                    out[j] = OfdmStreamTx.limit(v * sc);
+                }
+                for (let j = 0; j < 2 * W; j++) carry[j] = s[symLen + j];
+                this.sf = (sf + 1) % OFDM_SF;
+                return out;
             }
-            // 归一化：以 OFDM 符号的均方根为基准，chirp 与之相同；3.2σ 软限幅后峰值 0.9
-            let e = 0, cnt = 0;
-            for (const s of syms) { for (let i = W; i < symExt - W; i += 7) { e += s[i] * s[i]; cnt++; } }
-            const rms = Math.sqrt(e / Math.max(1, cnt));
-            let ce = 0; for (let i = 0; i < chirp.length; i++) ce += chirp[i] * chirp[i];
-            const chirpGain = rms / Math.sqrt(ce / chirp.length);
-            const lead = Math.round(0.15 * cfg.fs), tail = Math.round(0.15 * cfg.fs);
-            const out = new Float32Array(lead + chirp.length + (syms.length - 1) * cfg.symLen + symExt - W + tail);
-            // chirp（两端自带斜坡）+ 符号交叠相加
-            let o = lead;
-            for (let i = 0; i < chirp.length; i++) out[o++] = chirp[i] * chirpGain;
-            for (let k = 0; k < syms.length; k++) {
-                const base = lead + chirp.length + k * cfg.symLen - W;
-                const s = syms[k];
-                for (let j = 0; j < symExt; j++) out[base + j] += s[j];
+
+            // after the last symbol: the pending WOLA tail (2W samples) so the final symbol ramps out cleanly
+            flushTail() {
+                const out = new Float32Array(2 * this.W);
+                for (let j = 0; j < out.length; j++) out[j] = OfdmStreamTx.limit(this.carry[j] * this.scale);
+                this.carry.fill(0);
+                return out;
             }
-            // 峰值归一化：提前把整帧增益压到峰值 0.9，而不是事后靠限幅器压峰——
-            // 限幅（硬削波/软膝点都一样）在高峰平比帧上仍会产生可闻失真（不规则 click）。
-            // 接收端每个符号都重测增益、对绝对电平不敏感，帧间响度的微小波动不影响解码。
-            let peak = 0;
-            for (let i = 0; i < out.length; i++) { const a = Math.abs(out[i]); if (a > peak) peak = a; }
-            const g = 0.9 / Math.max(peak, 1e-12);
-            for (let i = 0; i < out.length; i++) out[i] *= g;
-            return { samples: out, seconds: out.length / cfg.fs, nSym: nSymTotal, mod, fec: fecId };
+
+            // soft limiter: linear below 0.8, smooth knee up to 1.0 (peaks > 6σ are rare, this only guards the DAC)
+            static limit(v) {
+                const a = Math.abs(v);
+                if (a <= 0.8) return v;
+                const y = 0.8 + 0.2 * Math.tanh((a - 0.8) / 0.2);
+                return v < 0 ? -y : y;
+            }
         }
 
-        // 接收端：逐块喂入音频采样，输出比特
-        class OfdmReceiver {
+        // ---------------------------------------------------------------------------------------------
+        // Receiver: continuous tracker.
+        // callbacks: onLock(bool), onMeta({mod,modName,fec,sf,cnt}), onSymbol({...}), onBits(bits), onLoss()
+        // ---------------------------------------------------------------------------------------------
+        class OfdmStreamRx {
             constructor(cfg, cb) {
                 this.cfg = cfg;
                 this.cb = cb || {};
                 this.known = ofdmKnown(cfg);
                 this.fft = new OfdmFFT(cfg.N);
-                this.fftC = new OfdmFFT(cfg.corrN);
                 this.re = new Float64Array(cfg.N);
                 this.im = new Float64Array(cfg.N);
-                // 匹配滤波模板的频谱
-                const ch = ofdmChirp(cfg), W = cfg.corrN;
-                const tr = new Float64Array(W), ti = new Float64Array(W);
-                let et = 0; for (let i = 0; i < ch.length; i++) { tr[i] = ch[i]; et += ch[i] * ch[i]; }
-                this.fftC.transform(tr, ti, false);
-                this.Tr = tr; this.Ti = ti; this.Et = et;
-                // 带通掩模（只保留信号频带，抑制带外噪声对归一化的影响）
-                const mask = new Float64Array(W), df = cfg.fs / W;
-                const fl = cfg.kLo * cfg.df - 300, fh = cfg.kHi * cfg.df + 300;
-                for (let i = 0; i < W; i++) { const f = Math.min(i, W - i) * df; mask[i] = (f >= fl && f <= fh) ? 1 : 0; }
-                this.mask = mask;
-                this.cr = new Float64Array(W); this.ci = new Float64Array(W);
-                // 8 点加窗 sinc 插值表（512 个小数相位）
+                this.ACQ_L = 1 << 17;
+                this.fftA = null;
+                // 8-point windowed-sinc interpolation table (512 fractional phases)
                 this.PH = 512;
                 this.itab = new Float64Array(this.PH * 8);
                 for (let p = 0; p < this.PH; p++) {
@@ -3098,16 +3158,19 @@
                     for (let t = 0; t < 8; t++) this.itab[p * 8 + t] /= sum;
                 }
                 this.buf = new Float32Array(1 << 20);
-                this.start = 0;          // buf[0] 对应的绝对采样序号
+                this.start = 0;          // absolute sample index of buf[0]
                 this.len = 0;
                 this.searchPos = 0;
-                this.state = 'hunt';
-                this.stats = { frames: 0, headerFail: 0, detections: 0 };
+                this.state = 'acquire';
+                this.acq = null;
+                this.lossLimit = 6;      // consecutive bad symbols before we give up the lock
+                this.stats = { locks: 0, losses: 0, symbols: 0, metaBad: 0, trainings: 0 };
             }
+
+            get locked() { return this.state === 'track'; }
 
             push(chunk) {
                 if (this.len + chunk.length > this.buf.length) {
-                    // 先丢弃已无用的旧数据
                     const keep = Math.max(this.start, Math.floor(this._keepFrom()));
                     const drop = keep - this.start;
                     if (drop > 0) { this.buf.copyWithin(0, drop, this.len); this.start += drop; this.len -= drop; }
@@ -3122,79 +3185,167 @@
             }
 
             _keepFrom() {
-                if (this.state === 'hunt') return this.searchPos - 16;
-                return this.fr.t0 - 16;
+                return this.state === 'acquire' ? this.searchPos - 16 : this.fr.tau - 16;
             }
 
             _process() {
                 for (; ;) {
-                    if (this.state === 'hunt') { if (!this._hunt()) return; }
-                    else { if (!this._frameStep()) return; }
+                    const more = this.state === 'acquire' ? this._acquireStep() : this._trackStep();
+                    if (!more) return;
                 }
             }
 
-            _hunt() {
-                const cfg = this.cfg, W = cfg.corrN, Lc = cfg.Lc;
+            // ------------------------------------------------------------------ acquisition
+            _acquireStep() {
+                const cfg = this.cfg, L = this.ACQ_L, end = this.start + this.len;
                 if (this.searchPos < this.start) this.searchPos = this.start;
-                const pos = this.searchPos;
-                if (this.start + this.len < pos + W) return false;
-                const xr = this.cr, xi = this.ci;
-                const off = pos - this.start;
-                for (let i = 0; i < W; i++) { xr[i] = this.buf[off + i]; xi[i] = 0; }
-                this.fftC.transform(xr, xi, false);
-                // z = IFFT( X·mask  +  j · X·conj(T) )：实部=带通后信号，虚部=相关
-                const zr = new Float64Array(W), zi = new Float64Array(W);
-                for (let i = 0; i < W; i++) {
-                    const m = this.mask[i];
-                    const cr = xr[i] * this.Tr[i] + xi[i] * this.Ti[i];
-                    const ci = xi[i] * this.Tr[i] - xr[i] * this.Ti[i];
-                    // (X·mask) + j·(C)
-                    zr[i] = xr[i] * m - ci;
-                    zi[i] = xi[i] * m + cr;
+                if (!this.acq) {
+                    if (end - this.searchPos < L) return false;
+                    if (!this._cpSearch()) { this.searchPos += L - cfg.N - cfg.symLen; return true; }
                 }
-                this.fftC.transform(zr, zi, true);
-                const sc = 1 / W;
-                const nl = W - Lc + 1;
-                // 前缀能量（带通后信号）
-                let acc = 0;
-                const xb = new Float64Array(W);
-                for (let i = 0; i < W; i++) xb[i] = zr[i] * sc;
-                const pe = new Float64Array(W + 1);
-                for (let i = 0; i < W; i++) { acc += xb[i] * xb[i]; pe[i + 1] = acc; }
-                const rho = new Float64Array(nl);
-                let best = 0, bl = 0;
-                for (let l = 0; l < nl; l++) {
-                    const e = pe[l + Lc] - pe[l];
-                    const r = (zi[l] * sc) / Math.sqrt(this.Et * e + 1e-12);
-                    rho[l] = r;
-                    const a = Math.abs(r);
-                    if (a > best) { best = a; bl = l; }
+                return this._trainSearch();
+            }
+
+            // Cyclic-prefix correlation on the analytic signal, folded over the symbol period.
+            // → symbol timing (mod symLen) and a first sampling-clock estimate from the phase of the correlation.
+            _cpSearch() {
+                const cfg = this.cfg, N = cfg.N, L = this.ACQ_L, symLen = cfg.symLen, cp = cfg.cp, W = cfg.W;
+                if (!this.fftA) {
+                    this.fftA = new OfdmFFT(L);
+                    this.ar = new Float64Array(L); this.ai = new Float64Array(L);
+                    this.pcR = new Float64Array(L + 1); this.pcI = new Float64Array(L + 1); this.pcE = new Float64Array(L + 1);
                 }
-                // 噪声基底
-                let s2 = 0, c2 = 0;
-                for (let l = 0; l < nl; l += 3) { if (Math.abs(l - bl) > 3000) { s2 += rho[l] * rho[l]; c2++; } }
-                const sigma = Math.sqrt(s2 / Math.max(1, c2));
-                const thr = Math.max(0.10, 6 * sigma);
-                if (best < thr) { this.searchPos = pos + nl; return true; }
-                if (bl > nl - 400) { this.searchPos = pos + Math.max(1, bl - 800); return true; }  // 峰靠近块尾：下一块重新完整观察
-                // 前沿：取峰前 75ms 内第一个超过 0.35×峰 的位置，再爬到局部最大
-                let f = bl;
-                const back = Math.max(0, bl - 3600);
-                for (let l = back; l <= bl; l++) { if (Math.abs(rho[l]) >= 0.35 * best) { f = l; break; } }
-                let l1 = f, mv = Math.abs(rho[f]);
-                for (let l = f; l <= Math.min(nl - 1, f + 60); l++) { if (Math.abs(rho[l]) > mv) { mv = Math.abs(rho[l]); l1 = l; } }
-                const t0 = pos + l1;
-                this.stats.detections++;
-                this.state = 'frame';
-                this.fr = {
-                    t0, m: 0, delta: 0, tau: t0 + Lc, nSym: 0, nbits: 0, scr: null,
-                    peak: best, trainRaw: [], H: null, snr: 0, adj: 0, symIdx: 0, bitsDone: 0
-                };
-                if (this.cb.onDetect) this.cb.onDetect({ t0, rho: best, lead: l1 - bl });
+                const ar = this.ar, ai = this.ai, p0 = this.searchPos, off = p0 - this.start;
+                for (let i = 0; i < L; i++) { ar[i] = this.buf[off + i]; ai[i] = 0; }
+                this.fftA.transform(ar, ai, false);
+                for (let k = 0; k < L; k++) {
+                    if (k === 0 || k >= (L >> 1)) { ar[k] = 0; ai[k] = 0; } else { ar[k] *= 2; ai[k] *= 2; }
+                }
+                this.fftA.transform(ar, ai, true);
+                const M = L - N, pcR = this.pcR, pcI = this.pcI, pcE = this.pcE;
+                let sR = 0, sI = 0, sE = 0;
+                for (let n = 0; n < M; n++) {
+                    sR += ar[n + N] * ar[n] + ai[n + N] * ai[n];
+                    sI += ai[n + N] * ar[n] - ar[n + N] * ai[n];
+                    sE += 0.5 * (ar[n] * ar[n] + ai[n] * ai[n] + ar[n + N] * ar[n + N] + ai[n + N] * ai[n + N]);
+                    pcR[n + 1] = sR; pcI[n + 1] = sI; pcE[n + 1] = sE;
+                }
+                const cpEff = cp - 4 * W;           // correlation window: stays inside the ISI-free part of the CP
+                const rho = new Float64Array(symLen);
+                let rmax = 0, dm = 0;
+                for (let d = 0; d < symLen; d++) {
+                    let gr = 0, gi = 0, ge = 0, J = 0;
+                    for (let idx = d; idx + cpEff <= M; idx += symLen) {
+                        gr += pcR[idx + cpEff] - pcR[idx]; gi += pcI[idx + cpEff] - pcI[idx]; ge += pcE[idx + cpEff] - pcE[idx]; J++;
+                    }
+                    if (J < 3) continue;
+                    const r = Math.hypot(gr, gi) / (ge + 1e-30);
+                    rho[d] = r;
+                    if (r > rmax) { rmax = r; dm = d; }
+                }
+                let mean = 0, cnt = 0;
+                for (let d = 0; d < symLen; d += 4) {
+                    let dd = Math.abs(d - dm); dd = Math.min(dd, symLen - dd);
+                    if (dd > symLen / 8) { mean += rho[d]; cnt++; }
+                }
+                mean /= Math.max(1, cnt);
+                if (rmax < 0.12 || rmax < 3 * mean) return false;
+                // centre of the plateau (≥ 0.9 of the peak), circular
+                const t = 0.9 * rmax;
+                let l = 0, r = 0;
+                while (l < symLen / 2 && rho[(dm - l - 1 + symLen) % symLen] >= t) l++;
+                while (r < symLen / 2 && rho[(dm + r + 1) % symLen] >= t) r++;
+                const center = dm + (r - l) / 2;
+                const dc = ((Math.round(center) % symLen) + symLen) % symLen;
+                let gr = 0, gi = 0;
+                for (let idx = dc; idx + cpEff <= M; idx += symLen) { gr += pcR[idx + cpEff] - pcR[idx]; gi += pcI[idx + cpEff] - pcI[idx]; }
+                const theta = Math.atan2(gi, gr);
+                const fcen = (cfg.kLo + cfg.kHi) / 2 * cfg.df;
+                const delta = Math.max(-5e-4, Math.min(5e-4, -theta * cfg.fs / (2 * Math.PI * fcen * N)));
+                let tauA = p0 + center - 2 * W;
+                while (tauA < p0) tauA += symLen;
+                // the CP phase only fixes δ modulo `amb` (2π of phase) – the training search tries several branches
+                this.acq = { tauA, delta, amb: cfg.fs / (fcen * N), C: [], rho: rmax };
                 return true;
             }
 
-            // 从缓冲区按（可能带小数的）位置和步长取出 N 个点，做 FFT，返回载波频域值
+            // Differential correlation of a candidate symbol against the known training symbol.
+            // Insensitive to timing offset (constant phase step between neighbours) and to a smooth channel.
+            _trainStat(tau, delta) {
+                const cfg = this.cfg, k = this.known, nC = cfg.nCar;
+                const w = this._window(this._winStart(tau, delta), 1 + delta);
+                let sr = 0, si = 0, sa = 0;
+                for (let i = 0; i + 1 < nC; i++) {
+                    const dr = w.Yr[i] * w.Yr[i + 1] + w.Yi[i] * w.Yi[i + 1];
+                    const di = w.Yi[i] * w.Yr[i + 1] - w.Yr[i] * w.Yi[i + 1];
+                    const rr = k.tr[i] * k.tr[i + 1] + k.ti[i] * k.ti[i + 1];
+                    const ri = k.ti[i] * k.tr[i + 1] - k.tr[i] * k.ti[i + 1];
+                    sr += dr * rr + di * ri; si += di * rr - dr * ri;
+                    sa += Math.hypot(dr, di);
+                }
+                return Math.hypot(sr, si) / (sa + 1e-30);
+            }
+
+            _trainSearch() {
+                const cfg = this.cfg, a = this.acq, end = this.start + this.len;
+                const branches = [0, 1, -1, 2, -2];
+                let n = 0;
+                for (let j = 0; j <= OFDM_SF; j++) {
+                    const tau = a.tauA + j * cfg.symLen * (1 + a.delta);
+                    if (end < this._need(tau, a.delta) + 64) break;
+                    n++;
+                    if (a.C[j] !== undefined) continue;
+                    let best = 0, bm = 0, bd = a.delta, bt = tau;
+                    for (const m of branches) {
+                        const d = a.delta + m * a.amb;
+                        if (Math.abs(d) > 6e-4) continue;
+                        const t = a.tauA + j * cfg.symLen * (1 + d);
+                        const c = this._trainStat(t, d);
+                        if (c > best) { best = c; bm = m; bd = d; bt = t; }
+                    }
+                    a.C[j] = best;
+                    if (best >= 0.45) {
+                        this.acq = null;
+                        this._lock(bt, bd);
+                        return true;
+                    }
+                }
+                if (n >= OFDM_SF + 1) {                 // searched a whole superframe, nothing: start over further on
+                    this.searchPos = Math.floor(a.tauA + (OFDM_SF - 1) * cfg.symLen);
+                    this.acq = null;
+                    return true;
+                }
+                return false;                           // wait for more samples
+            }
+
+            _lock(tauT, delta) {
+                const cfg = this.cfg, k = this.known, nC = cfg.nCar;
+                const win = this._window(this._winStart(tauT, delta), 1 + delta);
+                const Hr = new Float64Array(nC), Hi = new Float64Array(nC);
+                for (let i = 0; i < nC; i++) {
+                    Hr[i] = win.Yr[i] * k.tr[i] + win.Yi[i] * k.ti[i];
+                    Hi[i] = win.Yi[i] * k.tr[i] - win.Yr[i] * k.ti[i];
+                }
+                this.state = 'track';
+                this.fr = {
+                    tau: tauT + cfg.symLen * (1 + delta), delta, sf: 1, H: { Hr, Hi },
+                    bS: 0, Babs: 0, lastShift: 0, snr: 0, bad: 0, mcs: null, t0: tauT
+                };
+                this.stats.locks++;
+                if (this.cb.onLock) this.cb.onLock(true, { t0: tauT, delta });
+            }
+
+            _loss() {
+                const fr = this.fr, cfg = this.cfg;
+                this.state = 'acquire'; this.acq = null;
+                this.searchPos = Math.max(this.start, Math.floor(fr.tau - 2 * cfg.symLen));
+                this.stats.losses++;
+                if (this.cb.onLock) this.cb.onLock(false, {});
+                if (this.cb.onLoss) this.cb.onLoss();
+            }
+
+            // ------------------------------------------------------------------ windowing
+            // take N samples starting at (fractional) position wstart with spacing `spacing`, FFT, return carriers
             _window(wstart, spacing) {
                 const cfg = this.cfg, N = cfg.N, re = this.re, im = this.im;
                 const base = wstart - this.start;
@@ -3207,8 +3358,8 @@
                         const p = base + n * spacing;
                         const i0 = Math.floor(p);
                         const fr = p - i0;
-                        const ph = Math.min(PH - 1, Math.round(fr * PH) % PH);
-                        const carry = Math.round(fr * PH) >= PH ? 1 : 0;
+                        const q = Math.round(fr * PH);
+                        const ph = q % PH, carry = q >= PH ? 1 : 0;
                         const o = (i0 + carry - 3), t = ph * 8;
                         re[n] = buf[o] * itab[t] + buf[o + 1] * itab[t + 1] + buf[o + 2] * itab[t + 2] + buf[o + 3] * itab[t + 3] +
                             buf[o + 4] * itab[t + 4] + buf[o + 5] * itab[t + 5] + buf[o + 6] * itab[t + 6] + buf[o + 7] * itab[t + 7];
@@ -3221,354 +3372,256 @@
                 return { Yr, Yi };
             }
 
-            _winStart(tau, delta) {   // 符号“CP 起点”位置 → FFT 窗起点
-                const cfg = this.cfg;
-                return tau + (cfg.cp - cfg.margin) * (1 + delta);
-            }
+            _winStart(tau, delta) { const cfg = this.cfg; return tau + (cfg.cp - cfg.margin) * (1 + delta); }
+            _need(tau, delta) { return Math.ceil(this._winStart(tau, delta) + this.cfg.N * (1 + delta)) + 8; }
 
-            _need(tau, delta) {       // 取这个窗需要缓冲区里到哪个绝对位置
-                return Math.ceil(this._winStart(tau, delta) + this.cfg.N * (1 + delta)) + 8;
-            }
-
-            _frameStep() {
-                const cfg = this.cfg, fr = this.fr, known = this.known;
-                const symAdv = cfg.symLen;
-                if (fr.m === 0) {
-                    // 梳状符号 + 两个训练符号：收齐后一次性估计
-                    const tau0 = fr.t0 + cfg.Lc;
-                    if (this.start + this.len < this._need(tau0 + 2 * symAdv, 0.0004) + 64) return false;
-                    this._trainEstimate(tau0);
-                    return true;
-                }
+            // ------------------------------------------------------------------ tracking
+            _trackStep() {
+                const fr = this.fr;
                 if (this.start + this.len < this._need(fr.tau, fr.delta) + 64) return false;
                 const win = this._window(this._winStart(fr.tau, fr.delta), 1 + fr.delta);
-                const eq = this._equalize(win, fr.m);
-                if (fr.m === 3) {
-                    this._header(eq);
-                } else {
-                    this._data(eq, win);
-                }
+                const eq = this._equalize(win, fr.sf);
+                if (fr.sf === 0) this._train(eq); else this._data(eq);
                 return true;
             }
 
-            // 粗测：梳状符号在时域以 P=N/4 为周期；频偏使相邻周期相差 θ = -2π·fc·δ·P/fs
-            _coarseDelta(wsA) {
-                const cfg = this.cfg, N = cfg.N, P = N >> 2;
-                const re = this.re, im = this.im, base = Math.round(wsA - this.start);
-                for (let n = 0; n < N; n++) { re[n] = this.buf[base + n]; im[n] = 0; }
-                this.fft.transform(re, im, false);
-                // 解析信号：只保留正频率
-                for (let k = 0; k < N; k++) {
-                    if (k === 0 || k >= (N >> 1)) { re[k] = 0; im[k] = 0; }
-                }
-                this.fft.transform(re, im, true);
-                let sr = 0, si = 0;
-                for (let n = 0; n < N - P; n++) {
-                    sr += re[n + P] * re[n] + im[n + P] * im[n];
-                    si += im[n + P] * re[n] - re[n + P] * im[n];
-                }
-                const theta = Math.atan2(si, sr);
-                const fcen = (cfg.kLo + cfg.kHi) / 2 * cfg.df;
-                return -theta * cfg.fs / (2 * Math.PI * fcen * P);
+            // reference (known) value of pilot p in symbol sf
+            _pilotRef(sf, p, out) {
+                const k = this.known, c = this.cfg.pilotIdx[p];
+                if (sf === 0) { out[0] = k.tr[c]; out[1] = k.ti[c]; }
+                else { out[0] = 1 - 2 * k.pb[sf * this.cfg.pilotIdx.length + p]; out[1] = 0; }
             }
 
-            _trainEstimate(tau0) {
-                const cfg = this.cfg, fr = this.fr, nC = cfg.nCar;
-                // 1) 粗测 δ
-                let delta = this._coarseDelta(this._winStart(tau0, 0));
-                delta = Math.max(-4e-4, Math.min(4e-4, delta));
-                fr.deltaCoarse = delta;
-                // 2) 用粗测的 δ 取两个训练窗；两窗的公共相位差 = 剩余频偏在一个符号内转过的角度
-                //    （1ppm@16kHz 每符号转 0.043rad，远比跨载波的相位斜率灵敏）
-                let sp = 1 + delta;
-                let tauB = tau0 + cfg.symLen * sp, tauC = tauB + cfg.symLen * sp;
-                let wb = this._window(this._winStart(tauB, delta), sp);
-                let wc = this._window(this._winStart(tauC, delta), sp);
-                let pr = 0, pi_ = 0;
-                for (let k = 0; k < nC; k++) {
-                    pr += wc.Yr[k] * wb.Yr[k] + wc.Yi[k] * wb.Yi[k];
-                    pi_ += wc.Yi[k] * wb.Yr[k] - wc.Yr[k] * wb.Yi[k];
-                }
-                const kcAbs = cfg.kLo + (nC - 1) / 2;
-                delta -= Math.atan2(pi_, pr) * cfg.N / (2 * Math.PI * kcAbs * cfg.symLen);
-                delta = Math.max(-4e-4, Math.min(4e-4, delta));
-                fr.delta = delta;
-                // 3) 用最终 δ 重新取窗，平均得到信道估计
-                sp = 1 + delta;
-                tauB = tau0 + cfg.symLen * sp; tauC = tauB + cfg.symLen * sp;
-                wb = this._window(this._winStart(tauB, delta), sp);
-                wc = this._window(this._winStart(tauC, delta), sp);
-                let cr = 0, ci = 0;
-                for (let k = 0; k < nC; k++) {
-                    cr += wc.Yr[k] * wb.Yr[k] + wc.Yi[k] * wb.Yi[k];
-                    ci += wc.Yi[k] * wb.Yr[k] - wc.Yr[k] * wb.Yi[k];
-                }
-                const dphi = Math.atan2(ci, cr);
-                const cd = Math.cos(dphi), sd = Math.sin(dphi);
-                const Hr = new Float64Array(nC), Hi = new Float64Array(nC);
-                for (let k = 0; k < nC; k++) {
-                    const ar = wb.Yr[k] * cd - wb.Yi[k] * sd;      // 把 B 窗旋转到 C 窗相位再平均
-                    const ai = wb.Yr[k] * sd + wb.Yi[k] * cd;
-                    const yr = 0.5 * (ar + wc.Yr[k]), yi = 0.5 * (ai + wc.Yi[k]);
-                    const xr = this.known.tr[k], xi = this.known.ti[k];
-                    Hr[k] = yr * xr + yi * xi;
-                    Hi[k] = yi * xr - yr * xi;
-                }
-                fr.H = { Hr, Hi };
-                let p = 0; for (let k = 0; k < nC; k++) p += Hr[k] * Hr[k] + Hi[k] * Hi[k];
-                fr.hPow = p / nC;
-                fr.eps = 1e-3 * fr.hPow;
-                fr.m = 3;
-                fr.tau = tauC + cfg.symLen * sp;
-                fr.aPrev = 0;          // 训练符号 C 作为相位参考
-                fr.lastShift = 0;
-            }
-
-            // 均衡 + 导频测量（斜率、公共相位、增益）+ 校正。返回每载波均衡后的值与诊断
-            _equalize(win, m) {
+            // Equalise with the current channel H, then measure from the pilots: timing slope, common phase, gain.
+            _equalize(win, sf) {
                 const cfg = this.cfg, fr = this.fr, nC = cfg.nCar, H = fr.H;
                 const Xr = new Float64Array(nC), Xi = new Float64Array(nC), Wt = new Float64Array(nC);
                 let hSum = 0;
+                for (let k = 0; k < nC; k++) { Wt[k] = H.Hr[k] * H.Hr[k] + H.Hi[k] * H.Hi[k]; hSum += Wt[k]; }
+                const eps = 1e-3 * hSum / nC;                       // regulariser follows the channel level
                 for (let k = 0; k < nC; k++) {
-                    const hr = H.Hr[k], hi = H.Hi[k];
-                    Wt[k] = hr * hr + hi * hi; hSum += Wt[k];
-                }
-                fr.eps = 1e-3 * hSum / nC;                       // 正则项跟随当前信道电平
-                for (let k = 0; k < nC; k++) {
-                    const hr = H.Hr[k], hi = H.Hi[k], d = Wt[k] + fr.eps;
+                    const hr = H.Hr[k], hi = H.Hi[k], d = Wt[k] + eps;
                     Xr[k] = (win.Yr[k] * hr + win.Yi[k] * hi) / d;
                     Xi[k] = (win.Yi[k] * hr - win.Yr[k] * hi) / d;
                 }
-                // 导频：z_p = X̂_p · pilot
-                const pil = cfg.pilotIdx, nP = pil.length;
+                const pil = cfg.pilotIdx, nP = pil.length, ref = [0, 0];
                 const zr = new Float64Array(nP), zi = new Float64Array(nP), w = new Float64Array(nP);
                 for (let p = 0; p < nP; p++) {
-                    const k = pil[p], pv = ofdmPilotVal(cfg, this.known, m, p);
-                    zr[p] = Xr[k] * pv; zi[p] = Xi[k] * pv;
+                    const k = pil[p]; this._pilotRef(sf, p, ref);
+                    zr[p] = Xr[k] * ref[0] + Xi[k] * ref[1];
+                    zi[p] = Xi[k] * ref[0] - Xr[k] * ref[1];
                     w[p] = Wt[k] * Math.hypot(zr[p], zi[p]);
                 }
-                // 斜率：相邻导频的相位差
+                // slope: phase difference of neighbouring pilots
                 let sr = 0, si = 0;
                 for (let p = 1; p < nP; p++) {
                     const ar = zr[p] * zr[p - 1] + zi[p] * zi[p - 1];
                     const ai = zi[p] * zr[p - 1] - zr[p] * zi[p - 1];
-                    const ww = w[p] * w[p - 1];
-                    const mag = Math.hypot(ar, ai) + 1e-30;
+                    const ww = w[p] * w[p - 1], mag = Math.hypot(ar, ai) + 1e-30;
                     sr += ww * ar / mag; si += ww * ai / mag;
                 }
-                const bMeas = Math.atan2(si, sr) / 8;              // 本符号测得的斜率 rad / 载波（噪声大）
-                // 真实斜率变化很慢，所以做平滑；平滑值才用于校正（噪声斜率 × 300 个载波会毁掉符号边缘）
-                if (fr.bS === undefined) fr.bS = 0;
-                fr.bS += 0.12 * (bMeas - fr.bS);
-                const b = fr.bS;
-                const mid = (nC - 1) / 2;
-                // 公共相位：去掉斜率后的平均相位
+                const bMeas = Math.atan2(si, sr) / 8;
+                const inn = bMeas - fr.bS;                          // innovation = how much the window drifted since last symbol
+                fr.bS += 0.12 * inn;                                // smoothed slope is what we correct with (raw slope × 300 carriers is too noisy)
+                const b = fr.bS, mid = (nC - 1) / 2;
                 let ar_ = 0, ai_ = 0;
                 for (let p = 0; p < nP; p++) {
-                    const ph = -b * (pil[p] - mid);
-                    const c = Math.cos(ph), s = Math.sin(ph);
+                    const ph = -b * (pil[p] - mid), c = Math.cos(ph), s = Math.sin(ph);
                     ar_ += w[p] * (zr[p] * c - zi[p] * s);
                     ai_ += w[p] * (zr[p] * s + zi[p] * c);
                 }
                 const a = Math.atan2(ai_, ar_);
-                // 相位/斜率校正
                 for (let k = 0; k < nC; k++) {
-                    const ph = -(a + b * (k - mid));
-                    const c = Math.cos(ph), s = Math.sin(ph);
+                    const ph = -(a + b * (k - mid)), c = Math.cos(ph), s = Math.sin(ph);
                     const r = Xr[k] * c - Xi[k] * s, i2 = Xr[k] * s + Xi[k] * c;
                     Xr[k] = r; Xi[k] = i2;
                 }
-                // 增益：校正后的导频应为实数 1；每个符号都重新测，所以电平变化（AGC、音量、距离）能立即跟上
+                // gain from the pilots: re-measured on EVERY symbol, so AGC / volume / distance changes are followed at once
                 let gN = 0, gD = 0;
                 for (let p = 0; p < nP; p++) {
-                    const k = pil[p], pv = ofdmPilotVal(cfg, this.known, m, p);
-                    gN += Wt[k] * Xr[k] * pv; gD += Wt[k];
+                    const k = pil[p]; this._pilotRef(sf, p, ref);
+                    gN += Wt[k] * (Xr[k] * ref[0] + Xi[k] * ref[1]); gD += Wt[k];
                 }
                 let g = gN / Math.max(gD, 1e-30);
                 g = Math.max(0.02, Math.min(50, g));
                 for (let k = 0; k < nC; k++) { Xr[k] /= g; Xi[k] /= g; }
-                // 导频 EVM → SNR
-                let evm = 0, evw = 0;
-                for (let p = 0; p < nP; p++) {
-                    const k = pil[p], pv = ofdmPilotVal(cfg, this.known, m, p);
-                    const er = Xr[k] * pv - 1, ei = Xi[k] * pv;
-                    evm += Wt[k] * (er * er + ei * ei); evw += Wt[k];
-                }
-                evm = evm / Math.max(evw, 1e-30);
-                const snr = -10 * Math.log10(Math.max(evm, 1e-6));
-                // 定时环路：b>0 表示窗口偏晚 s 个采样
-                const sSamp = b * cfg.N / (2 * Math.PI);
-                return { Xr, Xi, Wt, a, b, g, sSamp, snr, mid, win };
+                const snr = this._pilotSnr(Xr, Xi, Wt, sf);
+                return { Xr, Xi, Wt, a, b, g, sSamp: (fr.Babs + b) * cfg.N / (2 * Math.PI), snr, mid, win, inn, eps };
             }
 
-            // 元数据子载波：BPSK，24 比特 × 2 份，最大比合并后查 CRC
-            _metaDecode(eq, m) {
-                const cfg = this.cfg, acc = new Float64Array(24);
-                for (let j = 0; j < OFDM_META; j++) {
-                    const k = cfg.metaIdx[j], sgn = 1 - 2 * this.known.ms[m * OFDM_META + j];
-                    acc[j % 24] += eq.Xr[k] * sgn * eq.Wt[k];
+            _pilotSnr(Xr, Xi, Wt, sf) {
+                const pil = this.cfg.pilotIdx, ref = [0, 0];
+                let evm = 0, evw = 0;
+                for (let p = 0; p < pil.length; p++) {
+                    const k = pil[p]; this._pilotRef(sf, p, ref);
+                    const er = Xr[k] - ref[0], ei = Xi[k] - ref[1];
+                    evm += Wt[k] * (er * er + ei * ei); evw += Wt[k];
                 }
-                const bits = new Uint8Array(24);
-                for (let i = 0; i < 24; i++) bits[i] = acc[i] < 0 ? 1 : 0;
+                return -10 * Math.log10(Math.max(evm / Math.max(evw, 1e-30), 1e-6));
+            }
+
+            // meta word: 2 copies, maximal-ratio combining, CRC8
+            _metaDecode(eq, sf) {
+                const cfg = this.cfg, acc = new Float64Array(32);
+                for (let j = 0; j < OFDM_META; j++) {
+                    const k = cfg.metaIdx[j], sgn = 1 - 2 * this.known.ms[sf * OFDM_META + j];
+                    acc[j % 32] += eq.Xr[k] * sgn * eq.Wt[k];
+                }
+                const bits = new Uint8Array(32);
+                for (let i = 0; i < 32; i++) bits[i] = acc[i] < 0 ? 1 : 0;
                 return ofdmMetaParse(bits);
             }
 
-            // 判决导向的信道跟踪：用（大概率正确的）判决点反推每个子载波的 H，缓慢并入估计
-            _trackChannel(eq, k, ref0, ref1, mu) {
-                const fr = this.fr, H = fr.H, win = eq.win;
-                const ph = -(eq.a + eq.b * (k - eq.mid));
-                const c = Math.cos(ph), s = Math.sin(ph);
-                const yr = (win.Yr[k] * c - win.Yi[k] * s) / eq.g, yi = (win.Yr[k] * s + win.Yi[k] * c) / eq.g;
-                const d2 = ref0 * ref0 + ref1 * ref1;
-                if (d2 < 1e-12) return;
-                const hr = (yr * ref0 + yi * ref1) / d2, hi = (yi * ref0 - yr * ref1) / d2;
-                H.Hr[k] += mu * (hr - H.Hr[k]);
-                H.Hi[k] += mu * (hi - H.Hi[k]);
+            // Reference cells of this symbol: values of pilots and (verified) meta carriers → arrays aligned with known.refs
+            _refValues(sf, mw) {
+                const refs = this.known.refs, n = refs.length, rr = new Float64Array(n), ri = new Float64Array(n), ref = [0, 0];
+                for (let i = 0; i < n; i++) {
+                    const r = refs[i];
+                    if (r.type === 0) { this._pilotRef(sf, r.i, ref); rr[i] = ref[0]; ri[i] = ref[1]; }
+                    else if (mw) { rr[i] = (1 - 2 * this.known.ms[sf * OFDM_META + r.i]) * (1 - 2 * mw[r.i % 32]); ri[i] = 0; }
+                    else { rr[i] = 0; ri[i] = 0; }
+                }
+                return { rr, ri };
             }
 
-            _advance(eq) {
-                const cfg = this.cfg, fr = this.fr;
-                const kcAbs = cfg.kLo + (cfg.nCar - 1) / 2;
-                const TWO_PI = 2 * Math.PI;
-                // 公共相位的符号间变化 = 2π·kc/N·[symLen·(δ_est-δ_true) + 本次刻意移动的窗口位移]
-                let dA = eq.a - fr.aPrev;
-                dA = dA - TWO_PI * Math.round(dA / TWO_PI);
-                const errPerSym = (dA * cfg.N / (TWO_PI * kcAbs) - fr.lastShift) / cfg.symLen;   // = δ_est - δ_true
-                const gFreq = 0.5, kp = 0.12;
-                fr.delta -= gFreq * errPerSym;
-                fr.delta = Math.max(-4e-4, Math.min(4e-4, fr.delta));
-                // 定时：斜率 b>0 表示窗口偏晚 s 个采样 → 往前拉
-                const shift = -kp * eq.sSamp;
-                fr.tau += cfg.symLen * (1 + fr.delta) + shift;
-                fr.aPrev = eq.a;
-                fr.lastShift = shift;
-                fr.bS += TWO_PI * shift / cfg.N;
-                fr.snr = 0.8 * fr.snr + 0.2 * eq.snr;
-                fr.m++;
+            // Pilot-aided channel update (no decisions involved): residual at the reference cells → interpolate over
+            // frequency → fold into H.   beta = update strength.
+            _updateFromRefs(eq, sf, mw, beta) {
+                const known = this.known, refs = known.refs, n = refs.length, H = this.fr.H, nC = this.cfg.nCar;
+                const { rr, ri } = this._refValues(sf, mw);
+                const qr = new Float64Array(n), qi = new Float64Array(n), use = new Uint8Array(n);
+                let gN = 0, gD = 0;
+                for (let i = 0; i < n; i++) {
+                    if (refs[i].type === 1 && !mw) continue;
+                    const k = refs[i].k;
+                    qr[i] = eq.Xr[k] * rr[i] + eq.Xi[k] * ri[i];
+                    qi[i] = eq.Xi[k] * rr[i] - eq.Xr[k] * ri[i];
+                    use[i] = 1;
+                    gN += eq.Wt[k] * qr[i]; gD += eq.Wt[k];
+                }
+                // pilots + meta together give a much tighter gain estimate than the pilots alone
+                const g2 = Math.max(0.7, Math.min(1.4, gN / Math.max(gD, 1e-30)));
+                eq.g *= g2;
+                for (let k = 0; k < nC; k++) { eq.Xr[k] /= g2; eq.Xi[k] /= g2; }
+                for (let i = 0; i < n; i++) { qr[i] /= g2; qi[i] /= g2; }
+                if (beta <= 0 || eq.snr < 0) return;
+                // Adaptive update rate.  If the residual at the reference cells is just noise, keep beta small (averages the noise out);
+                // if it is clearly larger than the noise, the channel really moved (echo changed, people walking) → follow faster.
+                let resid = 0, rw = 0;
+                for (let i = 0; i < n; i++) if (use[i]) { const w = eq.Wt[refs[i].k], dr = qr[i] - 1; resid += w * (dr * dr + qi[i] * qi[i]); rw += w; }
+                resid /= Math.max(rw, 1e-30);
+                const noiseVar = Math.pow(10, -eq.snr / 10);
+                const excess = Math.max(0, resid - 2 * noiseVar);
+                beta = Math.min(0.85, beta + 2.5 * Math.sqrt(excess));
+                const idx = []; for (let i = 0; i < n; i++) if (use[i]) idx.push(i);
+                const m = idx.length; if (m < 2) return;
+                let r = 0;
+                for (let k = 0; k < nC; k++) {
+                    while (r + 1 < m && refs[idx[r + 1]].k <= k) r++;
+                    let vr, vi;
+                    const k0 = refs[idx[r]].k;
+                    if (k <= refs[idx[0]].k) { vr = qr[idx[0]]; vi = qi[idx[0]]; }
+                    else if (r + 1 >= m) { vr = qr[idx[m - 1]]; vi = qi[idx[m - 1]]; }
+                    else {
+                        const k1 = refs[idx[r + 1]].k, f = (k - k0) / (k1 - k0);
+                        vr = qr[idx[r]] * (1 - f) + qr[idx[r + 1]] * f; vi = qi[idx[r]] * (1 - f) + qi[idx[r + 1]] * f;
+                    }
+                    const hr = H.Hr[k], hi = H.Hi[k], dr = vr - 1;
+                    H.Hr[k] = hr + beta * (hr * dr - hi * vi);
+                    H.Hi[k] = hi + beta * (hr * vi + hi * dr);
+                }
             }
 
-            _header(eq) {
-                const cfg = this.cfg, fr = this.fr;
-                const meta = this._metaDecode(eq, 3);
-                const acc = new Float64Array(32);
-                for (let c = 0; c < cfg.nData; c++) {
-                    const k = cfg.dataIdx[c];
-                    const sgn = 1 - 2 * this.known.hs[c];
-                    acc[c % 32] += eq.Xr[k] * sgn * eq.Wt[k];
-                }
-                const hb = new Uint8Array(32);
-                for (let i = 0; i < 32; i++) hb[i] = acc[i] < 0 ? 1 : 0;
-                let nb = 0; for (let i = 0; i < 24; i++) nb = nb * 2 + hb[i];
-                let crc = 0; for (let i = 0; i < 8; i++) crc = crc * 2 + hb[24 + i];
-                fr.snr = eq.snr;
-                let ok = meta && crc === ofdmCrc8(hb.subarray(0, 24)) && nb >= 1;
-                let cap = 0, nSym = 0;
-                if (ok) {
-                    cap = cfg.nData * OFDM_MODS[meta.mod].bpc;
-                    nSym = Math.ceil(nb / cap);
-                    ok = nb <= OFDM_MAX_SYM * cap && meta.cd === nSym;    // 元数据里的剩余符号数必须与比特数自洽
-                }
-                if (!ok) {
-                    this.stats.headerFail++;
-                    if (this.cb.onFrameFail) this.cb.onFrameFail({ meta: !!meta, nb });
-                    this.searchPos = fr.t0 + cfg.Lc;
-                    this.state = 'hunt';
-                    return;
-                }
-                fr.mcs = meta;
-                fr.nbits = nb;
-                fr.nSym = nSym;
-                fr.scr = ofdmLfsr(0x55AA55, nSym * cap);
-                fr.symIdx = 0;
-                fr.metaBad = 0;
-                if (this.cb.onMeta) this.cb.onMeta({ mod: meta.mod, modName: OFDM_MODS[meta.mod].name, fec: meta.fec, nbits: nb, nSym, snr: eq.snr });
-                // 帧头符号上的导频和元数据也能校准信道
-                this._advance(eq);       // m 变为 4
-            }
-
-            _data(eq, win) {
-                const cfg = this.cfg, fr = this.fr, nD = cfg.nData, H = fr.H;
-                const mod = fr.mcs.mod, bpc = OFDM_MODS[mod].bpc, cap = nD * bpc;
-                const d = fr.symIdx;
-                // 本符号自带的元数据：用来交叉验证（以及将来支持逐符号切换 MCS）
-                const meta = this._metaDecode(eq, fr.m);
-                if (!meta || meta.mod !== mod || meta.fec !== fr.mcs.fec) fr.metaBad++;
-                const valid = Math.min(cap, fr.nbits - d * cap);
-                const bb = new Uint8Array(8), dec = [0, 0];
-                const m2 = bpc === 1 ? 1 : (bpc >> 1);
-                const gate = 0.7 * (bpc === 1 ? 1 : ofdmAxisScale(m2));
-                // 预先算好数据载波的“相位/增益校正后的原始值” Y' = Y·e^{-j(a+b(k-mid))}/g
-                const kk = new Int32Array(nD), Yr = new Float64Array(nD), Yi = new Float64Array(nD);
-                const xr = new Float64Array(nD), xi = new Float64Array(nD);
-                for (let u = 0; u < nD; u++) {
-                    const k = cfg.dataIdx[cfg.perm[u]];
-                    kk[u] = k;
-                    const ph = -(eq.a + eq.b * (k - eq.mid)), c = Math.cos(ph), s = Math.sin(ph);
-                    Yr[u] = (win.Yr[k] * c - win.Yi[k] * s) / eq.g;
-                    Yi[u] = (win.Yr[k] * s + win.Yi[k] * c) / eq.g;
-                    xr[u] = eq.Xr[k]; xi[u] = eq.Xi[k];
-                }
-                // 判决导向的迭代精修：判决 → 反推信道 → 重新均衡同一个符号。
-                // 信道稳定时判决几乎都在门限内，更新很轻；信道漂移时一致比例下降，更新变重。
-                const PASSES = 2;
-                let fracGood = 1;
-                for (let pass = 0; pass <= PASSES; pass++) {
-                    let good = 0;
-                    const upd = pass < PASSES;
-                    // 先统计一致比例，决定本轮更新力度
-                    if (upd) {
-                        for (let u = 0; u < nD; u++) {
-                            ofdmDemapSymbol(mod, xr[u], xi[u], bb, 0, dec);
-                            if (Math.abs(xr[u] - dec[0]) < gate && (bpc === 1 || Math.abs(xi[u] - dec[1]) < gate)) good++;
-                        }
-                        fracGood = good / nD;
-                        const mu = Math.max(0.10, Math.min(0.6, 0.10 + 1.25 * (1 - fracGood)));
-                        for (let u = 0; u < nD; u++) {
-                            ofdmDemapSymbol(mod, xr[u], xi[u], bb, 0, dec);
-                            if (Math.abs(xr[u] - dec[0]) < gate && (bpc === 1 || Math.abs(xi[u] - dec[1]) < gate)) {
-                                const k = kk[u];
-                                const d2 = dec[0] * dec[0] + dec[1] * dec[1];
-                                if (d2 > 1e-12) {
-                                    const hr = (Yr[u] * dec[0] + Yi[u] * dec[1]) / d2, hi = (Yi[u] * dec[0] - Yr[u] * dec[1]) / d2;
-                                    H.Hr[k] += mu * (hr - H.Hr[k]); H.Hi[k] += mu * (hi - H.Hi[k]);
-                                }
-                            }
-                        }
-                        // 用新的 H 重新均衡
-                        for (let u = 0; u < nD; u++) {
-                            const k = kk[u], hr = H.Hr[k], hi = H.Hi[k], dd = hr * hr + hi * hi + fr.eps;
-                            xr[u] = (Yr[u] * hr + Yi[u] * hi) / dd;
-                            xi[u] = (Yi[u] * hr - Yr[u] * hi) / dd;
-                        }
+            _train(eq) {
+                const cfg = this.cfg, k = this.known, H = this.fr.H, gam = 0.5;
+                this.stats.trainings++;
+                if (eq.snr > -3) {
+                    for (let i = 0; i < cfg.nCar; i++) {      // every carrier is known: full-band re-baseline
+                        const qr = eq.Xr[i] * k.tr[i] + eq.Xi[i] * k.ti[i];
+                        const qi = eq.Xi[i] * k.tr[i] - eq.Xr[i] * k.ti[i];
+                        const hr = H.Hr[i], hi = H.Hi[i], dr = qr - 1;
+                        H.Hr[i] = hr + gam * (hr * dr - hi * qi);
+                        H.Hi[i] = hi + gam * (hr * qi + hi * dr);
                     }
                 }
-                // 最终判决
-                const bits = [], pts = [];
-                const stride = Math.max(1, Math.round(nD / 160));
-                for (let u = 0; u < nD; u++) {
-                    const q = d * cap + u * bpc;
-                    ofdmDemapSymbol(mod, xr[u], xi[u], bb, 0, dec);
-                    for (let i = 0; i < bpc; i++) if (u * bpc + i < valid) bits.push(bb[i] ^ fr.scr[q + i]);
-                    if (u % stride === 0) pts.push([xr[u], xi[u]]);
-                }
-                // 导频是已知值，可以更积极地更新
-                for (let p = 0; p < cfg.pilotIdx.length; p++) {
-                    this._trackChannel(eq, cfg.pilotIdx[p], ofdmPilotVal(cfg, this.known, fr.m, p), 0, 0.25);
-                }
-                let hm = 0; for (let k = 0; k < cfg.nCar; k++) hm += Math.sqrt(H.Hr[k] * H.Hr[k] + H.Hi[k] * H.Hi[k]);
-                if (this.cb.onSymbol) this.cb.onSymbol({
-                    points: pts, snr: eq.snr, timing: fr.tau - (fr.t0 + cfg.Lc), ppm: fr.delta * 1e6,
-                    gain: hm / cfg.nCar * eq.g, g: eq.g, symIdx: d, shift: fr.lastShift, mod, fec: fr.mcs.fec, consistency: fracGood
-                });
-                if (this.cb.onBits) this.cb.onBits(bits);
-                fr.symIdx++;
                 this._advance(eq);
-                if (fr.symIdx >= fr.nSym) {
-                    this.stats.frames++;
-                    this.searchPos = Math.floor(fr.tau - cfg.symLen * 0.5 - 4000);
-                    if (this.cb.onFrame) this.cb.onFrame({ nbits: fr.nbits, nSym: fr.nSym, snr: fr.snr, ppm: fr.delta * 1e6, mod, fec: fr.mcs.fec, metaBad: fr.metaBad });
-                    this.state = 'hunt';
+            }
+
+            _data(eq) {
+                const cfg = this.cfg, fr = this.fr, sf = fr.sf, nD = cfg.nData, known = this.known;
+                const meta = this._metaDecode(eq, sf);
+                if (!meta || meta.sf !== sf) {
+                    fr.bad++; this.stats.metaBad++;
+                    this._advance(eq);
+                    if (fr.bad >= this.lossLimit) this._loss();
+                    return;
                 }
+                fr.bad = 0;
+                const mw = ofdmMetaWord(meta.mod, meta.fec, meta.sf, meta.cnt);
+                this._updateFromRefs(eq, sf, mw, 0.5);          // refines eq.g and the channel – pilots + meta only
+                const snr = this._pilotSnr(eq.Xr, eq.Xi, eq.Wt, sf);
+                eq.snr = snr;
+                const mod = meta.mod, bpc = OFDM_MODS[mod].bpc, cap = nD * bpc;
+                if (!fr.mcs || fr.mcs.mod !== meta.mod || fr.mcs.fec !== meta.fec) {
+                    fr.mcs = { mod: meta.mod, fec: meta.fec };
+                    if (this.cb.onMeta) this.cb.onMeta({ mod: meta.mod, modName: OFDM_MODS[meta.mod].name, fec: meta.fec, snr });
+                }
+                const valid = meta.cnt === 0 ? 0 : (meta.cnt >= OFDM_CNT_FULL ? cap : Math.min(cap, meta.cnt));
+                const bb = new Uint8Array(8), dec = [0, 0], scr = known.scr[sf];
+                const m2 = bpc === 1 ? 1 : (bpc >> 1), gate = 0.7 * (bpc === 1 ? 1 : ofdmAxisScale(m2));
+                const bits = [], pts = [], stride = Math.max(1, Math.round(nD / 160));
+                let good = 0;
+                for (let u = 0; u < nD; u++) {
+                    const k = cfg.dataIdx[cfg.perm[u]];
+                    const xr = eq.Xr[k], xi = eq.Xi[k];
+                    ofdmDemapSymbol(mod, xr, xi, bb, 0, dec);
+                    if (Math.abs(xr - dec[0]) < gate && (bpc === 1 || Math.abs(xi - dec[1]) < gate)) good++;
+                    const q0 = u * bpc;
+                    for (let i = 0; i < bpc; i++) if (q0 + i < valid) bits.push(bb[i] ^ scr[q0 + i]);
+                    if (u % stride === 0) pts.push([xr, xi]);
+                }
+                let hm = 0; for (let k = 0; k < cfg.nCar; k++) hm += Math.hypot(fr.H.Hr[k], fr.H.Hi[k]);
+                this.stats.symbols++;
+                if (this.cb.onSymbol) this.cb.onSymbol({
+                    points: pts, snr, ppm: fr.delta * 1e6, shift: fr.lastShift, timing: fr.tau - fr.t0,
+                    gain: hm / cfg.nCar * eq.g, g: eq.g, sf, mod, fec: meta.fec, cnt: meta.cnt, filler: meta.cnt === 0,
+                    consistency: good / nD
+                });
+                if (bits.length && this.cb.onBits) this.cb.onBits(bits);
+                this._advance(eq);
+            }
+
+            // Fold the measured common phase and timing slope into H, run the clock + timing loops, move on to the next symbol.
+            // Absorbing them is what lets the equaliser follow a slowly changing channel indefinitely: without it the
+            // measured phase would keep growing relative to the training-time baseline until it wraps.
+            _advance(eq) {
+                const cfg = this.cfg, fr = this.fr, N = cfg.N, symLen = cfg.symLen, H = fr.H;
+                const kc = cfg.kLo + (cfg.nCar - 1) / 2, TWO_PI = 2 * Math.PI;
+                for (let k = 0; k < cfg.nCar; k++) {
+                    const ph = eq.a + eq.b * (k - eq.mid), c = Math.cos(ph), s = Math.sin(ph);
+                    const hr = H.Hr[k], hi = H.Hi[k];
+                    H.Hr[k] = hr * c - hi * s; H.Hi[k] = hr * s + hi * c;
+                }
+                fr.Babs += eq.b;          // total slope (= timing lateness) that now lives inside H
+                fr.bS = 0;
+                // Sampling-clock loop.  H already holds the previous phase, so eq.a IS the phase step of this symbol:
+                //   step = 2π·kc/N · (symLen·(δ_est − δ_true) + our own window shift)
+                // Acquisition already fixed δ to a few ppm and real clocks drift slowly, so this loop is deliberately
+                // timid: small gain, and any measurement that implies more than ±0.6 sample/symbol (≈ 30 ppm) is
+                // rejected as "the channel moved" (changing echo, people walking) instead of being believed.
+                const pred = TWO_PI * kc / N * fr.lastShift;
+                let dw = eq.a - pred; dw -= TWO_PI * Math.round(dw / TWO_PI);
+                const errSamples = dw * N / (TWO_PI * kc);                  // = symLen·(δ_est − δ_true)
+                if (Math.abs(errSamples) < 0.6) {
+                    fr.delta -= 0.15 * errSamples / symLen;
+                    fr.delta = Math.max(-6e-4, Math.min(6e-4, fr.delta));
+                }
+                const shift = -0.12 * eq.sSamp;
+                fr.tau += symLen * (1 + fr.delta) + shift;
+                fr.lastShift = shift;
+                fr.bS += TWO_PI * shift / N;
+                fr.snr = 0.8 * fr.snr + 0.2 * eq.snr;
+                fr.sf = (fr.sf + 1) % OFDM_SF;
             }
         }
         // ===== OFDM END =====
@@ -4619,10 +4672,17 @@
                 this.stopped = false;
                 this.finishedInput = false;
                 this.pushedBits = 0;
+                this._ev = {};
             }
 
+            // Tiny event emitter.  Events: 'need' (buffer is getting low – feed me), 'low' (about to run empty),
+            //                              'underrun' (it did run empty), 'drain' (everything has been played)
+            on(evt, fn) { (this._ev[evt] || (this._ev[evt] = [])).push(fn); return () => this.off(evt, fn); }
+            off(evt, fn) { const l = this._ev[evt]; if (l) this._ev[evt] = l.filter(f => f !== fn); }
+            emit(evt, detail) { const l = this._ev[evt]; if (l) for (const f of l.slice()) { try { f(detail || {}); } catch (e) { console.error(e); } } }
+
             setOnStop(onStop) { this.onStop = onStop; }
-            setOnNeed(onNeed) { this.onNeed = onNeed; }
+            setOnNeed(onNeed) { this.onNeed = onNeed; this.on('need', onNeed); }
             setBaudRate() { this.baudRate = baudRate; }
             setCarrierFreq() { this.carrierFreq = carrierFreq; }
             getBitrate() { return this.baudRate; }
@@ -4689,8 +4749,8 @@
             get queuedSeconds() { return Math.max(0, this.pushedSymbols - this.playedSymbols) / this.baudRate; }
 
             _onWorklet(d) {
-                if (d.type === 'level') { this.playedSymbols = d.played; if (this.onNeed) this.onNeed(); }
-                else if (d.type === 'underrun') { this.underruns = d.n; }
+                if (d.type === 'level') { this.playedSymbols = d.played; this.emit('need', { queuedSeconds: this.queuedSeconds }); }
+                else if (d.type === 'underrun') { this.underruns = d.n; this.emit('underrun', { n: d.n }); }
                 else if (d.type === 'stop') { this._teardown(); this._fireStop(); }
             }
 
@@ -4878,70 +4938,109 @@
         }
 
         // ---- OFDM：按帧流式调制，每帧生成一段音频，用 AudioBufferSource 首尾相接地排队播放 ----
-        const OFDM_STREAM_SYMS = 24;      // 流式发送时每帧的数据符号数（约 10 秒）
-
+        // ---- OFDM transmitter: ONE continuous stream, never a series of blocks ----
+        // The modulator generates one OFDM symbol (427 ms) at a time and keeps ~2.5 symbols queued in the 'ofdm-tx' worklet.
+        // Events (see Modulator.on):
+        //   'need'     { wantBits, queuedSeconds }  – the bit FIFO cannot fill the next symbol (and every worklet level report):
+        //                                             push more bits NOW with pushBits().  Fired synchronously before every symbol.
+        //   'low'      { queuedSeconds }            – the audio queue fell below ~1.2 symbols: the stream is about to run dry.
+        //   'underrun' {}                           – the audio queue actually ran empty (main thread was blocked too long).
+        //   'drain'    {}                           – finish() was called and everything has been played.
+        // If a source still has nothing when a symbol is due, the stream does NOT stop and no carrier gap appears:
+        // the symbol carries whatever bits are queued (partial symbol) or is a filler symbol (cnt = 0).
         class OFDMModulator extends Modulator {
             begin(audioCtx) {
                 this.audioCtx = audioCtx;
                 this.cfg = ofdmConfig(sampleRate, this.carrierFreq, this.baudRate * 1.5);
-                this.mod = parseInt(document.getElementById('ofdmMod').value) || 0;
+                this.modIdx = parseInt(document.getElementById('ofdmMod').value) || 0;
                 this.fec = fecProfileId();
-                this.cap = this.cfg.nData * OFDM_MODS[this.mod].bpc;
-                this.frameBits = Math.max(1, this.cap * OFDM_STREAM_SYMS);   // 下限 1：极端配置下 nData=0 会让 pushBits 的凑帧循环转不停
-                this.frameSeconds = (this.cfg.symLen * OFDM_STREAM_SYMS + 4.4 * sampleRate / 2) / sampleRate;   // 每帧音频长度（约值，用来估计进度）
-                this.pending = [];
-                this.sources = [];
-                this.nextStart = audioCtx.currentTime + 0.15;
+                this.tx = new OfdmStreamTx(this.cfg, { mod: this.modIdx, fec: this.fec });
+                const sl = this.cfg.symLen;
+                this.lowSamples = Math.round(1.2 * sl);
+                this.targetSamples = Math.round(2.5 * sl);
+                this.posted = 0; this.played = 0;
+                this.ended = false; this.underruns = 0; this._filling = false; this._lowFired = false;
+                const node = new AudioWorkletNode(audioCtx, 'ofdm-tx', { numberOfInputs: 0, numberOfOutputs: 1, outputChannelCount: [1] });
+                node.port.onmessage = e => this._onWorklet(e.data);
+                node.connect(audioCtx.destination);
+                this.node = node;
+                // generation starts on the next tick, after the pipeline has pre-filled the FIFO (otherwise the first symbols would be partial)
+                setTimeout(() => this._fill(), 0);
             }
 
-            get channelBitRate() { return this.frameBits / this.frameSeconds; }
+            get bitsPerSymbol() { return OFDM_MODS[this.modIdx || 0].bpc; }
+            get channelBitRate() { return this.tx ? this.tx.payloadRate : 1; }
+            get queuedSamples() { return Math.max(0, this.posted - this.played); }
+            // audio already queued + bits waiting in the FIFO, expressed in seconds
+            get queuedSeconds() {
+                if (!this.tx) return 0;
+                return this.queuedSamples / sampleRate + this.tx.fifoBits / Math.max(1, this.tx.payloadRate);
+            }
 
             pushBits(bits) {
-                if (this.stopped || this.finishedInput || !this.audioCtx) return;
+                if (this.stopped || this.finishedInput || !this.tx) return;
                 this.pushedBits += bits.length;
-                for (let i = 0; i < bits.length; i++) this.pending.push(bits[i]);
-                while (this.pending.length >= this.frameBits) this._emit(this.pending.splice(0, this.frameBits));
+                this.tx.pushBits(bits);
             }
 
             finish() {
-                if (this.finishedInput || !this.audioCtx) return;
+                if (this.finishedInput || !this.tx) return;
                 this.finishedInput = true;
-                if (this.pending.length) { this._emit(this.pending); this.pending = []; }
-                this._maybeDone();
+                this._fill();
             }
 
-            _emit(bits) {
-                const ac = this.audioCtx;
-                const wave = ofdmModulate(bits, this.cfg, { mod: this.mod, fec: this.fec });
-                const buffer = ac.createBuffer(1, wave.samples.length, sampleRate);
-                buffer.copyToChannel(wave.samples, 0);
-                const src = ac.createBufferSource();
-                src.buffer = buffer;
-                src.connect(ac.destination);
-                const when = Math.max(this.nextStart, ac.currentTime + 0.05);
-                src.start(when);
-                this.nextStart = when + buffer.duration;
-                this.sources.push(src);
-                src.onended = () => { this.sources = this.sources.filter(x => x !== src); this._maybeDone(); };
+            _post(chunk) {
+                this.posted += chunk.length;
+                this.node.port.postMessage({ type: 'chunk', data: chunk }, [chunk.buffer]);
             }
 
-            _maybeDone() {
-                if (this.finishedInput && !this.sources.length) this._fireStop();
+            // Generate symbols until ~2.5 symbols are queued.  Called from the worklet level reports, finish() and start-up.
+            _fill() {
+                if (this._filling || this.ended || this.stopped || !this.node) return;
+                this._filling = true;
+                try {
+                    let n = 0;
+                    while (this.queuedSamples < this.targetSamples && n++ < 4 && !this.ended) {
+                        const tx = this.tx, cap = tx.capBits;
+                        if (!this.finishedInput && tx.sf !== 0 && tx.fifoBits < cap) {
+                            this.emit('need', { wantBits: cap - tx.fifoBits, queuedSeconds: this.queuedSeconds, reason: 'symbol' });
+                        }
+                        if (this.finishedInput && tx.fifoBits === 0) {          // everything sent: ramp out, then end
+                            this._post(tx.flushTail());
+                            this.node.port.postMessage({ type: 'finish' });
+                            this.ended = true;
+                            break;
+                        }
+                        this._post(tx.nextChunk());
+                    }
+                } finally { this._filling = false; }
             }
 
-            get queuedSeconds() {
-                if (!this.audioCtx) return 0;
-                // 只统计已排进播放队列的音频。
-                // 此前把未凑满一帧的 pending 比特也折算成播放时长，一帧音频约 10s，
-                // 第一个拉取块就会让"水位"超过 pump 的 3s 目标 → pump 停止拉取，
-                // pending 永远凑不满一帧、一帧也发不出去 → 长消息发射死锁（看似无限循环卡住）。
-                // 现在只算真实排队时长：pump 会继续拉到凑满一帧并立即出帧（出帧后水位 ~10s 自然停住，不会过度拉取）。
-                return Math.max(0, this.nextStart - this.audioCtx.currentTime);
+            _onWorklet(d) {
+                if (d.type === 'level') {
+                    this.played = d.played;
+                    if (!this.ended) {
+                        if (this.queuedSamples < this.lowSamples) {
+                            if (!this._lowFired) { this._lowFired = true; this.emit('low', { queuedSeconds: this.queuedSeconds }); }
+                        } else this._lowFired = false;
+                        this.emit('need', { queuedSeconds: this.queuedSeconds, reason: 'level' });
+                        this._fill();
+                    }
+                } else if (d.type === 'underrun') {
+                    this.underruns++;
+                    this.emit('underrun', { n: this.underruns });
+                } else if (d.type === 'drained') {
+                    this.emit('drain', {});
+                    this._teardown(); this._fireStop();
+                }
             }
+
+            _teardown() { if (this.node) { try { this.node.disconnect(); } catch (e) { } this.node = null; } }
 
             stop() {
-                for (const s of this.sources) { s.onended = null; try { s.stop(); } catch (e) { } }
-                this.sources = [];
+                if (this.node) { try { this.node.port.postMessage({ type: 'abort' }); } catch (e) { } }
+                this.ended = true;
+                this._teardown();
                 this._fireStop();
             }
         }
@@ -5011,7 +5110,7 @@
             start(audioCtx) {
                 this.audioCtx = audioCtx;
                 this.startedAt = audioCtx.currentTime;
-                this.mod.setOnNeed(() => this.pump());
+                this.mod.on('need', () => this.pump());      // modulator says its buffer is getting low → refill immediately
                 this.mod.begin(audioCtx);
                 this.pump();
                 this.timer = setInterval(() => this.pump(), 80);
@@ -5039,6 +5138,7 @@
                 let n = 0;
                 while (this.mod.queuedSeconds < this.aheadSeconds && n++ < this.maxPullsPerPump) {
                     const bits = this.source.nextBits();
+                    if (bits === undefined || (bits && bits.length === 0)) return;     // source has nothing right now but is not finished: stream keeps running on filler
                     if (bits === null) {
                         this.inputDone = true;
                         this._flush();
@@ -6386,30 +6486,31 @@
             _build() {
                 if (!this.source) return;
                 const cfg = ofdmConfig(sampleRate, this.carrierFreq, this.baudRate * 1.5);
-                this.frames = 0; this.fails = 0; this.snr = 0;
+                this.frames = 0; this.snr = 0;
                 this.curMod = parseInt(document.getElementById('ofdmMod').value) || 1;
-                this.rx = new OfdmReceiver(cfg, {
-                    onDetect: () => { chatTouchRx(4000); this._status('检测到帧头…'); },
+                this.locked = false;
+                this.rx = new OfdmStreamRx(cfg, {
+                    onLock: l => {
+                        this.locked = l;
+                        chatTouchRx(4000);
+                        this._status(l ? 'locked on continuous stream' : 'signal lost – searching…');
+                    },
                     onMeta: m => this._autoTune(m),
                     onSymbol: s => {
                         chatTouchRx(2500);
                         this.snr = s.snr;
+                        this.frames++;
                         if (!this.onSample) return;
                         for (const p of s.points) { this.last = p; this.onSample({ sample: p, bits: [] }); }
                         gainWaves.addData(20 * Math.log10(Math.max(s.gain, 1e-3)));
                         offsetWaves.addData(s.shift || 0);
                         freqWaves.addData(s.ppm * 1e-6 * cfg.fc);
                         snrWaves.addData(Math.min(Math.max(s.snr, -20), 120));
-                        this._status(`接收中… ${OFDM_MODS[s.mod].name} 符号 ${s.symIdx + 1}  SNR ${s.snr.toFixed(1)} dB  电平增益 ${(20 * Math.log10(s.g)).toFixed(1)} dB  时钟 ${s.ppm.toFixed(0)} ppm`);
+                        this._status(`${s.filler ? 'idle(filler)' : OFDM_MODS[s.mod].name} sym ${this.frames}  SNR ${s.snr.toFixed(1)} dB  gain ${(20 * Math.log10(s.g)).toFixed(1)} dB  clock ${s.ppm.toFixed(0)} ppm  hint: ${this._hint(s.snr)}`);
                     },
                     onBits: bits => {
                         if (this.onSample && bits.length) this.onSample({ sample: this.last || [0, 0], bits: bits });
-                    },
-                    onFrame: f => {
-                        this.frames++;
-                        this._status(`完成 ${this.frames} 帧（失败 ${this.fails}） 最近: ${OFDM_MODS[f.mod].name} ${f.nSym} 符号 SNR ${f.snr.toFixed(1)} dB ｜ 建议调制: ${this._hint(f.snr)}`);
-                    },
-                    onFrameFail: () => { this.fails++; this._status(`帧头/元数据校验失败 ${this.fails} 次（完成 ${this.frames} 帧）`); }
+                    }
                 });
             }
 
@@ -6438,7 +6539,7 @@
                     }
                     if (changed.length) saveSettings();
                 }
-                this._status(`收到 MCS：${m.modName}，纠错编号 ${m.fec}，${m.nSym} 个符号` + (changed.length ? `（已自动匹配：${changed.join('，')}）` : ''));
+                this._status(`MCS: ${m.modName}, FEC id ${m.fec}` + (changed.length ? `（已自动匹配：${changed.join('，')}）` : ''));
             }
 
             _status(t) {
