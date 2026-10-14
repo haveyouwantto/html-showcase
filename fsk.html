@@ -4311,23 +4311,96 @@
             return '1/1';
         };
 
-        // ===== 纠错可视化 =====
-        // 每 250ms 采样一次增量，画成"解码批次"堆积条带
-        const FEC_HIST_MAX = 120;      // 保留约 30 秒的时间轴（含空闲批次，用于算实时速率）
-        const FEC_BAR_MAX = 60;        // 条带里最多画 60 根柱（只画有解码活动的批次）
-        const FEC_RATE_WIN = 2000;     // 实时有效速率的统计窗口（毫秒）
-        const fecHist = { key: '', ticks: [], last: null, rate: 0 };
-
+        // ===== 纠错统计 =====
         // 上层有效数据累计：纠错解码之后真正交给上层解码器的比特数
         // （不看 RS/卷积解码器内部的码字计数，也不含 RS 内部重试/重放）
         let rxUpBits = 0;
         function addUpBits(n) { if (n > 0) rxUpBits += n; }
 
+        // 交付的比特是成批来的：RS 是攒满一整帧（8 个码字）才一次性吐出来，所以
+        // "本格比特 ÷ 本格时间"会把一整帧挤进一格，算出远超信道的速率。
+        // 统计器干三件事：只把"有解码活动"的格记进 history（空闲不留痕，条带不会被时间冲掉）；
+        // 记最近几次交付；速率取最近几次交付来算。
+        class FecStats {
+            constructor(n) {
+                this.n = n || 120;
+                this.reset();
+            }
+
+            reset() {
+                this.samples = [];      // 只有活动格：{ t, ok, fail, bits }
+                this.prev = null;       // 上一次的累计值 { ok, fail, bits, t }
+                this.t0 = 0;
+                this.deliveries = [];   // 最近几次"交付比特"：{ t, bits }
+                this.bps = 0;
+            }
+
+            // 每次更新调用一次：ok / fail 是累计成功、失败数，bits 是累计交付上层的比特数
+            push(ok, fail, bits) {
+                const t = nowMs();
+                const p = this.prev || { ok: ok, fail: fail, bits: bits, t: t };
+                const s = {
+                    t: t,
+                    ok: Math.max(0, ok - p.ok),
+                    fail: Math.max(0, fail - p.fail),
+                    bits: Math.max(0, bits - p.bits)
+                };
+                this.prev = { ok: ok, fail: fail, bits: bits, t: t };
+                if (!this.t0) this.t0 = t;
+
+                if (s.bits > 0) {
+                    this.deliveries.push({ t: t, bits: s.bits });
+                    if (this.deliveries.length > FEC_DELIVERY_KEEP) this.deliveries.shift();
+                }
+
+                // 有解码活动才记一笔：空闲不占 history，条带按"活动次数"保留而不是按时间滑走
+                if ((s.ok + s.fail) > 0) {
+                    this.samples.push(s);
+                    if (this.samples.length > this.n) this.samples.shift();
+                }
+
+                // 有解码活动就重算：全失败时没有新比特，但时间在走，速率要跟着掉下来
+                if (s.bits > 0 || (s.ok + s.fail) > 0) this.bps = this._rate(t);
+                return this.samples;
+            }
+
+            // 速率 = 最近 FEC_DELIVERY_WIN 次交付的比特和 ÷ 这段真实时间。
+            // 交付是成批来的（RS 一帧才吐一次），只拿最后一次会被突发带偏，所以取最近几次；
+            // endT 用"本次活动的时刻"，这样一直失败时分子不变、分母变长，速率自然衰减
+            _rate(endT) {
+                const d = this.deliveries;
+                if (!d.length) return 0;
+                const use = Math.min(FEC_DELIVERY_WIN, d.length);
+                const from = d.length - use;
+                let bits = 0;
+                for (let i = from; i < d.length; i++) bits += d[i].bits;
+                const tStart = from > 0 ? d[from - 1].t : this.t0;
+                const dt = endT - tStart;
+                return dt > 0 ? bits * 1000 / dt : 0;
+            }
+
+            rate() { return this.bps; }
+
+            // 条带用最近 FEC_BAR_MAX 次活动
+            bars() {
+                return this.samples.slice(-FEC_BAR_MAX);
+            }
+        }
+
+        const FEC_BAR_MAX = 60;               // 条带最多画 60 根柱
+        const FEC_DELIVERY_WIN = 5;           // 速率取最近几次交付来算
+        const FEC_DELIVERY_KEEP = FEC_DELIVERY_WIN + 1;   // 多留一次当时间参照
+        const fecStats = { rs: new FecStats(120), cc: new FecStats(120) };
+        let fecStatsProfile = null;     // 当前统计对应的纠错档位，换档就重新开始
+
+        function nowMs() {
+            return (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+        }
+
         function resetFecHist() {
-            fecHist.key = '';
-            fecHist.ticks = [];
-            fecHist.last = null;
-            fecHist.rate = 0;
+            fecStats.rs.reset();
+            fecStats.cc.reset();
+            fecStatsProfile = null;
             rxUpBits = 0;
         }
 
@@ -4348,62 +4421,27 @@
             return { id: 0, kind: 'off', title: '纠错关闭', sub: '无冗余直传，仅靠奇偶校验做残余检错', rate: '1/1' };
         }
 
-        // 每 250ms 取一次统计增量：a=成功、b=失败、net=解出的净信息比特、t=时间戳
-        function fecTick(key, a, b, net) {
-            if (fecHist.key !== key) { fecHist.key = key; fecHist.ticks = []; fecHist.last = null; }
-            const now = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
-            const prev = fecHist.last || { a: a, b: b, net: net || 0 };
-            fecHist.last = { a: a, b: b, net: net || 0 };
-            fecHist.ticks.push({
-                a: Math.max(0, a - prev.a),
-                b: Math.max(0, b - prev.b),
-                net: Math.max(0, (net || 0) - (prev.net || 0)),
-                t: now
-            });
-            while (fecHist.ticks.length > FEC_HIST_MAX) fecHist.ticks.shift();
-            return fecHist.ticks;
-        }
-
-        // 实时有效速率：只有"本批真的向上层交付了数据"时才重算并刷新；空闲/全失败批次保持上一次的值
-        function detFecRate(ticks) {
-            if (!ticks || !ticks.length) return fecHist.rate || 0;
-            const last = ticks[ticks.length - 1];
-            if (!(last.net > 0)) return fecHist.rate || 0;      // 这一批没有新的上层数据 → 不更新
-            const tEnd = last.t;
-            let bits = 0, t0 = tEnd;
-            for (let i = ticks.length - 1; i >= 0; i--) {
-                const q = ticks[i];
-                if (tEnd - q.t > FEC_RATE_WIN) break;
-                bits += q.net;
-                t0 = q.t;
-            }
-            const span = Math.max(0.25, (tEnd - t0) / 1000 + 0.25);
-            fecHist.rate = bits / span;
-            return fecHist.rate;
-        }
-
-        // 解码批次堆积条带：只画"有解码活动"的批次，每根柱 = 绿(成功) + 红(失败) 堆积
+        // 解码批次堆积条带：每根柱 = 绿(成功) + 红(失败) 堆积，只画有解码活动的样本
         // 柱子按 #tplDetStripCol 克隆；条带里第一个子元素是静态的"等待解码…"占位
-        function detStripFill(boxId, ticks) {
+        function detStripFill(boxId, samples) {
             const box = detEl(boxId);
             if (!box) return;
-            const act = ticks.filter(t => (t.a + t.b) > 0).slice(-FEC_BAR_MAX);
             while (box.children.length > 1) box.lastElementChild.remove();
             const empty = box.firstElementChild;
-            if (empty) empty.style.display = act.length ? 'none' : '';
-            if (!act.length) return;
-            const peak = Math.max(1, ...act.map(t => t.a + t.b));
+            if (empty) empty.style.display = samples.length ? 'none' : '';
+            if (!samples.length) return;
+            const peak = Math.max(1, ...samples.map(s => s.ok + s.fail));
             const frag = document.createDocumentFragment();
-            for (const t of act) {
-                const n = t.a + t.b;
+            for (const s of samples) {
+                const n = s.ok + s.fail;
                 const col = detTpl('tplDetStripCol');
                 col.style.height = Math.max(14, n / peak * 100).toFixed(1) + '%';
-                col.title = `成功 ${t.a} / 失败 ${t.b}`;
+                col.title = `成功 ${s.ok} / 失败 ${s.fail}`;
                 const ok = col.querySelector('.ok'), bad = col.querySelector('.bad');
-                ok.style.display = t.a ? '' : 'none';
-                bad.style.display = t.b ? '' : 'none';
-                if (t.a) ok.style.height = (t.a / n * 100).toFixed(2) + '%';
-                if (t.b) bad.style.height = (t.b / n * 100).toFixed(2) + '%';
+                ok.style.display = s.ok ? '' : 'none';
+                bad.style.display = s.fail ? '' : 'none';
+                if (s.ok) ok.style.height = (s.ok / n * 100).toFixed(2) + '%';
+                if (s.fail) bad.style.height = (s.fail / n * 100).toFixed(2) + '%';
                 frag.appendChild(col);
             }
             box.appendChild(frag);
@@ -4416,18 +4454,19 @@
             const succ = tot ? st.cwOk / tot : 1;
             const avg = st.cwOk ? st.corrected / st.cwOk : 0;
             const cap = FEC_PROFILES[info.id] ? FEC_PROFILES[info.id].parity / 2 : 1;
-            const ticks = fecTick('rs', st.cwOk, st.cwFail, rxUpBits);
+            const m = fecStats.rs;
+            m.push(st.cwOk, st.cwFail, rxUpBits);
             detSuffix('detRsH', info.title);
             detValue('detRsSuccV', (100 * succ).toFixed(succ > 0.999 ? 2 : 1));
             detBar('detRsSuccBar', succ, succ > 0.99 ? '#35d07f' : (succ > 0.9 ? '#f5a524' : '#ff5c72'));
-            detRateValue('detRsRateV', 'detRsRateU', detFecRate(ticks));
+            detRateValue('detRsRateV', 'detRsRateU', m.rate());
             detValueUnit('detRsAvgV', 'detRsAvgU', avg.toFixed(2), `/ ${cap} 字节`);
             detBar('detRsAvgBar', avg / cap, '#00f3ff');
             detValue('detRsFrames', st.frames);
             detValueUnit('detRsCwV', 'detRsCwU', st.cwOk, `/ ${st.cwFail}`);
             detValue('detRsFixedV', st.corrected);
             detValue('detRsRate', info.rate);
-            detStripFill('detRsStrip', ticks);
+            detStripFill('detRsStrip', m.bars());
             detText('detRsSub', info.sub);
         }
 
@@ -4436,12 +4475,13 @@
             const st = ccRx.stats || { messages: 0, markersOk: 0, markersMissed: 0, resyncs: 0, lost: 0 };
             const mk = st.markersOk + st.markersMissed;
             const hit = mk ? st.markersOk / mk : 1;
-            const ticks = fecTick('cc', st.markersOk, st.markersMissed, rxUpBits);
+            const m = fecStats.cc;
+            m.push(st.markersOk, st.markersMissed, rxUpBits);
             detSuffix('detCcH', info.title);
             detBadge('detCcBadge', st.lost ? 'bad' : 'ok', st.lost ? `失锁 ${st.lost} 次` : '未失锁');
             detValue('detCcHitV', (100 * hit).toFixed(1));
             detBar('detCcHitBar', hit, hit > 0.99 ? '#35d07f' : (hit > 0.9 ? '#f5a524' : '#ff5c72'));
-            detRateValue('detCcRateV', 'detCcRateU', detFecRate(ticks));
+            detRateValue('detCcRateV', 'detCcRateU', m.rate());
             detValue('detCcMsgV', st.messages);
             detValueUnit('detCcMarkV', 'detCcMarkU', st.markersOk, `/ ${st.markersMissed}`);
             detValue('detCcResyncV', st.resyncs);
@@ -4449,7 +4489,7 @@
             detValue('detCcLostV', st.lost);
             detBar('detCcLostBar', st.lost / Math.max(1, st.messages + st.lost), st.lost ? '#ff5c72' : undefined);
             detValue('detCcRate', info.rate);
-            detStripFill('detCcStrip', ticks);
+            detStripFill('detCcStrip', m.bars());
             detText('detCcSub', info.sub);
         }
 
@@ -4488,6 +4528,8 @@
         // 区段在 HTML 里的位置固定（整体锁定状态之后），这里只填数值并切换显隐。
         function detFecFill() {
             const info = fecProfileInfo();
+            // 换档位才重来：先 reset（它会把 fecStatsProfile 清空）再记档位，否则每次更新都会重置
+            if (info.id !== fecStatsProfile) { resetFecHist(); fecStatsProfile = info.id; }
             const haveFtn = detFountainFill();
             const haveRs = info.kind === 'rs' && !!fecRx;
             const haveCc = info.kind === 'cc' && !!ccRx;
@@ -6354,6 +6396,11 @@
             get decidePoints() {
                 return []
             }
+
+            // 每符号承载的比特数（面板的速率换算要用），子类按调制阶数覆盖
+            get bitsPerSymbol() {
+                return 1;
+            }
         }
 
         class GFSKDemodulator extends Demodulator {
@@ -6407,6 +6454,7 @@
         }
 
         class FSK4Demodulator extends Demodulator {
+            get bitsPerSymbol() { return 2; }
             setBaudRate(baudRate) {
                 this.baudRate = baudRate;
                 const filter = createGFSKFilter(this.baudRate)
@@ -6570,6 +6618,7 @@
         }
 
         class QPSKDemodulator extends Demodulator {
+            get bitsPerSymbol() { return 2; }
             constructor() {
                 super()
                 this.lastPhase = 0;
@@ -6676,6 +6725,7 @@
         }
 
         class PSK8Demodulator extends Demodulator {
+            get bitsPerSymbol() { return 3; }
             constructor() {
                 super()
                 this.lastPhase = 0;
@@ -7551,6 +7601,12 @@
         // ===== CHAT END =====
 
         class OFDMDemodulator extends Demodulator {
+            // 子载波的调制阶数由收到的 meta 自动跟随
+            get bitsPerSymbol() {
+                const m = OFDM_MODS[this.curMod];
+                return (m && m.bpc) || 1;
+            }
+
             _build() {
                 if (!this.source) return;
                 const cfg = ofdmActiveConfig(this.carrierFreq);
