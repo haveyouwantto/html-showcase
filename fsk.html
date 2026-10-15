@@ -1029,6 +1029,44 @@
             border-radius: 4px;
         }
 
+        /* 纠正分布：槽位固定为 0..最大可纠字节数，横轴是纠正量、纵轴是码字数 */
+        .det-hist {
+            display: flex;
+            gap: 2px;
+            align-items: stretch;
+            height: 54px;
+            margin-top: 6px;
+        }
+
+        .det-hist > span {
+            flex: 1 1 0;
+            min-width: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        /* 轨道 + 柱子：和下面的条带一样，空的部分留一层浅底 */
+        .det-hist > span > u {
+            flex: 1 1 auto;
+            width: 100%;
+            min-height: 0;
+            display: flex;
+            flex-direction: column-reverse;
+            background: rgba(148, 163, 184, 0.12);
+            border-radius: 2px 2px 0 0;
+            overflow: hidden;
+        }
+
+        .det-hist > span > u > i { display: block; width: 100%; }
+
+        .det-hist > span > b {
+            font-size: 0.6rem;
+            font-weight: 400;
+            line-height: 1.4;
+            color: var(--text-secondary);
+        }
+
         .det-hint {
             font-size: 0.68rem;
             color: var(--text-secondary);
@@ -1269,8 +1307,9 @@
                             <div class="det-card"><div class="det-k">码率</div><div class="det-v" id="detRsRate"></div></div>
                             <div class="det-card"><div class="det-k">解码状态</div><div class="det-v" id="detRsStateV" style="font-size: 0.95rem;">—</div></div>
                             <div class="det-card"><div class="det-k">最大纠正</div><div class="det-v" id="detRsMaxV"><small>字节</small></div></div>
-                            <div class="det-card" style="grid-column: 1 / -1;"><div class="det-k">纠正分布（纠正字节数 × 码字数）</div><div class="det-v" id="detRsHistV" style="font-size: 0.82rem;">—</div></div>
                         </div>
+                        <div class="det-hint">纠正分布：横轴 = 纠正字节数（0 ~ 最大可纠），纵轴 = 码字数</div>
+                        <div class="det-hist" id="detRsHist"></div>
                         <div class="det-strip" id="detRsStrip"><span class="empty">等待解码…</span></div>
                         <div class="det-hint" id="detRsSub"></div>
                     </div>
@@ -1397,6 +1436,9 @@
     <!-- “解码详情”里按数据条数生成的片段：结构就在模板里，JS 只克隆后填值 -->
     <template id="tplDetStripCol">
         <span><i class="ok"></i><i class="bad"></i></span>
+    </template>
+    <template id="tplRsHistCol">
+        <span><u><i></i></u><b></b></span>
     </template>
     <template id="tplDetCorrBar">
         <span></span>
@@ -4457,6 +4499,32 @@
             box.appendChild(frag);
         }
 
+        // 纠正分布：0 ~ cap（最大可纠字节数）的槽位一次性预先生好，之后每次只改柱高
+        function detRsHistFill(cap, hist) {
+            const box = detEl('detRsHist');
+            if (!box) return;
+            hist = hist || [];
+            if (box.childElementCount !== cap + 1) {
+                box.textContent = '';
+                for (let i = 0; i <= cap; i++) {
+                    const col = detTpl('tplRsHistCol');
+                    col.querySelector('b').textContent = i;
+                    box.appendChild(col);
+                }
+            }
+            let peak = 1;
+            for (let i = 0; i <= cap; i++) if ((hist[i] || 0) > peak) peak = hist[i];
+            const cols = box.children;
+            for (let i = 0; i <= cap; i++) {
+                const n = hist[i] || 0;
+                const bar = cols[i].querySelector('i');
+                bar.style.height = (n / peak * 100).toFixed(1) + '%';
+                // 0 字节 = 没出错（绿）；刚好纠正到上限（橙）说明离纠错失败只差一点
+                bar.style.background = i === 0 ? '#35d07f' : (i === cap ? '#f5a524' : '#00f3ff');
+                cols[i].title = `纠正 ${i} 字节：${n} 个码字`;
+            }
+        }
+
         // 分组 RS：成功率 / 实时有效速率 / 平均纠正量，以及帧、码字、纠正字节
         function detRsFill(info) {
             const st = fecRx.stats || { frames: 0, cwOk: 0, cwFail: 0, corrected: 0, maxCorr: 0, hist: [] };
@@ -4487,18 +4555,7 @@
             detValue('detRsStateV', stateTxt);
 
             detValue('detRsMaxV', st.maxCorr || 0);
-
-            // 纠正分布：0 字节（没出错）到 cap 字节各出现过多少次，6 以上合并
-            const hist = st.hist || [];
-            const parts = [];
-            let rest = 0;
-            for (let i = 0; i < hist.length; i++) {
-                const n = hist[i] || 0;
-                if (!n) continue;
-                if (i <= 5) parts.push(`${i}×${n}`); else rest += n;
-            }
-            if (rest) parts.push(`≥6×${rest}`);
-            detValue('detRsHistV', parts.length ? parts.join(' · ') : '—');
+            detRsHistFill(cap, st.hist);
 
             detStripFill('detRsStrip', m.bars());
             detText('detRsSub', info.sub);
