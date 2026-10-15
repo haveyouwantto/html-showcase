@@ -1133,7 +1133,7 @@
                 <option value="4">4</option>
                 <option value="8">8</option>
                 <option value="16">16</option>
-                <option value="32">32</option>
+                <option value="32" selected>32</option>
                 <option value="50">50</option>
                 <option value="80">80</option>
                 <option value="100">100</option>
@@ -1142,7 +1142,7 @@
                 <option value="500">500</option>
                 <option value="800">800</option>
                 <option value="1000">1000</option>
-                <option value="1200" selected>1200</option>
+                <option value="1200">1200</option>
                 <option value="1600">1600</option>
                 <option value="2400">2400</option>
             </select>
@@ -1163,9 +1163,9 @@
                 <option value="12">实时·中 (卷积 2/3)</option>
                 <option value="11">实时·轻 (卷积 3/4)</option>
                 <option value="1">分组·轻 (RS+8)</option>
-                <option value="2">分组·中 (RS+16)</option>
+                <option value="2" selected>分组·中 (RS+16)</option>
                 <option value="3">分组·强 (RS+32)</option>
-                <option value="4" selected>分组·最强 (RS+64)</option>
+                <option value="4">分组·最强 (RS+64)</option>
             </select>
             <label id="ofdmModLabel" style="display:none">OFDM调制：</label>
             <select id="ofdmMod" style="display:none">
@@ -1186,6 +1186,11 @@
     flex-direction: column;
 ">
                 <div class="chart-grid">
+                    <!-- 接收信号频谱瀑布：麦克风原始信号在载波附近的短时频谱，逐行往下滚 -->
+                    <div id="wfWrap" class="chart-card">
+                        <div class="chart-head"><span class="chart-name">接收信号频谱瀑布</span><span class="chart-tag" id="wfTag">—</span></div>
+                        <canvas id="waterfall" class="chart-canvas trace"></canvas>
+                    </div>
                     <div class="chart-card">
                         <div class="chart-head"><span class="chart-name">星座图</span><span class="chart-tag" id="constTag">—</span></div>
                         <div class="chart-body">
@@ -1213,7 +1218,7 @@
                         <div class="chart-val" id="snrLabel"></div>
                     </div>
                     <!-- 信道频率响应（OFDM 专属，随接收显示） -->
-                    <div id="detChanWrap" class="chart-card" style="display: none; grid-column: 1 / -1; margin-top: 0;">
+                    <div id="detChanWrap" class="chart-card" style="display: none; margin-top: 0;">
                         <div class="chart-head"><span class="chart-name">信道频率响应 |H|</span><span class="chart-tag">导频 + meta</span></div>
                         <canvas id="detChan" class="chart-canvas" style="height: 92px;"></canvas>
                         <div id="detChanText" style="color: var(--text-secondary); font-size: 0.75rem; text-align: center;"></div>
@@ -1262,6 +1267,9 @@
                             <div class="det-card"><div class="det-k">码字 正常/失败</div><div class="det-v" id="detRsCwV"><small id="detRsCwU"></small></div></div>
                             <div class="det-card"><div class="det-k">已纠正</div><div class="det-v" id="detRsFixedV"><small>字节</small></div></div>
                             <div class="det-card"><div class="det-k">码率</div><div class="det-v" id="detRsRate"></div></div>
+                            <div class="det-card"><div class="det-k">解码状态</div><div class="det-v" id="detRsStateV" style="font-size: 0.95rem;">—</div></div>
+                            <div class="det-card"><div class="det-k">最大纠正</div><div class="det-v" id="detRsMaxV"><small>字节</small></div></div>
+                            <div class="det-card" style="grid-column: 1 / -1;"><div class="det-k">纠正分布（纠正字节数 × 码字数）</div><div class="det-v" id="detRsHistV" style="font-size: 0.82rem;">—</div></div>
                         </div>
                         <div class="det-strip" id="detRsStrip"><span class="empty">等待解码…</span></div>
                         <div class="det-hint" id="detRsSub"></div>
@@ -2793,7 +2801,7 @@
             }
 
             resetStats() {
-                this.stats = { frames: 0, cwOk: 0, cwFail: 0, corrected: 0 };
+                this.stats = { frames: 0, cwOk: 0, cwFail: 0, corrected: 0, maxCorr: 0, hist: [] };
             }
 
             reset() {
@@ -2904,8 +2912,9 @@
                         if (valid) {
                             const seq = d[0];
                             if (this.expectSeq >= 0 && seq !== this.expectSeq && seq !== 0) {
-                                this.stats.cwFail += (seq - this.expectSeq + 256) & 255;
-                                this.onLoss((seq - this.expectSeq + 256) & 255);
+                                const miss = (seq - this.expectSeq + 256) & 255;
+                                this.stats.cwFail += miss;
+                                this.onLoss(miss);
                             } else if (this.expectSeq >= 0 && seq === 0 && this.expectSeq !== 0) {
                                 this.onLoss(0); // 新消息开始：仅复位上层解码器
                             }
@@ -2914,6 +2923,8 @@
                             for (let i = 0; i < nbits; i++) out.push((d[3 + (i >> 3)] >> (7 - (i & 7))) & 1);
                             this.stats.cwOk++;
                             this.stats.corrected += res.errors;
+                            if (res.errors > this.stats.maxCorr) this.stats.maxCorr = res.errors;
+                            this.stats.hist[res.errors] = (this.stats.hist[res.errors] || 0) + 1;
                             this.onBits(out);       // 交给上层的净数据比特（UI 的实时有效速率按这个口径统计）
                         }
                     }
@@ -4448,11 +4459,12 @@
 
         // 分组 RS：成功率 / 实时有效速率 / 平均纠正量，以及帧、码字、纠正字节
         function detRsFill(info) {
-            const st = fecRx.stats || { frames: 0, cwOk: 0, cwFail: 0, corrected: 0 };
+            const st = fecRx.stats || { frames: 0, cwOk: 0, cwFail: 0, corrected: 0, maxCorr: 0, hist: [] };
             const tot = st.cwOk + st.cwFail;
             const succ = tot ? st.cwOk / tot : 1;
             const avg = st.cwOk ? st.corrected / st.cwOk : 0;
-            const cap = FEC_PROFILES[info.id] ? FEC_PROFILES[info.id].parity / 2 : 1;
+            const prof = FEC_PROFILES[info.id] || { parity: 2 };
+            const cap = prof.parity / 2;
             const m = fecStats.rs;
             m.push(st.cwOk, st.cwFail, rxUpBits);
             detSuffix('detRsH', info.title);
@@ -4465,6 +4477,29 @@
             detValueUnit('detRsCwV', 'detRsCwU', st.cwOk, `/ ${st.cwFail}`);
             detValue('detRsFixedV', st.corrected);
             detValue('detRsRate', info.rate);
+
+            // 解帧器的实时状态：同步字 → 帧头 → 帧体，帧体那一步给进度
+            const h = fecRx.hdr;
+            let stateTxt;
+            if (fecRx.state === 0) stateTxt = '搜索同步字';
+            else if (fecRx.state === 1) stateTxt = `收帧头 ${fecRx.acc.length}/48`;
+            else stateTxt = `收帧体 ${(fecRx.acc.length / (48 + h.ncw * h.n * 8) * 100).toFixed(0)}%`;
+            detValue('detRsStateV', stateTxt);
+
+            detValue('detRsMaxV', st.maxCorr || 0);
+
+            // 纠正分布：0 字节（没出错）到 cap 字节各出现过多少次，6 以上合并
+            const hist = st.hist || [];
+            const parts = [];
+            let rest = 0;
+            for (let i = 0; i < hist.length; i++) {
+                const n = hist[i] || 0;
+                if (!n) continue;
+                if (i <= 5) parts.push(`${i}×${n}`); else rest += n;
+            }
+            if (rest) parts.push(`≥6×${rest}`);
+            detValue('detRsHistV', parts.length ? parts.join(' · ') : '—');
+
             detStripFill('detRsStrip', m.bars());
             detText('detRsSub', info.sub);
         }
@@ -4599,7 +4634,7 @@
             if (selectedMode === MODES.ofdm && d && d.decidePoints && d.decidePoints.length) {
                 const mod = (typeof OFDM_MODS !== 'undefined' && d.curMod >= 0 && OFDM_MODS[d.curMod])
                     ? OFDM_MODS[d.curMod].name : '';
-                el.textContent = (mod ? mod + ' · ' : '');
+                el.textContent = mod;
             } else {
                 el.textContent = selectedMode ? selectedMode.name : '—';
             }
@@ -5342,6 +5377,109 @@
 
             each(callback) {
                 for (const [i, q] of this.samples) callback(i, q)
+            }
+        }
+
+        // 瀑布配色：底噪黑 → 蓝 → 青 → 绿 → 黄 → 白，做成 256 级查表
+        const WF_RAMP = (() => {
+            const stops = [
+                [4, 9, 20], [10, 44, 96], [0, 150, 210],
+                [40, 220, 200], [205, 240, 120], [255, 255, 255]
+            ];
+            const lut = new Uint8Array(256 * 3);
+            for (let i = 0; i < 256; i++) {
+                const p = i / 255 * (stops.length - 1);
+                const k = Math.min(stops.length - 2, Math.floor(p));
+                const f = p - k;
+                for (let c = 0; c < 3; c++) lut[i * 3 + c] = stops[k][c] + (stops[k + 1][c] - stops[k][c]) * f;
+            }
+            return lut;
+        })();
+
+        // 接收信号频谱瀑布：把麦克风原始信号在载波附近的短时频谱一行行往下滚，
+        // 一眼就能看出信号在不在、带宽多宽、有没有干扰落进来
+        class FftWaterfall {
+            constructor(canvas) {
+                this.canvas = canvas;
+                this.ctx = canvas ? canvas.getContext('2d') : null;
+                this.analyser = null;
+                this.bins = null;
+                this.img = null;
+            }
+
+            // 挂到接收链路的源上（只是多接一路分叉，不影响解调）
+            attach(audioContext, source) {
+                if (!this.ctx) return;
+                this.analyser = audioContext.createAnalyser();
+                this.analyser.fftSize = 2048;
+                this.analyser.smoothingTimeConstant = 0;   // 瀑布要原始值，不做时间平滑
+                this.analyser.minDecibels = -115;
+                this.analyser.maxDecibels = -20;
+                this.bins = new Uint8Array(this.analyser.frequencyBinCount);
+                this.sampleRate = audioContext.sampleRate || 48000;
+                source.connect(this.analyser);
+                this.clear();
+            }
+
+            detach() {
+                if (this.analyser) { try { this.analyser.disconnect(); } catch (e) { } }
+                this.analyser = null;
+                this.clear();
+            }
+
+            clear() {
+                if (!this.ctx) return;
+                this.img = null;
+                const dpr = window.devicePixelRatio || 1;
+                const rect = this.canvas.getBoundingClientRect();
+                this.canvas.width = Math.max(1, Math.round(rect.width * dpr));
+                this.canvas.height = Math.max(1, Math.round(rect.height * dpr));
+                this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+            }
+
+            // 滚进一行：显示 fc ± span/2 这段原始频谱。收工时面板可能折起来（量不到尺寸），直接跳过
+            step(fc, span) {
+                if (!this.analyser || !this.ctx) return;
+                const dpr = window.devicePixelRatio || 1;
+                const rect = this.canvas.getBoundingClientRect();
+                if (rect.width < 2 || rect.height < 2) return;
+                const W = Math.max(1, Math.round(rect.width * dpr));
+                const H = Math.max(1, Math.round(rect.height * dpr));
+                if (this.canvas.width !== W || this.canvas.height !== H || !this.img) {
+                    this.canvas.width = W;
+                    this.canvas.height = H;
+                    this.img = this.ctx.createImageData(W, H);
+                    for (let i = 3; i < this.img.data.length; i += 4) this.img.data[i] = 255;
+                }
+                const d = this.img.data;
+                d.copyWithin(W * 4, 0, W * 4 * (H - 1));         // 整体下移一行
+
+                this.analyser.getByteFrequencyData(this.bins);
+                const binHz = (this.sampleRate || 48000) / this.analyser.fftSize;
+                const f0 = fc - span / 2;
+                const nb = this.bins.length;
+                for (let x = 0; x < W; x++) {
+                    const b = (f0 + (x + 0.5) / W * span) / binHz;   // 线性插值，避免柱子被拉得太方
+                    let v = 0;
+                    if (b >= 0 && b < nb - 1) {
+                        const i0 = Math.floor(b), fr = b - i0;
+                        v = this.bins[i0] * (1 - fr) + this.bins[i0 + 1] * fr;
+                    } else if (b >= nb - 1 && b < nb) v = this.bins[nb - 1];
+                    const k = v < 0 ? 0 : (v > 255 ? 255 : Math.round(v));
+                    const o = k * 3;
+                    const t = x * 4;
+                    d[t] = WF_RAMP[o]; d[t + 1] = WF_RAMP[o + 1]; d[t + 2] = WF_RAMP[o + 2];
+                }
+                this.ctx.putImageData(this.img, 0, 0);
+
+                // 中间虚线 = 载波位置
+                this.ctx.strokeStyle = 'rgba(255,255,255,0.4)';
+                this.ctx.setLineDash([3, 4]);
+                this.ctx.beginPath();
+                this.ctx.moveTo(W / 2, 0);
+                this.ctx.lineTo(W / 2, H);
+                this.ctx.stroke();
+                this.ctx.setLineDash([]);
             }
         }
 
@@ -7323,7 +7461,9 @@
         let modulator = null;
         let demodulator = null;
 
+        // 瀑布的帧率限制（30 行/秒），以及星座图那套画布的刷新句柄
         let drawHandle = null;
+        let wfLastStep = 0;
 
         // ===== CHAT BEGIN =====
         // 聊天模式：右侧悬浮按钮打开一个盖住原页面的覆盖层，界面像即时通讯。
@@ -7774,6 +7914,26 @@
 
         const constellation = new ConstellationRecorder(baudRate / 8);
         const constellationMeta = new ConstellationRecorder(64);   // OFDM 元数据子载波（单独颜色绘制）
+        const waterfall = new FftWaterfall(document.getElementById('waterfall'));
+
+        // 瀑布的显示范围：载波附近，宽度按当前模式的实际占用带宽放宽一点
+        function wfBand() {
+            const fc = effCarrierFreq();
+            if (selectedMode === MODES.ofdm) return { fc: fc, span: Math.max(ofdmBandwidth * 1.4, 300) };
+            return { fc: fc, span: Math.max(effBaudRate() * 4, 400) };
+        }
+
+        // 标签只在范围真的变了才写 DOM（带宽/载波/模式改了才重绘这一行）
+        let wfTagKey = '';
+        function wfUpdateTag() {
+            const b = wfBand();
+            const key = b.fc + '/' + b.span;
+            if (key === wfTagKey) return;
+            wfTagKey = key;
+            detText('wfTag', `${b.fc} Hz ± ${Math.round(b.span / 2)} Hz`);
+        }
+
+        waterfall.clear();
 
 
         function startRxImage() {
@@ -8050,6 +8210,9 @@
 
 
             const source = audioCtx.createMediaStreamSource(stream)
+            // 频谱瀑布：从同一个源再分一路出去，只看不干涉解调链路
+            waterfall.attach(audioCtx, source);
+            wfUpdateTag();
             demodulator = new selectedMode.demodulate();
             demodulator.setBaudRate(effBaudRate());
             demodulator.setCarrierFreq(effCarrierFreq());
@@ -8127,7 +8290,7 @@
             redetect();
             window.addEventListener('resize', redetect);
             constRedetect = redetect;      // 供"解码详情"面板展开时重新量尺寸
-            function draw() {
+            function draw(ts) {
                 const width = canvas.width / window.devicePixelRatio
                 const height = canvas.height / window.devicePixelRatio
                 ctx.clearRect(0, 0, width, height);
@@ -8215,13 +8378,23 @@
                 freqWaves.draw()
                 snrWaves.draw()
 
+                // 瀑布约 30 行/秒就够看了，不必跟着 rAF 的帧率烧 CPU
+                if (ts - wfLastStep > 33) {
+                    wfLastStep = ts;
+                    const band = wfBand();
+                    waterfall.step(band.fc, band.span);
+                    wfUpdateTag();
+                }
+
                 drawHandle = requestAnimationFrame(draw);
             }
+            wfLastStep = 0;
             drawHandle = requestAnimationFrame(draw);
         }
 
         function stopRx() {
             if (drawHandle) cancelAnimationFrame(drawHandle);
+            waterfall.detach();                 // 瀑布常驻显示，收工只断开分析器、画面清空
             if (demodulator) demodulator.stop();
             flushRxBuffer();
             fecRx = null;
@@ -8569,6 +8742,7 @@
         document.addEventListener('DOMContentLoaded', () => {
             loadSettings();
             updateOfdmUi();
+            wfUpdateTag();          // 设置读进来之后再按实际载波/带宽写瀑布的刻度
         });
 
         const uploadTextFile = document.getElementById('uploadTextFile')
