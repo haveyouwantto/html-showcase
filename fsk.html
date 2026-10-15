@@ -1224,9 +1224,8 @@
     flex-direction: column;
 ">
                 <div class="chart-grid">
-                    <!-- 接收信号频谱瀑布：麦克风原始信号在载波附近的短时频谱，逐行往下滚 -->
                     <div id="wfWrap" class="chart-card">
-                        <div class="chart-head"><span class="chart-name">接收信号频谱瀑布</span><span class="chart-tag" id="wfTag">—</span></div>
+                        <div class="chart-head"><span class="chart-name">频谱</span><span class="chart-tag" id="wfTag">—</span></div>
                         <canvas id="waterfall" class="chart-canvas trace"></canvas>
                     </div>
                     <div class="chart-card">
@@ -1308,7 +1307,6 @@
                             <div class="det-card"><div class="det-k">解码状态</div><div class="det-v" id="detRsStateV" style="font-size: 0.95rem;">—</div></div>
                             <div class="det-card"><div class="det-k">最大纠正</div><div class="det-v" id="detRsMaxV"><small>字节</small></div></div>
                         </div>
-                        <div class="det-hint">纠正分布：横轴 = 纠正字节数（0 ~ 最大可纠），纵轴 = 码字数</div>
                         <div class="det-hist" id="detRsHist"></div>
                         <div class="det-strip" id="detRsStrip"><span class="empty">等待解码…</span></div>
                         <div class="det-hint" id="detRsSub"></div>
@@ -3475,9 +3473,9 @@
         }
 
         // UWB 勾选（任何模式可用）：参数固定——载波 8 kHz；
-        // OFDM 家族带宽固定 9 kHz，符号速率模式固定 6000 波特（6000×1.5=9000，两者等价）。
+        // OFDM 家族带宽固定 12 kHz，符号速率模式固定 8000 波特（8000×1.5=12000，两者等价）。
         // 勾选后界面上的速率/带宽/频道输入全部禁用，收发都走这里的固定值。
-        const OFDM_UWB_FC = 8000, OFDM_UWB_BAUD = 6000, OFDM_UWB_BW = 9000;
+        const OFDM_UWB_FC = 8000, OFDM_UWB_BAUD = 8000, OFDM_UWB_BW = 12000;
         let uwbChecked = false;
         function effCarrierFreq() { return uwbChecked ? OFDM_UWB_FC : carrierFreq; }
         function effBaudRate() { return uwbChecked ? OFDM_UWB_BAUD : baudRate; }
@@ -4084,33 +4082,50 @@
                 beta = Math.min(0.85, beta + 2.5 * Math.sqrt(excess));
                 const idx = []; for (let i = 0; i < n; i++) if (use[i]) idx.push(i);
                 const m = idx.length; if (m < 2) return;
+                // ADDITIVE update (fixes "carrier collapses to 0"): direct channel measurement at each reference cell from the
+                // raw FFT bin (no regulariser, no 1/H), D = Hmeas - H, interpolated over frequency, then H += beta*D.
+                // H = 0 is no longer an absorbing state, so a deep fade can recover.
+                const Dr = new Float64Array(m), Di = new Float64Array(m), raw = [0, 0];
+                for (let j = 0; j < m; j++) {
+                    const i = idx[j], k = refs[i].k;
+                    this._rawCell(eq, k, raw);
+                    const mr = raw[0] * rr[i] + raw[1] * ri[i], mi = raw[1] * rr[i] - raw[0] * ri[i];
+                    Dr[j] = mr - H.Hr[k]; Di[j] = mi - H.Hi[k];
+                }
                 let r = 0;
                 for (let k = 0; k < nC; k++) {
                     while (r + 1 < m && refs[idx[r + 1]].k <= k) r++;
                     let vr, vi;
                     const k0 = refs[idx[r]].k;
-                    if (k <= refs[idx[0]].k) { vr = qr[idx[0]]; vi = qi[idx[0]]; }
-                    else if (r + 1 >= m) { vr = qr[idx[m - 1]]; vi = qi[idx[m - 1]]; }
+                    if (k <= refs[idx[0]].k) { vr = Dr[0]; vi = Di[0]; }
+                    else if (r + 1 >= m) { vr = Dr[m - 1]; vi = Di[m - 1]; }
                     else {
                         const k1 = refs[idx[r + 1]].k, f = (k - k0) / (k1 - k0);
-                        vr = qr[idx[r]] * (1 - f) + qr[idx[r + 1]] * f; vi = qi[idx[r]] * (1 - f) + qi[idx[r + 1]] * f;
+                        vr = Dr[r] * (1 - f) + Dr[r + 1] * f; vi = Di[r] * (1 - f) + Di[r + 1] * f;
                     }
-                    const hr = H.Hr[k], hi = H.Hi[k], dr = vr - 1;
-                    H.Hr[k] = hr + beta * (hr * dr - hi * vi);
-                    H.Hi[k] = hi + beta * (hr * vi + hi * dr);
+                    H.Hr[k] += beta * vr;
+                    H.Hi[k] += beta * vi;
                 }
             }
 
+            // raw FFT bin k, de-rotated by the measured common phase/slope and divided by the symbol gain
+            // (same frame as H before _advance folds the phase in) -> no regulariser involved
+            _rawCell(eq, k, out) {
+                const w = eq.win, ph = -(eq.a + eq.b * (k - eq.mid)), c = Math.cos(ph), s = Math.sin(ph), g = eq.g;
+                out[0] = (w.Yr[k] * c - w.Yi[k] * s) / g;
+                out[1] = (w.Yr[k] * s + w.Yi[k] * c) / g;
+            }
+
             _train(eq) {
-                const cfg = this.cfg, k = this.known, H = this.fr.H, gam = 0.5;
+                const cfg = this.cfg, k = this.known, H = this.fr.H, gam = 0.5, raw = [0, 0];
                 this.stats.trainings++;
                 if (eq.snr > -3) {
-                    for (let i = 0; i < cfg.nCar; i++) {      // every carrier is known: full-band re-baseline
-                        const qr = eq.Xr[i] * k.tr[i] + eq.Xi[i] * k.ti[i];
-                        const qi = eq.Xi[i] * k.tr[i] - eq.Xr[i] * k.ti[i];
-                        const hr = H.Hr[i], hi = H.Hi[i], dr = qr - 1;
-                        H.Hr[i] = hr + gam * (hr * dr - hi * qi);
-                        H.Hi[i] = hi + gam * (hr * qi + hi * dr);
+                    for (let i = 0; i < cfg.nCar; i++) {      // every carrier is known: additive full-band re-baseline
+                        this._rawCell(eq, i, raw);
+                        const mr = raw[0] * k.tr[i] + raw[1] * k.ti[i];
+                        const mi = raw[1] * k.tr[i] - raw[0] * k.ti[i];
+                        H.Hr[i] += gam * (mr - H.Hr[i]);
+                        H.Hi[i] += gam * (mi - H.Hi[i]);
                     }
                 }
                 this._advance(eq);
@@ -4141,7 +4156,7 @@
                 const valid = meta.cnt === 0 ? 0 : (meta.cnt >= OFDM_CNT_FULL ? cap : Math.min(cap, meta.cnt));
                 const bb = new Uint8Array(8), dec = [0, 0], scr = known.scr[sf];
                 const m2 = bpc === 1 ? 1 : (bpc >> 1), gate = 0.7 * (bpc === 1 ? 1 : ofdmAxisScale(m2));
-                const bits = [], pts = [], stride = Math.max(1, Math.round(nD / 160));
+                const bits = [], pts = [], stride = 1;   // send every data carrier to the constellation (was nD/160 -> only ~160 points shown)
                 let good = 0;
                 for (let u = 0; u < nD; u++) {
                     const k = cfg.dataIdx[cfg.perm[u]];
@@ -4859,7 +4874,7 @@
             const mean = sum / n;
             let mn = Infinity, mx = -Infinity;
             for (let k = 0; k < n; k++) {
-                mag[k] = 20 * Math.log10(mag[k] / mean);
+                mag[k] = 20 * Math.log10(Math.max(mag[k] / mean, 0.01));
                 if (mag[k] < mn) mn = mag[k];
                 if (mag[k] > mx) mx = mag[k];
             }
@@ -7976,8 +7991,9 @@
         // 瀑布的显示范围：载波附近，宽度按当前模式的实际占用带宽放宽一点
         function wfBand() {
             const fc = effCarrierFreq();
-            if (selectedMode === MODES.ofdm) return { fc: fc, span: Math.max(ofdmBandwidth * 1.4, 300) };
-            return { fc: fc, span: Math.max(effBaudRate() * 4, 400) };
+            const bw = uwbChecked ? 12000 : effBaudRate() * 1.2;
+            if (selectedMode === MODES.ofdm) return { fc: fc, span: Math.max(bw * 1.4, 300) };
+            return { fc: fc, span: Math.max(effBaudRate() * 4, 0) };
         }
 
         // 标签只在范围真的变了才写 DOM（带宽/载波/模式改了才重绘这一行）
