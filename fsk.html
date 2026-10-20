@@ -4627,7 +4627,7 @@
         function detRsFill(info) {
             const st = fecRx.stats || { frames: 0, cwOk: 0, cwFail: 0, corrected: 0, maxCorr: 0, hist: [] };
             const tot = st.cwOk + st.cwFail;
-            const succ = tot ? st.cwOk / tot : 1;
+            const succ = tot ? st.cwOk / tot : 0;      // 还没收到任何码字时是 0%，不是 100%
             const avg = st.cwOk ? st.corrected / st.cwOk : 0;
             const prof = FEC_PROFILES[info.id] || { parity: 2 };
             const cap = prof.parity / 2;
@@ -4635,7 +4635,7 @@
             m.push(st.cwOk, st.cwFail, rxUpBits);
             detSuffix('detRsH', info.title);
             detValue('detRsSuccV', (100 * succ).toFixed(succ > 0.999 ? 2 : 1));
-            detBar('detRsSuccBar', succ, succ > 0.99 ? '#35d07f' : (succ > 0.9 ? '#f5a524' : '#ff5c72'));
+            detBar('detRsSuccBar', succ, tot ? (succ > 0.99 ? '#35d07f' : (succ > 0.9 ? '#f5a524' : '#ff5c72')) : undefined);
             detRateValue('detRsRateV', 'detRsRateU', m.rate());
             detValueUnit('detRsAvgV', 'detRsAvgU', avg.toFixed(2), `/ ${cap} 字节`);
             detBar('detRsAvgBar', avg / cap, '#00f3ff');
@@ -4663,13 +4663,14 @@
         function detCcFill(info) {
             const st = ccRx.stats || { messages: 0, markersOk: 0, markersMissed: 0, resyncs: 0, lost: 0 };
             const mk = st.markersOk + st.markersMissed;
-            const hit = mk ? st.markersOk / mk : 1;
+            const hit = mk ? st.markersOk / mk : 0;    // 还没收到段标记时是 0%，不是 100%
             const m = fecStats.cc;
             m.push(st.markersOk, st.markersMissed, rxUpBits);
             detSuffix('detCcH', info.title);
-            detBadge('detCcBadge', st.lost ? 'bad' : 'ok', st.lost ? `失锁 ${st.lost} 次` : '未失锁');
+            if (!st.messages && !mk) detBadge('detCcBadge', 'warn', '等待信号');
+            else detBadge('detCcBadge', st.lost ? 'bad' : 'ok', st.lost ? `失锁 ${st.lost} 次` : '未失锁');
             detValue('detCcHitV', (100 * hit).toFixed(1));
-            detBar('detCcHitBar', hit, hit > 0.99 ? '#35d07f' : (hit > 0.9 ? '#f5a524' : '#ff5c72'));
+            detBar('detCcHitBar', hit, mk ? (hit > 0.99 ? '#35d07f' : (hit > 0.9 ? '#f5a524' : '#ff5c72')) : undefined);
             detRateValue('detCcRateV', 'detCcRateU', m.rate());
             detValue('detCcMsgV', st.messages);
             detValueUnit('detCcMarkV', 'detCcMarkU', st.markersOk, `/ ${st.markersMissed}`);
@@ -8071,12 +8072,30 @@
         const constellationMeta = new ConstellationRecorder(64);   // OFDM 元数据子载波（单独颜色绘制）
         const waterfall = new FftWaterfall(document.getElementById('waterfall'));
 
-        // 瀑布的显示范围：载波附近，宽度按当前模式的实际占用带宽放宽一点
+        // 瀑布的显示范围 = 实际占用带宽 + 一点余量。
+        // 注意 OFDM 模式里波特率输入框是隐的、值也不参与调制，带宽由「带宽」下拉决定，
+        // 所以这里必须走 ofdmActiveConfig 算实际点亮的子载波宽度，不能拿波特率乘个系数。
+        // 结果按参数缓存，draw 每帧都会调，别每帧重建一遍配置。
+        let wfBandKey = '', wfBandVal = null;
         function wfBand() {
             const fc = effCarrierFreq();
-            const bw = uwbChecked ? 12000 : effBaudRate() * 1.2;
-            if (selectedMode === MODES.ofdm) return { fc: fc, span: Math.max(bw * 1.4, 300) };
-            return { fc: fc, span: Math.max(effBaudRate() * 4, 0) };
+            const ofdm = selectedMode === MODES.ofdm;
+            const key = [ofdm ? 'ofdm' : 'sym', fc, sampleRate, uwbChecked ? 1 : 0,
+                ofdm ? ofdmBandwidth : effBaudRate()].join('|');
+            if (key === wfBandKey && wfBandVal) return wfBandVal;
+            let span, bw;
+            if (ofdm) {
+                const cfg = ofdmActiveConfig(fc);
+                bw = cfg.nCar * cfg.df;                                    // 占用带宽 = 子载波数 × 子载波间隔
+                span = Math.max(bw * 1.25, 300);
+            } else {
+                const bd = effBaudRate();
+                bw = bd * freqMulti + bd;                                  // FSK：两音间隔 + 波特率
+                span = Math.max(bw * 1.5, 200);
+            }
+            wfBandKey = key;
+            wfBandVal = { fc: fc, span: span, bw: bw };
+            return wfBandVal;
         }
 
         // 标签只在范围真的变了才写 DOM（带宽/载波/模式改了才重绘这一行）
@@ -8086,7 +8105,7 @@
             const key = b.fc + '/' + b.span;
             if (key === wfTagKey) return;
             wfTagKey = key;
-            detText('wfTag', `${b.fc} Hz ± ${Math.round(b.span / 2)} Hz`);
+            detText('wfTag', `${b.fc} Hz · 带宽 ${Math.round(b.bw)} Hz · 显示 ±${Math.round(b.span / 2)} Hz`);
         }
 
         waterfall.clear();
