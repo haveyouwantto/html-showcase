@@ -3002,6 +3002,15 @@
         //   ASM(32) | HDR(3×8，档位，位多数表决) | 段0 | MARK(16) | 段1 | MARK(16) | ... | 末段 | END(64)
         //   每段 = CC_SEG_STEPS 个信息比特对应的编码比特；MARK 用于丢/插比特后重新对齐；
         //   信息比特末尾补 6 个 0 使编码器回到全零状态，END 让接收端立即冲刷出最后的比特。
+        //
+        //   注意：ASM/HDR 每条流只在开头发一次（编码器实例一经 push 就不再重发）。所以接收端
+        //   不能只靠 ASM 捕获，否则错过开头（晚开接收）或中途失锁就永远等不到第二次机会。
+        //   实际的捕获状态机是「ASM 优先 + 段标记盲同步」：
+        //     · 先逐比特比 ASM（容 4 错），命中就按 HDR 拿到档位，最可靠；
+        //     · 同时用 16 位滑窗扫 MARK（容 2 错），要求连续 3 个命中且间隔等于
+        //       segBits+16（±3 比特），才认定相位对齐 —— 档位从下拉框里取（收发共用同一个控件），
+        //       不需要 ASM 也能重建解码器。
+        //   这样晚开接收、中途失锁都能在 1 秒内自愈。
         const CC_PROFILES = {
             1: { name: '3/4', P1: [1, 1, 0], P2: [1, 0, 1], depth: 64 },
             2: { name: '2/3', P1: [1, 1], P2: [1, 0], depth: 56 },
@@ -3013,6 +3022,14 @@
         const CC_ASM = 0xE53003E2;       // 与分组RS的同步字(0x1ACFFC1D)互为反码，便于区分
         const CC_END = 0x1ACFFC1D;       // 结束字，连发两次共 64 比特
         const CC_MARK = 0xEB90;          // 16 比特段标记
+
+        // 一段跨越的编码比特数（96 步里被保留的比特数）：3/4 -> 128，2/3 -> 144，1/2 -> 192。
+        // 96 能被三个档位的删余周期(3/2/2)整除，所以每段长度固定、段首的删余相位恒为 0。
+        function ccSegBits(prof) {
+            let n = 0;
+            for (let i = 0; i < CC_SEG_STEPS; i++) n += prof.P1[i % prof.P1.length] + prof.P2[i % prof.P2.length];
+            return n;
+        }
 
         const CC_OUT = new Uint8Array(128);   // reg(7bit) -> (c1<<1)|c2
         (function () {
@@ -3149,13 +3166,19 @@
         }
 
         // 接收端：逐比特喂入 → 找同步字 → 读档位 → 流式解码 → 输出信息比特
+        // 捕获是「ASM 优先 + 段标记盲同步」两条腿，失锁/晚开都能自愈，详见 CC BEGIN 的注释。
         class ConvDeframer {
             constructor(opts = {}) {
                 this.onBits = opts.onBits || function () { };
                 this.onLoss = opts.onLoss || function () { };
                 this.onEnd = opts.onEnd || function () { };
                 this.onStats = opts.onStats || function () { };
+                // 盲同步时用的档位：收发共用同一个下拉框，所以接收端其实已经知道档位，
+                // 不必等 ASM 里的 HDR。传函数是为了跟着下拉框实时变化。
+                this.getProfileId = opts.getProfileId || function () { return 0; };
                 this.asmMaxErrors = 4;
+                this.markMaxErrors = 2;      // 段标记容错（16 位里错 2 个以内算命中）
+                this.huntNeeded = 3;         // 连续命中几个段标记才认为相位对齐
                 this.resetStats();
                 this.reset();
             }
@@ -3167,6 +3190,17 @@
                 this.lo = 0; this.hi = 0; this.count = 0;
                 this.hdr = [];
                 this.vit = null;
+                this.suppress = 0;
+                this.prof = this._guessProfile();
+                this._huntReset();
+            }
+
+            _guessProfile() { return CC_PROFILES[this.getProfileId()] || null; }
+
+            _huntReset() {
+                this.huntReg = 0;       // 最近 16 个比特
+                this.huntN = 0;         // 盲同步开始以来收到的比特数
+                this.huntHits = [];     // 已命中的段标记位置（以「窗口末尾比特序号」表示）
             }
 
             _roll(bit) {
@@ -3178,16 +3212,57 @@
             feed(bit) {
                 this._roll(bit);
                 if (this.state === 0) {
-                    if (this.count >= 32 && ccPopcount((this.lo ^ CC_ASM) >>> 0) <= this.asmMaxErrors) {
-                        this.state = 1;
-                        this.hdr = [];
-                    }
+                    this._acquire(bit);
                 } else if (this.state === 1) {
                     this.hdr.push(bit);
                     if (this.hdr.length === 24) this._startRun();
                 } else {
                     this._run(bit);
                 }
+            }
+
+            // 捕获：先认 ASM（能顺带读到档位，最可靠），同时用段标记做盲同步（不依赖 ASM）
+            _acquire(bit) {
+                if (this.count >= 32 && ccPopcount((this.lo ^ CC_ASM) >>> 0) <= this.asmMaxErrors) {
+                    this.state = 1;
+                    this.hdr = [];
+                    this._huntReset();
+                    return;
+                }
+                const prof = this.prof || this._guessProfile();
+                if (!prof) return;
+                this.huntReg = ((this.huntReg << 1) | bit) & 0xFFFF;
+                this.huntN++;
+                if (this.huntN < 16) return;
+                if (ccPopcount(this.huntReg ^ CC_MARK) > this.markMaxErrors) return;
+                const pos = this.huntN;
+                const hits = this.huntHits;
+                const spacing = ccSegBits(prof) + 16;      // MARK 末尾到下一个 MARK 末尾
+                if (hits.length && Math.abs(pos - hits[hits.length - 1] - spacing) <= 3) hits.push(pos);
+                else this.huntHits = [pos];
+                if (this.huntHits.length >= this.huntNeeded) this._lockFromMarker(prof);
+            }
+
+            // 靠连续段标记认定相位已对齐：重建 Viterbi，从下一个比特开始当数据收
+            _lockFromMarker(prof) {
+                this._huntReset();
+                if (!prof) { this.state = 0; this.count = 0; return; }
+                this.prof = prof;
+                this.vit = new ViterbiDecoder(prof.depth);
+                this.arr = 0;
+                this.stepHist = new Int32Array(128);
+                this.hist3 = [];
+                this.mbuf = [];
+                this.misses = 0;
+                this.mode = 0;
+                this.idx = 0;
+                this.pend = [];
+                this.segSteps = 0;
+                this.stepsTotal = 0;
+                // 半路接手时不知道编码器的格状状态，最先回溯出的几个比特不可信（实测 8 个左右），丢掉
+                this.suppress = 16;
+                this.state = 2;
+                this.stats.resyncs++;
             }
 
             _startRun() {
@@ -3197,7 +3272,7 @@
                 const m = (w[0] & w[1]) | (w[0] & w[2]) | (w[1] & w[2]);
                 const dis = ccPopcount(w[0] ^ m) + ccPopcount(w[1] ^ m) + ccPopcount(w[2] ^ m);
                 const prof = CC_PROFILES[m];
-                if (!prof || dis > 3) { this.state = 0; this.count = 0; return; }
+                if (!prof || dis > 3) { this.state = 0; this.count = 0; this._huntReset(); return; }
                 this.prof = prof;
                 this.vit = new ViterbiDecoder(prof.depth);
                 this.state = 2;
@@ -3211,6 +3286,7 @@
                 this.hist3 = [];
                 this.mbuf = [];
                 this.misses = 0;
+                this.suppress = 0;        // 从 ASM 起头时编码器状态确知，第一个比特就是准的
                 this.count = 0;
             }
 
@@ -3226,7 +3302,7 @@
                 if (this.arr >= 32 && this.count >= 32 && ccPopcount((this.lo ^ CC_ASM) >>> 0) <= 1) {
                     this.stats.lost++;
                     this.onLoss();
-                    this.state = 1; this.hdr = []; this.vit = null;
+                    this.state = 1; this.hdr = []; this.vit = null; this._huntReset();
                     return;
                 }
                 if (this.mode === 0) {
@@ -3254,7 +3330,11 @@
                 this.vit.step(r1, r2);
                 this.stepsTotal++;
                 this.segSteps++;
-                if (this.vit.n > prof.depth) this.onBits([this.vit.bitAt(prof.depth)]);
+                if (this.vit.n > prof.depth) {
+                    const b = this.vit.bitAt(prof.depth);
+                    if (this.suppress > 0) this.suppress--;      // 半路接手的头几个比特不可信，吞掉
+                    else this.onBits([b]);
+                }
                 if (this.segSteps === CC_SEG_STEPS) { this.mode = 1; this.mbuf = []; }
             }
 
@@ -3292,9 +3372,11 @@
             _lost() {
                 this.stats.lost++;
                 this.onLoss();
+                // 不清 this.prof：靠段标记盲同步重来时，档位可以继续沿用
                 this.state = 0;
                 this.count = 0;
                 this.vit = null;
+                this._huntReset();
                 this.onStats(this.stats);
             }
 
@@ -3310,6 +3392,7 @@
                 this.state = 0;
                 this.count = 0;
                 this.vit = null;
+                this._huntReset();
                 this.onEnd();
                 this.onStats(this.stats);
             }
@@ -8317,6 +8400,8 @@
                 }
             });
             ccRx = new ConvDeframer({
+                // 盲同步用的档位：跟收发共用的下拉框走（11/12/13 -> 1/2/3）
+                getProfileId: () => fecProfileId() - 10,
                 onBits: bits => {
                     addUpBits(bits.length);     // 上层有效数据：Viterbi 解码后交给上层解码器的比特
                     for (let bit of bits) {
