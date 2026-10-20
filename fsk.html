@@ -5552,6 +5552,12 @@
             return lut;
         })();
 
+        // 瀑布上的频率刻度写法：≥1 kHz 用 16k / 14.7k，不足 1 kHz 直接写数字（省宽度）
+        function wfHz(v) {
+            if (Math.abs(v) >= 1000) return (v / 1000).toFixed(1).replace(/\.0$/, '') + 'k';
+            return String(Math.round(v));
+        }
+
         // 接收信号频谱瀑布：把麦克风原始信号在载波附近的短时频谱一行行往下滚，
         // 一眼就能看出信号在不在、带宽多宽、有没有干扰落进来
         class FftWaterfall {
@@ -5636,6 +5642,31 @@
                 this.ctx.lineTo(W / 2, H);
                 this.ctx.stroke();
                 this.ctx.setLineDash([]);
+
+                // 频率刻度：左端 = 视口下边界，中间 = 载波，右端 = 上边界
+                this.axis(fc - span / 2, fc, fc + span / 2, W, H, dpr);
+            }
+
+            // 把三个频率直接标在图里（省得图外面的标题写一长串）
+            axis(lo, fc, hi, W, H, dpr) {
+                const ctx = this.ctx;
+                const lh = Math.round(13 * dpr);
+                const fs = Math.max(8, Math.round(9.5 * dpr));
+                ctx.font = `${fs}px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace`;
+                ctx.textBaseline = 'middle';
+                ctx.fillStyle = 'rgba(0,0,0,0.45)';
+                ctx.fillRect(0, H - lh, W, lh);
+                ctx.fillStyle = 'rgba(226,232,240,0.92)';
+                const y = H - lh / 2, pad = Math.round(4 * dpr);
+                const sLo = wfHz(lo), sC = wfHz(fc), sHi = wfHz(hi);
+                const wLo = ctx.measureText(sLo).width, wC = ctx.measureText(sC).width, wHi = ctx.measureText(sHi).width;
+                const gap = pad * 2;
+                const drawRight = (W - pad - wHi) >= (pad + wLo + gap);
+                const drawCenter = (W / 2 - wC / 2) >= (pad + wLo + gap)
+                    && (!drawRight || (W / 2 + wC / 2) <= (W - pad - wHi - gap));
+                ctx.textAlign = 'left'; ctx.fillText(sLo, pad, y);
+                if (drawCenter) { ctx.textAlign = 'center'; ctx.fillText(sC, W / 2, y); }
+                if (drawRight) { ctx.textAlign = 'right'; ctx.fillText(sHi, W - pad, y); }
             }
         }
 
@@ -8083,29 +8114,29 @@
             const key = [ofdm ? 'ofdm' : 'sym', fc, sampleRate, uwbChecked ? 1 : 0,
                 ofdm ? ofdmBandwidth : effBaudRate()].join('|');
             if (key === wfBandKey && wfBandVal) return wfBandVal;
-            let span, bw;
+            let span;
             if (ofdm) {
                 const cfg = ofdmActiveConfig(fc);
-                bw = cfg.nCar * cfg.df;                                    // 占用带宽 = 子载波数 × 子载波间隔
-                span = Math.max(bw * 1.25, 300);
+                span = Math.max(cfg.nCar * cfg.df * 1.25, 300);            // 占用带宽 = 子载波数 × 子载波间隔
             } else {
                 const bd = effBaudRate();
-                bw = bd * freqMulti + bd;                                  // FSK：两音间隔 + 波特率
-                span = Math.max(bw * 1.5, 200);
+                span = Math.max((bd * freqMulti + bd) * 1.5, 200);         // FSK：两音间隔 + 波特率
             }
             wfBandKey = key;
-            wfBandVal = { fc: fc, span: span, bw: bw };
+            wfBandVal = { fc: fc, span: span };
             return wfBandVal;
         }
 
-        // 标签只在范围真的变了才写 DOM（带宽/载波/模式改了才重绘这一行）
+        // 标题只写视口带宽；中心频率和两端频率直接标在图里（见 FftWaterfall.axis）
         let wfTagKey = '';
         function wfUpdateTag() {
             const b = wfBand();
             const key = b.fc + '/' + b.span;
             if (key === wfTagKey) return;
             wfTagKey = key;
-            detText('wfTag', `${b.fc} Hz · 带宽 ${Math.round(b.bw)} Hz · 显示 ±${Math.round(b.span / 2)} Hz`);
+            detText('wfTag', b.span >= 1000
+                ? (b.span / 1000).toFixed(1) + ' kHz'
+                : Math.round(b.span) + ' Hz');
         }
 
         waterfall.clear();
