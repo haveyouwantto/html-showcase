@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>MusicXML Player</title>
+<style>
+:root{
+  --bg:#f3f2ee; --surface:#ffffff; --text:#1c1d26; --muted:#6b6d7a; --border:#d9d8d2;
+  --accent:#3b4bd8; --accent-soft:rgba(59,75,216,.16); --accent-text:#ffffff;
+  --key-w:#fbfaf7; --key-b:#22232b; --key-on:#5a69f0; --kb-bg:#17181f;
+  box-sizing:border-box; padding-top:env(safe-area-inset-top,0px); padding-bottom:env(safe-area-inset-bottom,0px);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#14151b; --surface:#1d1e27; --text:#eceaf2; --muted:#9a9cab; --border:#2e303c;
+    --accent:#7b88ff; --accent-soft:rgba(123,136,255,.2); --accent-text:#0e0f18;
+    --key-w:#e9e7e1; --key-b:#15161c; --key-on:#7b88ff; --kb-bg:#0b0b10;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#14151b; --surface:#1d1e27; --text:#eceaf2; --muted:#9a9cab; --border:#2e303c;
+  --accent:#7b88ff; --accent-soft:rgba(123,136,255,.2); --accent-text:#0e0f18;
+  --key-w:#e9e7e1; --key-b:#15161c; --key-on:#7b88ff; --kb-bg:#0b0b10;
+}
+html{scroll-padding-top:env(safe-area-inset-top,0px);height:100%}
+*{box-sizing:border-box}
+body{margin:0;height:100%;background:var(--bg);color:var(--text);
+  font-family:"Source Sans 3","Segoe UI",system-ui,-apple-system,sans-serif;font-size:16px}
+.app{display:flex;flex-direction:column;height:100%}
+header{display:flex;flex-wrap:wrap;align-items:center;gap:.5rem .9rem;padding:.6rem .9rem;
+  background:var(--surface);border-bottom:1px solid var(--border)}
+h1{font-size:1.05rem;margin:0;font-weight:650;letter-spacing:.01em;flex:1 1 auto;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.controls{display:flex;flex-wrap:wrap;align-items:center;gap:.5rem .8rem;flex:1 1 100%}
+button,.filebtn{font:inherit;font-weight:600;border:1px solid var(--border);background:var(--bg);color:var(--text);
+  padding:.5rem .9rem;border-radius:8px;cursor:pointer;min-height:40px;display:inline-flex;align-items:center;gap:.4rem}
+button.primary{background:var(--accent);color:var(--accent-text);border-color:var(--accent);min-width:104px;justify-content:center}
+button:disabled{opacity:.5;cursor:default}
+button:focus-visible,.filebtn:focus-within,input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.filebtn input{position:absolute;opacity:0;width:1px;height:1px}
+.seek{flex:1 1 180px;display:flex;align-items:center;gap:.6rem;min-width:160px}
+.seek input{flex:1;accent-color:var(--accent)}
+.time{font-variant-numeric:tabular-nums;color:var(--muted);font-size:.85rem;white-space:nowrap}
+.speed{display:flex;align-items:center;gap:.5rem;color:var(--muted);font-size:.85rem}
+.speed input{width:90px;accent-color:var(--accent)}
+main{flex:1;min-height:0;position:relative}
+.score-wrap{position:absolute;inset:0;overflow:auto;padding:.75rem;-webkit-overflow-scrolling:touch}
+.paper{background:#fff;color:#000;border-radius:10px;padding:.5rem;min-height:100%;box-shadow:0 0 0 1px var(--border)}
+.status{position:absolute;left:50%;top:1rem;transform:translateX(-50%);background:var(--surface);border:1px solid var(--border);
+  padding:.45rem .9rem;border-radius:999px;font-size:.9rem;z-index:5;max-width:92%;text-align:center}
+.status.err{border-color:#c2410c;color:#c2410c}
+.status[hidden]{display:none}
+.drop main::after{content:"Drop MusicXML file";position:absolute;inset:.5rem;border:2px dashed var(--accent);border-radius:12px;
+  background:var(--accent-soft);display:flex;align-items:center;justify-content:center;font-weight:650;z-index:6}
+footer{background:var(--kb-bg);padding:.5rem .5rem calc(.5rem + 0px)}
+.piano{position:relative;display:flex;height:clamp(96px,19vh,160px);user-select:none;-webkit-user-select:none}
+.key{position:relative}
+.white{flex:1 1 0;background:var(--key-w);border:1px solid #0003;border-top:0;border-radius:0 0 5px 5px;
+  display:flex;align-items:flex-end;justify-content:center;transition:background .06s}
+.white span{font-size:9px;color:#7a7a84;padding-bottom:3px;pointer-events:none}
+.black{position:absolute;top:0;height:62%;background:var(--key-b);border-radius:0 0 4px 4px;z-index:2;transition:background .06s;
+  box-shadow:inset 0 -3px 0 #ffffff14}
+.key.on{background:var(--key-on)}
+.white.on{box-shadow:inset 0 -6px 0 #0003}
+.black.on{box-shadow:none}
+@media (max-width:560px){
+  header{padding:.5rem .6rem}
+  .speed{flex:1 1 100%}.speed input{flex:1}
+  .white span{display:none}
+  .score-wrap{padding:.4rem}
+}
+@media (prefers-reduced-motion:reduce){.key{transition:none}}
+</style>
+</head>
+<body>
+<div class="app" id="app">
+  <header>
+    <h1 id="title">MusicXML Player</h1>
+    <div class="controls">
+      <label class="filebtn">Open file<input type="file" id="file" accept=".musicxml,.xml,.mxl"></label>
+      <button class="primary" id="play" disabled>Play</button>
+      <button id="stop" disabled>Stop</button>
+      <div class="seek"><input type="range" id="seek" min="0" max="0" value="0" aria-label="Playback position"><span class="time" id="time">0:00 / 0:00</span></div>
+      <label class="speed">Speed <input type="range" id="speed" min="0.4" max="1.6" step="0.05" value="1"><span id="speedv" class="time">1.0×</span></label>
+    </div>
+  </header>
+  <main>
+    <div class="status" id="status">Loading score engine…</div>
+    <div class="score-wrap" id="wrap"><div class="paper"><div id="score"></div></div></div>
+  </main>
+  <footer><div class="piano" id="piano" aria-hidden="true"></div></footer>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/opensheetmusicdisplay@1.8.9/build/opensheetmusicdisplay.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/pico-piano-synth@0.4.1/dist/piano-synth-embedded.min.js"></script>
+<script>
+const $ = id => document.getElementById(id);
+const el = {play:$('play'),stop:$('stop'),seek:$('seek'),time:$('time'),status:$('status'),wrap:$('wrap'),
+  piano:$('piano'),speed:$('speed'),speedv:$('speedv'),title:$('title'),file:$('file')};
+
+let osmd, synth, steps = [], total = 0;
+let playing = false, baseT = 0, baseWall = 0, speed = 1, nextStep = 0, cursorIdx = 0, raf = 0;
+const active = new Map(), keyEls = {};
+
+function setStatus(msg, err){
+  el.status.hidden = !msg; el.status.textContent = msg || ''; el.status.classList.toggle('err', !!err);
+}
+const fmt = s => { s = Math.max(0, Math.round(s)); return Math.floor(s/60) + ':' + String(s%60).padStart(2,'0'); };
+
+/* ---------- Sample score (Ode to Joy, 4 bars, grand staff) ---------- */
+function sampleXml(){
+  const N = (step,oct,dur,type,staff,voice,dot) =>
+    `<note><pitch><step>${step}</step><octave>${oct}</octave></pitch><duration>${dur}</duration><voice>${voice}</voice><type>${type}</type>${dot?'<dot/>':''}<staff>${staff}</staff></note>`;
+  const q = (s,o)=>N(s,o,2,'quarter',1,1), rh = [
+    [q('E',4),q('E',4),q('F',4),q('G',4)],
+    [q('G',4),q('F',4),q('E',4),q('D',4)],
+    [q('C',4),q('C',4),q('D',4),q('E',4)],
+    [N('E',4,3,'quarter',1,1,1),N('D',4,1,'eighth',1,1),N('D',4,4,'half',1,1)]];
+  const lh = [N('C',3,8,'whole',2,2),N('G',2,8,'whole',2,2),N('C',3,8,'whole',2,2),N('G',2,8,'whole',2,2)];
+  let m = '';
+  for(let i=0;i<4;i++){
+    m += `<measure number="${i+1}">` + (i===0 ?
+      `<attributes><divisions>2</divisions><key><fifths>0</fifths></key><time><beats>4</beats><beat-type>4</beat-type></time><staves>2</staves>
+      <clef number="1"><sign>G</sign><line>2</line></clef><clef number="2"><sign>F</sign><line>4</line></clef></attributes>
+      <direction placement="above"><direction-type><words>Allegretto</words></direction-type><sound tempo="108"/></direction>` : '')
+      + rh[i].join('') + '<backup><duration>8</duration></backup>' + lh[i] + '</measure>';
+  }
+  return `<?xml version="1.0" encoding="UTF-8"?><score-partwise version="3.1"><work><work-title>Ode to Joy (sample)</work-title></work>
+  <part-list><score-part id="P1"><part-name>Piano</part-name></score-part></part-list><part id="P1">${m}</part></score-partwise>`;
+}
+
+/* ---------- Piano keyboard ---------- */
+const isBlack = m => [1,3,6,8,10].includes(m % 12);
+function buildPiano(lo, hi){
+  el.piano.innerHTML = ''; Object.keys(keyEls).forEach(k => delete keyEls[k]);
+  const whites = []; for(let m=lo;m<=hi;m++) if(!isBlack(m)) whites.push(m);
+  const w = 100 / whites.length;
+  whites.forEach(m => {
+    const k = document.createElement('div'); k.className = 'key white';
+    if(m % 12 === 0){ const s = document.createElement('span'); s.textContent = 'C' + (m/12 - 1); k.appendChild(s); }
+    el.piano.appendChild(k); keyEls[m] = k;
+  });
+  for(let m=lo;m<=hi;m++) if(isBlack(m)){
+    const idx = whites.indexOf(m - 1); if(idx < 0) continue;
+    const k = document.createElement('div'); k.className = 'key black';
+    k.style.left = ((idx + 1) * w - w * 0.3) + '%'; k.style.width = (w * 0.6) + '%';
+    el.piano.appendChild(k); keyEls[m] = k;
+  }
+}
+const light = (m, on) => keyEls[m] && keyEls[m].classList.toggle('on', on);
+
+/* ---------- Extract playable events from OSMD ---------- */
+function extract(){
+  const c = osmd.cursor; c.show(); c.reset();
+  const it = c.Iterator; steps = [];
+  let lastBpm = osmd.Sheet.DefaultStartTempoInBpm || 100, t = 0, prevWhole = 0;
+  let lo = 127, hi = 0;
+  while(!it.EndReached){
+    const ts = it.currentTimeStamp || it.CurrentSourceTimestamp;
+    const whole = ts.RealValue;
+    const bpmNow = it.CurrentMeasure && it.CurrentMeasure.TempoInBPM;
+    t += (whole - prevWhole) * 4 * 60 / lastBpm;       // seconds at the previous tempo
+    if(bpmNow > 0) lastBpm = bpmNow;
+    prevWhole = whole;
+    const notes = [];
+    for(const ve of (it.CurrentVoiceEntries || [])){
+      for(const n of (ve.Notes || [])){
+        if(n.isRest && n.isRest()) continue;
+        const tie = n.NoteTie;
+        if(tie && tie.StartNote !== n) continue;        // tied continuation: already sounding
+        let len = n.Length.RealValue;
+        if(tie && tie.Notes) len = tie.Notes.reduce((a,x) => a + x.Length.RealValue, 0);
+        if(!len) len = 0.03;                             // grace notes
+        const midi = n.halfTone + 12;
+        lo = Math.min(lo, midi); hi = Math.max(hi, midi);
+        notes.push({midi, dur: Math.max(.08, len * 4 * 60 / lastBpm)});
+      }
+    }
+    steps.push({t, notes});
+    it.moveToNext();
+  }
+  total = steps.reduce((a,s) => Math.max(a, s.t, ...s.notes.map(n => s.t + n.dur)), 0);
+  c.reset();
+  if(lo > hi){ lo = 60; hi = 72; }
+  lo = Math.floor(lo/12) * 12; hi = Math.floor(hi/12) * 12 + 11;
+  let up = true;
+  while(hi - lo + 1 < 48){ if(up && hi + 12 <= 108) hi += 12; else if(lo - 12 >= 21) lo -= 12; else hi += 12; up = !up; }
+  buildPiano(lo, Math.min(hi, 119));
+}
+
+/* ---------- Cursor ---------- */
+function moveCursorTo(i){
+  const c = osmd.cursor;
+  if(i < cursorIdx){ c.reset(); cursorIdx = 0; }
+  while(cursorIdx < i){ c.next(); cursorIdx++; }
+  follow();
+  el.seek.value = i; updateTime();
+}
+function follow(){
+  const cur = osmd.cursor.cursorElement; if(!cur) return;
+  const r = cur.getBoundingClientRect(), w = el.wrap.getBoundingClientRect();
+  if(r.top < w.top + 8 || r.bottom > w.bottom - 8)
+    el.wrap.scrollTo({top: el.wrap.scrollTop + (r.top - w.top) - w.height * .2, behavior: 'smooth'});
+}
+
+/* ---------- Playback ---------- */
+const nowT = () => playing ? baseT + (performance.now() - baseWall) / 1000 * speed : baseT;
+function updateTime(){ el.time.textContent = fmt(playing ? nowT() : (steps[cursorIdx] ? steps[cursorIdx].t : 0)) + ' / ' + fmt(total); }
+function release(m){ if(synth) synth.noteOff(m); active.delete(m); light(m, false); }
+function releaseAll(){ [...active.keys()].forEach(release); }
+
+function tick(){
+  if(!playing) return;
+  const t = nowT();
+  while(nextStep < steps.length && steps[nextStep].t <= t){
+    const s = steps[nextStep];
+    moveCursorTo(nextStep);
+    for(const n of s.notes){
+      if(active.has(n.midi)) release(n.midi);
+      synth.noteOn(n.midi, .78); light(n.midi, true);
+      active.set(n.midi, s.t + n.dur);
+    }
+    nextStep++;
+  }
+  for(const [m, off] of [...active]) if(off <= t) release(m);
+  updateTime();
+  if(nextStep >= steps.length && active.size === 0 && t >= total){ stop(); return; }
+  raf = requestAnimationFrame(tick);
+}
+
+async function play(){
+  if(playing){ pause(); return; }
+  el.play.disabled = true; el.play.textContent = 'Loading…';
+  try{
+    synth ??= await PianoSynth.load();   // lazy init, inside the user gesture
+    synth.ensure();                      // unlock AudioContext
+  }catch(e){ setStatus('Could not start the piano: ' + e.message, true); el.play.disabled = false; el.play.textContent = 'Play'; return; }
+  el.play.disabled = false;
+  if(nextStep >= steps.length){ nextStep = 0; baseT = 0; moveCursorTo(0); }
+  playing = true; baseWall = performance.now();
+  el.play.textContent = 'Pause';
+  raf = requestAnimationFrame(tick);
+}
+function pause(){
+  baseT = nowT(); playing = false; cancelAnimationFrame(raf); releaseAll();
+  el.play.textContent = 'Play'; updateTime();
+}
+function stop(){
+  playing = false; cancelAnimationFrame(raf); releaseAll();
+  baseT = 0; nextStep = 0; moveCursorTo(0);
+  el.play.textContent = 'Play';
+}
+function seekTo(i){
+  releaseAll(); i = Math.max(0, Math.min(steps.length - 1, i));
+  baseT = steps[i] ? steps[i].t : 0; baseWall = performance.now(); nextStep = i;
+  moveCursorTo(i); nextStep = i;
+}
+
+/* ---------- Loading & rendering ---------- */
+function zoomFor(){ return el.wrap.clientWidth < 520 ? .62 : el.wrap.clientWidth < 900 ? .8 : 1; }
+
+async function loadScore(content, name){
+  if(playing) stop();
+  setStatus('Rendering score…');
+  try{
+    await osmd.load(content);
+    osmd.zoom = zoomFor();
+    osmd.render();
+    extract();
+    cursorIdx = 0; nextStep = 0; baseT = 0; releaseAll();
+    osmd.cursor.show();
+    el.seek.max = Math.max(0, steps.length - 1); el.seek.value = 0;
+    el.title.textContent = (osmd.Sheet.TitleString || name || 'MusicXML Player');
+    el.play.disabled = el.stop.disabled = false;
+    updateTime(); setStatus('');
+  }catch(e){
+    console.error(e);
+    setStatus('Could not read this file: ' + ((e && e.message) || e), true);
+  }
+}
+
+function readFile(f){
+  if(!f) return;
+  const r = new FileReader(), mxl = /\.mxl$/i.test(f.name);
+  r.onload = () => loadScore(r.result, f.name.replace(/\.[^.]+$/, ''));
+  mxl ? r.readAsBinaryString(f) : r.readAsText(f);
+}
+
+/* ---------- Events ---------- */
+el.play.addEventListener('click', play);
+el.stop.addEventListener('click', stop);
+el.seek.addEventListener('input', () => seekTo(+el.seek.value));
+el.speed.addEventListener('input', () => {
+  const t = nowT(); baseT = t; baseWall = performance.now();
+  speed = +el.speed.value; el.speedv.textContent = speed.toFixed(1) + '×';
+});
+el.file.addEventListener('change', e => readFile(e.target.files[0]));
+document.addEventListener('keydown', e => {
+  if(e.code === 'Space' && !el.play.disabled && !/INPUT|BUTTON/.test(document.activeElement.tagName)){ e.preventDefault(); play(); }
+});
+const app = $('app');
+['dragenter','dragover'].forEach(n => window.addEventListener(n, e => { e.preventDefault(); app.classList.add('drop'); }));
+['dragleave','drop'].forEach(n => window.addEventListener(n, e => { e.preventDefault(); app.classList.remove('drop'); }));
+window.addEventListener('drop', e => readFile(e.dataTransfer.files[0]));
+
+let lastW = el.wrap.clientWidth, rz;
+window.addEventListener('resize', () => {
+  clearTimeout(rz);
+  rz = setTimeout(() => {
+    if(!osmd || Math.abs(el.wrap.clientWidth - lastW) < 2) return;   // ignore height-only changes (mobile URL bar)
+    lastW = el.wrap.clientWidth;
+    const keep = cursorIdx; osmd.zoom = zoomFor(); osmd.render();
+    osmd.cursor.show(); osmd.cursor.reset(); cursorIdx = 0; moveCursorTo(keep);
+  }, 200);
+});
+
+/* ---------- Init ---------- */
+(function init(){
+  if(!window.opensheetmusicdisplay){ setStatus('Could not load the score engine. Check your connection and reload.', true); return; }
+  osmd = new opensheetmusicdisplay.OpenSheetMusicDisplay('score', {
+    autoResize: false, backend: 'svg', drawTitle: true, followCursor: false,
+    cursorsOptions: [{type: 0, color: '#3b4bd8', alpha: .38, follow: false}]
+  });
+  buildPiano(36, 83);
+  loadScore(sampleXml(), 'Sample');
+})();
+</script>
+</body>
+</html>
