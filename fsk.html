@@ -3521,6 +3521,11 @@
         // pilots: spacing per symbol and number of stagger phases (symbol sf shifts the grid by (sf mod PH)·PS/PH carriers).
         // PS=8/PH=2 costs the same as the old fixed grid; PS=16/PH=2 halves the pilot overhead (+8 % payload) for ~1 dB less tracking margin.
         const OFDM_PS = 8, OFDM_PH = 2;
+        // Protocol sample rate.  N, the sub-carrier spacing (fs/N) and every carrier position are defined at THIS rate, never at the
+        // device rate: a transmitter at 48 kHz and a receiver at 44.1 kHz (typical for a cable into a line-in) would otherwise
+        // build different carrier grids (2.93 vs 2.69 Hz spacing) and nothing could ever lock.  The device side is converted by
+        // OfdmResampler at the edge (TX: protocol → device, RX: device → protocol); at 48 kHz it is bypassed.
+        const OFDM_FS = 48000;
         const OFDM_CP_SHIFT = 2;                   // cyclic prefix = N >> shift (2 → N/4 = 85 ms).  3 (N/8) tested worse on moving channels
         const OFDM_CNT_FULL = 8191;   // meta.cnt value meaning "all payload slots of this symbol are valid"
         const OFDM_MODS = [
@@ -3589,9 +3594,14 @@
         let uwbChecked = false;
         function effCarrierFreq() { return uwbChecked ? OFDM_UWB_FC : carrierFreq; }
         function effBaudRate() { return uwbChecked ? OFDM_UWB_BAUD : baudRate; }
+        // The OFDM numerology always lives at the fixed protocol rate OFDM_FS (48 kHz); cfg.devFs is this device's sample rate.
+        // The transmitter resamples protocol → device, the receiver device → protocol (OfdmResampler), so two devices running
+        // at different rates (e.g. 48 kHz sound card → cable → 44.1 kHz line-in) still share one carrier grid.
         function ofdmActiveConfig(fc) {
-            return uwbChecked ? ofdmConfig(sampleRate, OFDM_UWB_FC, OFDM_UWB_BW)
-                : ofdmConfig(sampleRate, fc, ofdmBandwidth);
+            const cfg = uwbChecked ? ofdmConfig(OFDM_FS, OFDM_UWB_FC, OFDM_UWB_BW)
+                : ofdmConfig(OFDM_FS, fc, ofdmBandwidth);
+            cfg.devFs = sampleRate;
+            return cfg;
         }
 
         function ofdmConfig(fs, fc, bw) {
@@ -3728,6 +3738,57 @@
         // returns exactly symLen samples.  Payload comes from an internal FIFO (pushBits); when the FIFO
         // cannot fill a symbol the generator sends a partial symbol or a filler symbol instead of stopping.
         // ---------------------------------------------------------------------------------------------
+        // Streaming sample-rate converter: Kaiser-windowed sinc, 32 taps, 512 phases (linearly interpolated between phases).
+        // Passband flat to well beyond 14 kHz at 44.1/48 kHz, image/alias rejection > 70 dB, ~1e-4 of a sample timing resolution.
+        class OfdmResampler {
+            constructor(fsIn, fsOut) {
+                const HALF = 16, PH = 512, T = 2 * HALF;
+                this.step = fsIn / fsOut;                    // input samples per output sample
+                this.HALF = HALF; this.PH = PH;
+                const fc = 0.5 * Math.min(1, fsOut / fsIn) * 0.94;   // cut-off, cycles per input sample
+                const beta = 9, i0 = x => { let s = 1, t = 1; for (let k = 1; k < 30; k++) { t *= (x / (2 * k)) * (x / (2 * k)); s += t; } return s; };
+                const i0b = i0(beta);
+                this.tab = new Float32Array((PH + 1) * T);
+                for (let p = 0; p <= PH; p++) {
+                    const frac = p / PH; let sum = 0; const row = new Float64Array(T);
+                    for (let j = 0; j < T; j++) {
+                        const x = j - (HALF - 1) - frac, a = x / HALF;
+                        const w = Math.abs(a) >= 1 ? 0 : i0(beta * Math.sqrt(1 - a * a)) / i0b;
+                        const arg = 2 * Math.PI * fc * x;
+                        const h = (Math.abs(x) < 1e-12 ? 2 * fc : Math.sin(arg) / (Math.PI * x)) * w;
+                        row[j] = h; sum += h;
+                    }
+                    for (let j = 0; j < T; j++) this.tab[p * T + j] = row[j] / sum;
+                }
+                this.buf = new Float64Array(4096 + T); this.n = HALF; this.t = HALF;   // HALF zeros of history
+            }
+            // chunk: Float32Array of input samples → Float32Array of output samples
+            process(chunk) {
+                const { HALF, PH, step, tab } = this, T = 2 * HALF;
+                if (this.n + chunk.length > this.buf.length) {
+                    const nb = new Float64Array(Math.max(this.buf.length * 2, this.n + chunk.length + T));
+                    nb.set(this.buf.subarray(0, this.n)); this.buf = nb;
+                }
+                const b = this.buf; for (let i = 0; i < chunk.length; i++) b[this.n + i] = chunk[i];
+                this.n += chunk.length;
+                const out = new Float32Array(Math.max(0, Math.ceil((this.n - HALF - this.t) / step) + 1));
+                let o = 0, t = this.t;
+                while (Math.floor(t) + HALF < this.n) {
+                    const i = Math.floor(t), ph = (t - i) * PH, p0 = Math.floor(ph), w = ph - p0;
+                    const r0 = p0 * T, r1 = r0 + T, base = i - (HALF - 1);
+                    let acc = 0;
+                    for (let j = 0; j < T; j++) acc += b[base + j] * (tab[r0 + j] + w * (tab[r1 + j] - tab[r0 + j]));
+                    out[o++] = acc; t += step;
+                }
+                const drop = Math.max(0, Math.floor(t) - HALF);
+                if (drop > 0) { b.copyWithin(0, drop, this.n); this.n -= drop; t -= drop; }
+                this.t = t;
+                return o === out.length ? out : out.subarray(0, o);
+            }
+            // end of stream: push zeros so that the last real samples are emitted
+            flush() { return this.process(new Float32Array(2 * this.HALF + 2)); }
+        }
+
         class OfdmStreamTx {
             constructor(cfg, opt) {
                 opt = opt || {};
@@ -3853,6 +3914,7 @@
                 this.cfg = cfg;
                 this.cb = cb || {};
                 this.known = ofdmKnown(cfg);
+                this.rs = (cfg.devFs && cfg.devFs !== cfg.fs) ? new OfdmResampler(cfg.devFs, cfg.fs) : null;
                 this.phs = [];
                 for (let ph = 0; ph < cfg.PH; ph++) {
                     const refs = this.known.refsPh[ph];
@@ -3894,8 +3956,10 @@
             get locked() { return this.state === 'track'; }
 
             push(chunk) {
+                if (this.rs) { chunk = this.rs.process(chunk); if (!chunk.length) return; }   // device rate → protocol rate
                 if (this.len + chunk.length > this.buf.length) {
-                    const keep = Math.max(this.start, Math.floor(this._keepFrom()));
+                    // (clamped to the data we hold: the next symbol start can lie beyond what has arrived so far)
+                    const keep = Math.min(this.start + this.len, Math.max(this.start, Math.floor(this._keepFrom())));
                     const drop = keep - this.start;
                     if (drop > 0) { this.buf.copyWithin(0, drop, this.len); this.start += drop; this.len -= drop; }
                     if (this.len + chunk.length > this.buf.length) {
@@ -6615,7 +6679,9 @@
                 this.modIdx = parseInt(document.getElementById('ofdmMod').value) || 0;
                 this.fec = fecProfileId();
                 this.tx = new OfdmStreamTx(this.cfg, { mod: this.modIdx, fec: this.fec });
-                const sl = this.cfg.symLen;
+                // queue thresholds are counted in DEVICE samples; the stream is resampled protocol rate → device rate
+                this.rs = this.cfg.devFs !== this.cfg.fs ? new OfdmResampler(this.cfg.fs, this.cfg.devFs) : null;
+                const sl = this.cfg.symLen * this.cfg.devFs / this.cfg.fs;
                 this.lowSamples = Math.round(1.2 * sl);
                 this.targetSamples = Math.round(2.5 * sl);
                 this.posted = 0; this.played = 0;
@@ -6659,7 +6725,9 @@
                 this._fill();
             }
 
-            _post(chunk) {
+            _post(chunk, resampled) {
+                if (this.rs && !resampled) chunk = this.rs.process(chunk);
+                if (!chunk.length) return;
                 this.posted += chunk.length;
                 this.node.port.postMessage({ type: 'chunk', data: chunk }, [chunk.buffer]);
             }
@@ -6677,6 +6745,7 @@
                         }
                         if (this.finishedInput && tx.fifoBits === 0) {          // everything sent: ramp out, then end
                             this._post(tx.flushTail());
+                            if (this.rs) this._post(this.rs.flush(), true);          // last samples held back by the resampler
                             this.node.port.postMessage({ type: 'finish' });
                             this.ended = true;
                             break;
@@ -8736,7 +8805,7 @@
                     });
                 }
 
-                ctx.fillStyle = 'rgba(255,255,255,0.25)';
+                ctx.fillStyle = 'rgba(255,255,255,0.5)';
                 constellation.each((i, q) => {
                     const x = clamp(centerX + i * plotSize, 0, width);
                     const y = clamp(centerY - q * plotSize, 0, height);
