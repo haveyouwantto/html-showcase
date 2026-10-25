@@ -4383,7 +4383,12 @@
                 // 元数据子载波的均衡结果（BPSK ±1，取 g 精调后的值），供星座图单独着色显示
                 const metaPts = [];
                 for (let j = 0; j < OFDM_META; j++) { const k = cfg.metaIdx[j]; metaPts.push([eq.Xr[k], eq.Xi[k]]); }
-                const snr = this._pilotSnr(eq.Xr, eq.Xi, eq.Wt, sf);
+                // Reported SNR (info panel, modulation hint, DD gate) must NOT be measured on the re-equalised pilots: their cells
+                // were just pulled toward this very measurement, so the residual is partly fitted away and the SNR reads
+                // ~15 dB too high.  Use the residual against the channel as it was BEFORE this symbol's update, and normalise
+                // the estimation noise of the faster update (steady state: noise × 2/(2-beta)) to the old beta = 0.5 scale
+                // (× 4/3) so the thresholds of the modulation hint keep their meaning.
+                const snr = snr0 + 10 * Math.log10(1.5 / (2 - betaBase));
                 eq.snr = snr;
                 const mod = meta.mod, bpc = OFDM_MODS[mod].bpc, cap = nD * bpc;
                 if (!fr.mcs || fr.mcs.mod !== meta.mod || fr.mcs.fec !== meta.fec) {
