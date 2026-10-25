@@ -8726,7 +8726,7 @@
                         ctx.arc(centerX + p.i * plotSize, centerY - p.q * plotSize, 6, 0, Math.PI * 2);
                         ctx.fill();
                     }
-                    ctx.fillStyle = 'rgba(255,170,40,0.95)';
+                    ctx.fillStyle = 'rgba(255,170,40,0.5)';
                     constellationMeta.each((i, q) => {
                         const x = clamp(centerX + i * plotSize, 0, width);
                         const y = clamp(centerY - q * plotSize, 0, height);
@@ -8736,7 +8736,7 @@
                     });
                 }
 
-                ctx.fillStyle = 'white';
+                ctx.fillStyle = 'rgba(255,255,255,0.25)';
                 constellation.each((i, q) => {
                     const x = clamp(centerX + i * plotSize, 0, width);
                     const y = clamp(centerY - q * plotSize, 0, height);
