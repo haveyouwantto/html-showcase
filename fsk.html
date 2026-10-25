@@ -3410,7 +3410,9 @@
         //                  Gives the receiver a full channel snapshot and a unique, in-band sync marker,
         //                  so a receiver can join the stream at any time (late join) and re-baseline every 6.8 s.
         //     sf = 1..15 : data symbols.  Each carries
-        //                    · scattered-in-frequency pilots (every 8th carrier, known BPSK)
+        //                    · scattered pilots, known BPSK, one every OFDM_PS (8) carriers.  The grid is STAGGERED:
+        //                      symbol sf shifts it by (sf mod OFDM_PH)·PS/PH carriers (DRM-style checkerboard), so
+        //                      consecutive symbols sample the channel at different frequencies
         //                    · OFDM_META (64) meta carriers: one 32-bit word sent twice (frequency diversity):
         //                         mod(3) fec(4) sf(4) cnt(13) crc8(8)
         //                      cnt = number of valid payload bits in this symbol
@@ -3424,9 +3426,21 @@
         //   → track forever (pilot/meta-aided equalisation, timing + clock loops).  It only falls back to
         //   acquire when the meta words stop verifying.
         //
-        //   Channel/gain tracking is PILOT-AIDED ONLY (pilots + CRC-verified meta carriers + training symbols).
-        //   There is no decision-directed update of the channel, so a wrong QAM decision can never
-        //   pull the channel estimate to a false lock.
+        //   Channel tracking (per symbol):
+        //     1. common phase / delay slope / gain are measured on the pilots (as before)
+        //     2. every reference cell (pilots + CRC-verified meta carriers) gives a direct channel measurement;
+        //        its increment D = Hmeas - H is applied exactly at the reference cells and INTERPOLATED to all other
+        //        carriers with a local Wiener filter (sinc prior = flat delay profile of OFDM_WIEN_T seconds),
+        //        after removing the bulk delay of the channel (centre of the energy window of the delay profile
+        //        seen through the pilot grid).  Linear interpolation of D fails as soon as an echo moves: the
+        //        change rotates quickly over frequency, and the carriers between the pilots drift away until the
+        //        next training symbol.
+        //     3. the symbol's data is equalised with this updated H (its own pilots are used immediately)
+        //     4. gated decision-directed refinement (OFDM_DD): carriers with a trustworthy decision give a slow,
+        //        outlier-protected channel measurement of their own.  Pilots stay the anchor: DD is off below a
+        //        modulation-dependent pilot SNR, limited to a small rate, and ignores > 50 % jumps, so a wrong
+        //        decision cannot drag the estimate to a false lock.
+        //     The training symbol still re-baselines every carrier once per superframe and is the late-join marker.
         class OfdmFFT {
             constructor(n) {
                 this.n = n;
@@ -3495,6 +3509,19 @@
 
         const OFDM_SF = 16;           // superframe length in symbols (symbol 0 = training)
         const OFDM_META = 64;         // meta carriers: 32-bit word × 2 copies
+        // ---- channel tracking / pilot layout (see the notes at the top of this section) ----
+        // Wiener interpolation between reference cells: prior delay span (s), noise/signal ratio, number of neighbouring refs
+        const OFDM_WIEN_T = 0.034, OFDM_WIEN_S2 = 0.01, OFDM_WIEN_M = 16;
+        // update rate of the channel estimate follows the measured pilot SNR: BETA_LO at ≤ S0 dB … BETA_HI at ≥ S1 dB
+        const OFDM_BETA_LO = 0.5, OFDM_BETA_HI = 0.85, OFDM_BETA_S0 = 6, OFDM_BETA_S1 = 14;
+        const OFDM_REEQ = 1;                       // demodulate a symbol's data with the channel that already contains its own pilots
+        const OFDM_DD = 1, OFDM_DD_BETA = 0.2;     // gated decision-directed refinement of the data carriers' channel estimate
+        // pilot SNR (dB) above which decisions of each modulation (BPSK…256QAM) are reliable enough for the DD update
+        const OFDM_DD_MIN_SNR = [4, 9, 16, 22, 28];
+        // pilots: spacing per symbol and number of stagger phases (symbol sf shifts the grid by (sf mod PH)·PS/PH carriers).
+        // PS=8/PH=2 costs the same as the old fixed grid; PS=16/PH=2 halves the pilot overhead (+8 % payload) for ~1 dB less tracking margin.
+        const OFDM_PS = 8, OFDM_PH = 2;
+        const OFDM_CP_SHIFT = 2;                   // cyclic prefix = N >> shift (2 → N/4 = 85 ms).  3 (N/8) tested worse on moving channels
         const OFDM_CNT_FULL = 8191;   // meta.cnt value meaning "all payload slots of this symbol are valid"
         const OFDM_MODS = [
             { name: 'BPSK', bpc: 1 }, { name: 'QPSK', bpc: 2 }, { name: '16QAM', bpc: 4 },
@@ -3569,23 +3596,36 @@
 
         function ofdmConfig(fs, fc, bw) {
             const N = 1 << Math.round(Math.log2(0.3413 * fs));
-            const cp = N >> 2, symLen = N + cp, df = fs / N;
+            const cp = N >> OFDM_CP_SHIFT, symLen = N + cp, df = fs / N;
             bw = Math.max(bw, 600);
             let lo = Math.max(fc - bw / 2, 200), hi = Math.min(fc + bw / 2, fs / 2 - 400);
             if (hi - lo < 600) { lo = Math.max(200, hi - 600); }
             const kLo = Math.ceil(lo / df), kHi = Math.floor(hi / df);
             const nCar = kHi - kLo + 1;
-            const pilotIdx = [], isPilot = new Uint8Array(nCar);
-            for (let i = 0; i < nCar; i += 8) { pilotIdx.push(i); isPilot[i] = 1; }
-            // meta carriers spread over the whole band, avoiding pilots; the two copies of a bit are half a band apart
+            // pilots: grid of spacing PS, shifted per symbol over PH phases (DRM-style staggered "checkerboard").
+            // Every phase has the same number of pilots so nData is the same in every symbol.
+            const PS = OFDM_PS, PH = OFDM_PH, step = PS / PH;
+            const nPil = Math.floor((nCar - 1 - (PH - 1) * step) / PS) + 1;
+            const pilotPh = [], isPilotAny = new Uint8Array(nCar);
+            for (let ph = 0; ph < PH; ph++) {
+                const l = []; for (let j = 0; j < nPil; j++) { const i = Math.round(ph * step) + j * PS; l.push(i); isPilotAny[i] = 1; }
+                pilotPh.push(l);
+            }
+            const pilotIdx = pilotPh[0];
+            // meta carriers spread over the whole band, avoiding every phase's pilots; the two copies of a bit are half a band apart
             const metaIdx = [], isMeta = new Uint8Array(nCar);
             for (let j = 0; j < OFDM_META; j++) {
                 let i = Math.floor((j + 0.5) * nCar / OFDM_META);
-                while (isPilot[i] || isMeta[i]) i = (i + 1) % nCar;
+                while (isPilotAny[i] || isMeta[i]) i = (i + 1) % nCar;
                 isMeta[i] = 1; metaIdx.push(i);
             }
-            const dataIdx = [];
-            for (let i = 0; i < nCar; i++) if (!isPilot[i] && !isMeta[i]) dataIdx.push(i);
+            const dataPh = [];
+            for (let ph = 0; ph < PH; ph++) {
+                const isP = new Uint8Array(nCar); for (const i of pilotPh[ph]) isP[i] = 1;
+                const l = []; for (let i = 0; i < nCar; i++) if (!isP[i] && !isMeta[i]) l.push(i);
+                dataPh.push(l);
+            }
+            const dataIdx = dataPh[0];
             const nData = dataIdx.length;
             // frequency interleaver: neighbouring coded bits land far apart in frequency
             let S = Math.max(3, Math.round(nData * 0.6180339887));
@@ -3595,7 +3635,7 @@
             for (let j = 0; j < nData; j++) perm[j] = (j * S) % nData;
             const margin = Math.round(0.25 * cp);          // FFT window starts `margin` samples before the end of the CP
             return {
-                fs, fc, bw, N, cp, symLen, df, kLo, kHi, nCar, pilotIdx, metaIdx, dataIdx, nData, perm,
+                fs, fc, bw, N, cp, symLen, df, kLo, kHi, nCar, pilotIdx, metaIdx, dataIdx, nData, perm, pilotPh, dataPh, PH,
                 kc: kLo + (nCar - 1) / 2,
                 margin,
                 W: Math.min(320, margin >> 1)              // WOLA half-overlap (ramp is 2W long)
@@ -3612,21 +3652,56 @@
             const ms = ofdmLfsr(0x1B2C3D4, OFDM_SF * OFDM_META);
             const scr = [];
             for (let s = 0; s < OFDM_SF; s++) scr.push(ofdmLfsr(0x55AA55 + 7919 * (s + 1), cfg.nData * 8));
-            // reference cells (pilots ∪ meta) sorted by carrier index, plus an interpolation table over all carriers
-            const refs = [];
-            for (let p = 0; p < nP; p++) refs.push({ k: cfg.pilotIdx[p], type: 0, i: p });
-            for (let j = 0; j < OFDM_META; j++) refs.push({ k: cfg.metaIdx[j], type: 1, i: j });
-            refs.sort((a, b) => a.k - b.k);
-            const rk = Int32Array.from(refs.map(r => r.k));
-            const lo = new Int32Array(nC), fr = new Float64Array(nC);
+            // reference cells (pilots ∪ meta) of every phase, sorted by carrier index
+            const refsPh = [];
+            for (let ph = 0; ph < cfg.PH; ph++) {
+                const refs = [];
+                for (let p = 0; p < nP; p++) refs.push({ k: cfg.pilotPh[ph][p], type: 0, i: p });
+                for (let j = 0; j < OFDM_META; j++) refs.push({ k: cfg.metaIdx[j], type: 1, i: j });
+                refs.sort((a, b) => a.k - b.k);
+                refsPh.push(refs);
+            }
+            return { tr, ti, pb, ms, scr, refs: refsPh[0], refsPh };
+        }
+
+        // Local Wiener interpolation tables.  For every NON-reference carrier: the M nearest reference cells and real
+        // weights w = (R + s2·I)^-1 · r_k, with R(Δ) = sinc(Δ·df·T)  (flat delay profile of total width T seconds,
+        // centred on the bulk delay).  Reference cells themselves get an identity row: they take their own measured
+        // increment exactly.  That matters: if the references were smoothed too, the in-between carriers would receive
+        // updates inconsistent with the references, nobody observes that mismatch, and it random-walks away.
+        // With exact reference rows the in-between error stays bounded (it only holds the interpolation error).
+        // Replaces linear interpolation: a moved echo makes the channel *change* rotate fast over frequency,
+        // and linear interpolation between pilots then gets the in-between carriers wrong.
+        function ofdmWienerTables(nC, rk, df, T, s2, M) {
+            const m = rk.length; M = Math.min(M, m);
+            const idx = new Int32Array(nC * M), w = new Float32Array(nC * M);
+            const R = new Float64Array(M * M), b = new Float64Array(M), L = new Float64Array(M * M), y = new Float64Array(M);
+            const corr = d => { const x = Math.PI * d * df * T; return Math.abs(x) < 1e-9 ? 1 : Math.sin(x) / x; };
             let r = 0;
             for (let k = 0; k < nC; k++) {
-                while (r + 1 < rk.length && rk[r + 1] <= k) r++;
-                if (k <= rk[0]) { lo[k] = 0; fr[k] = 0; }
-                else if (k >= rk[rk.length - 1]) { lo[k] = rk.length - 2; fr[k] = 1; }
-                else { lo[k] = r; fr[k] = (k - rk[r]) / (rk[r + 1] - rk[r]); }
+                while (r + 1 < m && rk[r + 1] <= k) r++;
+                let a = r + 1 - (M >> 1); a = Math.max(0, Math.min(m - M, a));
+                if (rk[r] === k) {                       // reference cell: take its own increment exactly (identity row)
+                    for (let i = 0; i < M; i++) { idx[k * M + i] = a + i; w[k * M + i] = (a + i === r) ? 1 : 0; }
+                    continue;
+                }
+                for (let i = 0; i < M; i++) {
+                    b[i] = corr(k - rk[a + i]);
+                    for (let j = 0; j < M; j++) R[i * M + j] = corr(rk[a + i] - rk[a + j]) + (i === j ? s2 : 0);
+                }
+                // Cholesky R = L·Lᵀ, solve R·x = b
+                for (let i = 0; i < M; i++) {
+                    for (let j = 0; j <= i; j++) {
+                        let sum = R[i * M + j];
+                        for (let q = 0; q < j; q++) sum -= L[i * M + q] * L[j * M + q];
+                        L[i * M + j] = i === j ? Math.sqrt(Math.max(sum, 1e-12)) : sum / L[j * M + j];
+                    }
+                }
+                for (let i = 0; i < M; i++) { let sum = b[i]; for (let q = 0; q < i; q++) sum -= L[i * M + q] * y[q]; y[i] = sum / L[i * M + i]; }
+                for (let i = M - 1; i >= 0; i--) { let sum = y[i]; for (let q = i + 1; q < M; q++) sum -= L[q * M + i] * b[q]; b[i] = sum / L[i * M + i]; }
+                for (let i = 0; i < M; i++) { idx[k * M + i] = a + i; w[k * M + i] = b[i]; }
             }
-            return { tr, ti, pb, ms, scr, refs, refLo: lo, refFr: fr };
+            return { M, idx, w };
         }
 
         // One OFDM symbol → time domain incl. CP.  Xr/Xi hold nCar carrier values.  ext>0: periodic extension of ext samples
@@ -3702,7 +3777,7 @@
 
             // Next symbol period (symLen samples).  Send whatever is queued (full → partial → filler).
             nextChunk() {
-                const cfg = this.cfg, k = this.known, sf = this.sf, nP = cfg.pilotIdx.length;
+                const cfg = this.cfg, k = this.known, sf = this.sf, nP = cfg.pilotIdx.length, ph = sf % cfg.PH, pilA = cfg.pilotPh[ph], datA = cfg.dataPh[ph];
                 const Xr = this.Xr, Xi = this.Xi;
                 Xr.fill(0); Xi.fill(0);
                 if (sf === 0) {
@@ -3712,7 +3787,7 @@
                     const bpc = OFDM_MODS[this.mod].bpc, cap = cfg.nData * bpc;
                     const n = Math.min(this.tail - this.head, cap);
                     const metaCnt = n === 0 ? 0 : (n === cap || n >= OFDM_CNT_FULL ? OFDM_CNT_FULL : n);
-                    for (let p = 0; p < nP; p++) Xr[cfg.pilotIdx[p]] = 1 - 2 * k.pb[sf * nP + p];
+                    for (let p = 0; p < nP; p++) Xr[pilA[p]] = 1 - 2 * k.pb[sf * nP + p];
                     const mw = ofdmMetaWord(this.mod, this.fec, sf, metaCnt);
                     for (let j = 0; j < OFDM_META; j++) Xr[cfg.metaIdx[j]] = (1 - 2 * k.ms[sf * OFDM_META + j]) * (1 - 2 * mw[j % 32]);
                     const scr = k.scr[sf], bb = new Uint8Array(bpc), pt = [0, 0], base = this.head;
@@ -3722,7 +3797,7 @@
                             bb[i] = (q < n ? this.fifo[base + q] : 0) ^ scr[q];
                         }
                         ofdmMapSymbol(this.mod, bb, 0, pt);
-                        const ci = cfg.dataIdx[cfg.perm[u]];
+                        const ci = datA[cfg.perm[u]];
                         Xr[ci] = pt[0]; Xi[ci] = pt[1];
                     }
                     this.head += n;
@@ -3778,6 +3853,13 @@
                 this.cfg = cfg;
                 this.cb = cb || {};
                 this.known = ofdmKnown(cfg);
+                this.phs = [];
+                for (let ph = 0; ph < cfg.PH; ph++) {
+                    const refs = this.known.refsPh[ph];
+                    this.phs.push({ pil: cfg.pilotPh[ph], data: cfg.dataPh[ph], refs,
+                        wien: ofdmWienerTables(cfg.nCar, Int32Array.from(refs.map(r => r.k)), cfg.df, OFDM_WIEN_T, OFDM_WIEN_S2, OFDM_WIEN_M) });
+                }
+                this.cur = this.phs[0];
                 this.fft = new OfdmFFT(cfg.N);
                 this.re = new Float64Array(cfg.N);
                 this.im = new Float64Array(cfg.N);
@@ -4037,13 +4119,14 @@
 
             // reference (known) value of pilot p in symbol sf
             _pilotRef(sf, p, out) {
-                const k = this.known, c = this.cfg.pilotIdx[p];
+                const k = this.known, c = this.cur.pil[p];
                 if (sf === 0) { out[0] = k.tr[c]; out[1] = k.ti[c]; }
                 else { out[0] = 1 - 2 * k.pb[sf * this.cfg.pilotIdx.length + p]; out[1] = 0; }
             }
 
             // Equalise with the current channel H, then measure from the pilots: timing slope, common phase, gain.
             _equalize(win, sf) {
+                this.cur = this.phs[sf % this.cfg.PH];                // pilot grid / reference set / Wiener table of this symbol's stagger phase
                 const cfg = this.cfg, fr = this.fr, nC = cfg.nCar, H = fr.H;
                 const Xr = new Float64Array(nC), Xi = new Float64Array(nC), Wt = new Float64Array(nC);
                 let hSum = 0;
@@ -4054,7 +4137,7 @@
                     Xr[k] = (win.Yr[k] * hr + win.Yi[k] * hi) / d;
                     Xi[k] = (win.Yi[k] * hr - win.Yr[k] * hi) / d;
                 }
-                const pil = cfg.pilotIdx, nP = pil.length, ref = [0, 0];
+                const pil = this.cur.pil, nP = pil.length, ref = [0, 0];
                 const zr = new Float64Array(nP), zi = new Float64Array(nP), w = new Float64Array(nP);
                 for (let p = 0; p < nP; p++) {
                     const k = pil[p]; this._pilotRef(sf, p, ref);
@@ -4100,7 +4183,7 @@
             }
 
             _pilotSnr(Xr, Xi, Wt, sf) {
-                const pil = this.cfg.pilotIdx, ref = [0, 0];
+                const pil = this.cur.pil, ref = [0, 0];
                 let evm = 0, evw = 0;
                 for (let p = 0; p < pil.length; p++) {
                     const k = pil[p]; this._pilotRef(sf, p, ref);
@@ -4124,7 +4207,7 @@
 
             // Reference cells of this symbol: values of pilots and (verified) meta carriers → arrays aligned with known.refs
             _refValues(sf, mw) {
-                const refs = this.known.refs, n = refs.length, rr = new Float64Array(n), ri = new Float64Array(n), ref = [0, 0];
+                const refs = this.cur.refs, n = refs.length, rr = new Float64Array(n), ri = new Float64Array(n), ref = [0, 0];
                 for (let i = 0; i < n; i++) {
                     const r = refs[i];
                     if (r.type === 0) { this._pilotRef(sf, r.i, ref); rr[i] = ref[0]; ri[i] = ref[1]; }
@@ -4137,7 +4220,7 @@
             // Pilot-aided channel update (no decisions involved): residual at the reference cells → interpolate over
             // frequency → fold into H.   beta = update strength.
             _updateFromRefs(eq, sf, mw, beta) {
-                const known = this.known, refs = known.refs, n = refs.length, H = this.fr.H, nC = this.cfg.nCar;
+                const known = this.known, refs = this.cur.refs, n = refs.length, H = this.fr.H, nC = this.cfg.nCar;
                 const { rr, ri } = this._refValues(sf, mw);
                 const qr = new Float64Array(n), qi = new Float64Array(n), use = new Uint8Array(n);
                 let gN = 0, gD = 0;
@@ -4162,33 +4245,101 @@
                 resid /= Math.max(rw, 1e-30);
                 const noiseVar = Math.pow(10, -eq.snr / 10);
                 const excess = Math.max(0, resid - 2 * noiseVar);
-                beta = Math.min(0.85, beta + 2.5 * Math.sqrt(excess));
-                const idx = []; for (let i = 0; i < n; i++) if (use[i]) idx.push(i);
-                const m = idx.length; if (m < 2) return;
+                beta = Math.min(0.9, beta + 2.5 * Math.sqrt(excess));
                 // ADDITIVE update (fixes "carrier collapses to 0"): direct channel measurement at each reference cell from the
                 // raw FFT bin (no regulariser, no 1/H), D = Hmeas - H, interpolated over frequency, then H += beta*D.
                 // H = 0 is no longer an absorbing state, so a deep fade can recover.
-                const Dr = new Float64Array(m), Di = new Float64Array(m), raw = [0, 0];
-                for (let j = 0; j < m; j++) {
-                    const i = idx[j], k = refs[i].k;
+                // The interpolation is a local Wiener filter (tables built once), applied after taking out the bulk delay
+                // of H (slope of the pilot phases), so the "change" D is centred in delay and the sinc prior fits.
+                const Dr = new Float64Array(n), Di = new Float64Array(n), raw = [0, 0];
+                const sl = this._delayCenter(H), mid = (nC - 1) / 2;
+                for (let i = 0; i < n; i++) {
+                    const k = refs[i].k;
                     this._rawCell(eq, k, raw);
                     const mr = raw[0] * rr[i] + raw[1] * ri[i], mi = raw[1] * rr[i] - raw[0] * ri[i];
-                    Dr[j] = mr - H.Hr[k]; Di[j] = mi - H.Hi[k];
+                    const er = mr - H.Hr[k], ei = mi - H.Hi[k];
+                    const ph = -sl * (k - mid), c = Math.cos(ph), sn = Math.sin(ph);
+                    Dr[i] = er * c - ei * sn; Di[i] = er * sn + ei * c;
                 }
-                let r = 0;
+                const { M, idx: wi, w: ww } = this.cur.wien;
                 for (let k = 0; k < nC; k++) {
-                    while (r + 1 < m && refs[idx[r + 1]].k <= k) r++;
-                    let vr, vi;
-                    const k0 = refs[idx[r]].k;
-                    if (k <= refs[idx[0]].k) { vr = Dr[0]; vi = Di[0]; }
-                    else if (r + 1 >= m) { vr = Dr[m - 1]; vi = Di[m - 1]; }
-                    else {
-                        const k1 = refs[idx[r + 1]].k, f = (k - k0) / (k1 - k0);
-                        vr = Dr[r] * (1 - f) + Dr[r + 1] * f; vi = Di[r] * (1 - f) + Di[r + 1] * f;
-                    }
-                    H.Hr[k] += beta * vr;
-                    H.Hi[k] += beta * vi;
+                    let vr = 0, vi = 0;
+                    for (let j = 0, o = k * M; j < M; j++, o++) { const q = wi[o], wt = ww[o]; vr += wt * Dr[q]; vi += wt * Di[q]; }
+                    const ph = sl * (k - mid), c = Math.cos(ph), sn = Math.sin(ph);
+                    H.Hr[k] += beta * (vr * c - vi * sn);
+                    H.Hi[k] += beta * (vr * sn + vi * c);
                 }
+            }
+
+            // Re-equalise every carrier of the current symbol with the freshly updated H (same raw bins, same common phase /
+            // slope / gain as measured).  Before this the data was equalised with the H predicted from the PREVIOUS symbols,
+            // i.e. the news in this symbol's own pilots arrived one symbol late.
+            _reEqualize(eq) {
+                const H = this.fr.H, nC = this.cfg.nCar, raw = [0, 0], eps = eq.eps;
+                for (let k = 0; k < nC; k++) {
+                    this._rawCell(eq, k, raw);
+                    const hr = H.Hr[k], hi = H.Hi[k], d = hr * hr + hi * hi + eps;
+                    eq.Xr[k] = (raw[0] * hr + raw[1] * hi) / d;
+                    eq.Xi[k] = (raw[1] * hr - raw[0] * hi) / d;
+                }
+            }
+
+            // Decision-directed refinement.  The pilots anchor the channel estimate; the in-between carriers are only ever
+            // extrapolated from them, so their error would otherwise drift until the next training symbol.  Carriers whose
+            // decision is trustworthy (inside the gate, clearly above the pilot-SNR floor for this modulation, not a
+            // low-amplitude QAM point) are used as extra, slow references.  An outlier test keeps a wrong decision from
+            // pulling H away, and the rate is small, so a burst of wrong decisions can only move H a little.
+            _ddUpdate(eq, ks, dr, di) {
+                const H = this.fr.H, raw = [0, 0], b = OFDM_DD_BETA;
+                for (let i = 0; i < ks.length; i++) {
+                    const k = ks[i], p = dr[i] * dr[i] + di[i] * di[i];
+                    this._rawCell(eq, k, raw);
+                    const mr = (raw[0] * dr[i] + raw[1] * di[i]) / p, mi = (raw[1] * dr[i] - raw[0] * di[i]) / p;
+                    const er = mr - H.Hr[k], ei = mi - H.Hi[k];
+                    const h2 = H.Hr[k] * H.Hr[k] + H.Hi[k] * H.Hi[k];
+                    if (er * er + ei * ei > 0.25 * h2 + 1e-12) continue;      // > 50 % jump: not a believable channel change
+                    H.Hr[k] += b * er; H.Hi[k] += b * ei;
+                }
+            }
+
+            // Where is the channel's impulse response, as seen by the pilot grid?  Pilots every P carriers only see delays
+            // modulo 1/(P·df) (42.7 ms at N=16384, P=8), and our FFT window sits ~20 ms into the CP, so the main path already
+            // appears near half of that range: the adjacent-pilot phase step is then right at ±π and flips branch.
+            // Instead: DFT over the pilots → circular delay-power profile → the window (width = OFDM_WIEN_T) holding the most
+            // energy.  Its centre, taken in [0, span), is the bulk delay we remove before interpolating.
+            // Returns the phase slope in rad per carrier index.
+            _delayCenter(H) {
+                const cfg = this.cfg, pil = this.cur.pil, nP = pil.length, P = pil[1] - pil[0];
+                const span = 1 / (P * cfg.df), res = span / nP;
+                if (!this._dcCos || this._dcCos.length !== nP) {
+                    this._dcCos = new Float64Array(nP); this._dcSin = new Float64Array(nP);
+                    for (let i = 0; i < nP; i++) { this._dcCos[i] = Math.cos(2 * Math.PI * i / nP); this._dcSin[i] = Math.sin(2 * Math.PI * i / nP); }
+                    this._dcE = new Float64Array(nP);
+                }
+                const e = this._dcE, cs = this._dcCos, sn = this._dcSin;
+                for (let q = 0; q < nP; q++) {
+                    let r = 0, im = 0;
+                    for (let p = 0; p < nP; p++) {
+                        const idx = (p * q) % nP, hr = H.Hr[pil[p]], hi = H.Hi[pil[p]];
+                        r += hr * cs[idx] - hi * sn[idx]; im += hr * sn[idx] + hi * cs[idx];
+                    }
+                    e[q] = r * r + im * im;
+                }
+                const wn = Math.max(2, Math.min(nP - 1, Math.round(OFDM_WIEN_T / res)));
+                let acc = 0; for (let i = 0; i < wn; i++) acc += e[i];
+                let best = acc, bi = 0;
+                for (let i = 1; i < nP; i++) { acc += e[(i + wn - 1) % nP] - e[i - 1]; if (acc > best) { best = acc; bi = i; } }
+                // inside that window: centre of the stretch that really carries energy (not the window centre – many windows tie
+                // when the delay spread is short – and not the energy centroid, which sticks to the main path)
+                let peak = 0; for (let q = 0; q < nP; q++) if (e[q] > peak) peak = e[q];
+                if (!this._dcSort || this._dcSort.length !== nP) this._dcSort = new Float64Array(nP);
+                this._dcSort.set(e); this._dcSort.sort();
+                const thr = Math.max(peak * 3.2e-3, 6 * this._dcSort[nP >> 1]);
+                let first = -1, last = -1;
+                for (let i = 0; i < wn; i++) if (e[(bi + i) % nP] >= thr) { if (first < 0) first = i; last = i; }
+                const cen = first < 0 ? wn / 2 : (first + last + 1) / 2;
+                const tauC = (bi + cen) * res;                       // seconds
+                return -2 * Math.PI * cfg.df * tauC;
             }
 
             // raw FFT bin k, de-rotated by the measured common phase/slope and divided by the symbol gain
@@ -4225,7 +4376,10 @@
                 }
                 fr.bad = 0;
                 const mw = ofdmMetaWord(meta.mod, meta.fec, meta.sf, meta.cnt);
-                this._updateFromRefs(eq, sf, mw, 0.5);          // refines eq.g and the channel – pilots + meta only
+                const snr0 = this._pilotSnr(eq.Xr, eq.Xi, eq.Wt, sf);                  // pilot SNR before this symbol's update
+                const betaBase = Math.max(OFDM_BETA_LO, Math.min(OFDM_BETA_HI, OFDM_BETA_LO + (OFDM_BETA_HI - OFDM_BETA_LO) * (snr0 - OFDM_BETA_S0) / (OFDM_BETA_S1 - OFDM_BETA_S0)));
+                this._updateFromRefs(eq, sf, mw, betaBase);          // refines eq.g and the channel – pilots + meta only
+                if (OFDM_REEQ) this._reEqualize(eq);                 // data of THIS symbol is demodulated with the channel that already contains this symbol's pilots
                 // 元数据子载波的均衡结果（BPSK ±1，取 g 精调后的值），供星座图单独着色显示
                 const metaPts = [];
                 for (let j = 0; j < OFDM_META; j++) { const k = cfg.metaIdx[j]; metaPts.push([eq.Xr[k], eq.Xi[k]]); }
@@ -4241,11 +4395,15 @@
                 const m2 = bpc === 1 ? 1 : (bpc >> 1), gate = 0.7 * (bpc === 1 ? 1 : ofdmAxisScale(m2));
                 const bits = [], pts = [], stride = 1;   // send every data carrier to the constellation (was nD/160 -> only ~160 points shown)
                 let good = 0;
+                const ddOn = OFDM_DD && snr >= OFDM_DD_MIN_SNR[mod], ddK = [], ddR = [], ddI = [];
                 for (let u = 0; u < nD; u++) {
-                    const k = cfg.dataIdx[cfg.perm[u]];
+                    const k = this.cur.data[cfg.perm[u]];
                     const xr = eq.Xr[k], xi = eq.Xi[k];
                     ofdmDemapSymbol(mod, xr, xi, bb, 0, dec);
-                    if (Math.abs(xr - dec[0]) < gate && (bpc === 1 || Math.abs(xi - dec[1]) < gate)) good++;
+                    if (Math.abs(xr - dec[0]) < gate && (bpc === 1 || Math.abs(xi - dec[1]) < gate)) {
+                        good++;
+                        if (ddOn && dec[0] * dec[0] + dec[1] * dec[1] > 0.4) { ddK.push(k); ddR.push(dec[0]); ddI.push(dec[1]); }
+                    }
                     const q0 = u * bpc;
                     for (let i = 0; i < bpc; i++) if (q0 + i < valid) bits.push(bb[i] ^ scr[q0 + i]);
                     if (u % stride === 0) pts.push([xr, xi]);
@@ -4258,6 +4416,7 @@
                     consistency: good / nD
                 });
                 if (bits.length && this.cb.onBits) this.cb.onBits(bits);
+                if (ddOn && ddK.length > 0.5 * nD) { this._ddUpdate(eq, ddK, ddR, ddI); this.stats.dd = (this.stats.dd || 0) + 1; }
                 this._advance(eq);
             }
 
@@ -4990,7 +5149,7 @@
 
             ctx.lineWidth = 1;
             ctx.strokeStyle = 'rgba(245, 165, 36, 0.55)';
-            for (const k of cfg.pilotIdx) { const x = xOf(k); ctx.beginPath(); ctx.moveTo(x, h - 4); ctx.lineTo(x, h); ctx.stroke(); }
+            for (const k of (cfg.pilotPh ? [].concat(...cfg.pilotPh) : cfg.pilotIdx)) { const x = xOf(k); ctx.beginPath(); ctx.moveTo(x, h - 4); ctx.lineTo(x, h); ctx.stroke(); }
             ctx.strokeStyle = 'rgba(189, 0, 255, 0.55)';
             for (const k of cfg.metaIdx || []) { const x = xOf(k); ctx.beginPath(); ctx.moveTo(x, h - 4); ctx.lineTo(x, h); ctx.stroke(); }
 
