@@ -5952,7 +5952,17 @@
         const FTN_HDR = 12;             // 类型(1) FID(2) 大小(4) L(1) SEQ(4)
         const FTN_TYPE_DATA = 0, FTN_TYPE_INFO = 1;
         const FTN_DENSE_MAX = 64;       // k 不超过这个值时用“稠密随机组合”（几乎只需 k+2 个包）
-        const FTN_GE_LIMIT = 1400;      // 高斯消元的最大未知块数
+        const FTN_GE_LIMIT = 1400;
+        const FTN_SLICE_MS = 8;         // 剥皮连锁 / 高斯消元每片最长占用主线程的毫秒数（片间让出给界面 / 音频接收）
+        // 片与片之间的让出用 MessageChannel 而不是 setTimeout：后台标签页里 setTimeout 会被限流到 ≥1 秒一次（长时间隐藏后甚至一分钟一次），
+        // 一个要几十片的求解就会拖上几十秒；MessageChannel 不受这个限流。没有 MessageChannel 的环境退回 setTimeout。
+        const ftnYield = (() => {
+            if (typeof MessageChannel === 'undefined') return cb => setTimeout(cb, 0);
+            const q = [], ch = new MessageChannel();
+            ch.port1.onmessage = () => { const f = q.shift(); if (f) f(); };
+            if (ch.port1.unref) ch.port1.unref();
+            return cb => { q.push(cb); ch.port2.postMessage(0); };
+        })();      // 高斯消元的最大未知块数
 
         const FTN_CRC_TABLE = (function () {
             const t = new Uint32Array(256);
@@ -6070,13 +6080,19 @@
                 this.eqs = [];
                 this.done = false;
                 this.lastGE = 0;
+                this.solving = false;       // 高斯消元正分片进行中
+                this.peeling = false;       // 剥皮连锁正分片进行中
+                this.stack = [];
+                this.onDone = null;         // 异步解完时的回调
             }
 
             add(seq, payload) {
                 if (this.done || this.seen.has(seq)) return false;
                 this.seen.add(seq);
                 this.received++;
-                const val = payload.slice(0, this.L);
+                // 载荷按 32 位字存放（剥皮、消元里的异或都按字做，L=255 字节只需 64 次）
+                const val = new Uint32Array((this.L + 3) >>> 2);
+                new Uint8Array(val.buffer).set(payload.subarray(0, this.L));
                 const live = [];
                 for (const j of ftnNeighbors(this.fid, seq, this.k)) {
                     const kb = this.known[j];
@@ -6092,9 +6108,18 @@
                 return true;
             }
 
-            _resolve(j0, v0) {                              // 剥皮：一个块解出来后，连锁解出更多
-                const stack = [[j0, v0]];
+            // 剥皮：一个块解出来后，连锁解出更多。连锁可能一口气解出上千块（水滴凑齐的最后一刻），
+            // 所以栈按 FTN_SLICE_MS 分片处理，片间把主线程还给界面；尚未处理完时新来的包照常入表，处理到时自然被连锁带上。
+            _resolve(j0, v0) {
+                this.stack.push([j0, v0]);
+                if (!this.peeling) this._drain(false);
+            }
+
+            _drain(async) {
+                const t0 = performance.now(), stack = this.stack;
+                let n = 0;
                 while (stack.length) {
+                    if (this.done) { stack.length = 0; break; }
                     const [b, v] = stack.pop();
                     if (this.known[b]) continue;
                     this.known[b] = v; this.nKnown++;
@@ -6108,48 +6133,101 @@
                         else if (eq.live.length === 0) eq.dead = true;
                     }
                     this.adj[b] = [];
+                    if ((++n & 7) === 0 && stack.length && performance.now() - t0 > FTN_SLICE_MS) {
+                        this.peeling = true;
+                        ftnYield(() => this._drain(true));
+                        return;
+                    }
                 }
-                if (this.nKnown >= this.k) this.done = true;
+                this.peeling = false;
+                if (this.nKnown >= this.k && !this.done) {
+                    this.done = true;
+                    if (async && this.onDone) this.onDone();
+                }
             }
 
-            // 剥皮卡住时，对剩余未知块做 GF(2) 高斯消元
+            // 剥皮卡住时，对剩余未知块做 GF(2) 高斯消元。
+            // 三点处理，避免卡住界面：
+            //  ① 分两步，避免“白算”：先只在位矩阵上消元（每行 u/32 个字）并记下行运算序列——秩不够就在这一步廉价地放弃，
+            //     不碰任何载荷；以前每次失败的尝试也要把 L 字节载荷异或个遍，成本和成功的一次一样大。
+            //  ② 确定可解后，再把记下的行运算作用到载荷上，按 32 位字异或（L=255 字节只需 64 次，而不是 255 次）。
+            //  ③ 整个求解是生成器，按约 8 ms 一片执行，片与片之间把主线程还给界面和音频接收；
+            //     开始时把方程快照下来，求解期间新来的包照常剥皮、不会影响正在进行的求解。
+            //     解完后 done 置位并回调 onDone（若在第一片内就解完，则同步完成，调用方照旧检查 done）。
             _maybeGE() {
+                if (this.solving || this.peeling) return;        // 状态还没落定（剥皮 / 消元在分片进行）：别拿过期的未知数去算
                 const u = this.k - this.nKnown;
                 if (u <= 0 || u > FTN_GE_LIMIT) return;
                 const rows = this.eqs.filter(e => !e.dead);
                 if (rows.length < u) return;
                 if (rows.length < this.lastGE + Math.max(1, Math.floor(u * 0.03)) && this.k > FTN_DENSE_MAX) return;
                 this.lastGE = rows.length;
+                this._runJob(this._geJob(u, rows), false);
+            }
+
+            _runJob(job, async) {
+                const t0 = performance.now();
+                for (; ;) {
+                    if (job.next().done) {
+                        this.solving = false;
+                        if (async && this.done && this.onDone) this.onDone();
+                        return;
+                    }
+                    if (performance.now() - t0 > FTN_SLICE_MS) {
+                        this.solving = true;
+                        ftnYield(() => this._runJob(job, true));
+                        return;
+                    }
+                }
+            }
+
+            * _geJob(u, rows) {
                 const col = new Map(); let c = 0;
                 for (let j = 0; j < this.k; j++) if (!this.known[j]) col.set(j, c++);
-                const W = (u + 31) >>> 5, m = rows.length;
+                const W = (u + 31) >>> 5, m = rows.length, L = this.L, Lw = (L + 3) >>> 2;
+                // 快照：位矩阵 + 载荷（32 位字）
                 const bits = rows.map(e => { const w = new Uint32Array(W); for (const j of e.live) { const cc = col.get(j); w[cc >>> 5] |= 1 << (cc & 31); } return w; });
                 const vals = rows.map(e => e.val.slice());
+                const ids = new Int32Array(m); for (let i = 0; i < m; i++) ids[i] = i;     // 当前第 i 行对应的原始行号（交换只动这张表）
+                let ops = new Int32Array(1 << 16), nOps = 0;
                 let rank = 0;
                 const pivotRow = new Int32Array(u).fill(-1);
+                // ---- ① 位矩阵消元 ----
                 for (let cc = 0; cc < u; cc++) {
                     const wi = cc >>> 5, mask = 1 << (cc & 31);
                     let p = -1;
                     for (let r = rank; r < m; r++) if (bits[r][wi] & mask) { p = r; break; }
-                    if (p < 0) return;                       // 秩不够，等更多包
-                    if (p !== rank) { [bits[p], bits[rank]] = [bits[rank], bits[p]];[vals[p], vals[rank]] = [vals[rank], vals[p]]; }
+                    if (p < 0) return;                       // 秩不够，等更多包（还没碰载荷）
+                    if (p !== rank) { const tb = bits[p]; bits[p] = bits[rank]; bits[rank] = tb; const ti = ids[p]; ids[p] = ids[rank]; ids[rank] = ti; }
+                    const bp = bits[rank], src = ids[rank];
                     for (let r = 0; r < m; r++) {
                         if (r !== rank && (bits[r][wi] & mask)) {
-                            const br = bits[r], bp = bits[rank];
+                            const br = bits[r];
                             for (let w = wi; w < W; w++) br[w] ^= bp[w];
-                            ftnXor(vals[r], vals[rank]);
+                            if (nOps + 2 > ops.length) { const no = new Int32Array(ops.length * 2); no.set(ops); ops = no; }
+                            ops[nOps++] = ids[r]; ops[nOps++] = src;
                         }
                     }
                     pivotRow[cc] = rank++;
+                    if ((cc & 7) === 7) { yield; if (this.done) return; }
                 }
-                for (const [j, cc] of col) { this.known[j] = vals[pivotRow[cc]]; this.nKnown++; }
+                // ---- ② 把行运算作用到载荷上（32 位字） ----
+                for (let i = 0; i < nOps; i += 2) {
+                    const d = vals[ops[i]], sv = vals[ops[i + 1]];
+                    for (let w = 0; w < Lw; w++) d[w] ^= sv[w];
+                    if ((i & 1023) === 1022) { yield; if (this.done) return; }
+                }
+                for (const [j, cc] of col) {
+                    if (this.known[j]) continue;             // 求解期间已被剥皮解出的块（值相同）
+                    this.known[j] = vals[ids[pivotRow[cc]]]; this.nKnown++;
+                }
                 this.done = true;
             }
 
             result() {
                 if (!this.done) return null;
                 const out = new Uint8Array(this.k * this.L);
-                for (let j = 0; j < this.k; j++) out.set(this.known[j], j * this.L);
+                for (let j = 0; j < this.k; j++) { const kb = this.known[j]; out.set(new Uint8Array(kb.buffer, kb.byteOffset, this.L), j * this.L); }
                 return out.subarray(0, this.size);
             }
         }
@@ -6336,6 +6414,7 @@
                         decoder: new FountainDecoder(p.fid, k, p.L, p.size), packets: 0, startedAt: Date.now(),
                         done: false, bytes: null, id: ++FountainReceiver._seq
                     };
+                    f.decoder.onDone = () => this._complete(f);       // 高斯消元分片异步解完时走这里
                     this.files.set(p.fid, f);
                     if (this.files.size > 6) this.files.delete(this.files.keys().next().value);
                     if (this.cb.onStart) this.cb.onStart(f);
@@ -6352,15 +6431,17 @@
                 } else {
                     f.decoder.add(p.seq, p.payload);
                 }
-                if (f.decoder.done && !f.done) {
-                    f.done = true;
-                    f.bytes = f.decoder.result();
-                    f.crcOk = f.crc === null ? null : (ftnCrc32(f.bytes, 0, f.bytes.length) === f.crc);
-                    if (this.cb.onProgress) this.cb.onProgress(f);
-                    if (this.cb.onComplete) this.cb.onComplete(f);
-                    return;
-                }
+                if (f.decoder.done && !f.done) { this._complete(f); return; }
                 if (this.cb.onProgress) this.cb.onProgress(f);
+            }
+
+            _complete(f) {
+                if (f.done || !f.decoder.done) return;
+                f.done = true;
+                f.bytes = f.decoder.result();
+                f.crcOk = f.crc === null ? null : (ftnCrc32(f.bytes, 0, f.bytes.length) === f.crc);
+                if (this.cb.onProgress) this.cb.onProgress(f);
+                if (this.cb.onComplete) this.cb.onComplete(f);
             }
 
             // 解析信息包：整包 CRC + 文件名。文件解完后才收到时，用补到的 CRC 立即补验
