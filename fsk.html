@@ -3514,6 +3514,9 @@
         const OFDM_WIEN_T = 0.034, OFDM_WIEN_S2 = 0.01, OFDM_WIEN_M = 16;
         // update rate of the channel estimate follows the measured pilot SNR: BETA_LO at ≤ S0 dB … BETA_HI at ≥ S1 dB
         const OFDM_BETA_LO = 0.5, OFDM_BETA_HI = 0.85, OFDM_BETA_S0 = 6, OFDM_BETA_S1 = 14;
+        // slope tracking: how far the window may wander per symbol (samples) → sets the Kalman gain of the delay-slope estimate;
+        // reliability dead-band (dB): a symbol this much noisier than the running level counts as a glitch and updates the channel less
+        const OFDM_B_Q = 0.02, OFDM_REL_DB = 4;
         const OFDM_REEQ = 1;                       // demodulate a symbol's data with the channel that already contains its own pilots
         const OFDM_DD = 1, OFDM_DD_BETA = 0.2;     // gated decision-directed refinement of the data carriers' channel estimate
         // pilot SNR (dB) above which decisions of each modulation (BPSK…256QAM) are reliable enough for the DD update
@@ -4209,7 +4212,9 @@
                     zi[p] = Xi[k] * ref[0] - Xr[k] * ref[1];
                     w[p] = Wt[k] * Math.hypot(zr[p], zi[p]);
                 }
-                // slope: phase difference of neighbouring pilots
+                // Common phase a and delay slope b of this symbol, measured on the pilots.
+                //  1. coarse slope from the phase step between neighbouring pilots (unambiguous for any realistic timing error)
+                const dk = pil[1] - pil[0], mid = (nC - 1) / 2;
                 let sr = 0, si = 0;
                 for (let p = 1; p < nP; p++) {
                     const ar = zr[p] * zr[p - 1] + zi[p] * zi[p - 1];
@@ -4217,10 +4222,39 @@
                     const ww = w[p] * w[p - 1], mag = Math.hypot(ar, ai) + 1e-30;
                     sr += ww * ar / mag; si += ww * ai / mag;
                 }
-                const bMeas = Math.atan2(si, sr) / 8;
+                const b0 = Math.atan2(si, sr) / dk;
+                //  2. refine: phase of every pilot after taking out the coarse slope is small → weighted least squares over ALL
+                //     pilots for the remaining common phase and slope (the neighbour-difference mean only really uses the two
+                //     end pilots; with 4000+ carriers that is the difference between ~0.3 and ~0.02 samples of precision)
+                let cr = 0, ci = 0;
+                for (let p = 0; p < nP; p++) {
+                    const ph = -b0 * (pil[p] - mid), c = Math.cos(ph), s = Math.sin(ph);
+                    cr += w[p] * (zr[p] * c - zi[p] * s); ci += w[p] * (zr[p] * s + zi[p] * c);
+                }
+                const a0 = Math.atan2(ci, cr);
+                let Sw = 0, Sx = 0, Sxx = 0, Sr = 0, Sxr = 0; const rp = new Float64Array(nP);
+                for (let p = 0; p < nP; p++) {
+                    const x = pil[p] - mid, ph = -(a0 + b0 * x), c = Math.cos(ph), s = Math.sin(ph);
+                    const r = Math.atan2(zr[p] * s + zi[p] * c, zr[p] * c - zi[p] * s);
+                    rp[p] = r; const ww = w[p];
+                    Sw += ww; Sx += ww * x; Sxx += ww * x * x; Sr += ww * r; Sxr += ww * x * r;
+                }
+                const det = Sw * Sxx - Sx * Sx;
+                const db = det > 1e-30 ? (Sw * Sxr - Sx * Sr) / det : 0;
+                const bMeas = b0 + db;
+                //  3. how good is that measurement?  residual phase noise → variance of the slope estimate
+                let res2 = 0;
+                const da = (Sr - db * Sx) / Math.max(Sw, 1e-30);
+                for (let p = 0; p < nP; p++) { const e = rp[p] - da - db * (pil[p] - mid); res2 += w[p] * e * e; }
+                const noise = Math.max(res2 / Math.max(Sw, 1e-30), 1e-6);                    // rad² per pilot
+                const varB = noise * Sw / Math.max(det, 1e-30);                                // var of the slope estimate
+                //  4. Kalman-style gain: the window can wander by Q_B per symbol (OFDM_B_Q samples); trust the measurement
+                //     as much as its precision allows.  Narrow band / low SNR → heavy smoothing as before (floor 0.12);
+                //     wide band at good SNR, or a sudden timing step → the new slope is taken almost at once.
+                const qB = OFDM_B_Q * 2 * Math.PI / cfg.N, K = Math.max(0.12, Math.min(1, qB * qB / (qB * qB + varB)));
                 const inn = bMeas - fr.bS;                          // innovation = how much the window drifted since last symbol
-                fr.bS += 0.12 * inn;                                // smoothed slope is what we correct with (raw slope × 300 carriers is too noisy)
-                const b = fr.bS, mid = (nC - 1) / 2;
+                fr.bS += K * inn;
+                const b = fr.bS;
                 let ar_ = 0, ai_ = 0;
                 for (let p = 0; p < nP; p++) {
                     const ph = -b * (pil[p] - mid), c = Math.cos(ph), s = Math.sin(ph);
@@ -4442,7 +4476,13 @@
                 const mw = ofdmMetaWord(meta.mod, meta.fec, meta.sf, meta.cnt);
                 const snr0 = this._pilotSnr(eq.Xr, eq.Xi, eq.Wt, sf);                  // pilot SNR before this symbol's update
                 const betaBase = Math.max(OFDM_BETA_LO, Math.min(OFDM_BETA_HI, OFDM_BETA_LO + (OFDM_BETA_HI - OFDM_BETA_LO) * (snr0 - OFDM_BETA_S0) / (OFDM_BETA_S1 - OFDM_BETA_S0)));
-                this._updateFromRefs(eq, sf, mw, betaBase);          // refines eq.g and the channel – pilots + meta only
+                // Reliability: a symbol whose pilots are far noisier than the running level (a glitch, a sample slip inside the
+                // symbol) must not be allowed to write half of its garbage into the channel estimate.  Kalman gain: with
+                // K0 = betaBase at the running noise level, K = K0·r / (K0·r + 1 − K0), r = running noise power / this symbol's.
+                const dSnr = snr0 + 10 * Math.log10(1.5 / (2 - betaBase)) - this.fr.snr;                  // dB vs the running level
+                const relR = Math.pow(10, Math.min(10, dSnr > -OFDM_REL_DB ? Math.max(dSnr, 0) : dSnr + OFDM_REL_DB) / 10);   // dead-band: normal fluctuation / tracking lag is not a glitch
+                const betaEff = Math.min(0.9, betaBase * relR / (betaBase * relR + 1 - betaBase));
+                this._updateFromRefs(eq, sf, mw, betaEff);          // refines eq.g and the channel – pilots + meta only
                 if (OFDM_REEQ) this._reEqualize(eq);                 // data of THIS symbol is demodulated with the channel that already contains this symbol's pilots
                 // 元数据子载波的均衡结果（BPSK ±1，取 g 精调后的值），供星座图单独着色显示
                 const metaPts = [];
@@ -4464,7 +4504,7 @@
                 const m2 = bpc === 1 ? 1 : (bpc >> 1), gate = 0.7 * (bpc === 1 ? 1 : ofdmAxisScale(m2));
                 const bits = [], pts = [], stride = 1;   // send every data carrier to the constellation (was nD/160 -> only ~160 points shown)
                 let good = 0;
-                const ddOn = OFDM_DD && snr >= OFDM_DD_MIN_SNR[mod], ddK = [], ddR = [], ddI = [];
+                const ddOn = OFDM_DD && snr >= OFDM_DD_MIN_SNR[mod] && snr > fr.snr - 6, ddK = [], ddR = [], ddI = [];
                 for (let u = 0; u < nD; u++) {
                     const k = this.cur.data[cfg.perm[u]];
                     const xr = eq.Xr[k], xi = eq.Xi[k];
