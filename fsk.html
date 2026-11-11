@@ -1073,6 +1073,70 @@
             margin-top: 3px;
             line-height: 1.5;
         }
+
+        /* 区段内的次级小标题（喷泉码的"最近一个包"） */
+        .det-h.sub {
+            margin-top: 8px;
+            color: var(--text-secondary);
+            letter-spacing: 0.06em;
+        }
+
+        /* 最近一个包：左边十六进制转储，右边字段标注（悬停字段高亮对应字节） */
+        .det-pkt {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            align-items: flex-start;
+            margin-top: 4px;
+        }
+
+        .det-hex {
+            min-width: 0;
+            font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+            font-size: 0.67rem;
+            line-height: 1.55;
+            max-height: 132px;
+            overflow-y: auto;
+            padding: 4px 6px;
+            background: rgba(120, 160, 220, 0.08);
+            border: 1px solid rgba(148, 163, 184, 0.22);
+            border-radius: 6px;
+        }
+
+        .det-hex .hx { display: flex; gap: 7px; white-space: nowrap; }
+        .det-hex .hx-off { flex: 0 0 auto; color: var(--text-secondary); opacity: 0.8; }
+
+        .det-hex .hx-bytes {
+            display: grid;
+            grid-template-columns: repeat(16, 1.55em);
+            gap: 0 4px;
+        }
+
+        .det-hex .hb { border-radius: 2px; }
+        .det-hex .hb.pad { opacity: 0.3; }
+        .det-hex .hb.hl { background: rgba(245, 165, 36, 0.25); }
+        .det-hex .empty { color: var(--text-secondary); }
+
+        .det-fields {
+            min-width: 0;
+            font-size: 0.67rem;
+            line-height: 1.5;
+        }
+
+        .pf {
+            display: flex;
+            align-items: baseline;
+            gap: 5px;
+            padding: 1px 4px;
+            border-radius: 3px;
+            cursor: default;
+        }
+
+        .pf:hover { background: rgba(120, 160, 220, 0.14); }
+        .pf > i { flex: 0 0 auto; width: 7px; height: 7px; border-radius: 2px; align-self: center; }
+        .pf > .pf-name { flex: 0 0 auto; color: var(--text-secondary); }
+        .pf > .pf-val { flex: 1 1 auto; min-width: 0; font-weight: 500; color: var(--text-primary); overflow-wrap: anywhere; }
+        .pf > .pf-meta { flex: 0 0 auto; color: var(--text-secondary); opacity: 0.65; font-size: 0.62rem; }
     </style>
 </head>
 
@@ -1260,6 +1324,12 @@
                         <canvas id="detChan" class="chart-canvas" style="height: 92px;"></canvas>
                         <div id="detChanText" style="color: var(--text-secondary); font-size: 0.75rem; text-align: center;"></div>
                     </div>
+                    <!-- 信道冲激响应：|H| 逆变换回时域（OFDM 专属，随接收显示） -->
+                    <div id="detIrrWrap" class="chart-card" style="display: none; margin-top: 0;">
+                        <div class="chart-head"><span class="chart-name">信道冲激响应 h[τ]</span><span class="chart-tag">IFFT · 20ms</span></div>
+                        <canvas id="detIrr" class="chart-canvas" style="height: 92px;"></canvas>
+                        <div id="detIrrText" style="color: var(--text-secondary); font-size: 0.75rem; text-align: center;"></div>
+                    </div>
                 </div>
                 <!-- 文件接收提示 -->
                 <div id="ftnStatus" style="align-self: stretch; color: var(--neon-cyan); font-size: 0.85rem; min-height: 1.3em;"></div>
@@ -1287,10 +1357,16 @@
                         <div class="det-meta-line"><span>锁定 <b id="detLockCount">0</b> 次</span><span>失锁 <b id="detLossCount">0</b> 次</span></div>
                     </div>
 
-                    <!-- 喷泉码 LT（文件传输）：卡片按 #tplFtnCard 克隆 -->
+                    <!-- 喷泉码 LT（文件传输）：卡片按 #tplFtnCard 克隆；下面是最近一个包的转储 -->
                     <div class="det-sec" id="detFtnSec" style="display: none;">
                         <div class="det-h">喷泉码 LT（文件传输）</div>
                         <div class="det-grid" id="detFtnGrid"></div>
+                        <div class="det-h sub">最近收到的包</div>
+                        <div class="det-pkt">
+                            <div class="det-hex" id="detFtnHex"><span class="empty">等待水滴包…</span></div>
+                            <div class="det-fields" id="detFtnFields"></div>
+                        </div>
+                        <div class="det-hint" id="detFtnPktInfo"></div>
                     </div>
 
                     <!-- 纠错 · 分组 RS -->
@@ -1448,6 +1524,17 @@
             <div class="det-bar"><i></i></div>
             <div class="det-hint"></div>
         </div>
+    </template>
+    <!-- 十六进制转储：一行 = 偏移 + 16 个字节格 -->
+    <template id="tplHexRow">
+        <div class="hx"><b class="hx-off"></b><span class="hx-bytes"></span></div>
+    </template>
+    <template id="tplHexByte">
+        <span class="hb"></span>
+    </template>
+    <!-- 字段标注行：色块 + 名称 + 值 + 偏移/长度 -->
+    <template id="tplPktField">
+        <div class="pf"><i></i><span class="pf-name"></span><b class="pf-val"></b><span class="pf-meta"></span></div>
     </template>
 
     <dialog id="message-modal">
@@ -4978,7 +5065,122 @@
                 frag.appendChild(card);
             }
             grid.appendChild(frag);
+            detFtnDumpFill();
             return true;
+        }
+
+        // 最近一个包的十六进制转储 + 字段标注（Wireshark 那样逐个字段标出来，悬停字段高亮对应字节）。
+        // 只有换了包才重建 DOM：每 250 ms 更新一次，重复重建上万个 span 太浪费。
+        const FTN_FIELD_STYLE = {
+            type: { name: '类型 / 版本', color: '#f5a524' },
+            fid: { name: '文件号 FID', color: '#7dd3fc' },
+            size: { name: '文件大小', color: '#a78bfa' },
+            len: { name: '块大小 L', color: '#f472b6' },
+            seq: { name: '序号 SEQ', color: '#22d3ee' },
+            pload: { name: '载荷', color: 'var(--text-primary)' },
+            icrc: { name: '整包 CRC32', color: '#35d07f' },
+            nlen: { name: '名长', color: '#f472b6' },
+            name: { name: '文件名', color: '#7dd3fc' },
+            crc: { name: '本包 CRC32', color: '#35d07f' }
+        };
+
+        // 把包切成字段：key 决定颜色，val 是给人看的解释，[from, to) 是字节范围
+        function ftnPacketFields(p, k) {
+            const raw = p.raw, n = raw.length;
+            const u16 = i => (raw[i] << 8) | raw[i + 1];
+            const u32 = i => ((raw[i] << 24) | (raw[i + 1] << 16) | (raw[i + 2] << 8) | raw[i + 3]) >>> 0;
+            const hex32 = i => '0x' + u32(i).toString(16).toUpperCase().padStart(8, '0');
+            const crcAt = FTN_HDR + p.L;
+            const out = [
+                { key: 'type', from: 0, to: 1, val: `v${raw[0] >> 4} · ${p.type === FTN_TYPE_INFO ? '文件信息' : '数据水滴'}` },
+                { key: 'fid', from: 1, to: 3, val: `${u16(1)}` },
+                { key: 'size', from: 3, to: 7, val: `${u32(3)} B` },
+                { key: 'len', from: 7, to: 8, val: `${raw[7]} B` },
+                { key: 'seq', from: 8, to: 12, val: `${u32(8)}` }
+            ];
+            if (p.type === FTN_TYPE_INFO) {
+                const pl = p.payload, nl = Math.min(pl[4], pl.length - 5);
+                let nm = '';
+                try { nm = new TextDecoder('utf-8').decode(pl.subarray(5, 5 + nl)); } catch (e) { nm = ''; }
+                out.push({ key: 'icrc', from: 12, to: 16, val: hex32(12) });
+                out.push({ key: 'nlen', from: 16, to: 17, val: `${raw[16]} B` });
+                out.push({ key: 'name', from: 17, to: 17 + nl, val: nm || '—' });
+            } else {
+                out.push({ key: 'pload', from: 12, to: crcAt, val: `${p.L} B · 度 d=${ftnNeighbors(p.fid, p.seq, k).length}` });
+            }
+            out.push({ key: 'crc', from: crcAt, to: n, val: `${hex32(crcAt)} · 校验通过` });
+            return out;
+        }
+
+        let ftnHexTag = 0, ftnHexSpans = [];
+
+        function detFtnDumpFill() {
+            const box = detEl('detFtnHex'), list = detEl('detFtnFields'), info = detEl('detFtnPktInfo');
+            if (!box || !list || !info) return;
+            const last = ftnReceiver && ftnReceiver.last;
+            if (!last) { info.textContent = ''; return; }
+            const p = last.p, raw = p.raw || new Uint8Array(0), n = raw.length;
+
+            if (last.tag !== ftnHexTag) {
+                ftnHexTag = last.tag;
+                const f = ftnReceiver.files.get(p.fid);
+                const k = f ? f.k : Math.max(1, Math.ceil(p.size / p.L));
+                const fields = ftnPacketFields(p, k);
+
+                // 每个字节属于哪个字段（用来上色）
+                const keyAt = new Array(n).fill(null);
+                for (const fd of fields) for (let i = fd.from; i < Math.min(fd.to, n); i++) keyAt[i] = fd.key;
+
+                ftnHexSpans = [];
+                box.textContent = '';
+                const frag = document.createDocumentFragment();
+                for (let off = 0; off < n; off += 16) {
+                    const row = detTpl('tplHexRow');
+                    row.querySelector('.hx-off').textContent = off.toString(16).toUpperCase().padStart(4, '0');
+                    const cell = row.querySelector('.hx-bytes');
+                    for (let i = 0; i < 16; i++) {
+                        const at = off + i, b = detTpl('tplHexByte');
+                        if (at < n) {
+                            b.textContent = raw[at].toString(16).toUpperCase().padStart(2, '0');
+                            const st = FTN_FIELD_STYLE[keyAt[at]];
+                            if (st) b.style.color = st.color;
+                            ftnHexSpans[at] = b;
+                        } else {
+                            b.className = 'hb pad';
+                            b.textContent = '··';
+                        }
+                        cell.appendChild(b);
+                    }
+                    frag.appendChild(row);
+                }
+                box.appendChild(frag);
+
+                // 字段表：悬停时把对应字节点亮
+                list.textContent = '';
+                const lfrag = document.createDocumentFragment();
+                for (const fd of fields) {
+                    const st = FTN_FIELD_STYLE[fd.key] || { name: fd.key, color: '#94a3b8' };
+                    const row = detTpl('tplPktField');
+                    row.querySelector('i').style.background = st.color;
+                    row.querySelector('.pf-name').textContent = st.name;
+                    row.querySelector('.pf-val').textContent = fd.val;
+                    row.querySelector('.pf-meta').textContent = `@${fd.from} · ${fd.to - fd.from}B`;
+                    const mark = on => {
+                        for (let i = fd.from; i < fd.to && i < n; i++) {
+                            const s = ftnHexSpans[i];
+                            if (s) s.classList[on ? 'add' : 'remove']('hl');
+                        }
+                    };
+                    row.onmouseenter = () => mark(true);
+                    row.onmouseleave = () => mark(false);
+                    lfrag.appendChild(row);
+                }
+                list.appendChild(lfrag);
+            }
+
+            const when = last.t ? new Date(last.t).toLocaleTimeString() : '';
+            info.textContent = `包 #${last.tag} · ${n} B · ${p.type === FTN_TYPE_INFO ? '文件信息' : '数据水滴'} · CRC32 通过` +
+                (when ? ` · ${when}` : '');
         }
 
         // 纠错区（所有模式通用）：卡片带实时有效速率与批次堆积条带。
@@ -5011,6 +5213,10 @@
             if (ct) ct.textContent = '';
             const cw = detEl('detChanWrap');
             if (cw) cw.style.display = 'none';
+            const irr = detEl('detIrrText');
+            if (irr) irr.textContent = '';
+            const iw = detEl('detIrrWrap');
+            if (iw) iw.style.display = 'none';
             const br = detEl('detBrief');
             if (br) br.textContent = '';
             const tag = detEl('constTag');
@@ -5027,6 +5233,7 @@
             updateConstTag();
             const d = demodulator;
             const cw = detEl('detChanWrap');
+            const iw = detEl('detIrrWrap');
             const ofdm = !!(selectedMode === MODES.ofdm && d && d.rx);
             ex.style.display = '';
 
@@ -5037,6 +5244,7 @@
             if (ofdm) {
                 detOfdmFill(d);                 // 内部再按有无数据决定"最近符号 / 跟踪环"是否显示
                 if (cw) { cw.style.display = ''; drawChannelResponse(d); }
+                if (iw) { iw.style.display = ''; drawImpulseResponse(d); }
                 return;
             }
             const bps = (d && d.bitsPerSymbol) ? d.bitsPerSymbol : 1;
@@ -5048,6 +5256,7 @@
             detRateValue('detBasicChanV', 'detBasicChanU', rate);
             detRateValue('detBasicNetV', 'detBasicNetU', rate * fecRateOf(fecProfileId()));
             if (cw) cw.style.display = 'none';
+            if (iw) iw.style.display = 'none';
         }
 
         // 星座图卡片右上的小标签：显示当前解调调制阶数与判决点数
@@ -5263,6 +5472,121 @@
             for (const k of cfg.metaIdx || []) { const x = xOf(k); ctx.beginPath(); ctx.moveTo(x, h - 4); ctx.lineTo(x, h); ctx.stroke(); }
 
             if (txt) txt.textContent = `信道频率响应 |H| min ${mn.toFixed(1)} / max +${mx.toFixed(1)} · 橙=导频 紫=meta`;
+        }
+
+        // 信道冲激响应：把频域估计 H(k) 逆变换回时域，看多径结构。
+        // 带内加汉宁窗压旁瓣——矩形窗的 -13 dB 旁瓣很容易被误读成假多径；
+        // 时延分辨率只由占用带宽决定（≈ 1/BW），横轴以最强径为 0 点，只画前 20 ms。
+        const CIR_SPAN_MS = 20, CIR_PRE_MS = 1, CIR_FLOOR_DB = 36;
+        let cirFft = null, cirFftN = 0, cirRe = null, cirIm = null, cirPow = null;
+
+        function drawImpulseResponse(d) {
+            const cv = document.getElementById('detIrr'), txt = document.getElementById('detIrrText');
+            if (!cv) return;
+            if (!d.rx || !d.rx.fr) { if (txt) txt.textContent = '冲激响应：等待锁定'; return; }
+            const fr = d.rx.fr, H = fr.H, cfg = d.rx.cfg, nC = cfg.nCar, N = cfg.N, fs = cfg.fs;
+            if (!cirFft || cirFftN !== N) {
+                cirFft = new OfdmFFT(N); cirFftN = N;
+                cirRe = new Float64Array(N); cirIm = new Float64Array(N); cirPow = new Float64Array(N);
+            }
+            const re = cirRe, im = cirIm;
+            re.fill(0); im.fill(0);
+            for (let i = 0; i < nC; i++) {
+                const w = 0.5 - 0.5 * Math.cos(2 * Math.PI * (i + 0.5) / nC);
+                re[cfg.kLo + i] = H.Hr[i] * w;
+                im[cfg.kLo + i] = H.Hi[i] * w;
+            }
+            cirFft.transform(re, im, true);
+
+            const pow = cirPow;
+            let peak = 0, pAt = 0;
+            for (let i = 0; i < N; i++) {
+                const v = re[i] * re[i] + im[i] * im[i];
+                pow[i] = v;
+                if (v > peak) { peak = v; pAt = i; }
+            }
+            if (!(peak > 0)) { if (txt) txt.textContent = '冲激响应：无能量'; return; }
+
+            // 时轴零点取接收机的定时点：FFT 窗相对符号起点前移了 (cp - margin) 个样点，
+            // 所以把逆变换的结果整体转回去，横轴才是真正的"相对首径时延"。
+            // 直接以最强径对齐不行——更早的弱路径会被挤出窗外。
+            const W0 = Math.round((cfg.cp - cfg.margin) * (1 + (fr.delta || 0)));
+            const idx = a => ((a - W0) % N + N) % N;               // 绝对时延（样点）→ 缓冲区下标
+            const pRel = ((pAt + W0) % N + N) % N;                 // 最强径的绝对时延
+            const pre = Math.round(CIR_PRE_MS * fs / 1000), len = Math.round((CIR_PRE_MS + CIR_SPAN_MS) * fs / 1000);
+            // 窗固定落在定时点之后（-1 … 20 ms）：接收机的定时跟着首径走，窗不会漂；
+            // 只有最强径明显跑到窗外（定时估计偏了）才退回按最强径对齐
+            const near = pRel < Math.round(CIR_SPAN_MS * fs / 1000) && pRel > -pre;
+            const start = (near ? 0 : pRel) - pre;
+            const at = i => pow[idx(start + i)] / peak;
+
+            // RMS 时延扩展：按功率加权的时延标准差（以最强径为参照，与参照点无关）
+            let sum = 0, sumT = 0;
+            for (let i = 0; i < len; i++) { const pv = at(i); sum += pv; sumT += pv * (start + i - pRel) / fs * 1000; }
+            const meanT = sum > 0 ? sumT / sum : 0;
+            let varT = 0;
+            for (let i = 0; i < len; i++) { const d2 = (start + i - pRel) / fs * 1000 - meanT; varT += at(i) * d2 * d2; }
+            const rms = sum > 0 ? Math.sqrt(varT / sum) : 0;
+
+            const dpr = window.devicePixelRatio || 1;
+            const w = cv.clientWidth || 300, h = cv.clientHeight || 70;
+            if (cv.width !== Math.round(w * dpr) || cv.height !== Math.round(h * dpr)) {
+                cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr);
+            }
+            const ctx = cv.getContext('2d');
+            ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+            ctx.clearRect(0, 0, w, h);
+
+            // 每个像素列取窗内的最大值，避免抽点漏掉窄峰
+            const cols = Math.max(2, Math.round(w));
+            const db = new Float64Array(cols);
+            for (let x = 0; x < cols; x++) {
+                const a = Math.floor(x * len / cols), b = Math.max(a + 1, Math.floor((x + 1) * len / cols));
+                let best = 0;
+                for (let i = a; i < b && i < len; i++) { const v = at(i); if (v > best) best = v; }
+                db[x] = Math.max(-CIR_FLOOR_DB, 10 * Math.log10(best + 1e-12));
+            }
+            const yOf = v => 3 + (-v) / CIR_FLOOR_DB * (h - 8);
+
+            ctx.strokeStyle = 'rgba(148, 163, 184, 0.22)';
+            ctx.setLineDash([2, 3]);
+            ctx.lineWidth = 1;
+            for (const g of [-10, -20, -30]) { ctx.beginPath(); ctx.moveTo(0, yOf(g)); ctx.lineTo(w, yOf(g)); ctx.stroke(); }
+            ctx.setLineDash([]);
+
+            const grad = ctx.createLinearGradient(0, 0, 0, h);
+            grad.addColorStop(0, 'rgba(53, 208, 127, 0.34)');
+            grad.addColorStop(1, 'rgba(53, 208, 127, 0.02)');
+            ctx.fillStyle = grad;
+            ctx.beginPath();
+            ctx.moveTo(0, h);
+            for (let x = 0; x < cols; x++) ctx.lineTo(x, yOf(db[x]));
+            ctx.lineTo(cols - 1, h);
+            ctx.closePath();
+            ctx.fill();
+
+            ctx.strokeStyle = '#35d07f';
+            ctx.lineWidth = 1.3;
+            ctx.beginPath();
+            for (let x = 0; x < cols; x++) (x ? ctx.lineTo : ctx.moveTo).call(ctx, x, yOf(db[x]));
+            ctx.stroke();
+
+            // 竖线：青色 = 定时点 0，橙色 = 最强径
+            const xOf = s => (s - start) / len * w;
+            ctx.setLineDash([3, 3]);
+            if (xOf(0) >= 0 && xOf(0) <= w) {
+                ctx.strokeStyle = 'rgba(0, 243, 255, 0.7)';
+                ctx.beginPath(); ctx.moveTo(xOf(0), 0); ctx.lineTo(xOf(0), h); ctx.stroke();
+            }
+            ctx.strokeStyle = 'rgba(245, 165, 36, 0.85)';
+            ctx.beginPath(); ctx.moveTo(xOf(pRel), 0); ctx.lineTo(xOf(pRel), h); ctx.stroke();
+            ctx.setLineDash([]);
+
+            if (txt) {
+                txt.textContent = near
+                    ? `最强径 τ ${(pRel / fs * 1000).toFixed(2)} ms · RMS 时延扩展 ${rms.toFixed(2)} ms · 分辨率 ${(1000 / cfg.bw).toFixed(2)} ms`
+                    : `最强径不在定时点附近，已按其对齐 · RMS 时延扩展 ${rms.toFixed(2)} ms`;
+            }
         }
 
         class FibonacciDecoder {
@@ -6376,7 +6700,8 @@
                     this.onPacket({
                         type: b[0] & 15, fid: (b[1] << 8) | b[2], size: this.hdr.size, L,
                         seq: ((b[8] << 24) | (b[9] << 16) | (b[10] << 8) | b[11]) >>> 0,
-                        payload: b.subarray(FTN_HDR, end)
+                        payload: b.subarray(FTN_HDR, end),
+                        raw: b     // 头 + 载荷 + CRC（同步字在收包时已剥掉），供面板做十六进制转储
                     });
                 }
             }
@@ -6402,9 +6727,12 @@
             constructor(cb) {
                 this.cb = cb || {};
                 this.files = new Map();
+                this.last = null;      // 最近一个通过 CRC 的包 { p, tag }，供面板转储
+                this.pkts = 0;
             }
 
             onPacket(p) {
+                this.last = { p, tag: ++this.pkts, t: Date.now() };
                 let f = this.files.get(p.fid);
                 if (!f || f.size !== p.size || f.L !== p.L) {
                     if (f && f.done) { /* 同一个 FID 换了内容：当作新文件 */ }
