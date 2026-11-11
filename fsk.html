@@ -131,6 +131,28 @@
             outline: none;
         }
 
+        input[type="range"] {
+            accent-color: var(--neon-cyan);
+            width: 8em;
+            vertical-align: middle;
+        }
+
+        .hide-row {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 0.5rem;
+            margin: 0.35rem 0;
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+        }
+
+        .hide-row output {
+            color: var(--neon-cyan);
+            font-variant-numeric: tabular-nums;
+            min-width: 3.4em;
+        }
+
         select:focus {
             border-color: var(--neon-cyan);
             outline: none;
@@ -161,6 +183,36 @@
             display: flex;
             justify-content: center;
             align-items: stretch;
+            flex-wrap: wrap;
+        }
+
+        /* 渲染 WAV 开关：外观跟旁边按钮一致，勾上就是打开 */
+        .tx-toggle {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.55rem;
+            background: linear-gradient(135deg, #1a2333, #0d1117);
+            border: var(--border-width) solid #2d3746;
+            color: var(--text-secondary);
+            padding: 0.8rem 1.5rem;
+            border-radius: var(--border-radius);
+            font-weight: 600;
+            cursor: pointer;
+            margin: 8px;
+            user-select: none;
+            transition: all 0.3s ease;
+        }
+
+        .tx-toggle input {
+            margin: 0;
+            accent-color: #00f3ff;
+            cursor: pointer;
+        }
+
+        .tx-toggle:has(input:checked) {
+            color: var(--neon-cyan);
+            border-color: var(--neon-cyan);
+            box-shadow: var(--glow) rgba(0, 243, 255, 0.3);
         }
 
         .controls {
@@ -1152,6 +1204,7 @@
                 <button id="clearTx">清空</button>
                 <button id="uploadText">上传</button>
                 <input type="file" id="uploadTextFile" hidden>
+                <label class="tx-toggle"><input type="checkbox" id="renderWav">渲染 WAV</label>
             </div>
             <details>
                 <summary>图片发送</summary>
@@ -1169,6 +1222,28 @@
                     <br>
                     <label>冗余倍数：<input type="number" id="txFileRed" min="1" step="0.5" style="width:7em"
                             placeholder="无限"></label>
+                </div>
+            </details>
+            <!-- 音频嵌入：音乐无限循环，载波频段被挖空，调制信号叠进这个空档 -->
+            <details>
+                <summary>音频嵌入（隐藏侧信道）</summary>
+                <div>
+                    <input type="file" id="bedFile" accept="audio/*">
+                    <div id="bedInfo" style="color: var(--text-secondary); font-size: 0.8rem; margin-top: 0.4rem;">
+                        未载入音频</div>
+                    <div class="hide-row">
+                        <label>音乐电平</label>
+                        <input type="range" id="bedLevel" min="-40" max="0" step="1" value="-8">
+                        <output id="bedLevelV">-8 dB</output>
+                    </div>
+                    <div class="hide-row">
+                        <label>侧信道电平</label>
+                        <input type="range" id="scLevel" min="-40" max="0" step="1" value="-12">
+                        <output id="scLevelV">-12 dB</output>
+                    </div>
+                    <div class="hide-row">
+                        <label><input type="checkbox" id="bedAuto"> 启用</label>
+                    </div>
                 </div>
             </details>
             <div id="bits"></div>
@@ -1729,7 +1804,7 @@
 
             // 符号源：主线程不断 append 符号块，这里按波特率逐个吐出；队列水位定期回报，所以可以一直发下去
             const mod = class extends AudioWorkletProcessor {
-                constructor() {
+                constructor(options) {
                     super();
                     this.sampleRate = sampleRate;
 
@@ -1754,6 +1829,7 @@
                     this.done = false;
                     this.reportEvery = Math.round(sampleRate * 0.05);   // 每 50ms 回报一次水位
                     this.sinceReport = 0;
+                    this.quiet = false;        // 离线渲染：不发水位回报
 
                     this.port.onmessage = (event) => {
                         const d = event.data;
@@ -1783,6 +1859,19 @@
                                 this.symbolMap = d.symbolMap;
                         }
                     };
+
+                    // 离线渲染：整段符号随节点一起构造，不走消息——渲染期间主线程是阻塞的，
+                    // 消息要等渲染结束才会派发，靠 postMessage 灌数据只会得到一片静音。
+                    const po = (options && options.processorOptions) || {};
+                    if (po.baudRate) this.setBaudRate(po.baudRate);
+                    if (po.symbolMap) this.symbolMap = po.symbolMap;
+                    if (po.symbols && po.symbols.length) {
+                        this.chunks.push(po.symbols);
+                        this.queued += po.symbols.length;
+                        this.started = true;
+                        this.quiet = true;
+                        if (po.finish) { this.finished = true; this.tail = po.tail || 0; }
+                    }
                 }
 
                 nextSymbol() {
@@ -1836,7 +1925,8 @@
                     this.sinceReport += output[0].length;
                     if (this.sinceReport >= this.reportEvery) {
                         this.sinceReport = 0;
-                        this.port.postMessage({ type: "level", queued: this.queued, played: this.played });
+                        // 离线渲染时没人听水位回报，别把几万条消息堆到渲染结束后再一次性派发
+                        if (!this.quiet) this.port.postMessage({ type: "level", queued: this.queued, played: this.played });
                     }
 
                     if (this.done) {
@@ -2353,6 +2443,131 @@
                     return true;
                 }
             }
+            // 频域掩模：Hann 窗 + 50% 重叠相加（OLA）的流式 FFT 滤波器。
+            // 带通/带阻都只是"每个 bin 要不要"，边缘陡到接近砖墙，参数就一个频段。
+            class BandMask extends AudioWorkletProcessor {
+                constructor(opts) {
+                    super();
+                    const o = (opts && opts.processorOptions) || {};
+                    const N = this.N = o.N || 2048;
+                    this.hop = N >> 1;
+                    this.nb = (N >> 1) + 1;
+                    this.gain = new Float32Array(this.nb).fill(1);
+                    if (o.gain) this.gain.set(o.gain);          // 离线渲染只能走构造参数
+                    this.win = new Float32Array(N);
+                    // sqrt-Hann：分析和合成各乘一次，乘积就是 Hann；Hann 在 50% 叠加下恒为 1，
+                    // 所以重建是单位增益、没有纹波（若两边都用 Hann，叠加量在 0.5~1 之间抖 = 6 dB 嗡声）
+                    for (let i = 0; i < N; i++) this.win[i] = Math.sqrt(0.5 - 0.5 * Math.cos(2 * Math.PI * i / N));
+                    this.re = new Float32Array(N);
+                    this.im = new Float32Array(N);
+                    this.cos = new Float32Array(N >> 1);
+                    this.sin = new Float32Array(N >> 1);
+                    for (let i = 0; i < N >> 1; i++) {
+                        this.cos[i] = Math.cos(2 * Math.PI * i / N);
+                        this.sin[i] = Math.sin(2 * Math.PI * i / N);
+                    }
+                    // 位反转表：只算一次，每帧还要用
+                    const bits = Math.round(Math.log2(N));
+                    this.rev = new Uint32Array(N);
+                    for (let i = 0; i < N; i++) {
+                        let r = 0;
+                        for (let b = 0; b < bits; b++) if (i & (1 << b)) r |= 1 << (bits - 1 - b);
+                        this.rev[i] = r;
+                    }
+                    this.ch = [];
+                    this.port.onmessage = e => { if (e.data && e.data.type === 'gain') this.gain.set(e.data.gain); };
+                }
+
+                _fft(re, im, inverse) {
+                    const N = this.N, rev = this.rev, cos = this.cos, sin = this.sin;
+                    for (let i = 0; i < N; i++) {
+                        const j = rev[i];
+                        if (j > i) {
+                            let t = re[i]; re[i] = re[j]; re[j] = t;
+                            t = im[i]; im[i] = im[j]; im[j] = t;
+                        }
+                    }
+                    for (let size = 2; size <= N; size <<= 1) {
+                        const half = size >> 1, step = N / size;
+                        for (let i = 0; i < N; i += size) {
+                            for (let j = 0, k = 0; j < half; j++, k += step) {
+                                const wr = cos[k], wi = inverse ? sin[k] : -sin[k];
+                                const a = i + j, b = a + half;
+                                const br = re[b], bi = im[b];
+                                const tr = br * wr - bi * wi, ti = br * wi + bi * wr;
+                                re[b] = re[a] - tr; im[b] = im[a] - ti;
+                                re[a] += tr; im[a] += ti;
+                            }
+                        }
+                    }
+                    if (inverse) for (let i = 0; i < N; i++) { re[i] /= N; im[i] /= N; }
+                }
+
+                _state(c) {
+                    let st = this.ch[c];
+                    if (st) return st;
+                    const N = this.N;
+                    // out 环形写指针先往后让出 N 个，reader 手里那 N 个零才不会刚写就被覆盖
+                    st = this.ch[c] = {
+                        ring: new Float32Array(N), w: 0, cnt: 0, tot: 0,
+                        acc: new Float32Array(N),
+                        out: new Float32Array(N * 4), r: 0, wr: N, n: N
+                    };
+                    return st;
+                }
+
+                _frame(st) {
+                    const N = this.N, re = this.re, im = this.im, w = this.win, ring = st.ring;
+                    // 环形缓冲里最旧的那个样本：还没写满时从 0 开始，写满后就是待覆盖位置
+                    let p = st.tot >= N ? st.w : 0;
+                    for (let i = 0; i < N; i++) { re[i] = ring[p] * w[i]; im[i] = 0; p = (p + 1) % N; }
+                    this._fft(re, im, false);
+                    for (let k = 0; k < this.nb; k++) {
+                        const g = this.gain[k];
+                        re[k] *= g; im[k] *= g;
+                        const m = (N - k) % N;
+                        if (m !== k) { re[m] *= g; im[m] *= g; }
+                    }
+                    this._fft(re, im, true);
+                    // 分析窗 + 合成窗 = Hann，50% 叠加恒为 1，直接累加即可
+                    for (let i = 0; i < N; i++) st.acc[i] += re[i] * w[i];
+                    const cap = st.out.length;
+                    for (let i = 0; i < this.hop; i++) {
+                        st.out[st.wr] = st.acc[i];
+                        st.wr = (st.wr + 1) % cap;
+                        st.n++;
+                    }
+                    st.acc.copyWithin(0, this.hop);
+                    st.acc.fill(0, N - this.hop);
+                }
+
+                process(inputs, outputs) {
+                    const inp = inputs[0], out = outputs[0];
+                    if (!out || !out.length) return true;
+                    const L = out[0].length, cap = this.N * 4;
+                    for (let c = 0; c < out.length; c++) {
+                        const src = (inp && (inp[c] || inp[0])) || null;
+                        const st = this._state(c);
+                        const dst = out[c];
+                        let n = 0;
+                        while (n < L && st.n > 0) {
+                            dst[n++] = st.out[st.r];
+                            st.r = (st.r + 1) % cap;
+                            st.n--;
+                        }
+                        if (n < L) dst.fill(0, n);
+                        for (let i = 0; i < L; i++) {
+                            st.ring[st.w] = src ? src[i] : 0;
+                            st.w = (st.w + 1) % this.N;
+                            st.tot++;
+                            if (++st.cnt >= this.hop) { st.cnt = 0; this._frame(st); }
+                        }
+                    }
+                    return true;
+                }
+            }
+            registerProcessor('band-mask', BandMask);
+
             registerProcessor('ofdm-tx', OfdmTxPlayer)
         }
 
@@ -6292,6 +6507,7 @@
         const FTN_VER = 1;
         const FTN_HDR = 12;             // 类型(1) FID(2) 大小(4) L(1) SEQ(4)
         const FTN_TYPE_DATA = 0, FTN_TYPE_INFO = 1;
+        const FTN_DEFAULT_RED = 1.5;    // 渲染 WAV 时喷泉码的包数上限：1.5 倍总分包
         const FTN_DENSE_MAX = 64;       // k 不超过这个值时用“稠密随机组合”（几乎只需 k+2 个包）
         const FTN_GE_LIMIT = 1400;
         const FTN_SLICE_MS = 8;         // 剥皮连锁 / 高斯消元每片最长占用主线程的毫秒数（片间让出给界面 / 音频接收）
@@ -6901,18 +7117,393 @@
             }
         }
 
+        // ===== 频域掩模：带通 / 很陡的带阻 =====
+        // 真正的滤波在 band-mask worklet 里做（Hann 窗 + 50% OLA 的流式 FFT），这里只负责
+        // 把"要哪个频段"摊成每条 bin 的增益。N=2048 → 23 Hz 分辨率、约 43 ms 固定延迟。
+        // 相比级联二阶节：边缘接近砖墙、参数只剩一个频段、节点数从十几个变成一个。
+        const MASK_N = 2048;
+
+        function maskGains(ctx, lo, hi, kind) {
+            const N = MASK_N, df = ctx.sampleRate / N, nb = (N >> 1) + 1;
+            const g = new Float32Array(nb);
+            const tw = Math.max(2 * df, 0.02 * (hi - lo));      // 过渡带，避免砖墙振铃
+            for (let k = 0; k < nb; k++) {
+                const f = k * df;
+                let notch;                                       // 1 = 落在带内
+                if (f <= lo - tw || f >= hi + tw) notch = 0;
+                else if (f >= lo && f <= hi) notch = 1;
+                else if (f < lo) notch = 0.5 - 0.5 * Math.cos(Math.PI * (f - lo + tw) / tw);
+                else notch = 0.5 - 0.5 * Math.cos(Math.PI * (hi + tw - f) / tw);
+                g[k] = kind === 'stop' ? 1 - notch : notch;
+            }
+            return g;
+        }
+
+        function buildBandMask(ctx, lo, hi, kind) {
+            const node = new AudioWorkletNode(ctx, 'band-mask', {
+                numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [2],
+                channelCount: 2, channelCountMode: 'max',
+                processorOptions: { N: MASK_N, gain: maskGains(ctx, lo, hi, kind) }
+            });
+            return { input: node, output: node, nodes: [node] };
+        }
+
+        function buildBandPass(ctx, lo, hi) { return buildBandMask(ctx, lo, hi, 'pass'); }
+        function buildBandStop(ctx, lo, hi) { return buildBandMask(ctx, lo, hi, 'stop'); }
+
+        function dbToLin(db) { return Math.pow(10, db / 20); }
+
+        function hideParam(id, dflt) {
+            const el = document.getElementById(id);
+            const v = el ? parseFloat(el.value) : NaN;
+            return isFinite(v) ? v : dflt;
+        }
+
+        // ===== 音频嵌入：把上行信号藏进一段无限循环的音乐里 =====
+        // 音乐先在载波频段被挖掉一块（很陡的带阻），调制信号带通后再叠进这个空档：
+        // 听感上音乐只是"薄"了一点，空档里全是我们的信号。
+        const TX_HIDE = { buf: null, name: '', src: null, gain: null, nodes: [], band: null, on: false, byTx: false };
+
+        function hideInfo(msg) {
+            const el = document.getElementById('bedInfo');
+            if (el) el.textContent = msg;
+        }
+
+        async function hideLoadFile(file) {
+            hideInfo('解码中…');
+            try {
+                const buf = await audioCtx.decodeAudioData(await file.arrayBuffer());
+                TX_HIDE.buf = buf; TX_HIDE.name = file.name;
+                hideInfo(`${file.name} · ${buf.duration.toFixed(1)} s · ${buf.numberOfChannels} 声道`);
+                if (TX_HIDE.on) hideStart();          // 换歌了：直接重起
+            } catch (e) {
+                hideInfo('解码失败：' + ((e && e.message) || e));
+            }
+        }
+
+        function hideStop() {
+            if (TX_HIDE.src) {
+                try { TX_HIDE.src.stop(); } catch (e) { }
+                try { TX_HIDE.src.disconnect(); } catch (e) { }
+            }
+            if (TX_HIDE.gain) { try { TX_HIDE.gain.disconnect(); } catch (e) { } }
+            for (const n of TX_HIDE.nodes) { try { n.disconnect(); } catch (e) { } }
+            TX_HIDE.src = null; TX_HIDE.gain = null; TX_HIDE.nodes = [];
+            TX_HIDE.band = null;
+            TX_HIDE.on = false; TX_HIDE.byTx = false;
+        }
+
+        // 起播：音乐 → 频域挖空 → 音量 → 声卡，无限循环
+        function hideStart() {
+            if (!TX_HIDE.buf) return false;
+            hideStop();
+            try { audioCtx.resume(); } catch (e) { }
+            try {
+                const band = txSignalBand();
+                const bs = buildBandStop(audioCtx, band.lo, band.hi);
+                const g = audioCtx.createGain();
+                g.gain.value = dbToLin(hideParam('bedLevel', -8));
+                const src = audioCtx.createBufferSource();
+                src.buffer = TX_HIDE.buf;
+                src.loop = true;
+                src.connect(bs.input);
+                bs.output.connect(g);
+                g.connect(outGet(audioCtx));
+                src.start();
+                TX_HIDE.src = src; TX_HIDE.gain = g; TX_HIDE.nodes = bs.nodes;
+                TX_HIDE.band = band;
+                TX_HIDE.on = true;
+                return true;
+            } catch (e) {
+                hideInfo('起播失败：' + ((e && e.message) || e));
+                return false;
+            }
+        }
+
+        // ===== 输出总线：所有要出声的东西都混到这里，再由它接 destination =====
+        // 调制信号（发送总线）和音乐侧信道是两条独立支路，只在 out 上相加：
+        // 下游（destination、离线渲染）永远只看到一条总线，"加不加音乐"对它完全透明。
+        const OUT_BUS = new WeakMap();
+
+        function outGet(ctx) {
+            let node = OUT_BUS.get(ctx);
+            if (!node) {
+                node = ctx.createGain();
+                node.connect(ctx.destination);
+                OUT_BUS.set(ctx, node);
+            }
+            return node;
+        }
+
+        // ===== 发送总线：所有调制器都接到这里 =====
+        // 这样能统一挂带通（OFDM 的带外泄漏、隐藏模式整条上行），也方便整体压电平。
+        const TX_BUS = new WeakMap();
+
+        function txBusGet(ctx) {
+            let node = TX_BUS.get(ctx);
+            if (!node) {
+                node = ctx.createGain();
+                node.connect(outGet(ctx));
+                TX_BUS.set(ctx, node);
+            }
+            return node;
+        }
+
+        // 上行占的频段：OFDM 就是它自己的带宽，其它模式按符号速率估一个。
+        // lo/hi 是分频点，信号带外只留一点点保护带宽：够盖住掩模自己的过渡带
+        // （2 个 bin 或 2% 带宽）再加一半余量就行，留宽了纯粹是白挖音乐。
+        // 带阻边缘（空档）和带通边缘仍然重合，信号正好落在空档里。
+        function txSignalBand() {
+            const fc = effCarrierFreq();
+            const half = (typeof selectedMode !== 'undefined' && selectedMode === MODES.ofdm)
+                ? ofdmActiveConfig(fc).bw / 2
+                : Math.max(effBaudRate() * 2.5, 500);
+            const sigLo = Math.max(40, fc - half), sigHi = Math.min(audioCtx.sampleRate * 0.49, fc + half);
+            const tw = Math.max(2 * audioCtx.sampleRate / MASK_N, 0.02 * (sigHi - sigLo));
+            const g = tw * 1.5;
+            return {
+                sigLo, sigHi, fc, half,
+                lo: Math.max(20, sigLo - g),
+                hi: Math.min(audioCtx.sampleRate * 0.47, sigHi + g)
+            };
+        }
+
+        // 每次开始发送前重排总线：带通只在 OFDM 或隐藏模式下挂，普通发送保持原样
+        const TX_CHAIN = new WeakMap();
+
+        function txBusConfigure(ctx, hidden) {
+            const bus = txBusGet(ctx);
+            try { bus.disconnect(); } catch (e) { }
+            const prev = TX_CHAIN.get(ctx);
+            if (prev) {
+                for (const n of prev.nodes) { try { n.disconnect(); } catch (e) { } }
+                TX_CHAIN.delete(ctx);
+            }
+            if (hidden === undefined) hidden = TX_HIDE.on;
+            bus.gain.value = hidden ? dbToLin(hideParam('scLevel', -12)) : 1;
+            if (!(hidden || selectedMode === MODES.ofdm)) { bus.connect(outGet(ctx)); return; }
+            const band = txSignalBand();
+            const bp = buildBandPass(ctx, band.lo, band.hi);
+            bus.connect(bp.input);
+            bp.output.connect(outGet(ctx));
+            TX_CHAIN.set(ctx, bp);
+        }
+
+        // ===== 全局离线渲染 =====
+        // 发送链路一行没改：调制器照旧接 txBus，txBus 照旧混进 out。
+        // 渲染只是把 out 接到 OfflineAudioContext 上，把整段（调制信号 + 音乐侧信道）
+        // 一次性算成 WAV，比实时快得多。上限 10 分钟，数据没发完就截断。
+        const RENDER_MAX_S = 600;
+
+        // 纠错包装器：流式编码器，按档位选择（与接收端的 fecProfileId 约定一致）
+        function makeTxStages() {
+            const p = fecProfileId();
+            if (p >= 10) return [new CcStreamEncoder(p - 10)];   // 实时卷积码
+            if (p) return [new RsStreamEncoder(p)];              // 分组 RS
+            return [];
+        }
+
+        function renderOfdmIdx() {
+            const el = document.getElementById('ofdmMod');
+            return el ? (parseInt(el.value) || 0) : 0;
+        }
+
+        // 开关：打开后点任何发送按钮（消息 / 图片 / 文件）都不播放，改成离线渲染成 WAV 下载
+        function renderModeOn() {
+            const el = document.getElementById('renderWav');
+            return !!(el && el.checked);
+        }
+
+        // 渲染结果叫什么：文件用它自己的文件名，其余按数据源的类型
+        function renderLabel(source) {
+            const name = source && source.ps && source.ps.name;
+            const base = name || (source && source.label) || '调制';
+            return base.replace(/\.[^.]*$/, '').replace(/[\\/:*?"<>|]/g, '_').slice(0, 60) || '调制';
+        }
+
+        // 按需拉比特，顺路走一遍纠错编码（和实时发送是同一条链）
+        function renderBits(source, stages, wantBits) {
+            const out = [];
+            let overflow = false;
+            const take = arr => {
+                for (let i = 0; i < arr.length; i++) {
+                    if (out.length < wantBits) out.push(arr[i]);
+                    else overflow = true;                // 源还有数据，只是这个时长放不下
+                }
+            };
+            let ended = false, guard = 0;
+            while (out.length < wantBits && !overflow && guard++ < 1e6) {
+                const b = source.nextBits();
+                if (b === null) { ended = true; break; }
+                if (!b || !b.length) break;
+                let cur = b;
+                for (const st of stages) cur = st.push(cur);
+                take(cur);
+            }
+            if (ended) {                       // 数据发完了：把编码器里攒着的尾巴也吐出来
+                let carry = [];
+                for (const st of stages) { const a = carry.length ? st.push(carry) : []; carry = a.concat(st.end()); }
+                take(carry);
+            }
+            // 还有没有没发的数据：多要一块看看（这块不要了，不影响已经排好的符号）
+            const more = overflow || (out.length >= wantBits && source.nextBits() !== null);
+            return { bits: out, truncated: more };
+        }
+
+        // 非 OFDM：只负责把符号排好，成形滤波 / 载波 / 上变频都交给音频图里的节点
+        function renderSymbols(mod, bits) {
+            const syms = [];
+            const push = a => { for (let i = 0; i < a.length; i++) syms.push(a[i]); };
+            if (mod._preamble) push(mod._preamble());
+            const CH = 4096;                   // 分块过编码器，别一次性造出巨大的中间数组
+            for (let i = 0; i < bits.length; i += CH) push(mod.encoder.push(bits.slice(i, i + CH)));
+            push(mod.encoder.end());
+            return Uint8Array.from(syms);
+        }
+
+        // OFDM：符号本来就是主线程同步算出来的（OfdmStreamTx），一次性铺满，不用等水位回报
+        function renderOfdmAudio(bits) {
+            const cfg = ofdmActiveConfig(effCarrierFreq());
+            const tx = new OfdmStreamTx(cfg, { mod: renderOfdmIdx(), fec: fecProfileId() });
+            tx.pushBits(bits);
+            const parts = [];
+            let total = 0;
+            const cap = RENDER_MAX_S * cfg.fs;
+            while (total < cap && tx.fifoBits > 0) { const c = tx.nextChunk(); parts.push(c); total += c.length; }
+            parts.push(tx.flushTail());
+            let chunks = parts;
+            if (cfg.devFs !== cfg.fs) {
+                const rs = new OfdmResampler(cfg.fs, cfg.devFs);
+                chunks = parts.map(c => rs.process(c)).concat([rs.flush()]);
+            }
+            let len = 0;
+            for (const c of chunks) len += c.length;
+            const buf = audioCtx.createBuffer(1, len, cfg.devFs);
+            const ch = buf.getChannelData(0);
+            let o = 0;
+            for (const c of chunks) { ch.set(c, o); o += c.length; }
+            return buf;
+        }
+
+        async function renderOfflineWav(source) {
+            // 音乐是否参与，跟"启用"开关一致：没启用就只渲染调制信号
+            const autoBed = document.getElementById('bedAuto');
+            const hidden = !!TX_HIDE.buf && (!autoBed || autoBed.checked);
+
+            // 渲染必须有终点：喷泉码留空（无限）时，在这里改成 1.5 倍总分包，前端的参数不动
+            if (source && source.ps && source.ps.maxData === Infinity) {
+                source.ps.maxData = Math.ceil(source.ps.k * FTN_DEFAULT_RED) + 2;
+            }
+            const isOfdm = selectedMode === MODES.ofdm;
+            const fs = sampleRate;
+            const band = txSignalBand();
+            const stages = makeTxStages();
+            let mod = null, symbols = null, ofdmBuf = null, modemSamples = 0, symLen = 4, wantBits = 0;
+
+            if (isOfdm) {
+                const cfg = ofdmActiveConfig(effCarrierFreq());
+                wantBits = Math.round(RENDER_MAX_S * cfg.fs / cfg.symLen * cfg.nData * OFDM_MODS[renderOfdmIdx()].bpc);
+            } else {
+                mod = new selectedMode.modulate();
+                mod.setBaudRate(effBaudRate());
+                mod.setCarrierFreq(effCarrierFreq());
+                symLen = Math.round(fs / mod.baudRate);
+                wantBits = Math.round(RENDER_MAX_S * mod.baudRate * (mod.bitsPerSymbol || 1));
+            }
+
+            const got = renderBits(source, stages, wantBits);
+            if (isOfdm) {
+                ofdmBuf = renderOfdmAudio(got.bits);
+                modemSamples = ofdmBuf.length;
+            } else {
+                symbols = renderSymbols(mod, got.bits);
+                modemSamples = (symbols.length + 12) * symLen;      // 尾部 12 个静音符号
+            }
+            // 音乐循环铺满整段，再留 1 秒余量让滤波器的拖尾播完
+            const len = Math.min((RENDER_MAX_S + 2) * fs, modemSamples + fs);
+            const off = new OfflineAudioContext(2, Math.ceil(len), fs);
+            await off.audioWorklet.addModule(workletData);
+            const out = outGet(off);
+
+            if (hidden) {
+                const src = off.createBufferSource();
+                src.buffer = TX_HIDE.buf;
+                src.loop = true;
+                const bs = buildBandStop(off, band.lo, band.hi);
+                const g = off.createGain();
+                g.gain.value = dbToLin(hideParam('bedLevel', -8));
+                src.connect(bs.input);
+                bs.output.connect(g);
+                g.connect(out);
+                src.start(0);
+            }
+
+            txBusConfigure(off, hidden);               // 带通/电平只在渲染的这个上下文里挂
+            if (isOfdm) {
+                const src = off.createBufferSource();
+                src.buffer = ofdmBuf;
+                src.connect(txBusGet(off));
+                src.start(0);
+            } else {
+                mod.begin(off, { symbols, tail: 12 });
+            }
+
+            const buf = await off.startRendering();
+            saveBlob(encodeWav(buf), renderLabel(source) + '.wav');
+            if (got.truncated) alert('数据没发完，只渲染了前 10 分钟');
+            return buf;
+        }
+
+        function encodeWav(buffer) {
+            const nch = buffer.numberOfChannels, len = buffer.length, fs = buffer.sampleRate;
+            const total = 44 + len * nch * 2;
+            const view = new DataView(new ArrayBuffer(total));
+            const str = (off, s) => { for (let i = 0; i < s.length; i++) view.setUint8(off + i, s.charCodeAt(i)); };
+            str(0, 'RIFF'); view.setUint32(4, total - 8, true); str(8, 'WAVE');
+            str(12, 'fmt '); view.setUint32(16, 16, true); view.setUint16(20, 1, true); view.setUint16(22, nch, true);
+            view.setUint32(24, fs, true); view.setUint32(28, fs * nch * 2, true);
+            view.setUint16(32, nch * 2, true); view.setUint16(34, 16, true);
+            str(36, 'data'); view.setUint32(40, len * nch * 2, true);
+            const chs = [];
+            for (let c = 0; c < nch; c++) chs.push(buffer.getChannelData(c));
+            let o = 44;
+            for (let i = 0; i < len; i++) {
+                for (let c = 0; c < nch; c++) {
+                    const v = Math.max(-1, Math.min(1, chs[c][i]));
+                    view.setInt16(o, v < 0 ? v * 0x8000 : v * 0x7fff, true);
+                    o += 2;
+                }
+            }
+            return new Blob([view], { type: 'audio/wav' });
+        }
+
+        function saveBlob(blob, name) {
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = name;
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+        }
+
         // ---- 基于 'mod' AudioWorklet 的调制器：符号经消息送进 worklet 里的队列 ----
         class WorkletModulator extends Modulator {
-            begin(audioCtx) {
+            // opts.symbols：整段符号随节点一起构造（离线渲染用）——此时不再走消息，也不再补 preamble
+            begin(audioCtx, opts) {
                 this.audioCtx = audioCtx;
                 this.pushedSymbols = 0; this.playedSymbols = 0; this.underruns = 0;
-                const mod = new AudioWorkletNode(audioCtx, 'mod', this.modOptions);
+                const pre = opts && opts.symbols;
+                const po = { baudRate: this.baudRate, symbolMap: this.symbolMap };
+                if (pre) { po.symbols = pre; po.finish = true; po.tail = opts.tail === undefined ? 12 : opts.tail; }
+                const mod = new AudioWorkletNode(audioCtx, 'mod', Object.assign({ processorOptions: po }, this.modOptions));
                 this.mod = mod;
+                mod.port.onmessage = evt => this._onWorklet(evt.data);
+                this._buildGraph(audioCtx, mod);
+                if (pre) { this.preloaded = true; this.pushedSymbols = pre.length; return; }
                 mod.port.postMessage({ type: 'baudRate', baudRate: this.baudRate });
                 if (this.symbolMap) mod.port.postMessage({ type: 'symbolMap', symbolMap: this.symbolMap });
                 if (this.filler) mod.port.postMessage({ type: 'filler', symbols: this.filler });
-                mod.port.onmessage = evt => this._onWorklet(evt.data);
-                this._buildGraph(audioCtx, mod);
                 this._append(this._preamble());
             }
 
@@ -6975,7 +7566,7 @@
                 convolver.connect(freqDeviation);
                 freqDeviation.connect(oscillator.frequency);
                 oscillator.connect(gainNode);
-                gainNode.connect(audioCtx.destination, 0, 0);
+                gainNode.connect(txBusGet(audioCtx), 0, 0);
                 oscillator.start();
                 this.oscillator = oscillator;
             }
@@ -7054,7 +7645,7 @@
                 convolver.connect(gainNode);
                 this.mixer.connect(multiplier.gain);
                 gainNode.connect(multiplier);
-                multiplier.connect(audioCtx.destination, 0, 0);
+                multiplier.connect(txBusGet(audioCtx), 0, 0);
                 this.mixer.start();
             }
 
@@ -7080,7 +7671,7 @@
                 mod.connect(convolver);
                 convolver.connect(gainNode);
                 gainNode.connect(this.mixer);
-                merger.connect(audioCtx.destination, 0, 0);
+                merger.connect(txBusGet(audioCtx), 0, 0);
                 this.mixer.connect(merger, 0, 0);
                 this.mixer.connect(merger, 0, 1);
                 this.mixer.onprocessorerror = e => { console.log(e); };
@@ -7154,7 +7745,7 @@
                 this.ended = false; this.underruns = 0; this._filling = false; this._lowFired = false;
                 const node = new AudioWorkletNode(audioCtx, 'ofdm-tx', { numberOfInputs: 0, numberOfOutputs: 1, outputChannelCount: [1] });
                 node.port.onmessage = e => this._onWorklet(e.data);
-                node.connect(audioCtx.destination);
+                node.connect(txBusGet(audioCtx));
                 this.node = node;
                 // generation starts on the next tick, after the pipeline has pre-filled the FIFO (otherwise the first symbols would be partial)
                 setTimeout(() => this._fill(), 0);
@@ -7253,7 +7844,7 @@
         // ===== 数据源 =====
         // 一段现成的比特数组（文字消息、图片等有限数据）
         class BitArraySource {
-            constructor(bits, chunk) { this.bits = bits; this.pos = 0; this.chunk = chunk || 2048; this.totalBits = bits.length; }
+            constructor(bits, chunk, label) { this.bits = bits; this.pos = 0; this.chunk = chunk || 2048; this.totalBits = bits.length; this.name = label || ''; }
             nextBits() {
                 if (this.pos >= this.bits.length) return null;
                 const out = this.bits.slice(this.pos, this.pos + this.chunk);
@@ -7261,7 +7852,7 @@
                 return out;
             }
             get consumedBits() { return this.pos; }
-            get label() { return '消息'; }
+            get label() { return this.name || '消息'; }
         }
 
         // 喷泉码：每次拉取一个水滴包；设了冗余倍数就发有限个，否则一直发到手动中止
@@ -7315,6 +7906,7 @@
             start(audioCtx) {
                 this.audioCtx = audioCtx;
                 this.startedAt = audioCtx.currentTime;
+                txBusConfigure(audioCtx);                    // 带通/侧信道电平按当前模式重排
                 this.mod.on('need', () => this.pump());      // modulator says its buffer is getting low → refill immediately
                 this.mod.begin(audioCtx);
                 this.pump();
@@ -9318,19 +9910,26 @@
         audioCtx.audioWorklet.addModule(workletData).then(() => {
             let oscillator;
 
-            // 纠错包装器：流式编码器，按档位选择（与接收端的 fecProfileId 约定一致）
-            function makeTxStages() {
-                const p = fecProfileId();
-                if (p >= 10) return [new CcStreamEncoder(p - 10)];   // 实时卷积码
-                if (p) return [new RsStreamEncoder(p)];              // 分组 RS
-                return [];
-            }
-
             let txPipeline = null;
 
             // 数据源 → 纠错 → 调制器 → 声卡；数据源可以是有限的（消息）也可以是无限的（喷泉码）
             function startTransmit(source) {
+                if (renderModeOn()) {           // 渲染开关打开：三种发送一致，不播放，直接出 WAV
+                    renderOfflineWav(source).catch(e => alert('渲染失败：' + ((e && e.message) || e)));
+                    return null;
+                }
                 audioCtx.resume();
+                // 载入了音乐：换过频道/带宽就让带阻跟着挪；还没在放且勾了自动就先铺上
+                if (TX_HIDE.buf) {
+                    const b = txSignalBand();
+                    const stale = TX_HIDE.on && TX_HIDE.band &&
+                        (Math.abs(TX_HIDE.band.lo - b.lo) > 1 || Math.abs(TX_HIDE.band.hi - b.hi) > 1);
+                    const autoBed = document.getElementById('bedAuto');
+                    if (stale) hideStart();
+                    else if (!TX_HIDE.on && (!autoBed || autoBed.checked)) {
+                        if (hideStart()) TX_HIDE.byTx = true;
+                    }
+                }
                 modulator = new selectedMode.modulate();
                 modulator.setBaudRate(effBaudRate());
                 modulator.setCarrierFreq(effCarrierFreq());
@@ -9353,6 +9952,7 @@
                     txStart = false;
                     progressBar.style.display = 'none';
                     progressDiv.style.width = '0%';
+                    if (TX_HIDE.byTx) hideStop();       // 底噪是跟着这次发送起的，收工一起停
                     chatUpdateState();
                 });
 
@@ -9380,9 +9980,8 @@
                 return pipeline;
             }
 
-            function transmitOrdArray(ordArray, delay = 1) {
-                console.log("发送数据:", ordArray);
-                startTransmit(new BitArraySource(buildTokenBits(ordArray)));
+            function transmitOrdArray(ordArray, delay = 1, label) {
+                startTransmit(new BitArraySource(buildTokenBits(ordArray), undefined, label));
             }
 
             window.__chatTransmit = tokens => transmitOrdArray(tokens);
@@ -9391,7 +9990,8 @@
                 startTransmit(new BitArraySource(bits));
             }
 
-            // 喷泉码发送文件：bytes = 文件内容，name = 文件名；redundancy 为空则一直发，直到手动中止
+            // 喷泉码发送文件：bytes = 文件内容，name = 文件名
+            // redundancy 留空 = 一直发，直到手动中止（渲染 WAV 时由渲染层自己改成 1.5 倍）
             window.__fountainTransmit = (bytes, name, redundancy, L) => {
                 if (!L) {                                       // 块长按文件大小自动选，减少包头开销
                     L = bytes.length > 256 * 1024 ? 255 :
@@ -9545,7 +10145,7 @@
 
                     let ordArray = listToSymbols(quadrupleList);
 
-                    transmitOrdArray(ordArray, 5)
+                    transmitOrdArray(ordArray, 5, '图片')
                 };
             })
 
@@ -9556,13 +10156,39 @@
                 const file = txFileInput.files[0];
                 if (!file) { alert('请先选择要发送的文件'); return; }
                 const red = parseFloat(document.getElementById('txFileRed').value) || 0;
+                // 留空 = 一直发，直到手动中止；渲染 WAV 时才在渲染层截到 1.5 倍总分包
                 const reader = new FileReader();
                 reader.onload = function (e) {
                     window.__fountainTransmit(new Uint8Array(e.target.result), file.name, red);
                 };
                 reader.readAsArrayBuffer(file);
             });
-        })
+
+        });
+
+        // 音频嵌入面板：载入音乐 + 两个电平推子（发送时会自动起停）
+        (() => {
+            const fileEl = document.getElementById('bedFile');
+            if (!fileEl) return;
+            const bedLv = document.getElementById('bedLevel'), bedOut = document.getElementById('bedLevelV');
+            const scLv = document.getElementById('scLevel'), scOut = document.getElementById('scLevelV');
+            const showDb = (out, v) => { if (out) out.textContent = `${v > 0 ? '+' : ''}${v} dB`; };
+            showDb(bedOut, bedLv.value);
+            showDb(scOut, scLv.value);
+
+            fileEl.addEventListener('change', () => {
+                const f = fileEl.files[0];
+                if (f) hideLoadFile(f);
+            });
+            bedLv.addEventListener('input', () => {
+                showDb(bedOut, bedLv.value);
+                if (TX_HIDE.gain) TX_HIDE.gain.value = dbToLin(parseFloat(bedLv.value));
+            });
+            scLv.addEventListener('input', () => {
+                showDb(scOut, scLv.value);
+                if (TX_HIDE.on) txBusGet(audioCtx).gain.value = dbToLin(parseFloat(scLv.value));
+            });
+        })();
 
 
         function acquireWakelock() {
