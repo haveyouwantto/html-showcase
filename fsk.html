@@ -1326,7 +1326,7 @@
                     </div>
                     <!-- 信道冲激响应：|H| 逆变换回时域（OFDM 专属，随接收显示） -->
                     <div id="detIrrWrap" class="chart-card" style="display: none; margin-top: 0;">
-                        <div class="chart-head"><span class="chart-name">信道冲激响应 h[τ]</span><span class="chart-tag">IFFT · 20ms</span></div>
+                        <div class="chart-head"><span class="chart-name">信道冲激响应 h[τ]</span><span class="chart-tag">IFFT · ±10ms</span></div>
                         <canvas id="detIrr" class="chart-canvas" style="height: 92px;"></canvas>
                         <div id="detIrrText" style="color: var(--text-secondary); font-size: 0.75rem; text-align: center;"></div>
                     </div>
@@ -5108,7 +5108,7 @@
             } else {
                 out.push({ key: 'pload', from: 12, to: crcAt, val: `${p.L} B · 度 d=${ftnNeighbors(p.fid, p.seq, k).length}` });
             }
-            out.push({ key: 'crc', from: crcAt, to: n, val: `${hex32(crcAt)} · 校验通过` });
+            out.push({ key: 'crc', from: crcAt, to: n, val: `${hex32(crcAt)}` });
             return out;
         }
 
@@ -5476,8 +5476,9 @@
 
         // 信道冲激响应：把频域估计 H(k) 逆变换回时域，看多径结构。
         // 带内加汉宁窗压旁瓣——矩形窗的 -13 dB 旁瓣很容易被误读成假多径；
-        // 时延分辨率只由占用带宽决定（≈ 1/BW），横轴以最强径为 0 点，只画前 20 ms。
-        const CIR_SPAN_MS = 20, CIR_PRE_MS = 1, CIR_FLOOR_DB = 36;
+        // 时延分辨率只由占用带宽决定（≈ 1/BW）。逆变换本身是循环的，时延正负都有意义，
+        // 所以横轴按惯例把 0 点放在正中（±10 ms）：左半边用来看定时偏早和窗前的泄漏。
+        const CIR_HALF_MS = 10, CIR_FLOOR_DB = 36;
         let cirFft = null, cirFftN = 0, cirRe = null, cirIm = null, cirPow = null;
 
         function drawImpulseResponse(d) {
@@ -5509,23 +5510,24 @@
 
             // 时轴零点取接收机的定时点：FFT 窗相对符号起点前移了 (cp - margin) 个样点，
             // 所以把逆变换的结果整体转回去，横轴才是真正的"相对首径时延"。
-            // 直接以最强径对齐不行——更早的弱路径会被挤出窗外。
+            // 定时偏差（首径略微落在窗之前）会表现为负时延，因此 0 点居中、左右都留出空间。
             const W0 = Math.round((cfg.cp - cfg.margin) * (1 + (fr.delta || 0)));
             const idx = a => ((a - W0) % N + N) % N;               // 绝对时延（样点）→ 缓冲区下标
-            const pRel = ((pAt + W0) % N + N) % N;                 // 最强径的绝对时延
-            const pre = Math.round(CIR_PRE_MS * fs / 1000), len = Math.round((CIR_PRE_MS + CIR_SPAN_MS) * fs / 1000);
-            // 窗固定落在定时点之后（-1 … 20 ms）：接收机的定时跟着首径走，窗不会漂；
-            // 只有最强径明显跑到窗外（定时估计偏了）才退回按最强径对齐
-            const near = pRel < Math.round(CIR_SPAN_MS * fs / 1000) && pRel > -pre;
-            const start = (near ? 0 : pRel) - pre;
+            const pAt0 = ((pAt + W0) % N + N) % N;                 // 最强径的绝对时延 [0, N)
+            // 折成带符号时延：环回的后半段其实等价于负时延（定时点偏早时首径会落到这里）
+            const rel = pAt0 > N / 2 ? pAt0 - N : pAt0;
+            const half = Math.round(CIR_HALF_MS * fs / 1000), len = 2 * half;
+            // 0 点固定在正中；最强径跑出窗口（定时估计偏了）才退回按它居中，免得整张图看不见峰
+            const centered = rel > -half + 1 && rel < half - 1;
+            const start = centered ? -half : rel - half;
             const at = i => pow[idx(start + i)] / peak;
 
-            // RMS 时延扩展：按功率加权的时延标准差（以最强径为参照，与参照点无关）
+            // RMS 时延扩展：按功率加权的时延标准差（参照最强径，与横轴起点无关）
             let sum = 0, sumT = 0;
-            for (let i = 0; i < len; i++) { const pv = at(i); sum += pv; sumT += pv * (start + i - pRel) / fs * 1000; }
+            for (let i = 0; i < len; i++) { const pv = at(i); sum += pv; sumT += pv * (start + i - rel) / fs * 1000; }
             const meanT = sum > 0 ? sumT / sum : 0;
             let varT = 0;
-            for (let i = 0; i < len; i++) { const d2 = (start + i - pRel) / fs * 1000 - meanT; varT += at(i) * d2 * d2; }
+            for (let i = 0; i < len; i++) { const d2 = (start + i - rel) / fs * 1000 - meanT; varT += at(i) * d2 * d2; }
             const rms = sum > 0 ? Math.sqrt(varT / sum) : 0;
 
             const dpr = window.devicePixelRatio || 1;
@@ -5571,7 +5573,7 @@
             for (let x = 0; x < cols; x++) (x ? ctx.lineTo : ctx.moveTo).call(ctx, x, yOf(db[x]));
             ctx.stroke();
 
-            // 竖线：青色 = 定时点 0，橙色 = 最强径
+            // 竖线：青色 = 定时点 0（居中时就在正中），橙色 = 最强径
             const xOf = s => (s - start) / len * w;
             ctx.setLineDash([3, 3]);
             if (xOf(0) >= 0 && xOf(0) <= w) {
@@ -5579,13 +5581,28 @@
                 ctx.beginPath(); ctx.moveTo(xOf(0), 0); ctx.lineTo(xOf(0), h); ctx.stroke();
             }
             ctx.strokeStyle = 'rgba(245, 165, 36, 0.85)';
-            ctx.beginPath(); ctx.moveTo(xOf(pRel), 0); ctx.lineTo(xOf(pRel), h); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(xOf(rel), 0); ctx.lineTo(xOf(rel), h); ctx.stroke();
             ctx.setLineDash([]);
 
+            // 横轴刻度：两端是窗口边界，中间标出 0 点位置（0 居中时正好在正中间）
+            const msOf = s => s / fs * 1000;
+            const yBase = h - 2;
+            ctx.font = '9px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace';
+            ctx.textBaseline = 'bottom';
+            ctx.fillStyle = 'rgba(148, 163, 184, 0.62)';
+            ctx.textAlign = 'left';
+            ctx.fillText(`${msOf(start).toFixed(0)} ms`, 3, yBase);
+            ctx.textAlign = 'right';
+            ctx.fillText(`${msOf(start + len).toFixed(0)} ms`, w - 3, yBase);
+            if (centered) {
+                ctx.textAlign = 'center';
+                ctx.fillText('0', w / 2, yBase);
+            }
+
             if (txt) {
-                txt.textContent = near
-                    ? `最强径 τ ${(pRel / fs * 1000).toFixed(2)} ms · RMS 时延扩展 ${rms.toFixed(2)} ms · 分辨率 ${(1000 / cfg.bw).toFixed(2)} ms`
-                    : `最强径不在定时点附近，已按其对齐 · RMS 时延扩展 ${rms.toFixed(2)} ms`;
+                txt.textContent = centered
+                    ? `最强径 τ ${msOf(rel).toFixed(2)} ms · RMS 时延扩展 ${rms.toFixed(2)} ms · 分辨率 ${(1000 / cfg.bw).toFixed(2)} ms`
+                    : `最强径超出 ±${CIR_HALF_MS} ms 窗口，已按它居中 · RMS 时延扩展 ${rms.toFixed(2)} ms`;
             }
         }
 
