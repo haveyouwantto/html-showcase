@@ -1,924 +1,292 @@
-<html>
-
-<head>
-    <title>冒险家协会传真接收器</title>
-
-    <meta http-equiv="Content-Type" content="text/html; charset=utf8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <style>
-        :root {
-            --bg-color: #0a0c12;
-            --primary-color: #1a2a3a;
-            --secondary-color: #2a3b4d;
-            --accent-gold: #d4af37;
-            --accent-blue: #5d8aa8;
-            --text-primary: #e8e6e3;
-            --text-secondary: #b8b6b3;
-            --border-radius: 4px;
-            --parchment: #f0e6d2;
-            --old-paper: #e6d8b5;
-        }
-
-        body {
-            background-color: var(--bg-color);
-            color: var(--text-primary);
-            font-family: 'Bookman Old Style', 'Times New Roman', serif;
-            line-height: 1.6;
-            min-height: 100vh;
-            margin: 0;
-            padding: 2rem;
-            box-sizing: border-box;
-            background-image:
-                radial-gradient(circle at 10% 20%, rgba(26, 42, 58, 0.8) 0%, transparent 20%),
-                radial-gradient(circle at 90% 80%, rgba(26, 42, 58, 0.8) 0%, transparent 20%),
-                linear-gradient(to bottom, rgba(10, 12, 18, 0.9), rgba(10, 12, 18, 1));
-        }
-
-        #title {
-            text-align: center;
-            font-size: 2.5rem;
-            color: var(--accent-gold);
-            text-shadow: 0 0 5px rgba(212, 175, 55, 0.5);
-            margin-bottom: 1rem;
-            letter-spacing: 1px;
-            font-weight: normal;
-            padding-bottom: 0.5rem;
-            font-family: 'Cinzel Decorative', 'Bookman Old Style', serif;
-        }
-
-        #title::after {
-            content: "";
-            height: 1px;
-            width: 100%;
-            background: linear-gradient(to right, transparent, var(--accent-gold), transparent);
-            display: block;
-        }
-
-        textarea {
-            background-color: rgba(26, 42, 58, 0.7);
-            border: 1px solid var(--secondary-color);
-            border-radius: var(--border-radius);
-            color: var(--text-primary);
-            padding: 1rem;
-            font-size: 1rem;
-            transition: all 0.3s ease;
-            width: 100%;
-            height: 50vh;
-            resize: vertical;
-            font-family: 'Courier New', monospace;
-            box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.5);
-        }
-
-        textarea:focus {
-            border-color: var(--accent-blue);
-            outline: none;
-            box-shadow: inset 0 0 10px rgba(93, 138, 168, 0.3);
-        }
-
-        button {
-            background: linear-gradient(to bottom, #2a3b4d, #1a2a3a);
-            border: 1px solid var(--accent-gold);
-            color: var(--accent-gold);
-            padding: 0.8rem 1.5rem;
-            border-radius: var(--border-radius);
-            font-family: 'Cinzel', 'Bookman Old Style', serif;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            position: relative;
-            overflow: hidden;
-            margin: 8px;
-            letter-spacing: 1px;
-            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.3);
-        }
-
-        button:hover {
-            background: linear-gradient(to bottom, #3a4b5d, #2a3a4a);
-            box-shadow: 0 0 10px rgba(212, 175, 55, 0.3);
-        }
-
-        button:disabled {
-            color: #6d6d6d;
-            border-color: #6d6d6d;
-            background: linear-gradient(to bottom, #1a2a3a, #0a1a2a);
-        }
-
-        #audio-inputs {
-            margin: 1.5rem 0;
-            background-color: rgba(26, 42, 58, 0.5);
-            padding: 1rem;
-            border-radius: var(--border-radius);
-            border: 1px solid var(--secondary-color);
-        }
-
-        select,
-        input[type="number"] {
-            background-color: rgba(26, 42, 58, 0.8);
-            border: 1px solid var(--accent-gold);
-            color: var(--text-primary);
-            padding: 0.5rem;
-            border-radius: var(--border-radius);
-            margin-left: 1rem;
-            font-family: 'Bookman Old Style', serif;
-            box-shadow: inset 0 0 5px rgba(0, 0, 0, 0.3);
-        }
-
-        select:focus,
-        input[type="number"]:focus {
-            border-color: var(--accent-blue);
-            outline: none;
-        }
-
-        hr {
-            border: none;
-            height: 1px;
-            background: linear-gradient(to right, transparent, var(--accent-gold), transparent);
-            margin: 1rem 0;
-        }
-
-        #atv {
-            border: 1px solid var(--accent-gold);
-            border-radius: var(--border-radius);
-            margin: 1rem 0;
-            width: 50%;
-            image-rendering: pixelated;
-            background-color: var(--old-paper);
-            box-shadow: 0 0 15px rgba(212, 175, 55, 0.2);
-        }
-
-        #waveform,
-        #spectrum {
-            width: 50%;
-            background-color: rgba(26, 42, 58, 0.7);
-            border: 1px solid var(--accent-gold);
-            border-radius: var(--border-radius);
-            color: var(--text-primary);
-            box-shadow: 0 0 10px rgba(0, 0, 0, 0.3);
-        }
-
-        .container {
-            max-width: 1200px;
-            margin: 0 auto;
-            display: grid;
-            grid-template-columns: 1fr;
-            gap: 2rem;
-        }
-
-        .btn-container {
-            display: flex;
-            justify-content: center;
-            align-items: stretch;
-        }
-
-        .controls,
-        .result {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-        }
-
-        .btn-group {
-            display: flex;
-            flex-wrap: wrap;
-            justify-content: center;
-        }
-
-        .title-text {
-            text-align: center;
-            font-size: 1.5rem;
-            font-weight: normal;
-            color: var(--accent-gold);
-            margin-bottom: 1rem;
-            margin-top: 1rem;
-            font-family: 'Cinzel', 'Bookman Old Style', serif;
-            letter-spacing: 1px;
-            text-shadow: 0 0 5px rgba(212, 175, 55, 0.3);
-            padding-bottom: 0.5rem;
-            width: 50%;
-        }
-
-        .title-text::after {
-            content: "";
-            height: 1px;
-            width: 100%;
-            background: linear-gradient(to right, transparent, var(--accent-gold), transparent);
-            display: block;
-        }
-
-        label {
-            color: var(--accent-gold);
-            font-family: 'Cinzel', 'Bookman Old Style', serif;
-            letter-spacing: 0.5px;
-        }
-
-        @media (max-width: 768px) {
-            #atv {
-                width: 100%;
-            }
-
-            #waveform,
-            #spectrum {
-                width: 100%;
-            }
-
-            .container {
-                grid-template-columns: 1fr;
-            }
-
-            .title-text {
-                width: 100%;
-            }
-        }
-
-        /* 航海风格装饰元素 */
-        .nautical-decoration {
-            position: fixed;
-            opacity: 0.1;
-            z-index: -1;
-        }
-
-        .compass {
-            top: 20px;
-            right: 20px;
-            font-size: 3rem;
-        }
-
-        .anchor {
-            bottom: 20px;
-            left: 20px;
-            font-size: 3rem;
-        }
-
-        .control-group {
-            display: grid;
-            grid-template-columns: 1fr 2fr;
-            row-gap: 8px;
-        }
-
-        .arcane-label {
-            color: var(--accent-gold);
-            font-family: 'Cinzel', 'Bookman Old Style', serif;
-            letter-spacing: 0.5px;
-            margin-right: 1rem;
-        }
-
-        .arcane-select {
-            background-color: rgba(26, 42, 58, 0.8);
-            border: 1px solid var(--accent-gold);
-            color: var(--accent-gold);
-            padding: 0.5rem 1rem;
-            border-radius: var(--border-radius);
-            font-family: 'Bookman Old Style', serif;
-            box-shadow: inset 0 0 5px rgba(0, 0, 0, 0.3);
-            cursor: pointer;
-            transition: all 0.3s ease;
-        }
-
-        .arcane-select:hover {
-            border-color: var(--accent-blue);
-            box-shadow: 0 0 8px rgba(93, 138, 168, 0.3);
-        }
-
-        .arcane-select:focus {
-            outline: none;
-            border-color: var(--accent-blue);
-            box-shadow: 0 0 10px rgba(93, 138, 168, 0.5);
-        }
-
-        .arcane-select option {
-            background-color: var(--primary-color);
-            color: var(--text-primary);
-        }
-    </style>
-    <link href="https://fonts.googleapis.com/css2?family=Cinzel&family=Cinzel+Decorative&display=swap" rel="stylesheet">
-</head>
-
-<body>
-    <!-- 航海装饰元素 -->
-    <div class="nautical-decoration compass">🧭</div>
-    <div class="nautical-decoration anchor">⚓</div>
-
-    <h1 id='title'>冒险家协会奥术传真仪</h1>
-    <div class="container">
-        <div class="controls">
-            <div class="title-text">神秘信号接收</div>
-            <div class="btn-container">
-                <button id='start'>启动接收仪式</button>
-            </div>
-            <div id="audio-inputs">
-                <label for="audio-input">选择魔法共鸣装置：</label>
-                <select id="audio-input"></select>
-            </div>
-
-            <div class="control-group">
-                <label for="lineTime" class="arcane-label">卷轴咒语时长</label>
-                <select id="lineTime" class="arcane-select">
-                    <option value="0.25">快速咒语 (250ms)</option>
-                    <option value="0.5" selected>标准咒语 (500ms)</option>
-                    <option value="1">精准咒语 (1s)</option>
-                </select>
-                <label for="syncTime" class="arcane-label">魔法共鸣时长</label>
-                <select id="syncTime" class="arcane-select">
-                    <option value="8">瞬发共鸣 (8ms)</option>
-                    <option value="10">迅捷共鸣 (10ms)</option>
-                    <option value="15">轻语共鸣 (15ms)</option>
-                    <option value="20" selected>标准共鸣 (20ms)</option>
-                    <option value="25">悠长共鸣 (25ms)</option>
-                    <option value="30">深沉共鸣 (30ms)</option>
-                    <option value="35">古老共鸣 (35ms)</option>
-                    <option value="40">巨龙共鸣 (40ms)</option>
-                    <option value="45">星辰共鸣 (45ms)</option>
-                    <option value="50">永恒共鸣 (50ms)</option>
-                </select>
-            </div>
-        </div>
-    </div>
-    <hr>
-    <div class="result">
-        <div class="title-text">魔法信号波形</div>
-        <canvas id="waveform" width="1500" height="300"></canvas>
-        <canvas id="spectrum" width="256" height="128"></canvas>
-        <div class="title-text">解译的卷轴</div>
-        <div class="btn-group">
-            <button id='startRec'>开始记录</button>
-            <button id="download">保存卷轴</button>
-            <button id="clearRx">清除卷轴</button>
-        </div>
-        <canvas id="atv" width="1500" height="2300"></canvas>
-    </div>
-    <script>
-        const sampleRate = 48000; // 采样率
-        let carrierFreq = 1900; // 载波频率
-        const freqDeviation = 800
-        let width = 1500;
-        let height = 2300;
-
-        const audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: sampleRate, latencyHint: "balanced" });
-
-        function add(v1, v2) {
-            return [v1[0] + v2[0], v1[1] + v2[1], v1[2] + v2[2]];
-        }
-
-        function sub(v1, v2) {
-            return [v1[0] - v2[0], v1[1] - v2[1], v1[2] - v2[2]];
-        }
-
-        function mul(v1, mul) {
-            return [v1[0] * mul, v1[1] * mul, v1[2] * mul];
-        }
-
-        function colorTrans(pal, prog) {
-            if (prog < 0) return formatColor(pal[0]);
-            else if (prog >= 1) return formatColor(pal[pal.length - 1]);
-            let i = parseInt(prog * (pal.length - 1));
-            let v1 = pal[i];
-            let v2 = pal[i + 1];
-
-            try {
-                let delta = sub(v2, v1);
-                let percent = (prog / (1 / (pal.length - 1)));
-                let int = parseInt(percent);
-                percent -= int;
-                let adv = mul(delta, percent);
-                let result = add(v1, adv);
-                return formatColor(result);
-            } catch (error) {
-                // console.log(i, v1, v2);
-                // console.error(error);
-            }
-        }
-
-        function formatColor(v) {
-            return `rgb(${v[0]},${v[1]},${v[2]})`;
-        }
-
-        let palette = [
-            [0, 0, 0],
-            [26, 42, 58],
-            [0xd4, 0xaf, 0x37],
-            [255, 255, 255]
-        ]
-
-        class ATVDisplay {
-            constructor(canvas) {
-                this.canvas = canvas;
-                this.canvas.width = width;
-                this.canvas.height = height;
-                this.ctx = this.canvas.getContext('2d')
-                this.imageData = this.ctx.createImageData(width, height);
-                this.pos = 0;
-                this.recording = false;
-
-                // Median filter buffers
-                this.medianBuffer = new Uint8ClampedArray(5);
-                this.medianIndex = 0;
-
-                // 点击画布进入全屏
-                this.canvas.addEventListener('click', () => this.toggleFullscreen());
-
-                // 监听全屏变化
-                document.addEventListener('fullscreenchange', () => {
-                    if (!document.fullscreenElement) {
-                        this.exitFullscreen();
-                    }
-                });
-
-            }
-
-            toggleFullscreen() {
-                if (!document.fullscreenElement) {
-                    this.enterFullscreen();
-                } else {
-                    this.exitFullscreen();
-                }
-            }
-
-            enterFullscreen() {
-                this.canvas.requestFullscreen().catch(err => {
-                    console.error(`全屏错误: ${err.message}`);
-                });
-
-                // 调整全屏样式
-                this.canvas.style.width = '100%';
-                this.canvas.style.height = '100%';
-                this.canvas.style.objectFit = 'contain';
-                this.canvas.style.backgroundColor = '#0a0c12';
-            }
-
-            exitFullscreen() {
-                if (document.fullscreenElement) {
-                    document.exitFullscreen();
-                }
-
-                // 恢复原始样式
-                this.canvas.style.width = '';
-                this.canvas.style.height = '';
-                this.canvas.style.objectFit = '';
-                this.canvas.style.backgroundColor = '';
-            }
-
-            draw(data) {
-                if (!this.recording) return;
-
-                let startPos = this.pos
-                for (let pixel of data) {
-
-                    // 应用中值滤波器
-                    this.medianBuffer[this.medianIndex] = pixel;
-                    this.medianIndex = (this.medianIndex + 1) % this.medianBuffer.length;
-                    // 计算中值
-                    let sortedBuffer = Array.from(this.medianBuffer).sort((a, b) => a - b);
-                    let pixelFiltered = sortedBuffer[Math.floor(this.medianBuffer.length / 2)];
-
-                    let x = this.pos % this.canvas.width;
-                    let y = Math.floor(this.pos / this.canvas.width);
-                    let ord = (y * this.canvas.width + x) * 4;
-                    this.imageData.data[ord] = pixelFiltered;
-                    this.imageData.data[ord + 1] = pixelFiltered;
-                    this.imageData.data[ord + 2] = pixelFiltered;
-                    this.imageData.data[ord + 3] = 255;
-                    this.pos++;
-                    if (this.pos >= this.canvas.width * this.canvas.height) {
-                        this.pos = 0;
-                    }
-                }
-
-                let dirtyY1 = Math.floor(startPos / this.canvas.width)
-                let dirtyY2 = Math.ceil(this.pos / this.canvas.width)
-                this.ctx.putImageData(this.imageData, 0, 0, 0, dirtyY1, this.canvas.width, dirtyY2);
-            }
-
-            clear() {
-                this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
-                this.imageData.data.fill(0);
-                this.pos = 0;
-            }
-        }
-
-        function createDemodulator(sampleRate) {
-            function checkRange(n, center, range) {
-                const lowerBound = center - range;
-                const upperBound = center + range;
-                return n >= lowerBound && n <= upperBound;
-            }
-            const mixer = class extends AudioWorkletProcessor {
-                static get parameterDescriptors() {
-                    return [{
-                        name: 'frequency',
-                        defaultValue: 440,
-                        minValue: 20,
-                        maxValue: 20000,
-                        automationRate: 'a-rate' // 关键：指定 automationRate 为 'a-rate'
-                    }];
-                }
-
-                constructor() {
-                    super();
-                    this.phase = 0;
-                    this.sampleRate = sampleRate;
-                }
-
-                process(inputs, outputs, parameters) {
-                    // 确保有一个输入通道
-                    const input = inputs[0];
-                    const output = outputs[0];
-
-                    // 确保是双声道输出
-                    const leftChannel = output[0]; // 实部
-                    const rightChannel = output[1]; // 虚部
-                    const frequencies = parameters.frequency; // 获取频率数组，因为是 a-rate
-
-                    for (let i = 0; i < leftChannel.length; i++) {
-                        const frequency = frequencies[i] ?? frequencies[0]; // 获取当前帧的频率
-                        const omega = 2 * Math.PI * frequency / this.sampleRate;
-
-                        const real = Math.cos(this.phase);
-                        const imag = Math.sin(this.phase);
-
-                        // 处理左声道输入，如果未连接则乘以1
-                        const leftInputValue = input && input[0] ? input[0][i] : 1;
-
-                        // 处理右声道输入，如果未连接则乘以1
-                        const rightInputValue = input && input[1] ? input[1][i] : 1;
-
-                        leftChannel[i] = real * leftInputValue;
-                        rightChannel[i] = imag * rightInputValue;
-
-                        this.phase += omega;
-                        //this.phase %= (2 * Math.PI); // 周期重置
-                    }
-
-                    return true;
-                }
-            }
-
-
-            const demod = class extends AudioWorkletProcessor {
-                constructor(options) {
-                    super();
-                    this.count = 0;
-                    this.sampleRate = sampleRate;
-                    this.pixelArr = new Uint8ClampedArray(1500);
-                    this.pixelCount = 0;
-                    this.accumulated = 0;
-
-                    this.syncTime = 20; // ms
-                    this.syncSamples = 3000 * (this.syncTime / 1000)
-                    this.blackSamples = 0;
-                    this.syncBuffer = new Float32Array(this.syncSamples);
-                    this.lastSync = 0;
-
-                    this.setLineTime(0.5)
-
-                    this.port.onmessage = (event) => {
-                        switch (event.data.type) {
-                            case "lineTime":
-                                this.setLineTime(event.data.lineTime);
-                                break;
-                            case "syncTime":
-                                break;
-                        }
-                    };
-                }
-
-                setLineTime(time) {
-                    this.spp = this.sampleRate * time / 1500;  // 每个像素点的采样点数
-                    this.count = 0;
-                }
-
-                process(inputs, outputs, parameters) {
-                    // 获取输入信号和固定解调频率参数
-                    const input = inputs[0];
-
-                    const filteredI = input[0]
-                    const filteredQ = input[1]
-
-                    if (!filteredI || !filteredQ) return true;
-
-                    // FM解调
-                    const phase = new Float32Array(filteredI.length);
-                    for (let j = 0; j < filteredI.length - 1; ++j) {
-                        // 计算相邻样本的共轭乘积（用于相位差检测）
-                        const real1 = filteredI[j], imag1 = filteredQ[j];
-                        const real2 = filteredI[j + 1], imag2 = filteredQ[j + 1];
-                        const resultReal = real1 * real2 + imag1 * imag2;  // 实部
-                        const resultImag = real1 * -imag2 + imag1 * real2;  // 虚部
-
-                        // 计算瞬时相位差（arctan(虚部/实部））
-                        phase[j] = Math.atan2(resultImag, resultReal) * (sampleRate / 800) / Math.PI;
-                        this.accumulated += phase[j]
-
-                        if ((this.count++) >= this.spp) {
-                            let avgPhase = this.accumulated / this.spp;
-
-                            // 同步处理
-                            this.syncBuffer[(this.blackSamples++) % this.syncSamples] = avgPhase;
-                            const syncAvg = this.syncBuffer.reduce((a, b) => a + b, 0) / this.syncSamples;
-
-                            let threshold = -0.96; // 设定阈值
-                            if (syncAvg > threshold && this.lastSync < threshold) {
-                                // 同步点检测，黑色像素点
-                                //this.pixelCount = 0;
-                            }
-                            this.lastSync = syncAvg;
-
-                            this.pixelArr[this.pixelCount++] = Math.round((avgPhase + 1) * 128);
-                            if (this.pixelCount >= this.pixelArr.length) {
-                                this.pixelCount = 0;
-                                this.port.postMessage({ phase: this.pixelArr });
-                            }
-                            this.count -= this.spp;
-                            this.accumulated = 0;
-                        }
-
-                    }
-                    this.count++;
-
-                    phase[phase.length - 1] = phase[phase.length - 2];  // 边界处理
-
-                    // 将相位数据输出到指定端口
-                    outputs[0][0].set(phase);
-                    return true;
-                }
-            }
-
-            registerProcessor('demod', demod);
-            registerProcessor('mixer', mixer)
-        }
-
-        function arrayBufferToBase64(buffer) {
-            let binary = '';
-            const bytes = new Uint8Array(buffer);
-            const len = bytes.byteLength;
-            for (let i = 0; i < len; i++) {
-                binary += String.fromCharCode(bytes[i]);
-            }
-            return btoa(binary);
-        }
-
-        function createGaussianFilter(baudRate, bt = 0.5) {
-            // 符号周期计算
-            const T = 1 / baudRate;
-
-            // 确定滤波器持续时间（±3个符号周期）
-            const numSymbols = 6;
-            const totalDuration = 2 * numSymbols * T;
-            const taps = Math.round(totalDuration * audioCtx.sampleRate);
-
-            // 生成对称时间轴（精确到采样点）
-            const tValues = Array.from({ length: taps }, (_, i) => {
-                return (i - taps / 2 + 0.5) / audioCtx.sampleRate; // 采样点中心对齐
-            });
-
-            // 高斯脉冲参数计算
-            const B = bt / T; // 3dB带宽
-            const alpha = Math.sqrt(Math.LN2 / 2) / B;
-
-            // 生成基带高斯脉冲
-            const baseband = tValues.map(t => {
-                return Math.exp(-Math.pow(Math.PI * t / alpha, 2));
-            });
-
-            // 创建音频缓冲区
-            const buffer = audioCtx.createBuffer(1, taps, audioCtx.sampleRate);
-            buffer.getChannelData(0).set(baseband);
-
-            return buffer;
-        }
-
-        function isFrequencyDominant(frequencyData, sampleRate, targetFrequency) {
-            // 计算每个频带的宽度(Hz)
-            const binWidth = sampleRate * 0.5 / frequencyData.length;
-
-            // 找到目标频率对应的频带索引
-            const targetBinIndex = Math.floor(targetFrequency / binWidth);
-
-            // 确保索引在有效范围内
-            if (targetBinIndex < 0 || targetBinIndex >= frequencyData.length) {
-                return false;
-            }
-
-            // 计算目标频率的能量(转换为线性标度的功率值)
-            const targetEnergy = Math.pow(10, frequencyData[targetBinIndex] / 10)+
-             Math.pow(10, frequencyData[targetBinIndex+1] / 10);
-
-            // 计算总能量
-            let totalEnergy = 0;
-            for (let i = 0; i < frequencyData.length; i++) {
-                totalEnergy += Math.pow(10, frequencyData[i] / 10);
-            }
-
-            // 计算目标频率能量占比
-            const energyRatio = targetEnergy / totalEnergy;
-
-            // 判断是否超过
-            return energyRatio > 0.1;
-        }
-
-        const code = new TextEncoder().encode(`(${createDemodulator.toString()})(${sampleRate});`);
-        const workletData = 'data:application/javascript;base64,' + arrayBufferToBase64(code)
-        console.log(workletData)
-
-        const audioInput = document.getElementById('audio-input');
-        const received = document.getElementById('received');
-
-
-        navigator.mediaDevices?.enumerateDevices().then(devices => {
-            devices.filter(device => device.kind === 'audioinput').forEach(device => {
-                const option = document.createElement('option');
-                option.value = device.deviceId;
-                option.innerText = device.label || `设备 ${audioInput.options.length + 1}`;
-                audioInput.appendChild(option);
-            })
-        })
-
-        let rxBtn = document.getElementById('start')
-        let rxUpdate = null;
-
-        const atv = new ATVDisplay(document.getElementById('atv'));
-
-
-        rxBtn.addEventListener('click', async () => {
-            rxBtn.disabled = true;
-            audioCtx.resume()
-
-            await audioCtx.audioWorklet.addModule(workletData)
-            let stream = await navigator.mediaDevices.getUserMedia(
-                {
-                    audio: {
-                        sampleRate: audioCtx.sampleRate,
-                        deviceId: audioInput.value,
-                        echoCancellation: false,
-                        noiseSuppression: false
-                    },
-                    video: false
-                }
-            )
-
-
-            const source = audioCtx.createMediaStreamSource(stream)
-            const mixer = new AudioWorkletNode(audioCtx, 'mixer', { outputChannelCount: [2] })
-            const filter = audioCtx.createConvolver()
-            const demod = new AudioWorkletNode(audioCtx, 'demod', { outputChannelCount: [1] })
-
-            const analyser = audioCtx.createAnalyser();
-            analyser.fftSize = 2048;
-            const analyser2 = audioCtx.createAnalyser();
-            analyser2.fftSize = 8192;
-            analyser2.smoothingTimeConstant = 0;
-
-            const filterData = createGaussianFilter(freqDeviation);
-            filter.buffer = filterData;
-
-            mixer.parameters.get('frequency').setValueAtTime(carrierFreq, audioCtx.currentTime);
-
-            source.connect(mixer, 0).connect(filter).connect(demod).connect(analyser)
-            source.connect(analyser2)
-
-            let waveData = new Float32Array(waveformWidth)
-            let spectrumData = new Uint8Array(analyser2.frequencyBinCount)
-            let demodData = new Float32Array(analyser.frequencyBinCount)
-
-            demod.port.onmessage = (e) => {
-                atv.draw(e.data.phase);
-            }
-
-            demod.port.postMessage({ type: "lineTime", lineTime: 0.5 });
-
-            setInterval(() => {
-                analyser.getFloatTimeDomainData(waveData)
-                drawWaveform(waveData)
-                analyser2.getByteFrequencyData(spectrumData)
-                drawSpectrum(spectrumData)
-            }, 32)
-
-            setInterval(() => {
-                analyser.getFloatFrequencyData(demodData)
-                if (!atv.recording) {
-                    let startSignal = isFrequencyDominant(demodData, sampleRate, 300);
-                    if (startSignal) {
-                        // enable recording
-                        atv.recording = true;
-                        document.getElementById('startRec').innerText = '停止';
-                    }
-                } else {
-                    let endSignal = isFrequencyDominant(demodData, sampleRate, 450);
-                    if (endSignal) {
-                        // stop recording
-                        atv.recording = false;
-                        document.getElementById('startRec').innerText = '开始';
-                        downloadImage();
-                    }
-                }
-            }, 250)
-
-            // enable recording
-            atv.recording = true;
-            document.getElementById('startRec').innerText = '停止';
-
-            // line time change
-            document.getElementById('lineTime').addEventListener('change', (e) => {
-                demod.port.postMessage({ type: "lineTime", lineTime: parseFloat(e.target.value) });
-            })
-        })
-
-
-        document.getElementById('startRec').addEventListener('click', () => {
-            atv.recording = !atv.recording;
-            document.getElementById('startRec').innerText = atv.recording ? '停止' : '开始';
-        });
-
-        function downloadImage() {
-            const link = document.createElement('a');
-            link.download = `fax-${new Date().toISOString()}.png`
-            link.href = atv.canvas.toDataURL();
-            link.click();
-        }
-
-        document.getElementById('download').addEventListener('click', () => {
-            downloadImage()
-        });
-
-        document.getElementById('clearRx').addEventListener('click', () => {
-            atv.clear();
-        });
-
-
-        const waveform = document.getElementById('waveform');
-        const waveformCtx = waveform.getContext('2d');
-        const waveformWidth = waveform.width;
-        const waveformHeight = waveform.height;
-        function drawWaveform(data) {
-            waveformCtx.clearRect(0, 0, waveformWidth, waveformHeight);
-            waveformCtx.beginPath();
-            waveformCtx.moveTo(0, waveformHeight / 2);
-            for (let i = 0; i < data.length; i++) {
-                const x = i;
-                const y = -data[i] * waveformHeight / 3 + waveformHeight / 2;
-                waveformCtx.lineTo(x, y);
-            }
-            waveformCtx.strokeStyle = 'rgba(212,175,55, 1)';
-            waveformCtx.lineWidth = 2;
-            waveformCtx.stroke();
-        }
-
-        const spectrum = document.getElementById('spectrum');
-        const spectrumCtx = spectrum.getContext('2d');
-        const spectrumWidth = spectrum.width;
-        const spectrumHeight = spectrum.height;
-
-        function relFreq(f) {
-            return f / (sampleRate * 0.5)
-        }
-
-        function mapFreq(percent) {
-            const startFreq = relFreq(1200);
-            const endFreq = relFreq(2600);
-            return startFreq + (endFreq - startFreq) * percent
-        }
-
-        function drawSpectrum(data) {
-            spectrumCtx.drawImage(spectrum, 0, 1, spectrumWidth, spectrumHeight);//move down by one pixel
-
-            for (let i = 0; i < spectrumWidth; i++) {
-                const idx = Math.floor(mapFreq(i / spectrumWidth) * data.length)
-                const val = data[idx] / 255
-                spectrumCtx.fillStyle = colorTrans(palette, val)
-                spectrumCtx.fillRect(i, 0, 1, 1);
-            }
-
-            let freqDiff = 2600 - 1200;
-            let x1 = ((1500 - 1200) / freqDiff * spectrumWidth)
-            let x2 = ((2300 - 1200) / freqDiff * spectrumWidth)
-            spectrumCtx.fillStyle = `white`
-
-            spectrumCtx.fillRect(x1, 0, 1, 1);
-            spectrumCtx.fillRect(x2, 0, 1, 1);
-
-        }
-
-
-        function acquireWakelock() {
-            if ('wakeLock' in navigator) {
-                try {
-                    navigator.wakeLock.request('screen').then(lock => {
-                        lock.addEventListener('release', e => {
-                            console.log("wakelock released");
-                        })
-                    });
-                } catch (error) {
-                    console.error(error);
-                }
-            }
-        }
-
-        document.addEventListener("visibilitychange", function () {
-            if (document.visibilityState === 'visible') {
-                acquireWakelock();
-            }
-        });
-        acquireWakelock();
-
-    </script>
-</body>
-
-</html>
+<!doctype html>
+<html lang="zh"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>抄写室 · 奥术传真仪</title>
+<link href="https://fonts.googleapis.com/css2?family=IM+Fell+English:ital@0;1&family=UnifrakturCook:wght@700&display=swap" rel="stylesheet">
+<style>
+:root{--ink:#2b1a0e;--ink2:#5a3a1c;--red:#8b1e1e;--grn:#2f5d34;--gold:#b8892b;
+ --f:'IM Fell English','Noto Serif SC','Songti SC',STSong,SimSun,serif;
+ --grain:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220' height='220'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.75' numOctaves='3'/%3E%3CfeColorMatrix values='0 0 0 0 .35 0 0 0 0 .22 0 0 0 0 .08 0 0 0 .2 0'/%3E%3C/filter%3E%3Crect width='220' height='220' filter='url(%23n)'/%3E%3C/svg%3E")}
+*{box-sizing:border-box}
+body{margin:0;min-height:100vh;color:var(--ink);font:17px/1.6 var(--f);padding:16px;
+ background:var(--grain),repeating-linear-gradient(92deg,#4a2f16 0 3px,#3f2711 3px 9px,#523718 9px 12px),#3a2410}
+.banner,.win{position:relative;background:var(--grain),radial-gradient(ellipse at 18% 8%,#f5e8bf,#e6d19a 55%,#cdaa66 100%);
+ border:1px solid #7a5a2a;border-radius:3px;box-shadow:inset 0 0 46px #8a5a1d77,inset 0 0 5px #5a3a1c,0 7px 16px #000a}
+.banner::before,.win::before{content:"";position:absolute;inset:6px;border:1px solid #5a3a1c99;border-radius:2px;pointer-events:none}
+.banner{max-width:1280px;margin:0 auto 16px;display:flex;gap:18px;align-items:center;padding:14px 22px}
+.crest{width:58px;height:58px;border-radius:50%;display:grid;place-items:center;font-size:28px;color:#f3d9a4;flex:none;
+ background:radial-gradient(circle at 35% 30%,#c0392b,#7a1515 70%,#4d0b0b);box-shadow:inset 0 0 0 4px #7a1515,inset 0 0 0 6px #d4685a66,0 3px 5px #0007}
+h1{margin:0;font:700 clamp(24px,4vw,40px)/1.1 'UnifrakturCook','Noto Serif SC',serif;color:var(--ink)}
+.banner p{margin:2px 0 0;color:var(--ink2);font-style:italic;font-size:14px;letter-spacing:.12em}
+.grid{max-width:1280px;margin:0 auto;display:grid;grid-template-columns:280px 1fr 280px;gap:16px}
+.wide{grid-column:1/-1}
+@media(max-width:1000px){.grid{grid-template-columns:1fr}}
+.win{padding:18px 22px}
+.win h2{margin:0 0 10px;font:700 19px var(--f);color:var(--red);text-align:center;letter-spacing:.1em}
+.win h2::before{content:"❦  ";color:var(--gold)}.win h2::after{content:"  ❦";color:var(--gold)}
+button{font:inherit;color:var(--ink);width:100%;margin:5px 0;padding:6px 12px;cursor:pointer;text-align:center;
+ background:linear-gradient(#e8d29b,#c9a45a);border:2px solid var(--ink);border-radius:3px;box-shadow:0 2px 0 var(--ink2),inset 0 1px 0 #fff8}
+button:hover,button:focus-visible{background:linear-gradient(#f0dca8,#d6b26a);outline:none;color:var(--red)}
+button:active{transform:translateY(2px);box-shadow:none}button:disabled{opacity:.5;cursor:default}
+.btns{display:flex;flex-wrap:wrap;gap:0 10px}.btns button{width:auto;flex:1 1 120px}
+label{display:block;margin-top:9px;font-style:italic;color:var(--ink2);font-size:15px}
+select{font:inherit;width:100%;color:var(--ink);background:#f2e3b4aa;border:1px solid var(--ink);border-radius:2px;padding:4px 8px}
+.chk{display:flex;gap:8px;align-items:center;font-style:normal;color:var(--ink)}
+.scroll{background:var(--grain),linear-gradient(90deg,#d4b676,#ecdba5 12%,#ecdba5 88%,#d4b676);border:1px solid #6a4a22;box-shadow:inset 0 0 30px #8a5a1d66}
+.roller{height:20px;background:linear-gradient(#a06a2c,#6b4119 55%,#3c230c);box-shadow:0 3px 4px #0006;border-radius:10px}
+#atv{display:block;width:100%;aspect-ratio:1500/2300;max-height:70vh;object-fit:contain;object-position:top;image-rendering:pixelated;cursor:zoom-in;mix-blend-mode:multiply}
+.stat{display:grid;grid-template-columns:auto 1fr;gap:6px 12px;align-items:center}
+.stat span:nth-child(odd){font-style:italic;color:var(--ink2);font-size:15px}
+.bar{height:11px;border:1px solid var(--ink);background:#f2e3b455;border-radius:2px;overflow:hidden}
+.bar i{display:block;height:100%;width:0;background:repeating-linear-gradient(90deg,var(--ink) 0 3px,#5a3a1c 3px 5px);transition:width .2s}
+.bar.hp i{background:repeating-linear-gradient(90deg,var(--grn) 0 3px,#3f7a45 3px 5px)}
+.gem{display:inline-block;width:18px;height:18px;border-radius:50%;margin-right:8px;vertical-align:middle;background:radial-gradient(circle at 35% 30%,#9a8a74,#5c4f40);box-shadow:inset 0 0 0 2px #4a3d2f}
+.gem.on{background:radial-gradient(circle at 35% 30%,#d94a3a,#8b1e1e 70%,#4d0b0b);box-shadow:inset 0 0 0 2px #7a1515,0 0 6px #8b1e1e88}
+.gem.off{background:radial-gradient(circle at 35% 30%,#8a7a64,#4a3d2f);box-shadow:inset 0 0 0 2px #2b1a0e}
+.two{display:grid;grid-template-columns:2fr 1fr;gap:14px}@media(max-width:700px){.two{grid-template-columns:1fr}}
+canvas.sig{width:100%;background:#e2cf9a;border:1px solid var(--ink);border-radius:2px;display:block;box-shadow:inset 0 0 14px #8a5a1d55}
+#log{height:130px;overflow:auto;background:#f2e3b455;border:1px solid var(--ink);padding:8px 14px;font-size:16px}
+#log div::before{content:"❧ ";color:var(--gold)}#log .hot{color:var(--grn)}#log .warn{color:var(--red)}
+</style></head><body>
+<header class="banner"><div class="crest">✠</div>
+ <div><h1>抄写室 · 奥术传真仪</h1><p>Scriptorium · Arcane Facsimile Receiver</p></div></header>
+<main class="grid">
+ <section class="win"><h2>书吏指令</h2>
+  <button id="start">点燃烛火 · 开始接收</button>
+  <label for="audio-input">收音装置</label><select id="audio-input"></select>
+  <label for="lineTime">每行时长</label>
+  <select id="lineTime"><option value="0.25">急笔 (250ms)</option><option value="0.5" selected>常速 (500ms)</option><option value="1">工笔 (1s)</option></select>
+  <label for="syncTime">同步脉冲时长</label>
+  <select id="syncTime"></select>
+  <label class="chk"><input type="checkbox" id="real" checked> 真实同步 Real Sync</label>
+  <label class="chk"><input type="checkbox" id="wiener" checked> 维纳滤波 Wiener</label>
+  <button id="resync">重新寻觅同步</button>
+ </section>
+ <section class="win"><h2>羊皮卷</h2>
+  <div class="scroll"><div class="roller"></div><canvas id="atv" width="1500" height="2300"></canvas><div class="roller"></div></div>
+  <div class="btns"><button id="startRec">开始记录</button><button id="download">保存羊皮卷</button><button id="clearRx">擦拭羊皮卷</button></div>
+ </section>
+ <section class="win"><h2>抄写员记录</h2>
+  <div class="stat">
+   <span>同步印记</span><span><i class="gem" id="gem"></i><b id="syncTxt">待机</b></span>
+   <span>信号墨量</span><div class="bar"><i id="lvl"></i></div>
+   <span>锁定</span><div class="bar hp"><i id="lockBar"></i></div>
+   <span>行周期</span><span id="per">—</span>
+   <span>黑墨基准</span><span id="blk">—</span>
+   <span>已誊行数</span><span id="lines">0</span>
+  </div></section>
+ <section class="win wide"><h2>信号 · 波形与频谱</h2>
+  <div class="two"><canvas class="sig" id="waveform" width="1500" height="300"></canvas><canvas class="sig" id="spectrum" width="256" height="128"></canvas></div></section>
+ <section class="win wide"><h2>编年史</h2><div id="log"></div></section>
+</main>
+<script>
+const sampleRate=48000,carrierFreq=1900,freqDeviation=800,width=1500,height=2300;
+const $=id=>document.getElementById(id);
+let audioCtx;
+for(const ms of [8,10,15,20,25,30,35,40,45,50])$('syncTime').add(new Option(ms+'ms',ms,false,ms===20));
+function say(m,c=''){const d=document.createElement('div');d.textContent=m;d.className=c;const l=$('log');l.append(d);while(l.children.length>40)l.firstChild.remove();l.scrollTop=1e9}
+say('欢迎来到抄写室。请点燃烛火，开始接收。');
+
+/* ---- ATV scroll display: one decoded, sync-aligned line == one canvas row ---- */
+class ATVDisplay{
+ constructor(c){this.canvas=c;this.ctx=c.getContext('2d');this.img=this.ctx.createImageData(width,height);this.row=0;this.lines=0;this.recording=false;
+  c.addEventListener('click',()=>document.fullscreenElement?document.exitFullscreen():c.requestFullscreen?.())}
+ draw(px){
+  const y=this.row,d=this.img.data; // always draw, regardless of the record state
+  for(let k=0,o=y*width*4;k<width;k++,o+=4){d[o]=d[o+1]=d[o+2]=px[k];d[o+3]=255}
+  this.ctx.putImageData(this.img,0,0,0,y,width,1);
+  this.row=(y+1)%height;this.lines++;
+  $('lines').textContent=this.lines;
+ }
+ clear(){this.ctx.clearRect(0,0,width,height);this.img.data.fill(0);this.row=0}
+}
+
+/* ---- AudioWorklet source (stringified into a data: URL) ---- */
+function createDemodulator(SR){
+ const mixer=class extends AudioWorkletProcessor{
+  static get parameterDescriptors(){return[{name:'frequency',defaultValue:440,minValue:20,maxValue:20000,automationRate:'a-rate'}]}
+  constructor(){super();this.phase=0}
+  process(inputs,outputs,params){
+   const inp=inputs[0],o=outputs[0],f=params.frequency;
+   for(let i=0;i<o[0].length;i++){
+    const w=2*Math.PI*(f[i]??f[0])/SR;
+    o[0][i]=Math.cos(this.phase)*(inp&&inp[0]?inp[0][i]:1);
+    o[1][i]=Math.sin(this.phase)*(inp&&inp[1]?inp[1][i]:1);
+    this.phase+=w;
+   }
+   return true;
+  }
+ };
+ // FM discriminator + REAL SYNC.
+ // Line layout assumed: [sync = syncTime ms at lowest tone (black level)] [1500 pixels]. The end of every sync
+ // pulse is the line start. Pixels are box-averaged over the real measured sync-to-sync period, so clock drift
+ // between tx/rx cancels, and the sync tone also gives a per-line black-level reference.
+ const demod=class extends AudioWorkletProcessor{
+  constructor(){
+   super();this.sr=SR;this.mask=(1<<17)-1;this.ring=new Float32Array(this.mask+1);
+   this.lineTime=.5;this.syncMs=20;this.free=false;this.wn=true;this.W=1500;this.pI=0;this.pQ=0;this.st=0;this.reset();
+   this.port.onmessage=e=>{const d=e.data;
+    if(d.type==='wiener'){this.wn=d.on;return}
+    if(d.type==='lineTime')this.lineTime=d.lineTime;
+    if(d.type==='syncTime')this.syncMs=d.syncTime;
+    if(d.type==='free')this.free=d.free;
+    this.reset()};
+  }
+  reset(){this.t=0;this.s=0;this.run=0;this.sb=0;this.nb=0;this.b=-1;this.ends=[];this.P=0;this.last=-1;this.miss=0;this.locked=false;this.fc=0;this.runLen=0}
+  ev(m,c){this.port.postMessage({ev:m,c})}
+  syncEnd(te,rl){
+   const nom=this.lineTime*this.sr,sn=this.syncMs*this.sr/1000,bm=this.nb?this.sb/this.nb:this.b;
+   rl=Math.min(Math.max(rl,.7*sn),1.3*sn);
+   if(!this.locked){ // acquire: three sync pulses with equal spacing
+    const e=this.ends;e.push(te);if(e.length>3)e.shift();
+    if(e.length===3){const d1=e[1]-e[0],d2=e[2]-e[1];
+     if(Math.abs(d1-d2)<.01*d1&&d1>.9*nom&&d1<1.1*(nom+sn)){
+      this.locked=true;this.P=d2;this.last=te;this.miss=0;this.b=bm;this.runLen=rl;this.ev('同步锁定！行周期 '+(d2/this.sr*1000).toFixed(1)+'ms','hot')}}
+    return;
+   }
+   const d=te-this.last;
+   if(d<this.P*.93)return; // black run inside the picture, not a sync
+   this.line(this.last,te,rl);
+   this.P+=(d-this.P)*.2;this.last=te;this.miss=0;this.runLen=rl;
+   if(this.nb)this.b=Math.max(-1.6,Math.min(-.4,this.b+(bm-this.b)*.3));
+  }
+  line(a,b,rl){
+   const W=this.W,n=b-a-rl;if(n<W)return;
+   const px=new Uint8ClampedArray(W);
+   for(let k=0;k<W;k++){
+    const s0=a+Math.floor(k*n/W),s1=Math.max(s0+1,a+Math.floor((k+1)*n/W));let acc=0;
+    for(let i=s0;i<s1;i++)acc+=this.ring[i&this.mask];
+    px[k]=(acc/(s1-s0)-this.b)*127.5;
+   }
+   const m=new Uint8ClampedArray(W); // 3-tap median despeckle
+   for(let k=0;k<W;k++){const p=px[Math.max(0,k-1)],q=px[k],r=px[Math.min(W-1,k+1)];m[k]=Math.max(Math.min(p,q),Math.min(Math.max(p,q),r))}
+   let o=m;
+   if(this.wn){ // adaptive 1-D Wiener filter (wiener2 style): local mean/variance over 5 px, noise power = mean local variance
+    const K=2,mu=new Float32Array(W),va=new Float32Array(W);let nv=0;
+    for(let k=0;k<W;k++){let s=0,q=0,c=0;for(let i=Math.max(0,k-K),z=Math.min(W-1,k+K);i<=z;i++){const v=m[i];s+=v;q+=v*v;c++}mu[k]=s/c;va[k]=Math.max(0,q/c-mu[k]*mu[k]);nv+=va[k]}
+    nv/=W;o=new Uint8ClampedArray(W);
+    for(let k=0;k<W;k++){const g=va[k]>nv?(va[k]-nv)/va[k]:0;o[k]=mu[k]+g*(m[k]-mu[k])}
+   }
+   this.port.postMessage({phase:o});
+  }
+  process(inputs,outputs){
+   const I=inputs[0][0],Q=inputs[0][1];if(!I||!Q)return true;
+   const out=outputs[0][0],sr=this.sr,sn=this.syncMs*sr/1000,need=.7*sn;
+   for(let j=0;j<I.length;j++){
+    const r1=this.pI,i1=this.pQ,r2=I[j],i2=Q[j];
+    const x=Math.atan2(-r1*i2+i1*r2,r1*r2+i1*i2)*(sr/800)/Math.PI; // -1 (1500Hz) .. +1 (2300Hz)
+    this.pI=r2;this.pQ=i2;out[j]=x;
+    this.ring[this.t&this.mask]=x;
+    this.s+=(x-this.s)*.1;
+    if(this.s<this.b+.15){this.run++;if(this.run>need*.4){this.sb+=this.s;this.nb++}}
+    else{if(this.run>=need&&!this.free)this.syncEnd(this.t-4,this.run);this.run=0;this.sb=0;this.nb=0}
+    this.t++;
+    if(this.free){ // original behaviour: no alignment
+     if(++this.fc>=this.lineTime*sr){this.fc=0;this.line(this.t-Math.round(this.lineTime*sr),this.t,0)}
+    }else if(this.locked&&this.t>this.last+this.P*1.1){ // flywheel when a sync is lost
+     const n=this.last+Math.round(this.P);this.line(this.last,n,this.runLen);this.last=n;
+     if(++this.miss>6){this.locked=false;this.P=0;this.ends=[];this.ev('同步丢失，重新搜索…','warn')}
+    }
+   }
+   this.st+=I.length;
+   if(this.st>=4800){this.st=0;this.port.postMessage({st:{lk:this.locked,P:this.P/sr,b:this.b,miss:this.miss}})}
+   return true;
+  }
+ };
+ registerProcessor('demod',demod);registerProcessor('mixer',mixer);
+}
+
+function gaussianFilter(ctx,baud,bt=.5){
+ const T=1/baud,taps=Math.round(12*T*ctx.sampleRate),B=bt/T,alpha=Math.sqrt(Math.LN2/2)/B;
+ const buf=ctx.createBuffer(1,taps,ctx.sampleRate),d=buf.getChannelData(0);
+ for(let i=0;i<taps;i++){const t=(i-taps/2+.5)/ctx.sampleRate;d[i]=Math.exp(-Math.pow(Math.PI*t/alpha,2))}
+ return buf;
+}
+function toneDominant(db,sr,f){
+ const bw=sr*.5/db.length,i=Math.floor(f/bw);if(i<0||i>=db.length-1)return false;
+ const e=Math.pow(10,db[i]/10)+Math.pow(10,db[i+1]/10);let tot=0;
+ for(let k=0;k<db.length;k++)tot+=Math.pow(10,db[k]/10);
+ return e/tot>.1;
+}
+function b64(buf){let s='';for(const b of new Uint8Array(buf))s+=String.fromCharCode(b);return btoa(s)}
+
+const code=new TextEncoder().encode(`(${createDemodulator.toString()})(${sampleRate});`);
+const workletData='data:application/javascript;base64,'+b64(code);
+const atv=new ATVDisplay($('atv'));
+navigator.mediaDevices?.enumerateDevices().then(ds=>ds.filter(d=>d.kind==='audioinput').forEach((d,i)=>{
+ $('audio-input').add(new Option(d.label||`设备 ${i+1}`,d.deviceId))}));
+
+let demodNode=null;
+const sendCfg=()=>{if(!demodNode)return;
+ demodNode.port.postMessage({type:'lineTime',lineTime:parseFloat($('lineTime').value)});
+ demodNode.port.postMessage({type:'syncTime',syncTime:parseFloat($('syncTime').value)});
+ demodNode.port.postMessage({type:'free',free:!$('real').checked});
+ demodNode.port.postMessage({type:'wiener',on:$('wiener').checked})};
+['lineTime','syncTime','real','resync'].forEach(id=>$(id).addEventListener(id==='resync'?'click':'change',()=>{sendCfg();say(id==='real'?($('real').checked?'真实同步已开启':'自由运行模式'):'咒语参数已更新，重新搜索同步…')}));
+
+$('wiener').onchange=()=>{demodNode?.port.postMessage({type:'wiener',on:$('wiener').checked});say($('wiener').checked?'维纳滤波已启用':'维纳滤波已关闭')};
+let lastLock=null;
+function hud(s){
+ $('gem').className='gem '+(s.lk?'on':'off');$('syncTxt').textContent=s.lk?'已盖印 SEALED':($('real').checked?'寻觅中 SEEKING':'自由运行 FREE');
+ $('lockBar').style.width=s.lk?Math.max(10,100-s.miss*16)+'%':'0';
+ $('per').textContent=s.lk?(s.P*1000).toFixed(1)+' ms':'—';$('blk').textContent=s.lk?s.b.toFixed(2):'—';
+ lastLock=s.lk;
+}
+
+$('start').addEventListener('click',async()=>{
+ $('start').disabled=true;
+ try{
+  audioCtx=new AudioContext({sampleRate,latencyHint:'balanced'});await audioCtx.resume();
+  await audioCtx.audioWorklet.addModule(workletData);
+  const stream=await navigator.mediaDevices.getUserMedia({audio:{sampleRate,deviceId:$('audio-input').value||undefined,echoCancellation:false,noiseSuppression:false,autoGainControl:false},video:false});
+  const src=audioCtx.createMediaStreamSource(stream);
+  const mixer=new AudioWorkletNode(audioCtx,'mixer',{outputChannelCount:[2]});
+  const filter=audioCtx.createConvolver();filter.buffer=gaussianFilter(audioCtx,freqDeviation);
+  const demod=demodNode=new AudioWorkletNode(audioCtx,'demod',{outputChannelCount:[1]});
+  const an=audioCtx.createAnalyser();an.fftSize=2048;
+  const an2=audioCtx.createAnalyser();an2.fftSize=8192;an2.smoothingTimeConstant=0;
+  mixer.parameters.get('frequency').setValueAtTime(carrierFreq,audioCtx.currentTime);
+  src.connect(mixer,0).connect(filter).connect(demod).connect(an);src.connect(an2);
+  demod.port.onmessage=e=>{const d=e.data;
+   if(d.phase)atv.draw(d.phase);
+   if(d.st)hud(d.st);
+   if(d.ev)say(d.ev,d.c)};
+  sendCfg();
+  const wave=new Float32Array(waveW),spec=new Uint8Array(an2.frequencyBinCount),fdat=new Float32Array(an.frequencyBinCount);
+  setInterval(()=>{an.getFloatTimeDomainData(wave);drawWave(wave);an2.getByteFrequencyData(spec);drawSpec(spec);
+   let m=0;const lo=Math.floor(1400/(sampleRate/2)*spec.length),hi=Math.floor(2400/(sampleRate/2)*spec.length);
+   for(let i=lo;i<hi;i++)m=Math.max(m,spec[i]);$('lvl').style.width=m/2.55+'%'},32);
+  setInterval(()=>{ // 300 Hz tone = start scroll, 450 Hz tone = end scroll
+   an.getFloatFrequencyData(fdat);
+   if(!atv.recording){if(toneDominant(fdat,sampleRate,300)){atv.recording=true;$('startRec').textContent='停止';say('收到起始信号，开始记录卷轴','hot')}}
+   else if(toneDominant(fdat,sampleRate,450)){atv.recording=false;$('startRec').textContent='开始';say('收到结束信号，卷轴已保存','hot');saveImg()}
+  },250);
+  atv.recording=true;$('startRec').textContent='停止';
+  say('烛火已燃。正在寻觅同步信号…');
+ }catch(err){say('失败：'+err.message,'warn');$('start').disabled=false}
+});
+$('startRec').addEventListener('click',()=>{atv.recording=!atv.recording;$('startRec').textContent=atv.recording?'停止':'开始'});
+function saveImg(){const a=document.createElement('a');a.download=`fax-${new Date().toISOString()}.png`;a.href=atv.canvas.toDataURL();a.click()}
+$('download').addEventListener('click',saveImg);
+$('clearRx').addEventListener('click',()=>{atv.clear();atv.lines=0;$('lines').textContent=0;say('卷轴已清除')});
+
+/* ---- signal windows ---- */
+const wc=$('waveform'),wg=wc.getContext('2d'),waveW=wc.width,waveH=wc.height;
+function drawWave(d){
+ wg.clearRect(0,0,waveW,waveH);wg.beginPath();
+ for(let i=0;i<d.length;i++){const y=-d[i]*waveH/3+waveH/2;i?wg.lineTo(i,y):wg.moveTo(i,y)}
+ wg.strokeStyle='#2b1a0e';wg.lineWidth=2;wg.stroke();
+}
+const sc=$('spectrum'),sg=sc.getContext('2d'),pal=[[226,207,154],[176,128,60],[120,48,22],[30,15,8]];
+function col(v){const p=Math.min(.999,Math.max(0,v))*(pal.length-1),i=Math.floor(p),f=p-i,a=pal[i],b=pal[i+1];
+ return`rgb(${a[0]+(b[0]-a[0])*f|0},${a[1]+(b[1]-a[1])*f|0},${a[2]+(b[2]-a[2])*f|0})`}
+function drawSpec(d){
+ sg.drawImage(sc,0,1);const f0=1200,f1=2600,n=d.length,ny=sampleRate/2;
+ for(let i=0;i<sc.width;i++){sg.fillStyle=col(d[Math.floor((f0+(f1-f0)*i/sc.width)/ny*n)]/255);sg.fillRect(i,0,1,1)}
+ sg.fillStyle='#8b1e1e';for(const f of [1500,2300])sg.fillRect((f-f0)/(f1-f0)*sc.width,0,1,1);
+}
+
+/* ---- keep screen awake ---- */
+const wake=()=>navigator.wakeLock?.request('screen').catch(()=>{});
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')wake()});wake();
+</script></body></html>
