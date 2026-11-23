@@ -132,23 +132,33 @@ function createDemodulator(SR){
     if(d.type==='free')this.free=d.free;
     this.reset()};
   }
-  reset(){this.t=0;this.s=0;this.run=0;this.sb=0;this.nb=0;this.b=-1;this.ends=[];this.P=0;this.last=-1;this.miss=0;this.locked=false;this.fc=0;this.runLen=0}
+  reset(){this.t=0;this.s=0;this.run=0;this.sb=0;this.nb=0;this.b=-1;this.ends=[];this.P=0;this.last=-1;this.miss=0;this.locked=false;this.fc=0;this.runLen=0;this.gap=0;this.ru=0;this.lo=0}
   ev(m,c){this.port.postMessage({ev:m,c})}
-  syncEnd(te,rl){
-   const nom=this.lineTime*this.sr,sn=this.syncMs*this.sr/1000,bm=this.nb?this.sb/this.nb:this.b;
-   rl=Math.min(Math.max(rl,.7*sn),1.3*sn);
-   if(!this.locked){ // acquire: three sync pulses with equal spacing
-    const e=this.ends;e.push(te);if(e.length>3)e.shift();
-    if(e.length===3){const d1=e[1]-e[0],d2=e[2]-e[1];
-     if(Math.abs(d1-d2)<.01*d1&&d1>.9*nom&&d1<1.1*(nom+sn)){
-      this.locked=true;this.P=d2;this.last=te;this.miss=0;this.b=bm;this.runLen=rl;this.ev('同步锁定！行周期 '+(d2/this.sr*1000).toFixed(1)+'ms','hot')}}
-    return;
+  tryAcq(){ // newest triple of sync candidates with equal spacing (3%), tolerant of false black-run candidates
+   const e=this.ends,n=e.length,nom=this.lineTime*this.sr,sn=this.syncMs*this.sr/1000;
+   for(let k=n-1;k>=2;k--)for(let j=k-1;j>=1;j--){const d2=e[k]-e[j];if(d2<.9*nom||d2>1.1*(nom+sn))continue;
+    for(let i=j-1;i>=0;i--){const d1=e[j]-e[i];if(Math.abs(d1-d2)<.03*d2)return{P:(d1+d2)/2,t:e[k]}}}
+   return null;
+  }
+  syncEnd(te,rl0,fall){
+   const sn=this.syncMs*this.sr/1000,bm=this.nb?this.sb/this.nb:this.b,rl=Math.min(Math.max(rl0,.7*sn),1.3*sn);
+   const e=this.ends;if(rl0>1.12*sn)e.push(fall+sn); // long run: black pixels merged with the pulse, so the true end lies between these two
+   e.push(te);while(e.length>12)e.shift();
+   if(!this.locked||this.miss>=3){ // (re)acquire; also recovers quickly after a phase jump
+    const a=this.tryAcq();
+    if(a){const was=this.locked;this.locked=true;this.P=a.P;this.last=a.t;this.miss=0;this.b=bm;this.runLen=rl;this.ends=[];
+     this.ev(was?'同步重新锁定':'同步锁定！行周期 '+(a.P/this.sr*1000).toFixed(1)+'ms','hot');return}
+    if(!this.locked)return;
    }
-   const d=te-this.last;
-   if(d<this.P*.93)return; // black run inside the picture, not a sync
-   this.line(this.last,te,rl);
-   this.P+=(d-this.P)*.2;this.last=te;this.miss=0;this.runLen=rl;
-   if(this.nb)this.b=Math.max(-1.6,Math.min(-.4,this.b+(bm-this.b)*.3));
+   // phase-locked tracking: gate around the predicted sync time, black runs may merge with either side of the pulse
+   const pred=this.last+this.P;let c=te;
+   if(rl0>1.12*sn)c=Math.min(te,Math.max(fall+sn,pred));
+   const err=c-pred;
+   if(Math.abs(err)>.2*this.P)return; // black run inside the picture, not a sync
+   const nl=pred+.5*err;
+   this.line(this.last,nl,rl);
+   this.P+=.08*err;this.last=nl;this.miss=0;this.runLen=rl;
+   if(this.nb)this.b=Math.max(-1.8,Math.min(-.2,this.b+(bm-this.b)*.3));
   }
   line(a,b,rl){
    const W=this.W,n=b-a-rl;if(n<W)return;
@@ -171,21 +181,25 @@ function createDemodulator(SR){
   }
   process(inputs,outputs){
    const I=inputs[0][0],Q=inputs[0][1];if(!I||!Q)return true;
-   const out=outputs[0][0],sr=this.sr,sn=this.syncMs*sr/1000,need=.7*sn;
+   const out=outputs[0][0],sr=this.sr,sn=this.syncMs*sr/1000,need=.7*sn,hold=Math.max(3,Math.round(.06*sn));
    for(let j=0;j<I.length;j++){
     const r1=this.pI,i1=this.pQ,r2=I[j],i2=Q[j];
     const x=Math.atan2(-r1*i2+i1*r2,r1*r2+i1*i2)*(sr/800)/Math.PI; // -1 (1500Hz) .. +1 (2300Hz)
     this.pI=r2;this.pQ=i2;out[j]=x;
     this.ring[this.t&this.mask]=x;
     this.s+=(x-this.s)*.1;
-    if(this.s<this.b+.15){this.run++;if(this.run>need*.4){this.sb+=this.s;this.nb++}}
-    else{if(this.run>=need&&!this.free)this.syncEnd(this.t-4,this.run);this.run=0;this.sb=0;this.nb=0}
+    const th=this.b+(this.locked?.15:.35); // wider capture range (+-140 Hz carrier offset) until locked
+    if(this.s<th){if(this.gap){this.run+=this.gap;this.gap=0}this.run++;if(this.run>need*.4){this.sb+=this.s;this.nb++}}
+    else if(this.run){ // noise spikes shorter than `hold` do not break a sync pulse
+     if(this.gap===0)this.ru=this.t;
+     if(++this.gap>hold){if(this.run>=need&&!this.free){const te=this.ru-4;this.syncEnd(te,this.run,te-this.run)}this.run=0;this.gap=0;this.sb=0;this.nb=0}
+    }
     this.t++;
     if(this.free){ // original behaviour: no alignment
      if(++this.fc>=this.lineTime*sr){this.fc=0;this.line(this.t-Math.round(this.lineTime*sr),this.t,0)}
-    }else if(this.locked&&this.t>this.last+this.P*1.1){ // flywheel when a sync is lost
+    }else if(this.locked&&this.t>this.last+this.P*1.2){ // flywheel: keep drawing lines on the predicted clock when a sync is missed
      const n=this.last+Math.round(this.P);this.line(this.last,n,this.runLen);this.last=n;
-     if(++this.miss>6){this.locked=false;this.P=0;this.ends=[];this.ev('同步丢失，重新搜索…','warn')}
+     if(++this.miss>30){this.locked=false;this.P=0;this.ends=[];this.ev('同步丢失，重新搜索…','warn')}
     }
    }
    this.st+=I.length;
@@ -228,7 +242,7 @@ $('wiener').onchange=()=>{demodNode?.port.postMessage({type:'wiener',on:$('wiene
 let lastLock=null;
 function hud(s){
  $('gem').className='gem '+(s.lk?'on':'off');$('syncTxt').textContent=s.lk?'已盖印 SEALED':($('real').checked?'寻觅中 SEEKING':'自由运行 FREE');
- $('lockBar').style.width=s.lk?Math.max(10,100-s.miss*16)+'%':'0';
+ $('lockBar').style.width=s.lk?Math.max(10,100-s.miss*3)+'%':'0';
  $('per').textContent=s.lk?(s.P*1000).toFixed(1)+' ms':'—';$('blk').textContent=s.lk?s.b.toFixed(2):'—';
  lastLock=s.lk;
 }
