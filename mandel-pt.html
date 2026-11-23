@@ -949,6 +949,8 @@
         <input type="number" id="bailout" value="16" min="2" step="1"><br>
         <label for="smooth">Smooth:</label>
         <input type="checkbox" id="smooth" checked><br>
+        <label for="use-workers">Worker threads:</label>
+        <input type="checkbox" id="use-workers" checked><br>
         <button id="apply-iter">Apply</button>
         <button id="close-iter-dialog">Close</button>
     </dialog>
@@ -3820,6 +3822,326 @@
             return i;
         }
 
+
+        // ====================================================================
+        //  Fast path: flat typed-array BLA table + reference orbit
+        //  (replaces object-graph lookups in the per-pixel hot loop)
+        // ====================================================================
+        // With cross-origin isolation (COOP/COEP headers) the tables live in SharedArrayBuffers,
+        // so all worker threads read the same memory instead of each getting a copy.
+        function canShare() { return typeof SharedArrayBuffer !== 'undefined' && globalThis.crossOriginIsolated === true; }
+        function allocF64(n) { return canShare() ? new Float64Array(new SharedArrayBuffer(n * 8)) : new Float64Array(n); }
+        function allocI32(n) { return canShare() ? new Int32Array(new SharedArrayBuffer(n * 4)) : new Int32Array(n); }
+        let TABLE_VERSION = 0;
+
+        const BLA_STRIDE = 10; // Zr,Zi, Ar,Ai, Br,Bi, radius, radiusC, length, next
+
+        function flattenBLATable(table) {
+            const steps = table.steps, n = steps.length;
+            const T = allocF64(n * BLA_STRIDE);
+            for (let k = 0; k < n; k++) {
+                const s = steps[k], o = k * BLA_STRIDE;
+                T[o] = s.Z.re; T[o + 1] = s.Z.im;
+                T[o + 2] = s.A.re; T[o + 3] = s.A.im;
+                T[o + 4] = s.B.re; T[o + 5] = s.B.im;
+                T[o + 6] = s.radius; T[o + 7] = s.radiusC;
+                T[o + 8] = s.length; T[o + 9] = s.next;
+            }
+            const st = allocI32(table.stages.length * 2);
+            for (let k = 0; k < table.stages.length; k++) {
+                st[2 * k] = table.stages[k].begin;
+                st[2 * k + 1] = table.stages[k].end;
+            }
+            return { T, stages: st, count: n };
+        }
+
+        // Interleaved re,im orbit. Returns null when the orbit is too large
+        // (then the original compressed-reference path is used).
+        const FLAT_REF_MAX = 2000000;
+        function flattenRef(ref) {
+            if (!ref) return null;
+            const n = ref.length;
+            if (!(n > 0) || n > FLAT_REF_MAX) return null;
+            const out = allocF64(n * 2);
+            if (Array.isArray(ref.z)) {
+                const z = ref.z;
+                for (let i = 0; i < n; i++) { out[2 * i] = z[i].re; out[2 * i + 1] = z[i].im; }
+            } else {
+                const tmp = new Complex(0, 0);
+                for (let i = 0; i < n; i++) {
+                    ref.getInplace(i, tmp);
+                    out[2 * i] = tmp.re; out[2 * i + 1] = tmp.im;
+                }
+            }
+            return { Z: out, length: n };
+        }
+
+        /**
+         * Same algorithm as getPTBLA, but on flat Float64Arrays, scalar dc, no allocation.
+         */
+        function getPTBLAFlat(dcRe, dcIm, refZ, refLen, T, stg, maxIter, bailout, smooth) {
+            const dcNorm = Math.max(Math.abs(dcRe), Math.abs(dcIm));
+            let dzRe = 0, dzIm = 0, zRe = 0, zIm = 0;
+            let i = 0, j = 0;
+            let stage = stg.length >> 1;
+            if (stage !== 0) j = stg[(stage - 1) * 2];
+
+            while (stage) {
+                stage--;
+                const begin = stg[stage * 2], end = stg[stage * 2 + 1];
+                while (i < maxIter) {
+                    const o = j * BLA_STRIDE;
+                    const sr = T[o] + zRe, si = T[o + 1] + zIm;
+                    const nR = dzRe * sr - dzIm * si;
+                    const nI = dzRe * si + dzIm * sr;
+
+                    if (Math.max(Math.abs(nR), Math.abs(nI)) > T[o + 6] || dcNorm > T[o + 7]) {
+                        j = T[o + 9] | 0;
+                        break;
+                    }
+
+                    const aR = T[o + 2], aI = T[o + 3], bR = T[o + 4], bI = T[o + 5];
+                    dzRe = (nR * aR - nI * aI) + (dcRe * bR - dcIm * bI);
+                    dzIm = (nR * aI + nI * aR) + (dcRe * bI + dcIm * bR);
+
+                    i += T[o + 8];
+                    j++;
+
+                    const o2 = j * BLA_STRIDE;
+                    zRe = dzRe + T[o2];
+                    zIm = dzIm + T[o2 + 1];
+
+                    if (j === end || Math.max(Math.abs(zRe), Math.abs(zIm)) < Math.max(Math.abs(dzRe), Math.abs(dzIm))) {
+                        j = begin;
+                        dzRe = zRe;
+                        dzIm = zIm;
+                    }
+                }
+            }
+
+            let Zr = refZ[2 * j], Zi = refZ[2 * j + 1];
+            const last = refLen - 1;
+
+            while (i < maxIter) {
+                const sr = Zr + zRe, si = Zi + zIm;
+                const tR = dzRe * sr - dzIm * si;
+                const tI = dzRe * si + dzIm * sr;
+                dzRe = tR + dcRe;
+                dzIm = tI + dcIm;
+
+                i++; j++;
+                Zr = refZ[2 * j]; Zi = refZ[2 * j + 1];
+
+                zRe = dzRe + Zr;
+                zIm = dzIm + Zi;
+                const zAbs = zRe * zRe + zIm * zIm;
+
+                if (zAbs > bailout) {
+                    const iter = i - 1;
+                    if (smooth) {
+                        let fracIter = Math.log(zAbs) / 2;
+                        fracIter = Math.log(fracIter / Math.LN2) / Math.LN2;
+                        return iter + 1 - fracIter;
+                    }
+                    return iter;
+                }
+
+                if (j === last || Math.max(Math.abs(zRe), Math.abs(zIm)) < Math.max(Math.abs(dzRe), Math.abs(dzIm))) {
+                    Zr = 0; Zi = 0;
+                    dzRe = zRe;
+                    dzIm = zIm;
+                    j = 0;
+                }
+            }
+            return i;
+        }
+
+
+        // ====================================================================
+        //  Worker pool: runs getPTBLAFlat on batches of pixel offsets (dc)
+        //  in parallel threads. Non-deep mode only.
+        // ====================================================================
+        const WORKER_MAX_COPY_BYTES = 400e6; // budget for per-worker table copies when memory can't be shared
+
+        class WorkerPool {
+            constructor() {
+                this.enabled = true;
+                this.failed = false;
+                this.slots = [];
+                this.url = null;
+                this.ver = -1;          // table version currently loaded in the workers
+                this.nextJob = 1;
+                this.jobs = new Map();  // jobId -> chunk
+                this.pending = [];
+                this.pendingIdx = 0;
+                this.batch = null;
+                this.inflight = 0;
+                this.msPerPoint = 0.02;
+            }
+
+            get size() { return this.slots.length; }
+            get active() { return this.enabled && !this.failed && this.slots.length > 0; }
+
+            _source() {
+                return `const BLA_STRIDE = ${BLA_STRIDE};
+${getPTBLAFlat.toString()}
+let refZ = null, refLen = 0, T = null, stg = null, ver = -1;
+self.onmessage = (e) => {
+  const m = e.data;
+  if (m.type === 'tables') {
+    refZ = m.refZ; refLen = m.refLen; T = m.T; stg = m.stages; ver = m.ver;
+    self.postMessage({ type: 'ready', ver: ver });
+  } else if (m.type === 'job') {
+    const n = m.n, dc = m.dc, out = new Float64Array(n);
+    const ok = m.ver === ver;
+    const t0 = performance.now();
+    if (ok) {
+      for (let k = 0; k < n; k++) {
+        out[k] = getPTBLAFlat(dc[2 * k], dc[2 * k + 1], refZ, refLen, T, stg, m.maxIter, m.bailout, m.smooth);
+      }
+    }
+    self.postMessage({ type: 'result', id: m.id, ok: ok, out: out, ms: performance.now() - t0 }, [out.buffer]);
+  }
+};`;
+            }
+
+            _spawn(n) {
+                if (!this.url) {
+                    this.url = URL.createObjectURL(new Blob([this._source()], { type: 'text/javascript' }));
+                }
+                while (this.slots.length < n) {
+                    const slot = { w: null, busy: false, ack: null };
+                    slot.w = new Worker(this.url);
+                    slot.w.onmessage = (e) => this._onMessage(slot, e.data);
+                    slot.w.onerror = (e) => { console.error('Worker error', e); this._fail(); };
+                    this.slots.push(slot);
+                }
+                while (this.slots.length > n) this.slots.pop().w.terminate();
+            }
+
+            _fail() {
+                this.failed = true;
+                for (const s of this.slots) {
+                    try { s.w.terminate(); } catch (e) { }
+                    if (s.ack) s.ack.reject(new Error('worker failed'));
+                }
+                this.slots = [];
+                this.ver = -1;
+                this.inflight = 0;
+                this._abortBatch();
+            }
+
+            async setTables(ver, refFlat, blaFlat) {
+                if (!this.enabled || this.failed || typeof Worker === 'undefined') return false;
+                if (this.ver === ver && this.slots.length > 0) return true;
+                while (this.inflight > 0) await delay(2); // let stale jobs drain before swapping tables
+
+                const shared = typeof SharedArrayBuffer !== 'undefined' && refFlat.Z.buffer instanceof SharedArrayBuffer;
+                const bytes = refFlat.Z.byteLength + blaFlat.T.byteLength + blaFlat.stages.byteLength;
+                let n = Math.min(Math.max(CPU_CORES - 1, 1), 16);
+                if (!shared) n = Math.min(n, Math.floor(WORKER_MAX_COPY_BYTES / Math.max(bytes, 1)));
+                if (n < 1) return false; // tables too big to copy into workers: stay on the main thread
+
+                try { this._spawn(n); } catch (e) { console.error(e); this._fail(); return false; }
+                this.ver = -1;
+                const acks = this.slots.map(slot => new Promise((resolve, reject) => { slot.ack = { resolve, reject }; }));
+                const msg = { type: 'tables', ver, refZ: refFlat.Z, refLen: refFlat.length, T: blaFlat.T, stages: blaFlat.stages };
+                try {
+                    for (const slot of this.slots) slot.w.postMessage(msg);
+                    let timer;
+                    await Promise.race([
+                        Promise.all(acks),
+                        new Promise((_, rej) => { timer = setTimeout(() => rej(new Error('worker init timeout')), 15000); })
+                    ]).finally(() => clearTimeout(timer));
+                } catch (e) {
+                    console.error(e);
+                    this._fail();
+                    return false;
+                }
+                this.ver = ver;
+                return true;
+            }
+
+            _onMessage(slot, m) {
+                if (m.type === 'ready') {
+                    if (slot.ack) { slot.ack.resolve(); slot.ack = null; }
+                    return;
+                }
+                if (m.type !== 'result') return;
+                slot.busy = false;
+                this.inflight--;
+                const job = this.jobs.get(m.id);
+                if (job && this.batch) {
+                    this.jobs.delete(m.id);
+                    if (m.ok) {
+                        const b = this.batch;
+                        b.out.set(m.out, job.start);
+                        if (job.count > 0) this.msPerPoint = this.msPerPoint * 0.7 + (m.ms / job.count) * 0.3;
+                        if (--b.remaining === 0) { this.batch = null; b.resolve(b.out); }
+                    } else {
+                        this._abortBatch(); // tables changed under us
+                    }
+                }
+                this._pump();
+            }
+
+            _pump() {
+                const b = this.batch;
+                if (!b) return;
+                if (b.owner && b.owner.requestForCancel) { this._abortBatch(); return; }
+                for (const slot of this.slots) {
+                    if (slot.busy) continue;
+                    if (this.pendingIdx >= this.pending.length) break;
+                    const chunk = this.pending[this.pendingIdx++];
+                    const id = this.nextJob++;
+                    const dc = b.dc.slice(2 * chunk.start, 2 * (chunk.start + chunk.count)); // copy, then transfer
+                    this.jobs.set(id, chunk);
+                    slot.busy = true;
+                    this.inflight++;
+                    slot.w.postMessage({
+                        type: 'job', id, ver: this.ver, n: chunk.count, dc,
+                        maxIter: b.cfg.maxIter, bailout: b.cfg.bailout, smooth: !!b.cfg.smooth
+                    }, [dc.buffer]);
+                }
+            }
+
+            _abortBatch() {
+                const b = this.batch;
+                this.batch = null;
+                this.pending = [];
+                this.pendingIdx = 0;
+                this.jobs.clear();
+                if (b) b.resolve(null);
+            }
+
+            abort(owner) {
+                if (this.batch && (!owner || this.batch.owner === owner)) this._abortBatch();
+            }
+
+            /** dc: Float64Array [re0, im0, re1, im1, ...]  ->  Promise<Float64Array|null> (null = aborted) */
+            runBatch(dc, cfg, owner) {
+                const n = dc.length >> 1;
+                const W = this.slots.length;
+                return new Promise((resolve) => {
+                    if (this.batch) this._abortBatch();
+                    if (W === 0) { resolve(null); return; }
+                    if (n === 0) { resolve(new Float64Array(0)); return; }
+                    // Aim for ~40 ms chunks so cancel/rebalance stays responsive.
+                    let cs = Math.round(40 / Math.max(this.msPerPoint, 1e-4));
+                    cs = Math.max(1, Math.min(cs, 1024, Math.ceil(n / (W * 4))));
+                    const chunks = [];
+                    for (let s = 0; s < n; s += cs) chunks.push({ start: s, count: Math.min(cs, n - s) });
+                    this.batch = { out: new Float64Array(n), remaining: chunks.length, resolve, dc, cfg, owner };
+                    this.pending = chunks;
+                    this.pendingIdx = 0;
+                    this.jobs.clear();
+                    this._pump();
+                });
+            }
+        }
+
+        const workerPool = new WorkerPool();
+
         function getPTBLAFE(dc, ref, steps, stages, maxIter, bailout, smooth = false) {
             let dcNorm = dc.norm()
 
@@ -3961,6 +4283,26 @@
             else if (it < 0) return [palette[0][0], palette[0][1], palette[0][2], 255];
             let color = colorTrans(palette, it / colorStep);
             return [color[0], color[1], color[2], 255];
+        }
+
+
+        // Allocation-free variant of getColor (returns a shared scratch array; copy values out immediately).
+        const COLOR_SCRATCH = [0, 0, 0, 255];
+        function getColorFast(it, maxIter) {
+            const out = COLOR_SCRATCH;
+            if (it == null || it >= maxIter) { out[0] = 0; out[1] = 0; out[2] = 0; return out; }
+            const pal = palette;
+            if (it < 0) { const p0 = pal[0]; out[0] = p0[0]; out[1] = p0[1]; out[2] = p0[2]; return out; }
+            const v = it / colorStep;
+            const fl = Math.floor(v);
+            const pc = v - fl;
+            const c1 = fl % pal.length;
+            const c2 = (c1 + 1) % pal.length;
+            const a = pal[c1], b = pal[c2], q = 1 - pc;
+            out[0] = q * a[0] + pc * b[0];
+            out[1] = q * a[1] + pc * b[1];
+            out[2] = q * a[2] + pc * b[2];
+            return out;
         }
 
         function groupArray(arr, groupSize = 3) {
@@ -4415,14 +4757,16 @@
                 if (!baseX) baseX = this.halfWidth;
                 if (!baseY) baseY = this.halfHeight;
                 let deltaPerPixel = this.size.div(this.minStep);
-                return this.deep ? new FloatExpComplex(
+                if (!this.deep) {
+                    // FloatExp has no valueOf(), so `number * FloatExp` used to go through
+                    // toString()+parse for every pixel. Convert once, exactly.
+                    const dpp = deltaPerPixel.doubleValue();
+                    return new Complex((x - baseX) * dpp, (baseY - y) * dpp);
+                }
+                return new FloatExpComplex(
                     deltaPerPixel.mul(x - baseX),
                     deltaPerPixel.mul(baseY - y)
-
-                ) : new Complex(
-                    (x - baseX) * deltaPerPixel,
-                    (baseY - y) * deltaPerPixel
-                )
+                );
             }
 
             /**
@@ -4467,7 +4811,7 @@
                 if (x < 0 || x >= this.canvas.width || y < 0 || y >= this.canvas.height) return;
                 this.iterMap[y][x] = it;
 
-                const color = getColor(it, this.iterations);
+                const color = getColorFast(it, this.iterations);
 
                 let i = (y * this.canvas.width + x) << 2;
                 if (w == 1 && h == 1) {
@@ -4498,6 +4842,7 @@
 
                 let statusText = `Ref: ${this.stats.ref?.toLocaleString() ?? 0}it -> ${this.stats.refC?.toLocaleString() ?? 0}ckpts\n`;
                 statusText += `BLA: ${this.blaTable?.steps?.length?.toLocaleString() ?? 0} entries\n`;
+                statusText += `Threads: ${(!this.deep && this.blaFlat && workerPool.active) ? workerPool.size : 1}\n`;
                 statusText += `Res: ${this.canvas.width}x${this.canvas.height}\n`;
                 statusText += `Calc/Guess/Total: ${this.stats.calc.toLocaleString()}/${this.stats.guess.toLocaleString()}/${totalPixels.toLocaleString()} px\n`;
                 statusText += `Time: ${(elapsedTime / 1000).toFixed(3)}s ETA: ${(estimatedRemainingTime / 1000).toFixed(3)}s`;
@@ -4522,6 +4867,24 @@
                     this.blaTable = createBLATableFE(this.ref);
                 } else {
                     this.blaTable = createBLATable(this.ref);
+                }
+
+                // Flatten into typed arrays for the fast per-pixel path (non-deep only).
+                this.blaFlat = null;
+                this.refFlat = null;
+                if (!this.deep) {
+                    const rf = flattenRef(this.ref);
+                    if (rf) {
+                        this.tablesVersion = ++TABLE_VERSION;
+                        this.refFlat = rf;
+                        this.blaFlat = flattenBLATable(this.blaTable);
+                        // Drop the heavy object table; only metadata is used from now on.
+                        this.blaTable = {
+                            hasBLA: this.blaTable.hasBLA,
+                            stages: this.blaTable.stages,
+                            steps: { length: this.blaFlat.count }
+                        };
+                    }
                 }
 
                 console.log(this.blaTable);
@@ -4636,6 +4999,7 @@
                 const myId = ++this.currentId;
                 if (this.rendering) {
                     this.requestForCancel = true;
+                    workerPool.abort(this);
                     while (this.rendering) {
                         await delay(10);
                         if (this.currentId !== myId) return; // Superceded by another request
@@ -4766,6 +5130,11 @@
                 const initialLog2 = Math.log2(startSize);
 
                 let priorityQueue = [];
+                const scoreOf = (tk) => {
+                    let level = initialLog2 - Math.log2(tk.step);
+                    if (tk.step === 1) level += 0.1; // finish step=2 before step=1 in a region
+                    return level + tk.dist * FOCUS_STRENGTH;
+                };
 
                 // 2. 填充初始任务
                 for (let y = 0; y < height; y += TILE_SIZE) {
@@ -4778,9 +5147,18 @@
                         priorityQueue.push({
                             x: x, y: y, w: TILE_SIZE, h: TILE_SIZE,
                             step: startSize,
-                            dist: dist
+                            dist: dist,
+                            score: 0
                         });
                     }
+                }
+
+                for (const tk of priorityQueue) tk.score = scoreOf(tk);
+
+                // Multi-threaded path (non-deep mode with flat tables)
+                if (await this.preparePool()) {
+                    await this.refineWithPool(priorityQueue, scoreOf);
+                    return;
                 }
 
                 // 3. 处理队列
@@ -4790,26 +5168,15 @@
                         return;
                     }
 
-                    // --- 优先级排序 ---
-                    // Score = Level + (Distance * Strength)
-                    // step=1 的任务 level 很大，通常排后面，但如果 Distance 很小(在中心)，
-                    // 它的 Score 会比边缘的 step=8 还小，从而实现"中心先平滑"的效果。
-                    priorityQueue.sort((a, b) => {
-                        let levelA = initialLog2 - Math.log2(a.step);
-                        let levelB = initialLog2 - Math.log2(b.step);
-
-                        // 这里给 step=1 (Final Pass) 额外加一点点惩罚权重，
-                        // 确保在同一区域内，先把 step=2 铺完再做 step=1，避免数据依赖缺失
-                        if (a.step === 1) levelA += 0.1;
-                        if (b.step === 1) levelB += 0.1;
-
-                        let scoreA = levelA + (a.dist * FOCUS_STRENGTH);
-                        let scoreB = levelB + (b.dist * FOCUS_STRENGTH);
-                        return scoreA - scoreB;
-                    });
-
-                    // 取出任务
-                    const task = priorityQueue.shift();
+                    // Pick the lowest-score task (O(n) scan, scores are cached on the tasks)
+                    let bi = 0, bs = Infinity;
+                    for (let k = 0; k < priorityQueue.length; k++) {
+                        const s = priorityQueue[k].score;
+                        if (s < bs) { bs = s; bi = k; }
+                    }
+                    const task = priorityQueue[bi];
+                    priorityQueue[bi] = priorityQueue[priorityQueue.length - 1];
+                    priorityQueue.pop();
 
                     // --- 核心渲染逻辑 ---
                     if (task.step > 1) {
@@ -4818,6 +5185,7 @@
 
                         // 分裂任务: 放入下一级 step
                         task.step >>= 1; // 除以 2
+                        task.score = scoreOf(task);
                         priorityQueue.push(task);
                     } else {
                         // = 1: 智能猜测模式 (Final Pass，带插值)
@@ -4936,7 +5304,226 @@
                 this.lastUpdateTime = currentTime;
             }
 
+
+            // ================= Worker-pool rendering =================
+
+            async preparePool() {
+                if (this.deep || !this.blaFlat || !this.refFlat) return false;
+                if (!workerPool.enabled || workerPool.failed) return false;
+                return await workerPool.setTables(this.tablesVersion, this.refFlat, this.blaFlat);
+            }
+
+            /** Offsets (relative to the reference center) for a list of pixels. */
+            _buildDc(xs, ys) {
+                const n = xs.length;
+                const dpp = this.size.div(this.minStep).doubleValue();
+                const rc = this.refCenterDelta;
+                const rcRe = rc ? rc.re : 0, rcIm = rc ? rc.im : 0;
+                const hw = this.halfWidth, hh = this.halfHeight;
+                const dc = new Float64Array(2 * n);
+                for (let k = 0; k < n; k++) {
+                    dc[2 * k] = (xs[k] - hw) * dpp + rcRe;
+                    dc[2 * k + 1] = (hh - ys[k]) * dpp + rcIm;
+                }
+                return dc;
+            }
+
+            /** Iteration counts for a batch of dc values. null => cancelled. */
+            async computeBatch(dc) {
+                const n = dc.length >> 1;
+                if (n === 0) return new Float64Array(0);
+                const cfg = { maxIter: this.iterations, bailout: this.bailout, smooth: !!this.smooth };
+                if (workerPool.active && workerPool.ver === this.tablesVersion) {
+                    const res = await workerPool.runBatch(dc, cfg, this);
+                    if (res) return res;
+                    if (this.requestForCancel) return null;
+                }
+                // Fallback (worker failure): compute on the main thread, yielding to the UI.
+                const out = new Float64Array(n);
+                const Z = this.refFlat.Z, L = this.refFlat.length, T = this.blaFlat.T, S = this.blaFlat.stages;
+                let t0 = performance.now();
+                for (let k = 0; k < n; k++) {
+                    out[k] = getPTBLAFlat(dc[2 * k], dc[2 * k + 1], Z, L, T, S, cfg.maxIter, cfg.bailout, cfg.smooth);
+                    if ((k & 15) === 15 && performance.now() - t0 > 50) {
+                        if (this.requestForCancel) return null;
+                        await delay(0);
+                        t0 = performance.now();
+                    }
+                }
+                return out;
+            }
+
+            /**
+             * Processes the priority queue in "waves": several tiles of the same kind
+             * (coarse or final) are handled together so their pixels can be computed in parallel.
+             */
+            async refineWithPool(queue, scoreOf) {
+                const W = Math.max(workerPool.size, 1);
+                const targetPts = W * 1024, maxTasks = 128;
+                // Marks pixels computed (not guessed) during the current final wave; see _finalRound.
+                this._compFlag = new Uint8Array(this.canvas.width * this.canvas.height);
+                while (queue.length > 0) {
+                    if (this.requestForCancel) { this.cancelling = true; return; }
+                    queue.sort((a, b) => a.score - b.score);
+                    const isFinal = queue[0].step === 1;
+                    const wave = [], rest = [];
+                    let est = 0;
+                    for (const tk of queue) {
+                        if (wave.length < maxTasks && est < targetPts && (tk.step === 1) === isFinal) {
+                            wave.push(tk);
+                            est += isFinal ? 3000 : Math.max(1, Math.ceil(tk.w / tk.step) * Math.ceil(tk.h / tk.step));
+                        } else {
+                            rest.push(tk);
+                        }
+                    }
+                    queue = rest;
+
+                    const ok = isFinal ? await this._finalWave(wave) : await this._coarseWave(wave);
+                    if (!ok || this.requestForCancel) { this.cancelling = true; return; }
+
+                    if (!isFinal) {
+                        for (const tk of wave) {
+                            tk.step >>= 1;
+                            tk.score = scoreOf(tk);
+                            queue.push(tk);
+                        }
+                    }
+                }
+                await this.tryUpdateScreen();
+            }
+
+            async _applyBatch(xs, ys, sizes, flagComputed = false) {
+                const n = xs.length;
+                if (n === 0) return true;
+                const res = await this.computeBatch(this._buildDc(xs, ys));
+                if (!res) return false;
+                const flag = flagComputed ? this._compFlag : null;
+                const cw = this.canvas.width;
+                for (let k = 0; k < n; k++) {
+                    const s = sizes ? sizes[k] : 1;
+                    this.setIter(xs[k], ys[k], res[k], s, s);
+                    if (flag) flag[ys[k] * cw + xs[k]] = 1;
+                }
+                this.stats.calc += n;
+                return true;
+            }
+
+            async _coarseWave(wave) {
+                const xs = [], ys = [], sz = [];
+                for (const task of wave) {
+                    const { x: startX, y: startY, w, h, step } = task;
+                    const endX = Math.min(startX + w, this.canvas.width);
+                    const endY = Math.min(startY + h, this.canvas.height);
+                    const firstX = startX + (step - (startX % step)) % step;
+                    const firstY = startY + (step - (startY % step)) % step;
+                    for (let y = firstY; y < endY; y += step) {
+                        const row = this.iterMap[y];
+                        for (let x = firstX; x < endX; x += step) {
+                            if (row[x] > -1) continue;
+                            xs.push(x); ys.push(y); sz.push(step);
+                        }
+                    }
+                }
+                if (!await this._applyBatch(xs, ys, sz)) return false;
+                await this.tryUpdateScreen();
+                return true;
+            }
+
+            async _finalWave(wave) {
+                // Repaint already-known pixels at 1x1 (removes coarse blocks)
+                for (const task of wave) {
+                    const endX = Math.min(task.x + task.w, this.canvas.width);
+                    const endY = Math.min(task.y + task.h, this.canvas.height);
+                    for (let y = task.y; y < endY; y++) {
+                        const row = this.iterMap[y];
+                        for (let x = task.x; x < endX; x++) {
+                            if (row[x] > -1) this.setIter(x, y, row[x], 1, 1);
+                        }
+                    }
+                }
+                // Round A: pixels sharing a row/column with already-known neighbours (parity classes
+                // (0,0),(1,0),(0,1)); Round B: the diagonal class (1,1), whose neighbours are all
+                // resolved after round A, so guessing has the most information.
+                for (const mask of [0b0111, 0b1000]) {
+                    if (this.requestForCancel) return false;
+                    if (!await this._finalRound(wave, mask, mask === 0b1000)) return false;
+                    await this.tryUpdateScreen();
+                }
+                // Reset the computed-pixel flags of these tiles
+                const cw = this.canvas.width;
+                for (const task of wave) {
+                    const endX = Math.min(task.x + task.w, cw);
+                    const endY = Math.min(task.y + task.h, this.canvas.height);
+                    for (let y = task.y; y < endY; y++) this._compFlag.fill(0, y * cw + task.x, y * cw + endX);
+                }
+                return true;
+            }
+
+            async _finalRound(wave, mask, restrict) {
+                // restrict (round B): like the sequential algorithm, only guess from neighbours that were
+                // themselves guessed / already known, never from ones just computed (computed neighbours
+                // mean we are near a boundary, where guessing is error-prone).
+                const xs = [], ys = [];
+                const cw = this.canvas.width, flag = this._compFlag;
+                for (const task of wave) {
+                    const endX = Math.min(task.x + task.w, this.canvas.width);
+                    const endY = Math.min(task.y + task.h, this.canvas.height);
+                    for (let y = task.y; y < endY; y++) {
+                        const row = this.iterMap[y];
+                        for (let x = task.x; x < endX; x++) {
+                            if (!((mask >> (((y & 1) << 1) | (x & 1))) & 1)) continue;
+                            if (row[x] > -1) continue;
+
+                            let guessed = false;
+                            const left = this.getIter(x - 1, y), right = this.getIter(x + 1, y);
+                            const base = y * cw + x;
+                            if (left > -1 && right > -1 && Math.floor(left) === Math.floor(right)
+                                && !(restrict && (flag[base - 1] || flag[base + 1]))) {
+                                this.setIter(x, y, (left + right) / 2, 1, 1);
+                                this.stats.guess++;
+                                guessed = true;
+                            }
+                            if (!guessed) {
+                                const up = this.getIter(x, y - 1), down = this.getIter(x, y + 1);
+                                if (up > -1 && down > -1 && Math.floor(up) === Math.floor(down)
+                                    && !(restrict && (flag[base - cw] || flag[base + cw]))) {
+                                    this.setIter(x, y, (up + down) / 2, 1, 1);
+                                    this.stats.guess++;
+                                    guessed = true;
+                                }
+                            }
+                            if (!guessed) { xs.push(x); ys.push(y); }
+                        }
+                    }
+                }
+                return await this._applyBatch(xs, ys, null, !restrict);
+            }
+
             calculatePixel(x, y, drawWidth, drawHeight) {
+                if (!this.deep && this.blaFlat && this.refFlat) {
+                    // Fast path: no allocations, flat typed arrays.
+                    const sb = this.size.base, se = this.size.exp;
+                    if (this._dppB !== sb || this._dppE !== se || this._dppM !== this.minStep) {
+                        this._dpp = this.size.div(this.minStep).doubleValue();
+                        this._dppB = sb; this._dppE = se; this._dppM = this.minStep;
+                    }
+                    const dpp = this._dpp;
+                    let dcRe = (x - this.halfWidth) * dpp;
+                    let dcIm = (this.halfHeight - y) * dpp;
+                    if (this.refCenterDelta) {
+                        dcRe += this.refCenterDelta.re;
+                        dcIm += this.refCenterDelta.im;
+                    }
+                    const it = getPTBLAFlat(
+                        dcRe, dcIm,
+                        this.refFlat.Z, this.refFlat.length,
+                        this.blaFlat.T, this.blaFlat.stages,
+                        this.iterations, this.bailout, this.smooth
+                    );
+                    this.setIter(x, y, it, drawWidth, drawHeight);
+                    this.stats.calc++;
+                    return;
+                }
                 let delta = this.getDelta(x, y);
                 // The perturbation solver is expressed around refCenter,
                 // while the UI coordinates are expressed around view center.
@@ -4973,6 +5560,7 @@
 
             async cancel() {
                 this.requestForCancel = true;
+                workerPool.abort(this);
                 if (!this.rendering) return;
                 while (this.rendering) {
                     await delay(10);
@@ -4989,7 +5577,7 @@
                     for (let x = 0; x < this.canvas.width; x++) {
                         let it = this.iterMap[y][x];
                         if (it >= 0) {
-                            let color = getColor(it, this.iterations);
+                            let color = getColorFast(it, this.iterations);
                             let i = (y * this.canvas.width + x) << 2;
                             this.image.data[i] = color[0];
                             this.image.data[i + 1] = color[1];
@@ -7224,12 +7812,14 @@
 
             bailoutInput.value = Math.sqrt(mandelbrot.bailout);
             smoothCheckbox.checked = mandelbrot.smooth;
+            document.getElementById('use-workers').checked = workerPool.enabled;
 
             iterDialog.showModal();
 
             document.getElementById('apply-iter').addEventListener('click', () => {
                 mandelbrot.bailout = parseFloat(bailoutInput.value) ** 2;
                 mandelbrot.smooth = smoothCheckbox.checked;
+                workerPool.enabled = document.getElementById('use-workers').checked;
                 iterDialog.close();
                 mandelbrot.clear();
                 mandelbrot.update();
