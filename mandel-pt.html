@@ -3957,6 +3957,294 @@
         }
 
 
+
+        // ====================================================================
+        //  Deep mode (FloatExp) fast path.
+        //  A complex number is stored as (re, im, e) = (re + i*im) * 2^e with ONE shared
+        //  exponent and max(|re|,|im|) in [1,2). That needs a single normalisation per complex
+        //  operation (instead of one per FloatExp component), no objects, and the data lives in
+        //  typed arrays so it can be handed to worker threads.
+        // ====================================================================
+        const BLA_STRIDE_FE = 15; // Z(3), A(3), B(3), radius(base,exp), radiusC(base,exp), length, next
+
+        // FloatExpComplex -> shared-exponent triple written to out[o..o+2]
+        function feToShared(re, im, out, o) {
+            const rb = re.base, ib = im.base;
+            if (rb === 0 && ib === 0) { out[o] = 0; out[o + 1] = 0; out[o + 2] = 0; return; }
+            if (rb === 0) { out[o] = 0; out[o + 1] = ib; out[o + 2] = im.exp; return; }
+            if (ib === 0) { out[o] = rb; out[o + 1] = 0; out[o + 2] = re.exp; return; }
+            const ree = re.exp, ime = im.exp;
+            if (ree >= ime) {
+                out[o] = rb; out[o + 1] = ib * FloatExp.pow2(ime - ree); out[o + 2] = ree;
+            } else {
+                out[o] = rb * FloatExp.pow2(ree - ime); out[o + 1] = ib; out[o + 2] = ime;
+            }
+        }
+
+        function flattenBLATableFE(table) {
+            const steps = table.steps, n = steps.length;
+            const T = allocF64(n * BLA_STRIDE_FE);
+            for (let k = 0; k < n; k++) {
+                const s = steps[k], o = k * BLA_STRIDE_FE;
+                feToShared(s.Z.re, s.Z.im, T, o);
+                feToShared(s.A.re, s.A.im, T, o + 3);
+                feToShared(s.B.re, s.B.im, T, o + 6);
+                T[o + 9] = s.radius.base; T[o + 10] = s.radius.exp;
+                T[o + 11] = s.radiusC.base; T[o + 12] = s.radiusC.exp;
+                T[o + 13] = s.length; T[o + 14] = s.next;
+            }
+            const st = allocI32(table.stages.length * 2);
+            for (let k = 0; k < table.stages.length; k++) {
+                st[2 * k] = table.stages[k].begin;
+                st[2 * k + 1] = table.stages[k].end;
+            }
+            return { T, stages: st, count: n };
+        }
+
+        function flattenRefFE(ref) {
+            if (!ref) return null;
+            const n = ref.length;
+            if (!(n > 0) || n > FLAT_REF_MAX) return null;
+            const out = allocF64(n * 3);
+            if (Array.isArray(ref.z)) {
+                for (let i = 0; i < n; i++) feToShared(ref.z[i].re, ref.z[i].im, out, 3 * i);
+            } else {
+                const tmp = new FloatExpComplex(0, 0);
+                for (let i = 0; i < n; i++) {
+                    ref.getInplace(i, tmp);
+                    feToShared(tmp.re, tmp.im, out, 3 * i);
+                }
+            }
+            return { Z: out, length: n };
+        }
+
+        // Self-contained (no outer references) so its source can also be shipped to workers.
+        function makeFEKernel() {
+            const TBL = new Float64Array(2098);            // TBL[k + 1074] = 2^k, k in [-1074, 1023]
+            { let v = Number.MIN_VALUE; for (let k = 0; k < TBL.length; k++) { TBL[k] = v; v *= 2; } }
+            const Q = new Float64Array(3);                  // result registers of norm3/add3/mul3
+            const F = new Float64Array(1), U = new Uint32Array(F.buffer);
+            const HI = new Uint8Array(new Uint32Array([1]).buffer)[0] === 1 ? 1 : 0;
+            const LO = 1 - HI;
+
+            function p2(k) { return k < -1074 ? 0 : (k > 1023 ? Infinity : TBL[k + 1074]); }
+
+            function expOf(m) { // floor(log2(m)) for finite m > 0
+                F[0] = m;
+                const hi = U[HI];
+                const raw = (hi >>> 20) & 0x7ff;
+                if (raw !== 0) return raw - 1023;
+                const fh = hi & 0xfffff;
+                const hb = fh !== 0 ? 32 + (31 - Math.clz32(fh)) : 31 - Math.clz32(U[LO]);
+                return -1074 + hb;
+            }
+
+            function norm3(r, i, e) {
+                let m = Math.abs(r);
+                const ai = Math.abs(i);
+                if (ai > m) m = ai;
+                if (m >= 1 && m < 2) { Q[0] = r; Q[1] = i; Q[2] = e; return; }
+                if (m >= 2 && m < 4) { Q[0] = r * 0.5; Q[1] = i * 0.5; Q[2] = e + 1; return; }
+                if (m >= 0.5 && m < 1) { Q[0] = r * 2; Q[1] = i * 2; Q[2] = e - 1; return; }
+                if (m === 0) { Q[0] = 0; Q[1] = 0; Q[2] = 0; return; }
+                if (!(m < Infinity)) { Q[0] = r; Q[1] = i; Q[2] = e; return; } // inf / NaN: leave alone
+                const k = expOf(m);
+                if (k >= -1000) {
+                    const s = TBL[1074 - k];
+                    Q[0] = r * s; Q[1] = i * s;
+                } else {
+                    const s1 = TBL[1074 + 1000], s2 = TBL[1074 - k - 1000];
+                    Q[0] = r * s1 * s2; Q[1] = i * s1 * s2;
+                }
+                Q[2] = e + k;
+            }
+
+            function add3(ar, ai, ae, br, bi, be) {
+                if (br === 0 && bi === 0) { Q[0] = ar; Q[1] = ai; Q[2] = ae; return; }
+                if (ar === 0 && ai === 0) { Q[0] = br; Q[1] = bi; Q[2] = be; return; }
+                const d = be - ae;
+                if (d === 0) { norm3(ar + br, ai + bi, ae); return; }
+                if (d > 54) { Q[0] = br; Q[1] = bi; Q[2] = be; return; }
+                if (d < -54) { Q[0] = ar; Q[1] = ai; Q[2] = ae; return; }
+                if (d > 0) {
+                    const s = TBL[1074 - d];
+                    norm3(ar * s + br, ai * s + bi, be);
+                } else {
+                    const s = TBL[1074 + d];
+                    norm3(ar + br * s, ai + bi * s, ae);
+                }
+            }
+
+            function mul3(ar, ai, ae, br, bi, be) {
+                norm3(ar * br - ai * bi, ar * bi + ai * br, ae + be);
+            }
+
+            // |a| > |b| for normalised (mantissa >= 0, exponent) pairs; zero is smaller than anything
+            function gtN(am, ae, bm, be) {
+                if (am === 0) return false;
+                if (bm === 0) return true;
+                if (ae !== be) return ae > be;
+                return am > bm;
+            }
+
+            const S = 15;
+            return function getPTBLAFEFlat(dcR, dcI, dcE, refZ, refLen, T, stg, maxIter, bailout, smooth) {
+                const dcm = Math.max(Math.abs(dcR), Math.abs(dcI));
+                let dzR = 0, dzI = 0, dzE = 0, zR = 0, zI = 0, zE = 0;
+                let i = 0, j = 0;
+                let stage = stg.length >> 1;
+                if (stage !== 0) j = stg[(stage - 1) * 2];
+
+                while (stage) {
+                    stage--;
+                    const begin = stg[stage * 2], end = stg[stage * 2 + 1];
+                    while (i < maxIter) {
+                        const o = j * S;
+                        add3(T[o], T[o + 1], T[o + 2], zR, zI, zE);
+                        mul3(Q[0], Q[1], Q[2], dzR, dzI, dzE);
+                        const nR = Q[0], nI = Q[1], nE = Q[2];
+
+                        const nm = Math.max(Math.abs(nR), Math.abs(nI));
+                        if (gtN(nm, nE, T[o + 9], T[o + 10]) || gtN(dcm, dcE, T[o + 11], T[o + 12])) {
+                            j = T[o + 14] | 0;
+                            break;
+                        }
+
+                        mul3(nR, nI, nE, T[o + 3], T[o + 4], T[o + 5]);
+                        const aR = Q[0], aI = Q[1], aE = Q[2];
+                        mul3(dcR, dcI, dcE, T[o + 6], T[o + 7], T[o + 8]);
+                        add3(aR, aI, aE, Q[0], Q[1], Q[2]);
+                        dzR = Q[0]; dzI = Q[1]; dzE = Q[2];
+
+                        i += T[o + 13];
+                        j++;
+
+                        const o2 = j * S;
+                        add3(dzR, dzI, dzE, T[o2], T[o2 + 1], T[o2 + 2]);
+                        zR = Q[0]; zI = Q[1]; zE = Q[2];
+
+                        if (j === end || gtN(Math.max(Math.abs(dzR), Math.abs(dzI)), dzE,
+                                              Math.max(Math.abs(zR), Math.abs(zI)), zE)) {
+                            j = begin;
+                            dzR = zR; dzI = zI; dzE = zE;
+                        }
+                    }
+                }
+
+                // ---- plain perturbation iterations ----
+                // dz is held as  w * 2^we  with w only loosely normalised (|w| within ~2^+-96) and
+                // dc pre-scaled to the same exponent: c' = dc * 2^(dcE - we). While the reference value
+                // is of ordinary size, an iteration is then pure double arithmetic (scaled-double
+                // perturbation); the FloatExp slow path is used only when Z is tiny.
+                let ZR = refZ[3 * j], ZI = refZ[3 * j + 1], ZE = refZ[3 * j + 2];
+                const last = refLen - 1;
+                let wR = dzR, wI = dzI, we = dzE;
+                if (wR === 0 && wI === 0) we = dcE;
+                let sh = dcE - we;
+                if (sh > 90) { const f = p2(-sh); wR *= f; wI *= f; we = dcE; sh = 0; }
+                let cs = p2(sh), cr = dcR * cs, ci = dcI * cs;
+                let sc = p2(we);
+                const zs0 = p2(zE);
+                let zcR = zR * zs0, zcI = zI * zs0;      // z = Z + dz as doubles (same rounding as the plain kernels)
+
+                while (i < maxIter) {
+                    const jn = 3 * (j + 1);
+                    const zeN = refZ[jn + 2];
+                    if (ZE > -400 && ZE < 400 && zeN > -400 && zeN < 400) {
+                        // ---------- fast: everything in doubles ----------
+                        const zs = TBL[ZE + 1074];
+                        const tr = ZR * zs + zcR, ti = ZI * zs + zcI;                  // Z + z
+                        const nR = wR * tr - wI * ti + cr;
+                        const nI = wR * ti + wI * tr + ci;
+                        const dr = sc * nR, di = sc * nI;                              // dz' as double
+                        ZR = refZ[jn]; ZI = refZ[jn + 1]; ZE = zeN;
+                        const zsn = TBL[zeN + 1074];
+                        const zr2 = ZR * zsn + dr, zi2 = ZI * zsn + di;                // z' = Z' + dz'
+                        zcR = zr2; zcI = zi2;
+                        i++; j++;
+
+                        const zAbs2 = zr2 * zr2 + zi2 * zi2;
+                        if (zAbs2 > bailout) {
+                            const iter = i - 1;
+                            if (smooth) {
+                                let fracIter = Math.log(zAbs2) / 2;
+                                fracIter = Math.log(fracIter / Math.LN2) / Math.LN2;
+                                return iter + 1 - fracIter;
+                            }
+                            return iter;
+                        }
+
+                        if (j === last || Math.max(Math.abs(zr2), Math.abs(zi2)) < Math.max(Math.abs(dr), Math.abs(di))) {
+                            // rebase: dz = z, restart the reference
+                            ZR = 0; ZI = 0; ZE = 0; j = 0;
+                            norm3(zr2, zi2, 0);
+                            wR = Q[0]; wI = Q[1]; we = Q[2];
+                            if (wR === 0 && wI === 0) we = dcE;
+                            sh = dcE - we;
+                            if (sh > 90) { const f = p2(-sh); wR *= f; wI *= f; we = dcE; sh = 0; }
+                            cs = p2(sh); cr = dcR * cs; ci = dcI * cs;
+                            sc = p2(we);
+                        } else {
+                            wR = nR; wI = nI;
+                            const m = Math.max(Math.abs(nR), Math.abs(nI));
+                            if (m > 7.922816251426434e28 || (m < 1.2621774483536189e-29 && m !== 0)) {
+                                norm3(nR, nI, we);
+                                wR = Q[0]; wI = Q[1]; we = Q[2];
+                                sh = dcE - we;
+                                if (sh > 90) { const f = p2(-sh); wR *= f; wI *= f; we = dcE; sh = 0; }
+                                cs = p2(sh); cr = dcR * cs; ci = dcI * cs;
+                                sc = p2(we);
+                            }
+                        }
+                    } else {
+                        // ---------- slow: reference value (or its successor) is tiny -> FloatExp ----------
+                        norm3(wR, wI, we);
+                        dzR = Q[0]; dzI = Q[1]; dzE = Q[2];
+                        add3(dzR, dzI, dzE, ZR, ZI, ZE);                  // z = dz + Z
+                        const z0R = Q[0], z0I = Q[1], z0E = Q[2];
+                        add3(ZR, ZI, ZE, z0R, z0I, z0E);                  // Z + z
+                        mul3(Q[0], Q[1], Q[2], dzR, dzI, dzE);
+                        add3(Q[0], Q[1], Q[2], dcR, dcI, dcE);
+                        dzR = Q[0]; dzI = Q[1]; dzE = Q[2];
+
+                        i++; j++;
+                        ZR = refZ[3 * j]; ZI = refZ[3 * j + 1]; ZE = refZ[3 * j + 2];
+                        add3(dzR, dzI, dzE, ZR, ZI, ZE);
+                        zR = Q[0]; zI = Q[1]; zE = Q[2];
+
+                        let zAbs2 = zR * zR + zI * zI;
+                        if (zAbs2 !== 0) zAbs2 *= p2(2 * zE);
+                        if (zAbs2 > bailout) {
+                            const iter = i - 1;
+                            if (smooth) {
+                                let fracIter = Math.log(zAbs2) / 2;
+                                fracIter = Math.log(fracIter / Math.LN2) / Math.LN2;
+                                return iter + 1 - fracIter;
+                            }
+                            return iter;
+                        }
+
+                        if (j === last || gtN(Math.max(Math.abs(dzR), Math.abs(dzI)), dzE,
+                                              Math.max(Math.abs(zR), Math.abs(zI)), zE)) {
+                            ZR = 0; ZI = 0; ZE = 0;
+                            dzR = zR; dzI = zI; dzE = zE;
+                            j = 0;
+                        }
+                        wR = dzR; wI = dzI; we = dzE;
+                        if (wR === 0 && wI === 0) we = dcE;
+                        sh = dcE - we;
+                        if (sh > 90) { const f = p2(-sh); wR *= f; wI *= f; we = dcE; sh = 0; }
+                        cs = p2(sh); cr = dcR * cs; ci = dcI * cs;
+                        sc = p2(we);
+                        const zsx = p2(zE);
+                        zcR = zR * zsx; zcI = zI * zsx;
+                    }
+                }
+                return i;
+            };
+        }
+        const getPTBLAFEFlat = makeFEKernel();
+
         // ====================================================================
         //  Worker pool: runs getPTBLAFlat on batches of pixel offsets (dc)
         //  in parallel threads. Non-deep mode only.
@@ -3985,19 +4273,26 @@
             _source() {
                 return `const BLA_STRIDE = ${BLA_STRIDE};
 ${getPTBLAFlat.toString()}
-let refZ = null, refLen = 0, T = null, stg = null, ver = -1;
+const getPTBLAFEFlat = (${makeFEKernel.toString()})();
+let refZ = null, refLen = 0, T = null, stg = null, ver = -1, deep = false;
 self.onmessage = (e) => {
   const m = e.data;
   if (m.type === 'tables') {
-    refZ = m.refZ; refLen = m.refLen; T = m.T; stg = m.stages; ver = m.ver;
+    refZ = m.refZ; refLen = m.refLen; T = m.T; stg = m.stages; ver = m.ver; deep = !!m.deep;
     self.postMessage({ type: 'ready', ver: ver });
   } else if (m.type === 'job') {
     const n = m.n, dc = m.dc, out = new Float64Array(n);
     const ok = m.ver === ver;
     const t0 = performance.now();
     if (ok) {
-      for (let k = 0; k < n; k++) {
-        out[k] = getPTBLAFlat(dc[2 * k], dc[2 * k + 1], refZ, refLen, T, stg, m.maxIter, m.bailout, m.smooth);
+      if (deep) {
+        for (let k = 0; k < n; k++) {
+          out[k] = getPTBLAFEFlat(dc[3 * k], dc[3 * k + 1], dc[3 * k + 2], refZ, refLen, T, stg, m.maxIter, m.bailout, m.smooth);
+        }
+      } else {
+        for (let k = 0; k < n; k++) {
+          out[k] = getPTBLAFlat(dc[2 * k], dc[2 * k + 1], refZ, refLen, T, stg, m.maxIter, m.bailout, m.smooth);
+        }
       }
     }
     self.postMessage({ type: 'result', id: m.id, ok: ok, out: out, ms: performance.now() - t0 }, [out.buffer]);
@@ -4045,7 +4340,7 @@ self.onmessage = (e) => {
                 try { this._spawn(n); } catch (e) { console.error(e); this._fail(); return false; }
                 this.ver = -1;
                 const acks = this.slots.map(slot => new Promise((resolve, reject) => { slot.ack = { resolve, reject }; }));
-                const msg = { type: 'tables', ver, refZ: refFlat.Z, refLen: refFlat.length, T: blaFlat.T, stages: blaFlat.stages };
+                const msg = { type: 'tables', ver, deep: !!blaFlat.deep, refZ: refFlat.Z, refLen: refFlat.length, T: blaFlat.T, stages: blaFlat.stages };
                 try {
                     for (const slot of this.slots) slot.w.postMessage(msg);
                     let timer;
@@ -4094,7 +4389,7 @@ self.onmessage = (e) => {
                     if (this.pendingIdx >= this.pending.length) break;
                     const chunk = this.pending[this.pendingIdx++];
                     const id = this.nextJob++;
-                    const dc = b.dc.slice(2 * chunk.start, 2 * (chunk.start + chunk.count)); // copy, then transfer
+                    const dc = b.dc.slice(b.stride * chunk.start, b.stride * (chunk.start + chunk.count)); // copy, then transfer
                     this.jobs.set(id, chunk);
                     slot.busy = true;
                     this.inflight++;
@@ -4118,9 +4413,9 @@ self.onmessage = (e) => {
                 if (this.batch && (!owner || this.batch.owner === owner)) this._abortBatch();
             }
 
-            /** dc: Float64Array [re0, im0, re1, im1, ...]  ->  Promise<Float64Array|null> (null = aborted) */
-            runBatch(dc, cfg, owner) {
-                const n = dc.length >> 1;
+            /** dc: Float64Array of `stride` doubles per point (2: re,im  |  3: re,im,exp)  ->  Promise<Float64Array|null> (null = aborted) */
+            runBatch(dc, cfg, owner, stride = 2) {
+                const n = dc.length / stride;
                 const W = this.slots.length;
                 return new Promise((resolve) => {
                     if (this.batch) this._abortBatch();
@@ -4131,7 +4426,7 @@ self.onmessage = (e) => {
                     cs = Math.max(1, Math.min(cs, 1024, Math.ceil(n / (W * 4))));
                     const chunks = [];
                     for (let s = 0; s < n; s += cs) chunks.push({ start: s, count: Math.min(cs, n - s) });
-                    this.batch = { out: new Float64Array(n), remaining: chunks.length, resolve, dc, cfg, owner };
+                    this.batch = { out: new Float64Array(n), remaining: chunks.length, resolve, dc, cfg, owner, stride };
                     this.pending = chunks;
                     this.pendingIdx = 0;
                     this.jobs.clear();
@@ -4842,7 +5137,7 @@ self.onmessage = (e) => {
 
                 let statusText = `Ref: ${this.stats.ref?.toLocaleString() ?? 0}it -> ${this.stats.refC?.toLocaleString() ?? 0}ckpts\n`;
                 statusText += `BLA: ${this.blaTable?.steps?.length?.toLocaleString() ?? 0} entries\n`;
-                statusText += `Threads: ${(!this.deep && this.blaFlat && workerPool.active) ? workerPool.size : 1}\n`;
+                statusText += `Threads: ${(this.blaFlat && this.blaFlat.deep === !!this.deep && workerPool.active) ? workerPool.size : 1}\n`;
                 statusText += `Res: ${this.canvas.width}x${this.canvas.height}\n`;
                 statusText += `Calc/Guess/Total: ${this.stats.calc.toLocaleString()}/${this.stats.guess.toLocaleString()}/${totalPixels.toLocaleString()} px\n`;
                 statusText += `Time: ${(elapsedTime / 1000).toFixed(3)}s ETA: ${(estimatedRemainingTime / 1000).toFixed(3)}s`;
@@ -4869,15 +5164,18 @@ self.onmessage = (e) => {
                     this.blaTable = createBLATable(this.ref);
                 }
 
-                // Flatten into typed arrays for the fast per-pixel path (non-deep only).
+                // Flatten into typed arrays for the fast per-pixel path (double and FloatExp modes).
                 this.blaFlat = null;
                 this.refFlat = null;
-                if (!this.deep) {
-                    const rf = flattenRef(this.ref);
+                {
+                    const isDeep = !!this.deep;
+                    const rf = isDeep ? flattenRefFE(this.ref) : flattenRef(this.ref);
                     if (rf) {
                         this.tablesVersion = ++TABLE_VERSION;
                         this.refFlat = rf;
-                        this.blaFlat = flattenBLATable(this.blaTable);
+                        this.blaFlat = isDeep ? flattenBLATableFE(this.blaTable) : flattenBLATable(this.blaTable);
+                        this.blaFlat.deep = isDeep;
+                        this.refFlat.deep = isDeep;
                         // Drop the heavy object table; only metadata is used from now on.
                         this.blaTable = {
                             hasBLA: this.blaTable.hasBLA,
@@ -5308,13 +5606,14 @@ self.onmessage = (e) => {
             // ================= Worker-pool rendering =================
 
             async preparePool() {
-                if (this.deep || !this.blaFlat || !this.refFlat) return false;
+                if (!this.blaFlat || !this.refFlat || this.blaFlat.deep !== !!this.deep) return false;
                 if (!workerPool.enabled || workerPool.failed) return false;
                 return await workerPool.setTables(this.tablesVersion, this.refFlat, this.blaFlat);
             }
 
             /** Offsets (relative to the reference center) for a list of pixels. */
             _buildDc(xs, ys) {
+                if (this.blaFlat && this.blaFlat.deep) return this._buildDcFE(xs, ys);
                 const n = xs.length;
                 const dpp = this.size.div(this.minStep).doubleValue();
                 const rc = this.refCenterDelta;
@@ -5328,13 +5627,48 @@ self.onmessage = (e) => {
                 return dc;
             }
 
+            // ---- deep mode (FloatExp) pixel offsets as shared-exponent triples ----
+            _getDppFE() {
+                const sb = this.size.base, se = this.size.exp;
+                if (!this._dppFE || this._dppFB !== sb || this._dppFX !== se || this._dppFM !== this.minStep) {
+                    this._dppFE = this.size.div(this.minStep);
+                    this._dppFB = sb; this._dppFX = se; this._dppFM = this.minStep;
+                }
+                return this._dppFE;
+            }
+
+            _dcFEInto(x, y, dpp, out, o) {
+                const s = this._fe || (this._fe = {
+                    re: new FloatExp(0, 0), im: new FloatExp(0, 0), t1: new FloatExp(0, 0), t2: new FloatExp(0, 0)
+                });
+                dpp.mulTo(x - this.halfWidth, s.re);
+                dpp.mulTo(this.halfHeight - y, s.im);
+                const rc = this.refCenterDelta;
+                if (rc) {
+                    s.re.addFloatExpTo(rc.re, s.t1);
+                    s.im.addFloatExpTo(rc.im, s.t2);
+                    feToShared(s.t1, s.t2, out, o);
+                } else {
+                    feToShared(s.re, s.im, out, o);
+                }
+            }
+
+            _buildDcFE(xs, ys) {
+                const n = xs.length, dpp = this._getDppFE();
+                const dc = new Float64Array(3 * n);
+                for (let k = 0; k < n; k++) this._dcFEInto(xs[k], ys[k], dpp, dc, 3 * k);
+                return dc;
+            }
+
             /** Iteration counts for a batch of dc values. null => cancelled. */
             async computeBatch(dc) {
-                const n = dc.length >> 1;
+                const deep = !!(this.blaFlat && this.blaFlat.deep);
+                const stride = deep ? 3 : 2;
+                const n = dc.length / stride;
                 if (n === 0) return new Float64Array(0);
                 const cfg = { maxIter: this.iterations, bailout: this.bailout, smooth: !!this.smooth };
                 if (workerPool.active && workerPool.ver === this.tablesVersion) {
-                    const res = await workerPool.runBatch(dc, cfg, this);
+                    const res = await workerPool.runBatch(dc, cfg, this, stride);
                     if (res) return res;
                     if (this.requestForCancel) return null;
                 }
@@ -5343,7 +5677,9 @@ self.onmessage = (e) => {
                 const Z = this.refFlat.Z, L = this.refFlat.length, T = this.blaFlat.T, S = this.blaFlat.stages;
                 let t0 = performance.now();
                 for (let k = 0; k < n; k++) {
-                    out[k] = getPTBLAFlat(dc[2 * k], dc[2 * k + 1], Z, L, T, S, cfg.maxIter, cfg.bailout, cfg.smooth);
+                    out[k] = deep
+                        ? getPTBLAFEFlat(dc[3 * k], dc[3 * k + 1], dc[3 * k + 2], Z, L, T, S, cfg.maxIter, cfg.bailout, cfg.smooth)
+                        : getPTBLAFlat(dc[2 * k], dc[2 * k + 1], Z, L, T, S, cfg.maxIter, cfg.bailout, cfg.smooth);
                     if ((k & 15) === 15 && performance.now() - t0 > 50) {
                         if (this.requestForCancel) return null;
                         await delay(0);
@@ -5516,6 +5852,20 @@ self.onmessage = (e) => {
                     }
                     const it = getPTBLAFlat(
                         dcRe, dcIm,
+                        this.refFlat.Z, this.refFlat.length,
+                        this.blaFlat.T, this.blaFlat.stages,
+                        this.iterations, this.bailout, this.smooth
+                    );
+                    this.setIter(x, y, it, drawWidth, drawHeight);
+                    this.stats.calc++;
+                    return;
+                }
+                if (this.deep && this.blaFlat && this.blaFlat.deep && this.refFlat) {
+                    // Deep fast path: flat shared-exponent kernel, no allocations.
+                    const dc3 = this._dc3 || (this._dc3 = new Float64Array(3));
+                    this._dcFEInto(x, y, this._getDppFE(), dc3, 0);
+                    const it = getPTBLAFEFlat(
+                        dc3[0], dc3[1], dc3[2],
                         this.refFlat.Z, this.refFlat.length,
                         this.blaFlat.T, this.blaFlat.stages,
                         this.iterations, this.bailout, this.smooth
