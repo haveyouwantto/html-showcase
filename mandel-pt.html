@@ -180,6 +180,45 @@
             cursor: not-allowed;
         }
 
+        .control-button.active {
+            background-color: var(--theme-color);
+            outline: 2px solid #fff;
+            outline-offset: -2px;
+        }
+
+        #newton-dialog {
+            width: 350px;
+            border: 1px solid #666;
+            text-align: center;
+        }
+
+        #newton-dialog h3 {
+            margin-top: 0;
+        }
+
+        .newton-field {
+            text-align: left;
+            margin-bottom: 12px;
+            font-size: 0.9rem;
+        }
+
+        .newton-field label {
+            display: block;
+            padding: 4px 0;
+            cursor: pointer;
+        }
+
+        .newton-field input {
+            width: auto;
+            margin-right: 8px;
+            accent-color: var(--theme-color);
+        }
+
+        #newton-progress {
+            background-color: var(--theme-color);
+            transition: width 0.1s linear;
+        }
+
         .icon {
             font-size: 30px;
             font-family: emoji;
@@ -893,6 +932,7 @@
             <div class="shortcut">
                 <button class="icon control-button" id="ref-recompute" title="Recompute reference orbit">&#128260;</button>
                 <button class="icon control-button" id="ref-lock" title="Lock reference orbit (off)">&#128275;</button>
+                <button class="icon control-button" id="newton-zoom" title="Newton-Raphson zoom (click, then click the canvas)">&#127919;</button>
             </div>
             <div class="shortcut">
                 <button class="icon control-button" id="iteration-button" title="Iteration Settings">🔧</button>
@@ -957,6 +997,24 @@
         <input type="checkbox" id="use-workers" checked><br>
         <button id="apply-iter">Apply</button>
         <button id="close-iter-dialog">Close</button>
+    </dialog>
+
+    <dialog id="newton-dialog">
+        <h3>Newton-Raphson Zoom</h3>
+        <p id="newton-target" style="font-size: 0.75rem; color: #aaa; margin-top: 0; word-break: break-all;"></p>
+        <div class="newton-field" id="newton-options">
+            <div style="margin-bottom: 4px;">Stop at</div>
+            <label><input type="radio" name="newton-stop" value="0.5">0.5&times; &mdash; half way</label>
+            <label><input type="radio" name="newton-stop" value="0.75" checked>0.75&times; &mdash; 4-fold</label>
+            <label><input type="radio" name="newton-stop" value="0.875">0.875&times; &mdash; 8-fold</label>
+            <label><input type="radio" name="newton-stop" value="1">1&times; &mdash; minibrot</label>
+        </div>
+        <div class="progress-container" style="height: 6px; margin: 10px 0; position: relative; width: 100%;">
+            <div id="newton-progress" class="progress"></div>
+        </div>
+        <p id="newton-status" style="font-size: 0.8rem; color: #aaa; min-height: 2.4em;">Ready</p>
+        <button id="newton-start" class="video-btn-start">Start</button>
+        <button id="newton-cancel" class="video-btn-cancel">Cancel</button>
     </dialog>
 
     <dialog id="video-config-dialog">
@@ -4796,6 +4854,7 @@ self.onmessage = (e) => {
             }
 
             handleStart(e) {
+                if (this.blockInteraction) return;
                 e.preventDefault();
                 this.isInteracting = true;
                 this.cancel();
@@ -4813,7 +4872,7 @@ self.onmessage = (e) => {
             }
 
             handleMove(e) {
-                if (!this.isInteracting) return;
+                if (this.blockInteraction || !this.isInteracting) return;
                 e.preventDefault();
 
                 if (e.touches) {
@@ -4859,7 +4918,7 @@ self.onmessage = (e) => {
             }
 
             handleEnd(e) {
-                if (!this.isInteracting) return;
+                if (this.blockInteraction || !this.isInteracting) return;
                 this.isInteracting = false;
                 this.applyTransformAndRecalculate();
             }
@@ -6681,6 +6740,320 @@ self.onmessage = (e) => {
             b.innerHTML = mandelbrot.refLocked ? '&#128274;' : '&#128275;';
             b.title = 'Lock reference orbit (' + (mandelbrot.refLocked ? 'on' : 'off') + ')';
         });
+
+
+        // ============================================================
+        //  Newton-Raphson zoom
+        //  1. ball method finds the period p of a minibrot near the click
+        //  2. Newton on F(c) = z_p(c) = 0 (z_0 = 0, z -> z^2 + c) with MPFR
+        //  3. minibrot size  s = 1 / |b l^2|,  l = prod 2 z_i,  b = sum 1/l_k
+        // ============================================================
+        class NewtonCancelled extends Error { }
+
+        const newtonLse = (a, b) => {
+            if (a === -Infinity) return b;
+            if (b === -Infinity) return a;
+            return a > b ? a + Math.log2(1 + 2 ** (b - a)) : b + Math.log2(1 + 2 ** (a - b));
+        };
+
+        /** Ball method: first n such that the disc of radius r around c contains a root of z_n. */
+        async function newtonFindPeriod(ctx, binding, cre, cim, log2r, maxIter, hooks) {
+            const zr = ctx.Float(0), zi = ctx.Float(0);
+            const re2 = ctx.Float(0), im2 = ctx.Float(0), reim = ctx.Float(0);
+            binding.mpfr_set(zr.mpfr_t, cre.mpfr_t);
+            binding.mpfr_set(zi.mpfr_t, cim.mpfr_t);
+            let lR = log2r;
+            let last = performance.now();
+            for (let n = 1; n <= maxIter; n++) {
+                const mag = Math.hypot(zr.toNumber(), zi.toNumber());
+                const lZ = mag > 0 ? Math.log2(mag) : -Infinity;
+                if (lZ < lR) return n;                                   // 0 lies in the ball
+                if (lZ > 1 && lR < 30 && mag - 2 > 2 ** lR) return -1;  // whole ball escaped
+                lR = newtonLse(newtonLse(1 + lZ, lR) + lR, log2r);       // R' = (2|Z| + R) R + r
+
+                binding.mpfr_sqr(re2.mpfr_t, zr.mpfr_t);
+                binding.mpfr_sqr(im2.mpfr_t, zi.mpfr_t);
+                binding.mpfr_mul(reim.mpfr_t, zr.mpfr_t, zi.mpfr_t);
+                binding.mpfr_sub(zr.mpfr_t, re2.mpfr_t, im2.mpfr_t);
+                binding.mpfr_add(zr.mpfr_t, zr.mpfr_t, cre.mpfr_t);
+                binding.mpfr_mul_2ui(zi.mpfr_t, reim.mpfr_t, 1);
+                binding.mpfr_add(zi.mpfr_t, zi.mpfr_t, cim.mpfr_t);
+
+                if ((n & 255) === 0 && performance.now() - last > 60) {
+                    last = performance.now();
+                    hooks.status(`Finding period... ${n.toLocaleString()} / ${maxIter.toLocaleString()}`);
+                    await delay(0);
+                    hooks.check();
+                }
+            }
+            return 0;
+        }
+
+        /**
+         * One Newton step c <- c - z_p / dz_p/dc, in place. Also returns the step size and the
+         * minibrot size estimate (log2) from the same orbit.
+         */
+        async function newtonPass(ctx, binding, cre, cim, p, hooks, k, N) {
+            const zr = ctx.Float(0), zi = ctx.Float(0), dr = ctx.Float(0), di = ctx.Float(0);
+            const t1 = ctx.Float(0), t2 = ctx.Float(0), t3 = ctx.Float(0), t4 = ctx.Float(0);
+            const u1 = ctx.Float(0), u2 = ctx.Float(0), u3 = ctx.Float(0), one = ctx.Float(1);
+
+            // size estimate state: l = lm * 2^le (lm kept near 1), b = br + i bi
+            let lr = 1, li = 0, le = 0, br = 1, bi = 0, sizeBad = false;
+            let last = performance.now();
+
+            for (let i = 1; i <= p; i++) {
+                // dz_i = 2 z_{i-1} dz_{i-1} + 1
+                binding.mpfr_mul(t1.mpfr_t, zr.mpfr_t, dr.mpfr_t);
+                binding.mpfr_mul(t2.mpfr_t, zi.mpfr_t, di.mpfr_t);
+                binding.mpfr_sub(t1.mpfr_t, t1.mpfr_t, t2.mpfr_t);
+                binding.mpfr_mul(t3.mpfr_t, zr.mpfr_t, di.mpfr_t);
+                binding.mpfr_mul(t4.mpfr_t, zi.mpfr_t, dr.mpfr_t);
+                binding.mpfr_add(t3.mpfr_t, t3.mpfr_t, t4.mpfr_t);
+                binding.mpfr_mul_2ui(t1.mpfr_t, t1.mpfr_t, 1);
+                binding.mpfr_mul_2ui(di.mpfr_t, t3.mpfr_t, 1);
+                binding.mpfr_add(dr.mpfr_t, t1.mpfr_t, one.mpfr_t);
+
+                // z_i = z_{i-1}^2 + c
+                binding.mpfr_sqr(u1.mpfr_t, zr.mpfr_t);
+                binding.mpfr_sqr(u2.mpfr_t, zi.mpfr_t);
+                binding.mpfr_mul(u3.mpfr_t, zr.mpfr_t, zi.mpfr_t);
+                binding.mpfr_sub(zr.mpfr_t, u1.mpfr_t, u2.mpfr_t);
+                binding.mpfr_add(zr.mpfr_t, zr.mpfr_t, cre.mpfr_t);
+                binding.mpfr_mul_2ui(zi.mpfr_t, u3.mpfr_t, 1);
+                binding.mpfr_add(zi.mpfr_t, zi.mpfr_t, cim.mpfr_t);
+
+                if (i < p && !sizeBad) {
+                    const a = zr.toNumber(), b = zi.toNumber();
+                    const nr = 2 * (a * lr - b * li), ni = 2 * (a * li + b * lr);
+                    lr = nr; li = ni;
+                    let m = Math.hypot(lr, li);
+                    if (!(m > 0) || !isFinite(m)) {
+                        sizeBad = true;
+                    } else {
+                        if (m > 1e150 || m < 1e-150) {
+                            const e = Math.round(Math.log2(m)), sc = 2 ** -e;
+                            lr *= sc; li *= sc; le += e; m *= sc;
+                        }
+                        if (-le >= 1000) sizeBad = true;
+                        else if (-le > -1000) {
+                            const f = 2 ** (-le) / (m * m);   // 1/l = conj(lm) / |lm|^2 * 2^-le
+                            br += lr * f; bi -= li * f;
+                        }
+                    }
+                }
+
+                if ((i & 63) === 0 && performance.now() - last > 60) {
+                    last = performance.now();
+                    hooks.progress((k - 1 + i / p) / N);
+                    if (hooks.step) hooks.step(i);
+                    await delay(0);
+                    hooks.check();
+                }
+            }
+
+            let log2s = null;
+            if (!sizeBad) {
+                const m = Math.hypot(lr, li), bm = Math.hypot(br, bi);
+                const v = -(Math.log2(bm) + 2 * (Math.log2(m) + le));
+                if (isFinite(v)) log2s = v;
+            }
+
+            // Delta = z / dz  (complex), c -= Delta
+            binding.mpfr_sqr(t1.mpfr_t, dr.mpfr_t);
+            binding.mpfr_sqr(t2.mpfr_t, di.mpfr_t);
+            binding.mpfr_add(t1.mpfr_t, t1.mpfr_t, t2.mpfr_t);            // den
+            binding.mpfr_mul(t2.mpfr_t, zr.mpfr_t, dr.mpfr_t);
+            binding.mpfr_mul(t3.mpfr_t, zi.mpfr_t, di.mpfr_t);
+            binding.mpfr_add(t2.mpfr_t, t2.mpfr_t, t3.mpfr_t);            // num re
+            binding.mpfr_mul(t3.mpfr_t, zi.mpfr_t, dr.mpfr_t);
+            binding.mpfr_mul(t4.mpfr_t, zr.mpfr_t, di.mpfr_t);
+            binding.mpfr_sub(t3.mpfr_t, t3.mpfr_t, t4.mpfr_t);            // num im
+            binding.mpfr_div(t2.mpfr_t, t2.mpfr_t, t1.mpfr_t);
+            binding.mpfr_div(t3.mpfr_t, t3.mpfr_t, t1.mpfr_t);
+            binding.mpfr_sub(cre.mpfr_t, cre.mpfr_t, t2.mpfr_t);
+            binding.mpfr_sub(cim.mpfr_t, cim.mpfr_t, t3.mpfr_t);
+
+            const fr = MPFR2FloatExp(ctx, t2, binding, u1);
+            const fi = MPFR2FloatExp(ctx, t3, binding, u1);
+            const stepLog2 = Math.max(fr.log2Value(), fi.log2Value());
+            const stepFE = fr.log2Value() >= fi.log2Value() ? fr : fi;
+            return { log2s, stepLog2, stepText: stepFE.toString().replace(/^(-?\d\.\d{2})\d*e/, '$1e') };
+        }
+
+        async function newtonSearch(m, px, py, hooks) {
+            const c0 = m.center.add(m.getDelta(px, py));
+            const log2r = m.size.log2Value() - 3;                  // search radius = h/4, h = size/2
+            let P = m.refPrecisionBits() + 32;
+            const nOf = (bits) => Math.max(3, Math.ceil(Math.log2(Math.max(bits, 64) / 8)) + 2);
+
+            const gmpinit = await gmp.init();
+            const binding = gmpinit.binding;
+            const newCtx = (bits) => gmpinit.getContext({
+                precisionBits: bits, roundingMode: gmp.FloatRoundingMode.ROUND_DOWN
+            });
+            let ctx = newCtx(P);
+            try {
+                let cre = ctx.Float(c0.re.toString());
+                let cim = ctx.Float(c0.im.toString());
+
+                hooks.status('Finding period...');
+                const maxIter = Math.max(m.iterations, 2000);
+                const p = await newtonFindPeriod(ctx, binding, cre, cim, log2r, maxIter, hooks);
+                hooks.check();
+                if (p < 0) throw new Error('No minibrot near this point (the area escapes).');
+                if (p === 0) throw new Error(`No period found within ${maxIter.toLocaleString()} iterations. Raise the iteration count.`);
+
+                let N = nOf(P), log2s = null, prevStep = Infinity, scaleText = '-';
+                // step = Mandelbrot iteration i/p inside the current Newton iteration;
+                // scale = size of the last Newton correction
+                const show = (k, i) => hooks.status(
+                    `Newton Raphson iteration ${k}/${N}, step ${i.toLocaleString()}/${p.toLocaleString()}\n` +
+                    `scale ${scaleText} (period ${p.toLocaleString()}, ${P} bits)`);
+                for (let k = 1; k <= 80; k++) {
+                    hooks.check();
+                    N = Math.max(N, k);
+                    show(k, 0);
+                    hooks.progress((k - 1) / N);
+
+                    const passHooks = { check: hooks.check, progress: hooks.progress, step: (i) => show(k, i) };
+                    const r = await newtonPass(ctx, binding, cre, cim, p, passHooks, k, N);
+                    scaleText = r.stepText;
+                    if (r.log2s !== null) log2s = r.log2s;
+
+                    // precision needed to resolve the minibrot, plus guard bits
+                    const need = log2s !== null ? Math.ceil(-log2s) + 96 : P;
+                    const needP = Math.ceil(Math.max(need, P) / 64) * 64;
+                    show(k, p);
+                    hooks.progress(Math.min(0.99, k / N));
+
+                    const small = log2s !== null
+                        ? r.stepLog2 < log2s - 40
+                        : r.stepLog2 < -(P - 48);
+                    const stalled = k > 2 && r.stepLog2 > prevStep - 2 && r.stepLog2 < log2r - 30;
+                    prevStep = r.stepLog2;
+
+                    if (needP > P) {                                  // more bits needed: re-create at higher precision
+                        const sre = cre.toString(), sim = cim.toString();
+                        ctx.destroy();
+                        P = needP;
+                        ctx = newCtx(P);
+                        cre = ctx.Float(sre);
+                        cim = ctx.Float(sim);
+                        N = Math.max(N, k + 2);
+                        continue;
+                    }
+                    if (small || r.stepLog2 === -Infinity || stalled) {
+                        hooks.progress(1);
+                        return {
+                            re: cre.toString(), im: cim.toString(),
+                            period: p, log2size: log2s, bits: P, iterations: k
+                        };
+                    }
+                    N = Math.max(N, k + 1);
+                }
+                throw new Error('Newton iteration did not converge.');
+            } finally {
+                try { ctx.destroy(); } catch (e) { }
+            }
+        }
+
+        (function setupNewtonZoom() {
+            const btn = document.getElementById('newton-zoom');
+            const dlg = document.getElementById('newton-dialog');
+            const target = document.getElementById('newton-target');
+            const status = document.getElementById('newton-status');
+            const bar = document.getElementById('newton-progress');
+            const startBtn = document.getElementById('newton-start');
+            const cancelBtn = document.getElementById('newton-cancel');
+            const opts = document.getElementById('newton-options');
+            const st = { active: false, running: false, cancel: false, px: 0, py: 0 };
+
+            const setActive = (on) => {
+                st.active = on;
+                btn.classList.toggle('active', on);
+                mandelbrot.blockInteraction = on;          // clicks pick a point instead of panning
+                mandelbrot.isInteracting = false;
+                canvas.style.cursor = on ? 'crosshair' : '';
+            };
+            btn.addEventListener('click', () => setActive(!st.active));
+
+            canvas.addEventListener('click', (e) => {
+                if (!st.active || st.running || dlg.open) return;
+                const rect = canvas.getBoundingClientRect();
+                st.px = (e.clientX - rect.left) / rect.width * canvas.width;
+                st.py = (e.clientY - rect.top) / rect.height * canvas.height;
+                const c = mandelbrot.center.add(mandelbrot.getDelta(st.px, st.py));
+                const cut = (d) => { const t = d.toString(); return t.length > 40 ? t.slice(0, 40) + '...' : t; };
+                target.textContent = `Target: ${cut(c.re)}, ${cut(c.im)}`;
+                status.textContent = 'Ready';
+                bar.style.width = '0%';
+                startBtn.disabled = false;
+                opts.querySelectorAll('input').forEach(i => i.disabled = false);
+                dlg.showModal();
+            });
+
+            const hooks = {
+                check: () => { if (st.cancel) throw new NewtonCancelled(); },
+                status: (t) => { status.innerText = t; },
+                progress: (f) => { bar.style.width = (Math.max(0, Math.min(1, f)) * 100).toFixed(1) + '%'; }
+            };
+
+            startBtn.addEventListener('click', async () => {
+                if (st.running) return;
+                const frac = parseFloat(opts.querySelector('input:checked').value);
+                st.running = true; st.cancel = false;
+                startBtn.disabled = true;
+                opts.querySelectorAll('input').forEach(i => i.disabled = true);
+                cancelBtn.textContent = 'Cancel';
+                try {
+                    const res = await newtonSearch(mandelbrot, st.px, st.py, hooks);
+
+                    // Final zoom = (minibrot zoom)^frac, i.e. frac of the minibrot's depth in log scale:
+                    // a minibrot at 1e1000 -> 0.5 gives 1e500, 0.75 gives 1e750. Never zooms out of the current view.
+                    const logNow = 2 - mandelbrot.size.log2Value();          // zoom = 4 / size
+                    let logTarget = logNow, note = '';
+                    if (res.log2size !== null) {
+                        const logMini = -res.log2size;                         // zoom = 1 / minibrot size
+                        logTarget = Math.max(logNow, frac * logMini);
+                        if (frac * logMini < logNow) note = ' (target shallower than current view, zoom kept)';
+                    } else {
+                        note = ' (minibrot size unavailable, zoom unchanged)';
+                    }
+                    const newSize = FloatExp.FOUR.div(FloatExp.fromLog2(logTarget));
+                    const newIter = Math.max(mandelbrot.iterations, 8 * res.period + 256);
+
+                    status.innerText = `Done: period ${res.period.toLocaleString()}, ${res.iterations} iterations${note}`;
+                    dlg.close();
+                    await mandelbrot.cancel();
+                    mandelbrot.goto(new DeepComplex(new Decimal(res.re), new Decimal(res.im)));
+                    mandelbrot.zoom(newSize);
+                    mandelbrot.setIterations(newIter);
+                    mandelbrot.update();                                       // writes re / im / zoom / iter fields
+                } catch (err) {
+                    if (err instanceof NewtonCancelled) {
+                        status.innerText = 'Cancelled';
+                        if (dlg.open) dlg.close();
+                    } else {
+                        console.error(err);
+                        status.innerText = 'Error: ' + (err && err.message ? err.message : err);
+                        cancelBtn.textContent = 'Close';
+                    }
+                } finally {
+                    st.running = false;
+                    startBtn.disabled = false;
+                    opts.querySelectorAll('input').forEach(i => i.disabled = false);
+                }
+            });
+
+            cancelBtn.addEventListener('click', () => {
+                if (st.running) { st.cancel = true; status.innerText = 'Cancelling...'; }
+                else dlg.close();
+            });
+            dlg.addEventListener('cancel', (e) => {                              // Esc key
+                if (st.running) { e.preventDefault(); st.cancel = true; status.innerText = 'Cancelling...'; }
+            });
+        })();
 
         document.getElementById('home').addEventListener('click', e => {
             mandelbrot.home()
